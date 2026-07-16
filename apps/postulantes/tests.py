@@ -410,3 +410,150 @@ class TestErrores(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class TestSeguridadPropietario(APITestCase):
+    """Pruebas de acceso por propietario para postulaciones y registros relacionados."""
+
+    def setUp(self) -> None:
+        self.owner = User.objects.create_user(
+            username="owner_postulacion",
+            password="segura123",
+            ci="7777771",
+            ru="RU7777771",
+        )
+        self.other_student = User.objects.create_user(
+            username="other_postulacion",
+            password="segura123",
+            ci="7777772",
+            ru="RU7777772",
+        )
+        self.admin = User.objects.create_user(
+            username="admin_postulacion",
+            password="segura123",
+            ci="7777773",
+            ru="RU7777773",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.periodo = Periodo.objects.create(
+            nombre="2027-I",
+            fecha_inicio="2027-01-01",
+            fecha_fin="2027-06-30",
+        )
+        self.modalidad = Modalidad.objects.create(
+            codigo="MGR5",
+            nombre="Modalidad 5",
+        )
+        self.estado_registrada = EstadoPostulacion.objects.create(
+            codigo="REGISTRADA",
+            nombre="Registrada",
+        )
+        self.estado_revision = EstadoPostulacion.objects.create(
+            codigo="REVISION",
+            nombre="En revisión",
+        )
+        self.owner_postulacion = Postulacion.objects.create(
+            codigo="POST-012",
+            estudiante=self.owner,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+        self.other_postulacion = Postulacion.objects.create(
+            codigo="POST-013",
+            estudiante=self.other_student,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+        self.owner_historial = HistorialEstado.objects.create(
+            postulacion=self.owner_postulacion,
+            estado_anterior=self.estado_registrada,
+            estado_nuevo=self.estado_revision,
+            usuario=self.owner,
+            comentario="Cambio del propietario",
+        )
+        self.other_historial = HistorialEstado.objects.create(
+            postulacion=self.other_postulacion,
+            estado_anterior=self.estado_registrada,
+            estado_nuevo=self.estado_revision,
+            usuario=self.other_student,
+            comentario="Cambio ajeno",
+        )
+        self.owner_observacion = Observacion.objects.create(
+            postulacion=self.owner_postulacion,
+            usuario=self.owner,
+            comentario="Observación propia",
+        )
+        self.other_observacion = Observacion.objects.create(
+            postulacion=self.other_postulacion,
+            usuario=self.other_student,
+            comentario="Observación ajena",
+        )
+
+    def authenticate(self, user) -> None:
+        token = RefreshToken.for_user(user).access_token
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def test_propietario_ve_solo_su_postulacion(self) -> None:
+        self.authenticate(self.owner)
+
+        response = self.client.get("/api/v1/postulaciones/", format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.owner_postulacion.id)
+
+    def test_propietario_puede_recuperar_su_historial(self) -> None:
+        self.authenticate(self.owner)
+
+        response = self.client.get(
+            f"/api/v1/postulaciones/historial/{self.owner_historial.id}/",
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.owner_historial.id)
+
+    def test_estudiante_ajeno_no_puede_actualizar_postulacion_por_id(self) -> None:
+        self.authenticate(self.owner)
+
+        response = self.client.patch(
+            f"/api/v1/postulaciones/{self.other_postulacion.id}/",
+            {"observaciones_generales": "Intento ajeno"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_estudiante_ajeno_no_puede_ver_historial_por_id(self) -> None:
+        self.authenticate(self.owner)
+
+        response = self.client.get(
+            f"/api/v1/postulaciones/historial/{self.other_historial.id}/",
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_estudiante_ajeno_no_puede_eliminar_observacion_por_id(self) -> None:
+        self.authenticate(self.owner)
+
+        response = self.client.delete(
+            f"/api/v1/postulaciones/observaciones/{self.other_observacion.id}/",
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_admin_puede_ver_todas_las_postulaciones_y_observaciones(self) -> None:
+        self.authenticate(self.admin)
+
+        postulaciones = self.client.get("/api/v1/postulaciones/", format="json")
+        observaciones = self.client.get("/api/v1/postulaciones/observaciones/", format="json")
+
+        self.assertEqual(postulaciones.status_code, status.HTTP_200_OK)
+        self.assertEqual(postulaciones.data["count"], 2)
+        self.assertEqual(observaciones.status_code, status.HTTP_200_OK)
+        self.assertEqual(observaciones.data["count"], 2)

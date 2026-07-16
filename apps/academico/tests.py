@@ -1,10 +1,10 @@
 from django.core.exceptions import ValidationError
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.academico.models import Modalidad, ModalidadRequisito, Periodo, Requisito
 
 
-class PeriodoModelTest(SimpleTestCase):
+class PeriodoModelTest(TestCase):
     """Pruebas básicas para validar la creación y reglas del modelo Periodo."""
 
     def test_periodo_can_be_instantiated_with_valid_dates(self):

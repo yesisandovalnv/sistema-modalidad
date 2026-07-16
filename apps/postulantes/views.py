@@ -36,6 +36,22 @@ class PostulacionViewSet(viewsets.ModelViewSet):
     search_fields = ["codigo", "estudiante__username"]
     ordering_fields = ["codigo", "fecha_postulacion", "created_at"]
 
+    def get_queryset(self):
+        queryset = Postulacion.objects.select_related(
+            "estudiante",
+            "modalidad",
+            "periodo",
+            "estado_actual",
+        )
+        if getattr(self, "swagger_fake_view", False):
+            return queryset.none()
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return queryset.none()
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return queryset
+        return queryset.filter(estudiante=user)
+
     def create(self, request, *args, **kwargs):
         """Crea una postulación usando la lógica de negocio del servicio."""
         serializer = self.get_serializer(data=request.data)
@@ -93,23 +109,48 @@ class PostulacionViewSet(viewsets.ModelViewSet):
 class HistorialEstadoViewSet(viewsets.ModelViewSet):
     """ViewSet para consultar y gestionar el historial de cambios de estado."""
 
-    queryset = HistorialEstado.objects.all()
     serializer_class = HistorialEstadoSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["postulacion__codigo"]
     ordering_fields = ["fecha_cambio", "created_at"]
 
+    def get_queryset(self):
+        queryset = HistorialEstado.objects.select_related(
+            "postulacion",
+            "estado_anterior",
+            "estado_nuevo",
+            "usuario",
+        )
+        if getattr(self, "swagger_fake_view", False):
+            return queryset.none()
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return queryset.none()
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return queryset
+        return queryset.filter(postulacion__estudiante=user)
+
 
 class ObservacionViewSet(viewsets.ModelViewSet):
     """ViewSet para gestionar las observaciones registradas sobre postulaciones."""
 
-    queryset = Observacion.objects.all()
     serializer_class = ObservacionSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["postulacion__codigo", "comentario"]
     ordering_fields = ["fecha_observacion", "created_at"]
+
+    def get_queryset(self):
+        queryset = Observacion.objects.select_related("postulacion", "usuario")
+        if getattr(self, "swagger_fake_view", False):
+            return queryset.none()
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return queryset.none()
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return queryset
+        return queryset.filter(postulacion__estudiante=user)
 
     def create(self, request, *args, **kwargs):
         """Crea una observación usando la lógica de negocio del servicio."""

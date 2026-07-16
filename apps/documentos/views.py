@@ -69,7 +69,11 @@ class DocumentoPostulacionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        if getattr(self, "swagger_fake_view", False):
+            return queryset.none()
         user = self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return queryset.none()
         if user.is_authenticated and (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
             return queryset
         return queryset.filter(postulacion__estudiante=user)
@@ -199,9 +203,6 @@ class DocumentoPostulacionViewSet(viewsets.ModelViewSet):
 class VersionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para consultar versiones de documento."""
 
-    queryset = VersionDocumento.objects.select_related(
-        "documento", "subido_por"
-    ).all()
     serializer_class = VersionDocumentoSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -212,13 +213,26 @@ class VersionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
     ]
     ordering_fields = ["numero_version", "fecha_subida", "created_at"]
 
+    def get_queryset(self):
+        queryset = VersionDocumento.objects.select_related(
+            "documento",
+            "documento__postulacion",
+            "documento__tipo_documento",
+            "subido_por",
+        )
+        if getattr(self, "swagger_fake_view", False):
+            return queryset.none()
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return queryset.none()
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return queryset
+        return queryset.filter(documento__postulacion__estudiante=user)
+
 
 class ObservacionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para consultar observaciones sobre versiones de documento."""
 
-    queryset = ObservacionDocumento.objects.select_related(
-        "version_documento", "usuario"
-    ).all()
     serializer_class = ObservacionDocumentoSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -228,6 +242,22 @@ class ObservacionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         "comentario",
     ]
     ordering_fields = ["fecha_observacion", "fecha_correccion", "created_at"]
+
+    def get_queryset(self):
+        queryset = ObservacionDocumento.objects.select_related(
+            "version_documento",
+            "version_documento__documento",
+            "version_documento__documento__postulacion",
+            "usuario",
+        )
+        if getattr(self, "swagger_fake_view", False):
+            return queryset.none()
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False):
+            return queryset.none()
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return queryset
+        return queryset.filter(version_documento__documento__postulacion__estudiante=user)
 
     @action(detail=True, methods=["post"], url_path="marcar-corregida")
     def marcar_corregida(self, request, pk=None):

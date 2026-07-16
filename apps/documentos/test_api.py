@@ -229,6 +229,18 @@ class TestDocumentoUpload(DocumentoAPITestCase):
 class TestDocumentoSeguridad(DocumentoAPITestCase):
     """Pruebas de seguridad de acceso a documentos."""
 
+    def _documento_con_observacion(self, postulacion: Postulacion, owner: User, comentario: str) -> DocumentoPostulacion:
+        self.upload_document(owner, postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        documento = DocumentoPostulacion.objects.get(postulacion=postulacion, tipo_documento=self.tipo_pdf)
+        self.authenticate_user(self.admin_user)
+        response = self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/observar/",
+            {"comentario": comentario},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return documento
+
     def test_estudiante_ve_solo_sus_documentos(self) -> None:
         """Un estudiante solo debe ver los documentos de sus postulaciones."""
         self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
@@ -268,6 +280,76 @@ class TestDocumentoSeguridad(DocumentoAPITestCase):
         response = self.client.get(f"/api/v1/documentos/documentos/{documento_otro.id}/versiones/", format="json")
 
         self.assertIn(response.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
+
+    def test_estudiante_ve_solo_sus_versiones(self) -> None:
+        """El listado global de versiones debe limitarse al propietario."""
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        self.upload_document(self.other_student, self.other_postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+
+        self.authenticate_user(self.student_user)
+        response = self.client.get("/api/v1/documentos/versiones/", format="json")
+
+        documento_propio = DocumentoPostulacion.objects.get(postulacion=self.postulacion, tipo_documento=self.tipo_pdf)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["documento"], documento_propio.id)
+
+    def test_estudiante_ajeno_no_puede_recuperar_version_por_id(self) -> None:
+        """Un estudiante no debe recuperar una versión ajena por ID."""
+        self.upload_document(self.other_student, self.other_postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        version_ajena = VersionDocumento.objects.get(documento__postulacion=self.other_postulacion)
+
+        self.authenticate_user(self.student_user)
+        response = self.client.get(f"/api/v1/documentos/versiones/{version_ajena.id}/", format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_admin_ve_todas_las_versiones(self) -> None:
+        """El administrador debe poder listar todas las versiones."""
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        self.upload_document(self.other_student, self.other_postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+
+        self.authenticate_user(self.admin_user)
+        response = self.client.get("/api/v1/documentos/versiones/", format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 2)
+
+    def test_estudiante_ve_solo_sus_observaciones(self) -> None:
+        """El listado global de observaciones debe limitarse al propietario."""
+        documento_propio = self._documento_con_observacion(self.postulacion, self.student_user, "Observación propia")
+        self._documento_con_observacion(self.other_postulacion, self.other_student, "Observación ajena")
+
+        self.authenticate_user(self.student_user)
+        response = self.client.get("/api/v1/documentos/observaciones/", format="json")
+
+        version_propia = VersionDocumento.objects.get(documento=documento_propio)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["version_documento"], version_propia.id)
+
+    def test_estudiante_ajeno_no_puede_recuperar_observacion_por_id(self) -> None:
+        """Un estudiante no debe recuperar una observación ajena por ID."""
+        self._documento_con_observacion(self.other_postulacion, self.other_student, "Observación ajena")
+        observacion_ajena = ObservacionDocumento.objects.get(
+            version_documento__documento__postulacion=self.other_postulacion
+        )
+
+        self.authenticate_user(self.student_user)
+        response = self.client.get(f"/api/v1/documentos/observaciones/{observacion_ajena.id}/", format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_admin_ve_todas_las_observaciones(self) -> None:
+        """El administrador debe poder listar todas las observaciones."""
+        self._documento_con_observacion(self.postulacion, self.student_user, "Observación propia")
+        self._documento_con_observacion(self.other_postulacion, self.other_student, "Observación ajena")
+
+        self.authenticate_user(self.admin_user)
+        response = self.client.get("/api/v1/documentos/observaciones/", format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 2)
 
 
 class TestDocumentoRevision(DocumentoAPITestCase):

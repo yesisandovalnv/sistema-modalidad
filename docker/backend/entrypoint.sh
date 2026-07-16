@@ -34,7 +34,13 @@ username = os.environ.get('DJANGO_SUPERUSER_USERNAME')
 email = os.environ.get('DJANGO_SUPERUSER_EMAIL')
 password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
 if username and password and not User.objects.filter(username=username).exists():
-    User.objects.create_superuser(username=username, email=email or '', password=password)
+    User.objects.create_superuser(
+        username=username,
+        email=email or '',
+        password=password,
+        ci=(os.environ.get('DJANGO_SUPERUSER_CI') or f"AUTO-{username}")[:20],
+        ru=(os.environ.get('DJANGO_SUPERUSER_RU') or f"AUTO-RU-{username}")[:20],
+    )
 PY
 
 echo "Iniciando backend..."

@@ -1,27 +1,6 @@
 name: sistema-modalidad
 
-version: '3.8'
-
 services:
-  db:
-    image: postgres:15
-    env_file:
-      - .env
-    environment:
-      POSTGRES_DB: ${DB_NAME:-sistema_modalidad}
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-    ports:
-      - "5433:5432"
-    volumes:
-      - sistema-modalidad-data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-sistema_modalidad}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
       context: .
@@ -36,12 +15,11 @@ services:
       DB_NAME: ${DB_NAME:-sistema_modalidad}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      DB_HOST: db
+      DB_HOST: host.docker.internal
       DB_PORT: 5432
       CORS_ALLOWED_ORIGINS: http://localhost:5174,http://127.0.0.1:5174
-    depends_on:
-      db:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8001:8000"
     volumes:
@@ -65,7 +43,3 @@ services:
       - .:/app
       - /app/node_modules
     restart: unless-stopped
-
-volumes:
-  sistema-modalidad-data:
-    driver: local
