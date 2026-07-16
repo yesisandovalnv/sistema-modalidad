@@ -1,0 +1,13 @@
+.git
+.gitignore
+.venv
+node_modules
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+.dist
+build
+dist
+staticfiles

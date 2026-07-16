@@ -1,0 +1,3667 @@
+openapi: 3.0.3
+info:
+  title: Sistema de Modalidad API
+  version: 1.0.0
+  description: API preparada para gestionar postulantes, documentos y seguimiento.
+paths:
+  /api/v1/academico/modalidad-requisitos/:
+    get:
+      operationId: v1_academico_modalidad_requisitos_list
+      description: ViewSet para gestionar los requisitos asociados a una modalidad.
+      parameters:
+      - in: query
+        name: activo
+        schema:
+          type: boolean
+      - in: query
+        name: modalidad
+        schema:
+          type: integer
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a devolver por página.
+        schema:
+          type: integer
+      - in: query
+        name: requisito
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedModalidadRequisitoList'
+          description: ''
+    post:
+      operationId: v1_academico_modalidad_requisitos_create
+      description: ViewSet para gestionar los requisitos asociados a una modalidad.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModalidadRequisito'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ModalidadRequisito'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ModalidadRequisito'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModalidadRequisito'
+          description: ''
+  /api/v1/academico/modalidad-requisitos/{id}/:
+    get:
+      operationId: v1_academico_modalidad_requisitos_retrieve
+      description: ViewSet para gestionar los requisitos asociados a una modalidad.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Requisito por modalidad.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModalidadRequisito'
+          description: ''
+    put:
+      operationId: v1_academico_modalidad_requisitos_update
+      description: ViewSet para gestionar los requisitos asociados a una modalidad.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Requisito por modalidad.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModalidadRequisito'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ModalidadRequisito'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ModalidadRequisito'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModalidadRequisito'
+          description: ''
+    patch:
+      operationId: v1_academico_modalidad_requisitos_partial_update
+      description: ViewSet para gestionar los requisitos asociados a una modalidad.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Requisito por modalidad.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedModalidadRequisito'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedModalidadRequisito'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedModalidadRequisito'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModalidadRequisito'
+          description: ''
+    delete:
+      operationId: v1_academico_modalidad_requisitos_destroy
+      description: ViewSet para gestionar los requisitos asociados a una modalidad.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Requisito por modalidad.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/academico/modalidades/:
+    get:
+      operationId: v1_academico_modalidades_list
+      description: ViewSet para gestionar las modalidades académicas.
+      parameters:
+      - in: query
+        name: activo
+        schema:
+          type: boolean
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a devolver por página.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedModalidadList'
+          description: ''
+    post:
+      operationId: v1_academico_modalidades_create
+      description: ViewSet para gestionar las modalidades académicas.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Modalidad'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Modalidad'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Modalidad'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Modalidad'
+          description: ''
+  /api/v1/academico/modalidades/{id}/:
+    get:
+      operationId: v1_academico_modalidades_retrieve
+      description: ViewSet para gestionar las modalidades académicas.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Modalidad.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Modalidad'
+          description: ''
+    put:
+      operationId: v1_academico_modalidades_update
+      description: ViewSet para gestionar las modalidades académicas.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Modalidad.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Modalidad'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Modalidad'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Modalidad'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Modalidad'
+          description: ''
+    patch:
+      operationId: v1_academico_modalidades_partial_update
+      description: ViewSet para gestionar las modalidades académicas.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Modalidad.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedModalidad'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedModalidad'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedModalidad'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Modalidad'
+          description: ''
+    delete:
+      operationId: v1_academico_modalidades_destroy
+      description: ViewSet para gestionar las modalidades académicas.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Modalidad.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/academico/periodos/:
+    get:
+      operationId: v1_academico_periodos_list
+      description: ViewSet para gestionar los períodos académicos.
+      parameters:
+      - in: query
+        name: activo
+        schema:
+          type: boolean
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a devolver por página.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPeriodoList'
+          description: ''
+    post:
+      operationId: v1_academico_periodos_create
+      description: ViewSet para gestionar los períodos académicos.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Periodo'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Periodo'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Periodo'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Periodo'
+          description: ''
+  /api/v1/academico/periodos/{id}/:
+    get:
+      operationId: v1_academico_periodos_retrieve
+      description: ViewSet para gestionar los períodos académicos.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Período.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Periodo'
+          description: ''
+    put:
+      operationId: v1_academico_periodos_update
+      description: ViewSet para gestionar los períodos académicos.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Período.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Periodo'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Periodo'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Periodo'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Periodo'
+          description: ''
+    patch:
+      operationId: v1_academico_periodos_partial_update
+      description: ViewSet para gestionar los períodos académicos.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Período.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPeriodo'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPeriodo'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPeriodo'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Periodo'
+          description: ''
+    delete:
+      operationId: v1_academico_periodos_destroy
+      description: ViewSet para gestionar los períodos académicos.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Período.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/academico/requisitos/:
+    get:
+      operationId: v1_academico_requisitos_list
+      description: ViewSet para gestionar el catálogo de requisitos.
+      parameters:
+      - in: query
+        name: activo
+        schema:
+          type: boolean
+      - in: query
+        name: obligatorio
+        schema:
+          type: boolean
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a devolver por página.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRequisitoList'
+          description: ''
+    post:
+      operationId: v1_academico_requisitos_create
+      description: ViewSet para gestionar el catálogo de requisitos.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Requisito'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Requisito'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Requisito'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Requisito'
+          description: ''
+  /api/v1/academico/requisitos/{id}/:
+    get:
+      operationId: v1_academico_requisitos_retrieve
+      description: ViewSet para gestionar el catálogo de requisitos.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Requisito.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Requisito'
+          description: ''
+    put:
+      operationId: v1_academico_requisitos_update
+      description: ViewSet para gestionar el catálogo de requisitos.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Requisito.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Requisito'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Requisito'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Requisito'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Requisito'
+          description: ''
+    patch:
+      operationId: v1_academico_requisitos_partial_update
+      description: ViewSet para gestionar el catálogo de requisitos.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Requisito.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRequisito'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedRequisito'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedRequisito'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Requisito'
+          description: ''
+    delete:
+      operationId: v1_academico_requisitos_destroy
+      description: ViewSet para gestionar el catálogo de requisitos.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Requisito.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/auth/login/:
+    post:
+      operationId: v1_auth_login_create
+      description: Autentica al usuario y devuelve un par de tokens JWT.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Login'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Login'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Login'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Login'
+          description: ''
+  /api/v1/auth/logout/:
+    post:
+      operationId: v1_auth_logout_create
+      description: Revoca el refresh token recibido en el cuerpo de la solicitud.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Logout'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Logout'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Logout'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Logout'
+          description: ''
+  /api/v1/auth/me/:
+    get:
+      operationId: v1_auth_me_retrieve
+      description: Devuelve los datos básicos del usuario autenticado.
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+          description: ''
+  /api/v1/auth/refresh/:
+    post:
+      operationId: v1_auth_refresh_create
+      description: Refresca el access token usando un refresh token válido.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/v1/documentos/documentos/:
+    get:
+      operationId: v1_documentos_documentos_list
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDocumentoPostulacionList'
+          description: ''
+    post:
+      operationId: v1_documentos_documentos_create
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentoPostulacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DocumentoPostulacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentoPostulacion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentoPostulacion'
+          description: ''
+  /api/v1/documentos/documentos/{id}/:
+    get:
+      operationId: v1_documentos_documentos_retrieve
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Documento de postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentoPostulacion'
+          description: ''
+    put:
+      operationId: v1_documentos_documentos_update
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Documento de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentoPostulacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DocumentoPostulacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentoPostulacion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentoPostulacion'
+          description: ''
+    patch:
+      operationId: v1_documentos_documentos_partial_update
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Documento de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentoPostulacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentoPostulacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDocumentoPostulacion'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentoPostulacion'
+          description: ''
+    delete:
+      operationId: v1_documentos_documentos_destroy
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Documento de postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/documentos/documentos/{id}/aprobar/:
+    post:
+      operationId: v1_documentos_documentos_aprobar_create
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Documento de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AprobarDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AprobarDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AprobarDocumento'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AprobarDocumento'
+          description: ''
+  /api/v1/documentos/documentos/{id}/observar/:
+    post:
+      operationId: v1_documentos_documentos_observar_create
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Documento de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrarObservacionDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegistrarObservacionDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegistrarObservacionDocumento'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrarObservacionDocumento'
+          description: ''
+  /api/v1/documentos/documentos/{id}/rechazar/:
+    post:
+      operationId: v1_documentos_documentos_rechazar_create
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Documento de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RechazarDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RechazarDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RechazarDocumento'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RechazarDocumento'
+          description: ''
+  /api/v1/documentos/documentos/{id}/versiones/:
+    get:
+      operationId: v1_documentos_documentos_versiones_retrieve
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Documento de postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionDocumento'
+          description: ''
+  /api/v1/documentos/documentos/subir/:
+    post:
+      operationId: v1_documentos_documentos_subir_create
+      description: ViewSet para gestionar documentos de postulación y acciones de
+        revisión.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubirDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SubirDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SubirDocumento'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionDocumento'
+          description: ''
+  /api/v1/documentos/estados-documento/:
+    get:
+      operationId: v1_documentos_estados_documento_list
+      description: ViewSet para administrar el catálogo de estados de documento.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedEstadoDocumentoList'
+          description: ''
+    post:
+      operationId: v1_documentos_estados_documento_create
+      description: ViewSet para administrar el catálogo de estados de documento.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstadoDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EstadoDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EstadoDocumento'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoDocumento'
+          description: ''
+  /api/v1/documentos/estados-documento/{id}/:
+    get:
+      operationId: v1_documentos_estados_documento_retrieve
+      description: ViewSet para administrar el catálogo de estados de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Estado de documento.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoDocumento'
+          description: ''
+    put:
+      operationId: v1_documentos_estados_documento_update
+      description: ViewSet para administrar el catálogo de estados de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Estado de documento.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstadoDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EstadoDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EstadoDocumento'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoDocumento'
+          description: ''
+    patch:
+      operationId: v1_documentos_estados_documento_partial_update
+      description: ViewSet para administrar el catálogo de estados de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Estado de documento.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedEstadoDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedEstadoDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedEstadoDocumento'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoDocumento'
+          description: ''
+    delete:
+      operationId: v1_documentos_estados_documento_destroy
+      description: ViewSet para administrar el catálogo de estados de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Estado de documento.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/documentos/observaciones/:
+    get:
+      operationId: v1_documentos_observaciones_list
+      description: ViewSet para consultar observaciones sobre versiones de documento.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedObservacionDocumentoList'
+          description: ''
+  /api/v1/documentos/observaciones/{id}/:
+    get:
+      operationId: v1_documentos_observaciones_retrieve
+      description: ViewSet para consultar observaciones sobre versiones de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Observación de
+          documento.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservacionDocumento'
+          description: ''
+  /api/v1/documentos/observaciones/{id}/marcar-corregida/:
+    post:
+      operationId: v1_documentos_observaciones_marcar_corregida_create
+      description: ViewSet para consultar observaciones sobre versiones de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Observación de
+          documento.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservacionDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ObservacionDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ObservacionDocumento'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservacionDocumento'
+          description: ''
+  /api/v1/documentos/tipos-documento/:
+    get:
+      operationId: v1_documentos_tipos_documento_list
+      description: ViewSet para administrar los tipos de documento.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTipoDocumentoList'
+          description: ''
+    post:
+      operationId: v1_documentos_tipos_documento_create
+      description: ViewSet para administrar los tipos de documento.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipoDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TipoDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TipoDocumento'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TipoDocumento'
+          description: ''
+  /api/v1/documentos/tipos-documento/{id}/:
+    get:
+      operationId: v1_documentos_tipos_documento_retrieve
+      description: ViewSet para administrar los tipos de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Tipo de documento.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TipoDocumento'
+          description: ''
+    put:
+      operationId: v1_documentos_tipos_documento_update
+      description: ViewSet para administrar los tipos de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Tipo de documento.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TipoDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TipoDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TipoDocumento'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TipoDocumento'
+          description: ''
+    patch:
+      operationId: v1_documentos_tipos_documento_partial_update
+      description: ViewSet para administrar los tipos de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Tipo de documento.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTipoDocumento'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTipoDocumento'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTipoDocumento'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TipoDocumento'
+          description: ''
+    delete:
+      operationId: v1_documentos_tipos_documento_destroy
+      description: ViewSet para administrar los tipos de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Tipo de documento.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/documentos/versiones/:
+    get:
+      operationId: v1_documentos_versiones_list
+      description: ViewSet para consultar versiones de documento.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedVersionDocumentoList'
+          description: ''
+  /api/v1/documentos/versiones/{id}/:
+    get:
+      operationId: v1_documentos_versiones_retrieve
+      description: ViewSet para consultar versiones de documento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Versión de documento.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionDocumento'
+          description: ''
+  /api/v1/postulaciones/:
+    get:
+      operationId: v1_postulaciones_list
+      description: ViewSet para administrar las postulaciones y su estado actual.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPostulacionList'
+          description: ''
+    post:
+      operationId: v1_postulaciones_create
+      description: Crea una postulación usando la lógica de negocio del servicio.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Postulacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Postulacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Postulacion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Postulacion'
+          description: ''
+  /api/v1/postulaciones/{id}/:
+    get:
+      operationId: v1_postulaciones_retrieve
+      description: ViewSet para administrar las postulaciones y su estado actual.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Postulacion'
+          description: ''
+    put:
+      operationId: v1_postulaciones_update
+      description: Mantiene el comportamiento estándar de actualización del modelo.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Postulacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Postulacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Postulacion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Postulacion'
+          description: ''
+    patch:
+      operationId: v1_postulaciones_partial_update
+      description: Actualiza el estado de una postulación usando el servicio de negocio.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPostulacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPostulacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPostulacion'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Postulacion'
+          description: ''
+    delete:
+      operationId: v1_postulaciones_destroy
+      description: Mantiene el comportamiento estándar de eliminación del modelo.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/postulaciones/estados/:
+    get:
+      operationId: v1_postulaciones_estados_list
+      description: ViewSet para administrar el catálogo de estados de postulación.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedEstadoPostulacionList'
+          description: ''
+    post:
+      operationId: v1_postulaciones_estados_create
+      description: ViewSet para administrar el catálogo de estados de postulación.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstadoPostulacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EstadoPostulacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EstadoPostulacion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoPostulacion'
+          description: ''
+  /api/v1/postulaciones/estados/{id}/:
+    get:
+      operationId: v1_postulaciones_estados_retrieve
+      description: ViewSet para administrar el catálogo de estados de postulación.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Estado de postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoPostulacion'
+          description: ''
+    put:
+      operationId: v1_postulaciones_estados_update
+      description: ViewSet para administrar el catálogo de estados de postulación.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Estado de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstadoPostulacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EstadoPostulacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EstadoPostulacion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoPostulacion'
+          description: ''
+    patch:
+      operationId: v1_postulaciones_estados_partial_update
+      description: ViewSet para administrar el catálogo de estados de postulación.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Estado de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedEstadoPostulacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedEstadoPostulacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedEstadoPostulacion'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EstadoPostulacion'
+          description: ''
+    delete:
+      operationId: v1_postulaciones_estados_destroy
+      description: ViewSet para administrar el catálogo de estados de postulación.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Estado de postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/postulaciones/historial/:
+    get:
+      operationId: v1_postulaciones_historial_list
+      description: ViewSet para consultar y gestionar el historial de cambios de estado.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedHistorialEstadoList'
+          description: ''
+    post:
+      operationId: v1_postulaciones_historial_create
+      description: ViewSet para consultar y gestionar el historial de cambios de estado.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HistorialEstado'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/HistorialEstado'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/HistorialEstado'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorialEstado'
+          description: ''
+  /api/v1/postulaciones/historial/{id}/:
+    get:
+      operationId: v1_postulaciones_historial_retrieve
+      description: ViewSet para consultar y gestionar el historial de cambios de estado.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Historial de estado.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorialEstado'
+          description: ''
+    put:
+      operationId: v1_postulaciones_historial_update
+      description: ViewSet para consultar y gestionar el historial de cambios de estado.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Historial de estado.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HistorialEstado'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/HistorialEstado'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/HistorialEstado'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorialEstado'
+          description: ''
+    patch:
+      operationId: v1_postulaciones_historial_partial_update
+      description: ViewSet para consultar y gestionar el historial de cambios de estado.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Historial de estado.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedHistorialEstado'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedHistorialEstado'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedHistorialEstado'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorialEstado'
+          description: ''
+    delete:
+      operationId: v1_postulaciones_historial_destroy
+      description: ViewSet para consultar y gestionar el historial de cambios de estado.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Historial de estado.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/postulaciones/observaciones/:
+    get:
+      operationId: v1_postulaciones_observaciones_list
+      description: ViewSet para gestionar las observaciones registradas sobre postulaciones.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedObservacionList'
+          description: ''
+    post:
+      operationId: v1_postulaciones_observaciones_create
+      description: Crea una observación usando la lógica de negocio del servicio.
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Observacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Observacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Observacion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Observacion'
+          description: ''
+  /api/v1/postulaciones/observaciones/{id}/:
+    get:
+      operationId: v1_postulaciones_observaciones_retrieve
+      description: ViewSet para gestionar las observaciones registradas sobre postulaciones.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Observación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Observacion'
+          description: ''
+    put:
+      operationId: v1_postulaciones_observaciones_update
+      description: ViewSet para gestionar las observaciones registradas sobre postulaciones.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Observación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Observacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Observacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Observacion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Observacion'
+          description: ''
+    patch:
+      operationId: v1_postulaciones_observaciones_partial_update
+      description: ViewSet para gestionar las observaciones registradas sobre postulaciones.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Observación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedObservacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedObservacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedObservacion'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Observacion'
+          description: ''
+    delete:
+      operationId: v1_postulaciones_observaciones_destroy
+      description: ViewSet para gestionar las observaciones registradas sobre postulaciones.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Observación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+components:
+  schemas:
+    AprobarDocumento:
+      type: object
+      description: Serializador para la aprobación de un documento.
+      properties:
+        comentario:
+          type: string
+          nullable: true
+    DocumentoPostulacion:
+      type: object
+      description: Serializador para documentos de postulación, incluyendo sus versiones
+        anidadas.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        postulacion:
+          type: integer
+          title: Postulación
+        tipo_documento:
+          type: integer
+          title: Tipo de documento
+        estado:
+          type: integer
+        fecha_subida:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de subida
+        fecha_revision:
+          type: string
+          format: date-time
+          nullable: true
+          title: Fecha de revisión
+        observacion_general:
+          type: string
+          nullable: true
+          title: Observación general
+        requiere_correccion:
+          type: boolean
+          title: Requiere corrección
+        versiones:
+          type: array
+          items:
+            $ref: '#/components/schemas/VersionDocumento'
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+      required:
+      - activo
+      - created_at
+      - estado
+      - fecha_subida
+      - id
+      - postulacion
+      - tipo_documento
+      - updated_at
+      - versiones
+    EstadoDocumento:
+      type: object
+      description: Serializador para los estados de documento.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 30
+        nombre:
+          type: string
+          maxLength: 100
+        descripcion:
+          type: string
+          nullable: true
+          title: Descripción
+        activo:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+      required:
+      - activo
+      - codigo
+      - created_at
+      - id
+      - nombre
+      - updated_at
+    EstadoPostulacion:
+      type: object
+      description: Serializer para exponer el catálogo maestro de estados de postulación.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 30
+        nombre:
+          type: string
+          maxLength: 100
+        descripcion:
+          type: string
+          nullable: true
+          title: Descripción
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+      required:
+      - activo
+      - codigo
+      - created_at
+      - id
+      - nombre
+      - updated_at
+    HistorialEstado:
+      type: object
+      description: Serializer para registrar el historial de cambios de estado de
+        una postulación.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        postulacion:
+          type: integer
+          title: Postulación
+        estado_anterior:
+          type: integer
+          nullable: true
+        estado_nuevo:
+          type: integer
+        usuario:
+          type: integer
+        fecha_cambio:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de cambio
+        comentario:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+      required:
+      - activo
+      - created_at
+      - estado_nuevo
+      - fecha_cambio
+      - id
+      - postulacion
+      - updated_at
+      - usuario
+    Login:
+      type: object
+      description: Serializer para autenticar usuarios con username y password.
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          writeOnly: true
+      required:
+      - password
+      - username
+    Logout:
+      type: object
+      description: Serializer para recibir el refresh token en el cierre de sesión.
+      properties:
+        refresh:
+          type: string
+          writeOnly: true
+      required:
+      - refresh
+    Modalidad:
+      type: object
+      description: Serializer para exponer y validar las modalidades académicas.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 20
+        nombre:
+          type: string
+          maxLength: 150
+        descripcion:
+          type: string
+          nullable: true
+          title: Descripción
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+      required:
+      - activo
+      - codigo
+      - created_at
+      - id
+      - nombre
+      - updated_at
+    ModalidadRequisito:
+      type: object
+      description: Serializer para exponer y validar la relación entre modalidad y
+        requisito.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        modalidad:
+          type: integer
+        requisito:
+          type: integer
+        orden:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+      required:
+      - activo
+      - created_at
+      - id
+      - modalidad
+      - orden
+      - requisito
+      - updated_at
+    Observacion:
+      type: object
+      description: Serializer para representar observaciones registradas sobre una
+        postulación.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        postulacion:
+          type: integer
+          title: Postulación
+        usuario:
+          type: integer
+        comentario:
+          type: string
+        leida_estudiante:
+          type: boolean
+          title: Leída por el estudiante
+        fecha_observacion:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de observación
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+      required:
+      - activo
+      - comentario
+      - created_at
+      - fecha_observacion
+      - id
+      - postulacion
+      - updated_at
+      - usuario
+    ObservacionDocumento:
+      type: object
+      description: Serializador para observaciones de documentos.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        version_documento:
+          type: integer
+          title: Versión de documento
+        usuario:
+          type: integer
+          readOnly: true
+        comentario:
+          type: string
+        leida_por_estudiante:
+          type: boolean
+          title: Leída por estudiante
+        corregida:
+          type: boolean
+          readOnly: true
+        fecha_observacion:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de observación
+        fecha_correccion:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          title: Fecha de corrección
+        activo:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+      required:
+      - activo
+      - comentario
+      - corregida
+      - created_at
+      - fecha_correccion
+      - fecha_observacion
+      - id
+      - updated_at
+      - usuario
+      - version_documento
+    PaginatedDocumentoPostulacionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentoPostulacion'
+    PaginatedEstadoDocumentoList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/EstadoDocumento'
+    PaginatedEstadoPostulacionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/EstadoPostulacion'
+    PaginatedHistorialEstadoList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistorialEstado'
+    PaginatedModalidadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Modalidad'
+    PaginatedModalidadRequisitoList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModalidadRequisito'
+    PaginatedObservacionDocumentoList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObservacionDocumento'
+    PaginatedObservacionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Observacion'
+    PaginatedPeriodoList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Periodo'
+    PaginatedPostulacionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Postulacion'
+    PaginatedRequisitoList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Requisito'
+    PaginatedTipoDocumentoList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TipoDocumento'
+    PaginatedVersionDocumentoList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/VersionDocumento'
+    PatchedDocumentoPostulacion:
+      type: object
+      description: Serializador para documentos de postulación, incluyendo sus versiones
+        anidadas.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        postulacion:
+          type: integer
+          title: Postulación
+        tipo_documento:
+          type: integer
+          title: Tipo de documento
+        estado:
+          type: integer
+        fecha_subida:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de subida
+        fecha_revision:
+          type: string
+          format: date-time
+          nullable: true
+          title: Fecha de revisión
+        observacion_general:
+          type: string
+          nullable: true
+          title: Observación general
+        requiere_correccion:
+          type: boolean
+          title: Requiere corrección
+        versiones:
+          type: array
+          items:
+            $ref: '#/components/schemas/VersionDocumento'
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+    PatchedEstadoDocumento:
+      type: object
+      description: Serializador para los estados de documento.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 30
+        nombre:
+          type: string
+          maxLength: 100
+        descripcion:
+          type: string
+          nullable: true
+          title: Descripción
+        activo:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+    PatchedEstadoPostulacion:
+      type: object
+      description: Serializer para exponer el catálogo maestro de estados de postulación.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 30
+        nombre:
+          type: string
+          maxLength: 100
+        descripcion:
+          type: string
+          nullable: true
+          title: Descripción
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+    PatchedHistorialEstado:
+      type: object
+      description: Serializer para registrar el historial de cambios de estado de
+        una postulación.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        postulacion:
+          type: integer
+          title: Postulación
+        estado_anterior:
+          type: integer
+          nullable: true
+        estado_nuevo:
+          type: integer
+        usuario:
+          type: integer
+        fecha_cambio:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de cambio
+        comentario:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+    PatchedModalidad:
+      type: object
+      description: Serializer para exponer y validar las modalidades académicas.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 20
+        nombre:
+          type: string
+          maxLength: 150
+        descripcion:
+          type: string
+          nullable: true
+          title: Descripción
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+    PatchedModalidadRequisito:
+      type: object
+      description: Serializer para exponer y validar la relación entre modalidad y
+        requisito.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        modalidad:
+          type: integer
+        requisito:
+          type: integer
+        orden:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+    PatchedObservacion:
+      type: object
+      description: Serializer para representar observaciones registradas sobre una
+        postulación.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        postulacion:
+          type: integer
+          title: Postulación
+        usuario:
+          type: integer
+        comentario:
+          type: string
+        leida_estudiante:
+          type: boolean
+          title: Leída por el estudiante
+        fecha_observacion:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de observación
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+    PatchedPeriodo:
+      type: object
+      description: Serializer para exponer y validar los períodos académicos.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nombre:
+          type: string
+          maxLength: 50
+        fecha_inicio:
+          type: string
+          format: date
+          title: Fecha de inicio
+        fecha_fin:
+          type: string
+          format: date
+          title: Fecha de fin
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+    PatchedPostulacion:
+      type: object
+      description: Serializer para representar una postulación y su estado actual.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 30
+        estudiante:
+          type: integer
+        modalidad:
+          type: integer
+        periodo:
+          type: integer
+          title: Período
+        estado_actual:
+          type: integer
+          nullable: true
+        fecha_postulacion:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de postulación
+        observaciones_generales:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+    PatchedRequisito:
+      type: object
+      description: Serializer para exponer y validar el catálogo de requisitos.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 20
+        nombre:
+          type: string
+          maxLength: 200
+        descripcion:
+          type: string
+          nullable: true
+          title: Descripción
+        obligatorio:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+    PatchedTipoDocumento:
+      type: object
+      description: Serializador para los tipos de documento.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 30
+        nombre:
+          type: string
+          maxLength: 100
+        descripcion:
+          type: string
+          nullable: true
+          title: Descripción
+        obligatorio:
+          type: boolean
+        permite_multiple_version:
+          type: boolean
+          title: Permite múltiples versiones
+        tamano_maximo_mb:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Tamaño máximo (MB)
+        extensiones_permitidas:
+          type: string
+          maxLength: 200
+        activo:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+    Periodo:
+      type: object
+      description: Serializer para exponer y validar los períodos académicos.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nombre:
+          type: string
+          maxLength: 50
+        fecha_inicio:
+          type: string
+          format: date
+          title: Fecha de inicio
+        fecha_fin:
+          type: string
+          format: date
+          title: Fecha de fin
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+      required:
+      - activo
+      - created_at
+      - fecha_fin
+      - fecha_inicio
+      - id
+      - nombre
+      - updated_at
+    Postulacion:
+      type: object
+      description: Serializer para representar una postulación y su estado actual.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 30
+        estudiante:
+          type: integer
+        modalidad:
+          type: integer
+        periodo:
+          type: integer
+          title: Período
+        estado_actual:
+          type: integer
+          nullable: true
+        fecha_postulacion:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de postulación
+        observaciones_generales:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+      required:
+      - activo
+      - codigo
+      - created_at
+      - estudiante
+      - fecha_postulacion
+      - id
+      - modalidad
+      - periodo
+      - updated_at
+    RechazarDocumento:
+      type: object
+      description: Serializador para el rechazo de un documento.
+      properties:
+        motivo:
+          type: string
+      required:
+      - motivo
+    RegistrarObservacionDocumento:
+      type: object
+      description: Serializador para registrar una observación de un documento.
+      properties:
+        comentario:
+          type: string
+      required:
+      - comentario
+    Requisito:
+      type: object
+      description: Serializer para exponer y validar el catálogo de requisitos.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 20
+        nombre:
+          type: string
+          maxLength: 200
+        descripcion:
+          type: string
+          nullable: true
+          title: Descripción
+        obligatorio:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+      required:
+      - activo
+      - codigo
+      - created_at
+      - id
+      - nombre
+      - updated_at
+    SubirDocumento:
+      type: object
+      description: Serializador para la solicitud de subida de un documento.
+      properties:
+        postulacion_id:
+          type: integer
+          minimum: 1
+        tipo_documento_id:
+          type: integer
+          minimum: 1
+        archivo:
+          type: string
+          format: uri
+      required:
+      - archivo
+      - postulacion_id
+      - tipo_documento_id
+    TipoDocumento:
+      type: object
+      description: Serializador para los tipos de documento.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          title: Código
+          maxLength: 30
+        nombre:
+          type: string
+          maxLength: 100
+        descripcion:
+          type: string
+          nullable: true
+          title: Descripción
+        obligatorio:
+          type: boolean
+        permite_multiple_version:
+          type: boolean
+          title: Permite múltiples versiones
+        tamano_maximo_mb:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Tamaño máximo (MB)
+        extensiones_permitidas:
+          type: string
+          maxLength: 200
+        activo:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+      required:
+      - activo
+      - codigo
+      - created_at
+      - id
+      - nombre
+      - updated_at
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    UserProfile:
+      type: object
+      description: Serializer para exponer datos básicos del usuario autenticado.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          title: Nombre de usuario
+          maxLength: 150
+        nombres:
+          type: string
+          maxLength: 150
+        apellido_paterno:
+          type: string
+          maxLength: 100
+        apellido_materno:
+          type: string
+          maxLength: 100
+        nombre_completo:
+          type: string
+          description: Retorna el nombre completo del usuario en formato legible.
+          readOnly: true
+        ru:
+          type: string
+          nullable: true
+          title: R.U.
+          maxLength: 20
+        ci:
+          type: string
+          nullable: true
+          title: Cédula de identidad
+          maxLength: 20
+        role:
+          type: string
+          readOnly: true
+        correo_personal:
+          type: string
+          format: email
+          maxLength: 254
+        correo_institucional:
+          type: string
+          format: email
+          maxLength: 254
+      required:
+      - id
+      - nombre_completo
+      - role
+      - username
+    VersionDocumento:
+      type: object
+      description: Serializador para versiones de documento.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        documento:
+          type: integer
+          readOnly: true
+        numero_version:
+          type: integer
+          readOnly: true
+          title: Número de versión
+        archivo:
+          type: string
+          format: uri
+        nombre_original:
+          type: string
+          readOnly: true
+        tamano_bytes:
+          type: integer
+          readOnly: true
+          title: Tamaño en bytes
+        hash_sha256:
+          type: string
+          readOnly: true
+          title: Hash SHA-256
+        fecha_subida:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de subida
+        subido_por:
+          type: integer
+          readOnly: true
+        es_version_actual:
+          type: boolean
+          readOnly: true
+          title: Es versión actual
+        activo:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+      required:
+      - activo
+      - archivo
+      - created_at
+      - documento
+      - es_version_actual
+      - fecha_subida
+      - hash_sha256
+      - id
+      - nombre_original
+      - numero_version
+      - subido_por
+      - tamano_bytes
+      - updated_at
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
