@@ -1,0 +1,2 @@
+import { Link } from 'react-router-dom'
+export default function ForbiddenPage(){return <div className="mx-auto max-w-xl rounded-xl border border-amber-300 bg-amber-50 p-8 text-center dark:bg-amber-950"><p className="font-semibold text-amber-700">Error 403</p><h1 className="mt-2 text-2xl font-bold">Acceso no autorizado</h1><p className="mt-2">Su rol no dispone de acceso a reportes institucionales.</p><Link className="mt-5 inline-block underline" to="/">Volver al inicio</Link></div>}
