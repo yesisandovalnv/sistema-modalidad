@@ -48,10 +48,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='seguimientoetapa',
-            constraint=models.CheckConstraint(check=models.Q(('numero_intento__gte', 1)), name='check_seguimiento_numero_intento_gte_1'),
+            constraint=models.CheckConstraint(condition=models.Q(('numero_intento__gte', 1)), name='check_seguimiento_numero_intento_gte_1'),
         ),
         migrations.AddConstraint(
             model_name='seguimientoetapa',
-            constraint=models.CheckConstraint(check=models.Q(('fecha_inicio__isnull', True), ('fecha_fin__isnull', True), ('fecha_fin__gte', models.F('fecha_inicio')), _connector='OR'), name='check_seguimiento_fechas_validas'),
+            constraint=models.CheckConstraint(condition=models.Q(('fecha_inicio__isnull', True), ('fecha_fin__isnull', True), ('fecha_fin__gte', models.F('fecha_inicio')), _connector='OR'), name='check_seguimiento_fechas_validas'),
         ),
     ]

@@ -76,7 +76,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='eventodefensa',
-            constraint=models.CheckConstraint(check=models.Q(('numero_intento__gte', 1)), name='evento_intento_gte_1'),
+            constraint=models.CheckConstraint(condition=models.Q(('numero_intento__gte', 1)), name='evento_intento_gte_1'),
         ),
         migrations.AddConstraint(
             model_name='eventodefensa',

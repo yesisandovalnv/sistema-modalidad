@@ -9,6 +9,7 @@ from django.utils import timezone
 from apps.academico.models import EtapaModalidad
 from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Postulacion, SeguimientoEtapa
 from apps.usuarios.models import CustomUser
+from apps.modalidades.policies import ModalidadPolicyRegistry
 
 
 class WorkflowService:
@@ -30,6 +31,7 @@ class WorkflowService:
             etapas = list(WorkflowService._obtener_etapas_activas(postulacion))
             if not etapas:
                 raise ValidationError("La modalidad no tiene etapas activas configuradas.")
+            ModalidadPolicyRegistry.get(postulacion)
 
             seguimientos: list[SeguimientoEtapa] = []
             for etapa in etapas:
@@ -50,6 +52,7 @@ class WorkflowService:
     def iniciar_etapa(seguimiento: SeguimientoEtapa, usuario: CustomUser) -> SeguimientoEtapa:
         WorkflowService._validar_seguimiento(seguimiento)
         WorkflowService._validar_usuario(usuario)
+        ModalidadPolicyRegistry.get(seguimiento.postulacion)
 
         with transaction.atomic():
             seguimiento = WorkflowService._bloquear_seguimiento(seguimiento.pk)
@@ -139,7 +142,9 @@ class WorkflowService:
                 update_fields=["estado", "fecha_fin", "cerrada_por", "observaciones", "updated_at"],
             )
 
-            if actualizar_estado_general and seguimiento.etapa.codigo == WorkflowService.CLOSING_STAGE_CODE:
+            policy = ModalidadPolicyRegistry.get(seguimiento.postulacion)
+            final_codes = {x.codigo for x in policy.get_etapas_finales()}
+            if actualizar_estado_general and seguimiento.etapa.codigo in final_codes and policy.get_cierre_policy():
                 WorkflowService._actualizar_estado_general(
                     postulacion=seguimiento.postulacion,
                     codigo_estado="CONCLUIDA",

@@ -1,0 +1,76 @@
+from django.test import TestCase
+from django.urls import reverse
+from rest_framework.test import APIClient
+
+from apps.academico.models import EtapaModalidad, Modalidad
+from apps.modalidades.policies import (BaseModalidadPolicy, EtapaDefinition,
+    ModalidadNoSoportadaError, ModalidadPolicyRegistry)
+from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
+from apps.modalidades.validators import ModalidadConfigurationValidator
+from apps.postulantes.models import EstadoPostulacion, Postulacion
+from apps.postulantes.workflow import WorkflowService
+from apps.academico.models import Periodo
+from apps.usuarios.models import CustomUser
+
+
+class RegistryTests(TestCase):
+    def setUp(self):
+        self.pg = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto de Grado policies")
+        self.other = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis policies")
+
+    def test_registry_resuelve_codigo_y_modalidad(self):
+        self.assertIsInstance(ModalidadPolicyRegistry.get("PROYECTO_GRADO"), ProyectoGradoPolicy)
+        self.assertIsInstance(ModalidadPolicyRegistry.get(self.pg), ProyectoGradoPolicy)
+
+    def test_registry_lista_soportadas_sin_fallback(self):
+        self.assertIn("PROYECTO_GRADO", ModalidadPolicyRegistry.list_supported())
+        with self.assertRaises(ModalidadNoSoportadaError): ModalidadPolicyRegistry.get(self.other)
+
+    def test_registro_incompatible_es_rechazado(self):
+        class OtherPolicy(BaseModalidadPolicy): codigo = "PROYECTO_GRADO"
+        with self.assertRaises(ValueError): ModalidadPolicyRegistry.register("PROYECTO_GRADO", OtherPolicy)
+
+    def test_capacidades_proyecto(self):
+        cap = ModalidadPolicyRegistry.get(self.pg).get_capabilities(self.pg)
+        self.assertTrue(cap.soportada and cap.eventos_soportados and cap.evaluaciones_soportadas and cap.cierre_soportado)
+        self.assertEqual(len(cap.etapas), 8)
+        self.assertEqual(cap.tipos_evento, ["DEFENSA_PERFIL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"])
+
+    def test_validador_detecta_etapas_faltantes(self):
+        result = ModalidadConfigurationValidator.validate_modalidad(self.pg)
+        self.assertTrue(any("no persistida" in error for error in result.errores))
+
+    def test_validador_modalidad_no_configurada_es_advertencia(self):
+        result = ModalidadConfigurationValidator.validate_modalidad(self.other)
+        self.assertTrue(result.valida)
+        self.assertEqual(result.advertencias, ["Normativa específica no configurada"])
+
+    def test_policy_declarativa_valida_transiciones(self):
+        self.assertEqual(ProyectoGradoPolicy().validate_configuration(), [])
+        self.assertEqual(ProyectoGradoPolicy().get_etapa_inicial().codigo, "INSCRIPCION")
+        self.assertEqual(ProyectoGradoPolicy().get_etapas_finales()[0].codigo, "CIERRE_DOCUMENTAL")
+
+
+class CapabilitiesApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(username="cap-user", password="x")
+        self.client.force_authenticate(self.user)
+        self.pg = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto capacidades")
+        self.other = Modalidad.objects.create(codigo="EXAMEN_GRADO", nombre="Examen capacidades")
+
+    def test_api_proyecto_soportado(self):
+        response = self.client.get(reverse("modalidad-capacidades", args=[self.pg.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["soportada"])
+        self.assertIn("configuracion_valida", response.data)
+
+    def test_api_modalidad_sin_policy_no_es_500(self):
+        response = self.client.get(reverse("modalidad-capacidades", args=[self.other.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["soportada"])
+        self.assertFalse(response.data["cierre_soportado"])
+
+    def test_api_requiere_autenticacion(self):
+        self.client.force_authenticate(user=None)
+        self.assertEqual(self.client.get(reverse("modalidad-capacidades", args=[self.pg.pk])).status_code, 401)

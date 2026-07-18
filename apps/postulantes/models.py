@@ -303,11 +303,11 @@ class SeguimientoEtapa(BaseModel):
                 name="unique_postulacion_etapa_intento",
             ),
             models.CheckConstraint(
-                check=models.Q(numero_intento__gte=1),
+                condition=models.Q(numero_intento__gte=1),
                 name="check_seguimiento_numero_intento_gte_1",
             ),
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(fecha_inicio__isnull=True)
                     | models.Q(fecha_fin__isnull=True)
                     | models.Q(fecha_fin__gte=models.F("fecha_inicio"))
@@ -423,11 +423,11 @@ class AsignacionPostulacion(BaseModel):
         app_label = "postulantes"
         constraints = [
             models.CheckConstraint(
-                check=models.Q(orden_cargo__isnull=True) | models.Q(orden_cargo__gte=1),
+                condition=models.Q(orden_cargo__isnull=True) | models.Q(orden_cargo__gte=1),
                 name="check_asignacion_orden_cargo_gte_1",
             ),
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(fecha_finalizacion__isnull=True)
                     | models.Q(fecha_finalizacion__gte=models.F("fecha_designacion"))
                 ),
@@ -600,7 +600,7 @@ class EventoDefensa(BaseModel):
 
     class Meta:
         constraints = [
-            models.CheckConstraint(check=models.Q(numero_intento__gte=1), name="evento_intento_gte_1"),
+            models.CheckConstraint(condition=models.Q(numero_intento__gte=1), name="evento_intento_gte_1"),
             models.UniqueConstraint(fields=["postulacion", "tipo_evento", "numero_intento"], condition=models.Q(activo=True), name="evento_defensa_activo_unico"),
         ]
 

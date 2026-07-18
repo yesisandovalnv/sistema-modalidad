@@ -44,11 +44,11 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='asignacionpostulacion',
-            constraint=models.CheckConstraint(check=models.Q(('orden_cargo__isnull', True), ('orden_cargo__gte', 1), _connector='OR'), name='check_asignacion_orden_cargo_gte_1'),
+            constraint=models.CheckConstraint(condition=models.Q(('orden_cargo__isnull', True), ('orden_cargo__gte', 1), _connector='OR'), name='check_asignacion_orden_cargo_gte_1'),
         ),
         migrations.AddConstraint(
             model_name='asignacionpostulacion',
-            constraint=models.CheckConstraint(check=models.Q(('fecha_finalizacion__isnull', True), ('fecha_finalizacion__gte', models.F('fecha_designacion')), _connector='OR'), name='check_asignacion_fechas_validas'),
+            constraint=models.CheckConstraint(condition=models.Q(('fecha_finalizacion__isnull', True), ('fecha_finalizacion__gte', models.F('fecha_designacion')), _connector='OR'), name='check_asignacion_fechas_validas'),
         ),
         migrations.AddConstraint(
             model_name='asignacionpostulacion',

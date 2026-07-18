@@ -47,6 +47,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='etapamodalidad',
-            constraint=models.CheckConstraint(check=models.Q(('orden__gte', 1)), name='check_etapa_modalidad_orden_gte_1'),
+            constraint=models.CheckConstraint(condition=models.Q(('orden__gte', 1)), name='check_etapa_modalidad_orden_gte_1'),
         ),
     ]

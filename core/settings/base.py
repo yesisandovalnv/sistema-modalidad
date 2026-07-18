@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'apps.usuarios',
     'apps.academico',
+    'apps.modalidades',
     'apps.postulantes',
     'apps.documentos',
     'apps.seguimiento',

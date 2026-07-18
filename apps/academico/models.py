@@ -134,7 +134,7 @@ class EtapaModalidad(BaseModel):
                 name="unique_modalidad_etapa_orden",
             ),
             models.CheckConstraint(
-                check=models.Q(orden__gte=1),
+                condition=models.Q(orden__gte=1),
                 name="check_etapa_modalidad_orden_gte_1",
             ),
         ]

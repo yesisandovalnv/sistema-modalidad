@@ -16,10 +16,25 @@ class PeriodoAdmin(admin.ModelAdmin):
 class ModalidadAdmin(admin.ModelAdmin):
     """Configuración administrativa del modelo Modalidad."""
 
-    list_display = ("codigo", "nombre", "activo")
+    list_display = ("codigo", "nombre", "policy_registrada", "workflow_configurado", "eventos_soportados", "cierre_soportado", "activo")
     search_fields = ("codigo", "nombre", "descripcion")
     ordering = ("nombre",)
     list_filter = ("activo",)
+
+    @admin.display(boolean=True, description="Policy")
+    def policy_registrada(self, obj):
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+        return ModalidadPolicyRegistry.has_policy(obj)
+
+    @admin.display(boolean=True, description="Workflow")
+    def workflow_configurado(self, obj): return self._cap(obj).workflow_configurado
+    @admin.display(boolean=True, description="Eventos")
+    def eventos_soportados(self, obj): return self._cap(obj).eventos_soportados
+    @admin.display(boolean=True, description="Cierre")
+    def cierre_soportado(self, obj): return self._cap(obj).cierre_soportado
+    def _cap(self, obj):
+        from apps.modalidades.policies import ModalidadPolicyRegistry, unsupported_capabilities
+        return ModalidadPolicyRegistry.get(obj).get_capabilities(obj) if ModalidadPolicyRegistry.has_policy(obj) else unsupported_capabilities(obj)
 
 
 @admin.register(Requisito)

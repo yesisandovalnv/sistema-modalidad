@@ -6,3 +6,8 @@ class ModalidadesConfig(AppConfig):
 
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.modalidades'
+
+    def ready(self):
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+        from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
+        ModalidadPolicyRegistry.register("PROYECTO_GRADO", ProyectoGradoPolicy)

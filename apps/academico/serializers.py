@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.academico.models import Modalidad, ModalidadRequisito, Periodo, Requisito
+from apps.modalidades.policies import ModalidadCapabilities
 
 
 class PeriodoSerializer(serializers.ModelSerializer):
@@ -36,6 +37,24 @@ class ModalidadSerializer(serializers.ModelSerializer):
         model = Modalidad
         fields = ("id", "codigo", "nombre", "descripcion", "created_at", "updated_at", "activo")
         read_only_fields = ("created_at", "updated_at", "activo")
+
+
+class ModalidadCapabilitiesSerializer(serializers.Serializer):
+    codigo = serializers.CharField()
+    nombre = serializers.CharField()
+    soportada = serializers.BooleanField()
+    workflow_configurado = serializers.BooleanField()
+    eventos_soportados = serializers.BooleanField()
+    evaluaciones_soportadas = serializers.BooleanField()
+    asignaciones_soportadas = serializers.BooleanField()
+    condiciones_soportadas = serializers.BooleanField()
+    entregas_soportadas = serializers.BooleanField()
+    cierre_soportado = serializers.BooleanField()
+    tipos_evento = serializers.ListField(child=serializers.CharField())
+    tipos_evaluacion = serializers.ListField(child=serializers.CharField())
+    etapas = serializers.ListField(child=serializers.DictField())
+    advertencias = serializers.ListField(child=serializers.CharField())
+    configuracion_valida = serializers.BooleanField()
 
 
 class RequisitoSerializer(serializers.ModelSerializer):

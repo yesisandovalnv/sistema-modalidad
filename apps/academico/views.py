@@ -1,10 +1,14 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema
 
 from apps.academico.models import Modalidad, ModalidadRequisito, Periodo, Requisito
 from apps.academico.serializers import (
     ModalidadRequisitoSerializer,
     ModalidadSerializer,
+    ModalidadCapabilitiesSerializer,
     PeriodoSerializer,
     RequisitoSerializer,
 )
@@ -37,6 +41,21 @@ class ModalidadViewSet(viewsets.ModelViewSet):
     search_fields = ("codigo", "nombre")
     ordering_fields = ("codigo", "nombre", "created_at")
     ordering = ("nombre",)
+
+    @extend_schema(responses=ModalidadCapabilitiesSerializer, description="Capacidades académicas configuradas. Una modalidad sin policy se devuelve como soportada=false; no existe fallback.")
+    @action(detail=True, methods=("get",), url_path="capacidades")
+    def capacidades(self, request, pk=None):
+        from apps.modalidades.policies import ModalidadPolicyRegistry, unsupported_capabilities
+        from apps.modalidades.validators import ModalidadConfigurationValidator
+        modalidad = self.get_object()
+        if not ModalidadPolicyRegistry.has_policy(modalidad): capabilities = unsupported_capabilities(modalidad)
+        else:
+            capabilities = ModalidadPolicyRegistry.get(modalidad).get_capabilities(modalidad)
+            validation = ModalidadConfigurationValidator.validate_modalidad(modalidad)
+            capabilities.advertencias.extend(validation.advertencias)
+            capabilities.advertencias.extend(validation.errores)
+            capabilities.configuracion_valida = validation.valida
+        return Response(ModalidadCapabilitiesSerializer(capabilities.to_dict()).data)
 
 
 class RequisitoViewSet(viewsets.ModelViewSet):

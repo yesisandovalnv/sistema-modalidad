@@ -360,6 +360,29 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/academico/modalidades/{id}/capacidades/:
+    get:
+      operationId: v1_academico_modalidades_capacidades_retrieve
+      description: Capacidades académicas configuradas. Una modalidad sin policy se
+        devuelve como soportada=false; no existe fallback.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Modalidad.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModalidadCapabilities'
+          description: ''
   /api/v1/academico/periodos/:
     get:
       operationId: v1_academico_periodos_list
@@ -712,6 +735,266 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/asignaciones/:
+    get:
+      operationId: v1_asignaciones_list
+      description: ViewSet para consultar asignaciones y ejecutar acciones explícitas
+        de gestión.
+      parameters:
+      - in: query
+        name: activo
+        schema:
+          type: boolean
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      - in: query
+        name: seguimiento_etapa
+        schema:
+          type: integer
+      - in: query
+        name: tipo_participacion
+        schema:
+          type: string
+          title: Tipo de participación
+          enum:
+          - DOCENTE_MODALIDAD
+          - PRESIDENTE
+          - SECRETARIO
+          - TRIBUNAL
+          - TUTOR
+        description: |-
+          Código técnico del sistema fundamentado en los actores del reglamento y el diagrama oficial.
+
+          * `TUTOR` - Tutor
+          * `TRIBUNAL` - Tribunal
+          * `DOCENTE_MODALIDAD` - Docente de modalidad
+          * `PRESIDENTE` - Presidente
+          * `SECRETARIO` - Secretario
+      - in: query
+        name: usuario
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAsignacionPostulacionList'
+          description: ''
+  /api/v1/asignaciones/{id}/:
+    get:
+      operationId: v1_asignaciones_retrieve
+      description: ViewSet para consultar asignaciones y ejecutar acciones explícitas
+        de gestión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Asignación de postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsignacionPostulacion'
+          description: ''
+  /api/v1/asignaciones/{id}/aprobar/:
+    post:
+      operationId: v1_asignaciones_aprobar_create
+      description: ViewSet para consultar asignaciones y ejecutar acciones explícitas
+        de gestión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Asignación de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AprobarSeguimientoEtapa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AprobarSeguimientoEtapa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AprobarSeguimientoEtapa'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeguimientoEtapa'
+          description: ''
+  /api/v1/asignaciones/{id}/finalizar/:
+    post:
+      operationId: v1_asignaciones_finalizar_create
+      description: ViewSet para consultar asignaciones y ejecutar acciones explícitas
+        de gestión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Asignación de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinalizarAsignacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FinalizarAsignacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FinalizarAsignacion'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsignacionPostulacion'
+          description: ''
+  /api/v1/asignaciones/{id}/omitir/:
+    post:
+      operationId: v1_asignaciones_omitir_create
+      description: ViewSet para consultar asignaciones y ejecutar acciones explícitas
+        de gestión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Asignación de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OmitirSeguimientoEtapa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OmitirSeguimientoEtapa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OmitirSeguimientoEtapa'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeguimientoEtapa'
+          description: ''
+  /api/v1/asignaciones/{id}/rechazar/:
+    post:
+      operationId: v1_asignaciones_rechazar_create
+      description: ViewSet para consultar asignaciones y ejecutar acciones explícitas
+        de gestión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Asignación de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RechazarSeguimientoEtapa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RechazarSeguimientoEtapa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RechazarSeguimientoEtapa'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeguimientoEtapa'
+          description: ''
+  /api/v1/asignaciones/{id}/reemplazar/:
+    post:
+      operationId: v1_asignaciones_reemplazar_create
+      description: ViewSet para consultar asignaciones y ejecutar acciones explícitas
+        de gestión.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Asignación de postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReemplazarActor'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ReemplazarActor'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ReemplazarActor'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsignacionPostulacion'
+          description: ''
   /api/v1/auth/login/:
     post:
       operationId: v1_auth_login_create
@@ -1605,6 +1888,742 @@ paths:
               schema:
                 $ref: '#/components/schemas/VersionDocumento'
           description: ''
+  /api/v1/eventos-defensa/:
+    get:
+      operationId: v1_eventos_defensa_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedEventoDefensaList'
+          description: ''
+  /api/v1/eventos-defensa/{id}/:
+    get:
+      operationId: v1_eventos_defensa_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/asistencia/:
+    post:
+      operationId: v1_eventos_defensa_asistencia_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/cancelar/:
+    post:
+      operationId: v1_eventos_defensa_cancelar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/evaluaciones/{tipo}/:
+    post:
+      operationId: v1_eventos_defensa_evaluaciones_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: tipo
+        schema:
+          type: string
+          pattern: ^perfil|privada|publica$
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/evaluaciones/consolidar/:
+    post:
+      operationId: v1_eventos_defensa_evaluaciones_consolidar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/finalizar/:
+    post:
+      operationId: v1_eventos_defensa_finalizar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/iniciar/:
+    post:
+      operationId: v1_eventos_defensa_iniciar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/participantes/{participante_id}/remover/:
+    post:
+      operationId: v1_eventos_defensa_participantes_remover_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: participante_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/participantes/agregar/:
+    post:
+      operationId: v1_eventos_defensa_participantes_agregar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/quorum/:
+    get:
+      operationId: v1_eventos_defensa_quorum_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/reprogramar/:
+    post:
+      operationId: v1_eventos_defensa_reprogramar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/eventos-defensa/{id}/suspender/:
+    post:
+      operationId: v1_eventos_defensa_suspender_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/gestion-complementaria/condiciones/:
+    get:
+      operationId: v1_gestion_complementaria_condiciones_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCondicionList'
+          description: ''
+    post:
+      operationId: v1_gestion_complementaria_condiciones_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Condicion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Condicion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Condicion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Condicion'
+          description: ''
+  /api/v1/gestion-complementaria/condiciones/{id}/:
+    get:
+      operationId: v1_gestion_complementaria_condiciones_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este condicion postulacion.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Condicion'
+          description: ''
+  /api/v1/gestion-complementaria/condiciones/{id}/rechazar/:
+    post:
+      operationId: v1_gestion_complementaria_condiciones_rechazar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este condicion postulacion.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Condicion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Condicion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Condicion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Condicion'
+          description: ''
+  /api/v1/gestion-complementaria/condiciones/{id}/verificar/:
+    post:
+      operationId: v1_gestion_complementaria_condiciones_verificar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este condicion postulacion.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Condicion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Condicion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Condicion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Condicion'
+          description: ''
+  /api/v1/gestion-complementaria/condiciones/completadas/:
+    get:
+      operationId: v1_gestion_complementaria_condiciones_completadas_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Condicion'
+          description: ''
+  /api/v1/gestion-complementaria/condiciones/pendientes/:
+    get:
+      operationId: v1_gestion_complementaria_condiciones_pendientes_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Condicion'
+          description: ''
+  /api/v1/gestion-complementaria/entregas-fisicas/:
+    get:
+      operationId: v1_gestion_complementaria_entregas_fisicas_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedEntregaList'
+          description: ''
+    post:
+      operationId: v1_gestion_complementaria_entregas_fisicas_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Entrega'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Entrega'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Entrega'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entrega'
+          description: ''
+  /api/v1/gestion-complementaria/entregas-fisicas/{id}/:
+    get:
+      operationId: v1_gestion_complementaria_entregas_fisicas_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este entrega fisica.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entrega'
+          description: ''
+  /api/v1/gestion-complementaria/entregas-fisicas/{id}/actualizar-cantidad/:
+    post:
+      operationId: v1_gestion_complementaria_entregas_fisicas_actualizar_cantidad_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este entrega fisica.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Entrega'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Entrega'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Entrega'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entrega'
+          description: ''
+  /api/v1/gestion-complementaria/entregas-fisicas/{id}/registrar/:
+    post:
+      operationId: v1_gestion_complementaria_entregas_fisicas_registrar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este entrega fisica.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Entrega'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Entrega'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Entrega'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entrega'
+          description: ''
+  /api/v1/gestion-complementaria/entregas-fisicas/completadas/:
+    get:
+      operationId: v1_gestion_complementaria_entregas_fisicas_completadas_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entrega'
+          description: ''
+  /api/v1/gestion-complementaria/entregas-fisicas/pendientes/:
+    get:
+      operationId: v1_gestion_complementaria_entregas_fisicas_pendientes_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entrega'
+          description: ''
+  /api/v1/modalidades/{id}/capacidades/:
+    get:
+      operationId: v1_modalidades_capacidades_retrieve
+      description: Capacidades académicas configuradas. Una modalidad sin policy se
+        devuelve como soportada=false; no existe fallback.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModalidadCapabilities'
+          description: ''
   /api/v1/postulaciones/:
     get:
       operationId: v1_postulaciones_list
@@ -1769,6 +2788,451 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/postulaciones/{id}/asignaciones/:
+    get:
+      operationId: v1_postulaciones_asignaciones_list
+      description: ViewSet para administrar las postulaciones y su estado actual.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Postulación.
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAsignacionPostulacionList'
+          description: ''
+  /api/v1/postulaciones/{id}/asignaciones/activas/:
+    get:
+      operationId: v1_postulaciones_asignaciones_activas_list
+      description: ViewSet para administrar las postulaciones y su estado actual.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Postulación.
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAsignacionPostulacionList'
+          description: ''
+  /api/v1/postulaciones/{id}/asignaciones/asignar/:
+    post:
+      operationId: v1_postulaciones_asignaciones_asignar_create
+      description: ViewSet para administrar las postulaciones y su estado actual.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Postulación.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AsignarActor'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AsignarActor'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AsignarActor'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsignacionPostulacion'
+          description: ''
+  /api/v1/postulaciones/{id}/cierre/:
+    get:
+      operationId: v1_postulaciones_cierre_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CierreEstado'
+          description: ''
+  /api/v1/postulaciones/{id}/cierre/{action}/:
+    post:
+      operationId: v1_postulaciones_cierre_create
+      parameters:
+      - in: path
+        name: action
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CierreObservacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CierreObservacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CierreObservacion'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CierreObservacion'
+          description: ''
+  /api/v1/postulaciones/{id}/etapas/{etapa_id}/nuevo-intento/:
+    post:
+      operationId: v1_postulaciones_etapas_nuevo_intento_create
+      description: ViewSet para administrar las postulaciones y su estado actual.
+      parameters:
+      - in: path
+        name: etapa_id
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeguimientoEtapa'
+          description: ''
+  /api/v1/postulaciones/{id}/eventos-defensa/:
+    get:
+      operationId: v1_postulaciones_eventos_defensa_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+    post:
+      operationId: v1_postulaciones_eventos_defensa_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/postulaciones/{id}/eventos-defensa/programar/:
+    get:
+      operationId: v1_postulaciones_eventos_defensa_programar_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+    post:
+      operationId: v1_postulaciones_eventos_defensa_programar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoDefensa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoDefensa'
+          description: ''
+  /api/v1/postulaciones/{id}/flujo/:
+    get:
+      operationId: v1_postulaciones_flujo_retrieve
+      description: ViewSet para administrar las postulaciones y su estado actual.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlujoPostulacion'
+          description: ''
+  /api/v1/postulaciones/{id}/flujo/inicializar/:
+    post:
+      operationId: v1_postulaciones_flujo_inicializar_create
+      description: ViewSet para administrar las postulaciones y su estado actual.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Postulación.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlujoPostulacion'
+          description: ''
+  /api/v1/postulaciones/{id}/resultado-final/:
+    get:
+      operationId: v1_postulaciones_resultado_final_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoFinal'
+          description: ''
+    post:
+      operationId: v1_postulaciones_resultado_final_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResultadoFinal'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ResultadoFinal'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ResultadoFinal'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoFinal'
+          description: ''
+  /api/v1/postulaciones/{id}/resultado-final/calcular/:
+    get:
+      operationId: v1_postulaciones_resultado_final_calcular_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoFinal'
+          description: ''
+    post:
+      operationId: v1_postulaciones_resultado_final_calcular_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResultadoFinal'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ResultadoFinal'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ResultadoFinal'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoFinal'
+          description: ''
   /api/v1/postulaciones/estados/:
     get:
       operationId: v1_postulaciones_estados_list
@@ -2261,6 +3725,121 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/seguimientos-etapa/:
+    get:
+      operationId: v1_seguimientos_etapa_list
+      description: ViewSet para consultar seguimientos y ejecutar acciones del flujo.
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSeguimientoEtapaList'
+          description: ''
+  /api/v1/seguimientos-etapa/{id}/:
+    get:
+      operationId: v1_seguimientos_etapa_retrieve
+      description: ViewSet para consultar seguimientos y ejecutar acciones del flujo.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Seguimiento de
+          etapa.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeguimientoEtapa'
+          description: ''
+  /api/v1/seguimientos-etapa/{id}/iniciar/:
+    post:
+      operationId: v1_seguimientos_etapa_iniciar_create
+      description: ViewSet para consultar seguimientos y ejecutar acciones del flujo.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Seguimiento de
+          etapa.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeguimientoEtapa'
+          description: ''
+  /api/v1/seguimientos-etapa/{id}/observar/:
+    post:
+      operationId: v1_seguimientos_etapa_observar_create
+      description: ViewSet para consultar seguimientos y ejecutar acciones del flujo.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Seguimiento de
+          etapa.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservaSeguimientoEtapa'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ObservaSeguimientoEtapa'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ObservaSeguimientoEtapa'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeguimientoEtapa'
+          description: ''
 components:
   schemas:
     AprobarDocumento:
@@ -2270,6 +3849,308 @@ components:
         comentario:
           type: string
           nullable: true
+    AprobarSeguimientoEtapa:
+      type: object
+      description: Payload para aprobar una etapa.
+      properties:
+        observaciones:
+          type: string
+          default: ''
+    AsignacionPostulacion:
+      type: object
+      description: Serializer de solo lectura para asignaciones de actores en postulaciones.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        postulacion:
+          type: integer
+          readOnly: true
+          title: Postulación
+        usuario:
+          type: integer
+          readOnly: true
+          title: Usuario asignado
+        usuario_nombre_completo:
+          type: string
+          readOnly: true
+        tipo_participacion:
+          allOf:
+          - $ref: '#/components/schemas/TipoParticipacionEnum'
+          readOnly: true
+          title: Tipo de participación
+          description: |-
+            Código técnico del sistema fundamentado en los actores del reglamento y el diagrama oficial.
+
+            * `TUTOR` - Tutor
+            * `TRIBUNAL` - Tribunal
+            * `DOCENTE_MODALIDAD` - Docente de modalidad
+            * `PRESIDENTE` - Presidente
+            * `SECRETARIO` - Secretario
+        tipo_participacion_nombre:
+          type: string
+          readOnly: true
+        orden_cargo:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: Orden del cargo
+        seguimiento_etapa:
+          type: integer
+          readOnly: true
+          nullable: true
+          title: Seguimiento de etapa
+        etapa_id:
+          type: integer
+          readOnly: true
+        etapa_codigo:
+          type: string
+          readOnly: true
+        etapa_nombre:
+          type: string
+          readOnly: true
+        fecha_designacion:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de designación
+        fecha_finalizacion:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          title: Fecha de finalización
+        activo:
+          type: boolean
+          readOnly: true
+        designado_por:
+          type: integer
+          readOnly: true
+          nullable: true
+        designado_por_nombre:
+          type: string
+          readOnly: true
+        observaciones:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - activo
+      - created_at
+      - designado_por
+      - designado_por_nombre
+      - etapa_codigo
+      - etapa_id
+      - etapa_nombre
+      - fecha_designacion
+      - fecha_finalizacion
+      - id
+      - observaciones
+      - orden_cargo
+      - postulacion
+      - seguimiento_etapa
+      - tipo_participacion
+      - tipo_participacion_nombre
+      - updated_at
+      - usuario
+      - usuario_nombre_completo
+    AsignarActor:
+      type: object
+      description: Payload para asignar un actor a una postulación.
+      properties:
+        usuario:
+          type: integer
+        tipo_participacion:
+          $ref: '#/components/schemas/TipoParticipacionEnum'
+        orden_cargo:
+          type: integer
+          minimum: 1
+          nullable: true
+        seguimiento_etapa:
+          type: integer
+          nullable: true
+        observaciones:
+          type: string
+          default: ''
+      required:
+      - tipo_participacion
+      - usuario
+    BlankEnum:
+      enum:
+      - ''
+    CierreEstado:
+      type: object
+      properties:
+        postulacion_id:
+          type: integer
+        modalidad:
+          type: string
+        estado_general:
+          type: string
+          nullable: true
+        etapa_actual:
+          type: string
+          nullable: true
+        defensa_publica_aprobada:
+          type: boolean
+        revision_final_aprobada:
+          type: boolean
+        cierre_documental_aprobado:
+          type: boolean
+        condiciones_requeridas:
+          type: array
+          items: {}
+        condiciones_cumplidas:
+          type: array
+          items: {}
+        condiciones_faltantes:
+          type: array
+          items: {}
+        entregas_requeridas:
+          type: array
+          items: {}
+        entregas_completas:
+          type: array
+          items: {}
+        entregas_faltantes:
+          type: array
+          items: {}
+        documentos_requeridos:
+          type: array
+          items: {}
+        documentos_aprobados:
+          type: array
+          items: {}
+        documentos_faltantes:
+          type: array
+          items: {}
+        advertencias_normativas:
+          type: array
+          items: {}
+        puede_aprobar_revision_final:
+          type: boolean
+        puede_aprobar_cierre:
+          type: boolean
+        puede_concluir:
+          type: boolean
+        concluida:
+          type: boolean
+      required:
+      - advertencias_normativas
+      - cierre_documental_aprobado
+      - concluida
+      - condiciones_cumplidas
+      - condiciones_faltantes
+      - condiciones_requeridas
+      - defensa_publica_aprobada
+      - documentos_aprobados
+      - documentos_faltantes
+      - documentos_requeridos
+      - entregas_completas
+      - entregas_faltantes
+      - entregas_requeridas
+      - estado_general
+      - etapa_actual
+      - modalidad
+      - postulacion_id
+      - puede_aprobar_cierre
+      - puede_aprobar_revision_final
+      - puede_concluir
+      - revision_final_aprobada
+    CierreObservacion:
+      type: object
+      properties:
+        observaciones:
+          type: string
+          default: ''
+    Codigo139Enum:
+      enum:
+      - PLAN_ESTUDIOS
+      - ADMISION_COMPLETA
+      - SOLVENCIA_UNIVERSITARIA
+      - SOLVENCIA_BIBLIOTECA
+      - MATRICULA_VIGENTE
+      - PLAZO_MAXIMO
+      type: string
+      description: |-
+        * `PLAN_ESTUDIOS` - Plan de estudios
+        * `ADMISION_COMPLETA` - Admisión completa
+        * `SOLVENCIA_UNIVERSITARIA` - Solvencia universitaria
+        * `SOLVENCIA_BIBLIOTECA` - Solvencia de biblioteca
+        * `MATRICULA_VIGENTE` - Matrícula vigente
+        * `PLAZO_MAXIMO` - Plazo máximo
+    Condicion:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+        activo:
+          type: boolean
+          readOnly: true
+        codigo:
+          $ref: '#/components/schemas/Codigo139Enum'
+        nombre:
+          type: string
+          maxLength: 150
+        tipo:
+          $ref: '#/components/schemas/TipoEnum'
+        estado:
+          allOf:
+          - $ref: '#/components/schemas/CondicionEstadoEnum'
+          readOnly: true
+        fecha_verificacion:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        observaciones:
+          type: string
+        postulacion:
+          type: integer
+        verificado_por:
+          type: integer
+          readOnly: true
+          nullable: true
+      required:
+      - activo
+      - codigo
+      - created_at
+      - estado
+      - fecha_verificacion
+      - id
+      - nombre
+      - postulacion
+      - tipo
+      - updated_at
+      - verificado_por
+    CondicionEstadoEnum:
+      enum:
+      - PENDIENTE
+      - CUMPLE
+      - NO_CUMPLE
+      type: string
+      description: |-
+        * `PENDIENTE` - Pendiente
+        * `CUMPLE` - Cumple
+        * `NO_CUMPLE` - No cumple
     DocumentoPostulacion:
       type: object
       description: Serializador para documentos de postulación, incluyendo sus versiones
@@ -2331,6 +4212,89 @@ components:
       - tipo_documento
       - updated_at
       - versiones
+    Entrega:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+        activo:
+          type: boolean
+          readOnly: true
+        codigo:
+          $ref: '#/components/schemas/EntregaCodigoEnum'
+        nombre:
+          type: string
+          maxLength: 150
+        cantidad:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        cantidad_recibida:
+          type: integer
+          readOnly: true
+        estado:
+          allOf:
+          - $ref: '#/components/schemas/EntregaEstadoEnum'
+          readOnly: true
+        fecha_entrega:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        observaciones:
+          type: string
+        postulacion:
+          type: integer
+        recibido_por:
+          type: integer
+          readOnly: true
+          nullable: true
+      required:
+      - activo
+      - cantidad_recibida
+      - codigo
+      - created_at
+      - estado
+      - fecha_entrega
+      - id
+      - nombre
+      - postulacion
+      - recibido_por
+      - updated_at
+    EntregaCodigoEnum:
+      enum:
+      - FOLDER_AMARILLO
+      - CD_RESPALDO
+      - EJEMPLARES_IMPRESOS
+      - TIMBRE_UNIVERSITARIO
+      type: string
+      description: |-
+        * `FOLDER_AMARILLO` - Folder amarillo
+        * `CD_RESPALDO` - CD de respaldo
+        * `EJEMPLARES_IMPRESOS` - Ejemplares impresos
+        * `TIMBRE_UNIVERSITARIO` - Timbre universitario
+    EntregaEstadoEnum:
+      enum:
+      - PENDIENTE
+      - PARCIAL
+      - COMPLETA
+      type: string
+      description: |-
+        * `PENDIENTE` - Pendiente
+        * `PARCIAL` - Parcial
+        * `COMPLETA` - Completa
     EstadoDocumento:
       type: object
       description: Serializador para los estados de documento.
@@ -2405,6 +4369,210 @@ components:
       - id
       - nombre
       - updated_at
+    EvaluacionDefensa:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+        activo:
+          type: boolean
+        tipo_evaluacion:
+          $ref: '#/components/schemas/TipoEvaluacionEnum'
+        modalidad_registro:
+          $ref: '#/components/schemas/ModalidadRegistroEnum'
+        resultado_cualitativo:
+          oneOf:
+          - $ref: '#/components/schemas/ResultadoCualitativoEnum'
+          - $ref: '#/components/schemas/BlankEnum'
+        nota_numerica:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        ponderacion:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        aporte_ponderado:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+        es_resultado_final_evento:
+          type: boolean
+        observaciones:
+          type: string
+        evento:
+          type: integer
+        evaluador:
+          type: integer
+          nullable: true
+        registrado_por:
+          type: integer
+          nullable: true
+      required:
+      - created_at
+      - evento
+      - id
+      - modalidad_registro
+      - tipo_evaluacion
+      - updated_at
+    EventoDefensa:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        participantes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipanteEvento'
+          readOnly: true
+        evaluaciones:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluacionDefensa'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+        activo:
+          type: boolean
+          default: true
+        tipo_evento:
+          $ref: '#/components/schemas/TipoEventoEnum'
+        numero_intento:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          default: 1
+        estado:
+          $ref: '#/components/schemas/EventoDefensaEstadoEnum'
+        fecha_programada:
+          type: string
+          format: date-time
+        fecha_inicio_real:
+          type: string
+          format: date-time
+          nullable: true
+        fecha_fin_real:
+          type: string
+          format: date-time
+          nullable: true
+        lugar:
+          type: string
+          maxLength: 250
+        modalidad_evento:
+          $ref: '#/components/schemas/ModalidadEventoEnum'
+        enlace_virtual:
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 200
+          - type: string
+            maxLength: 0
+        observaciones:
+          type: string
+        postulacion:
+          type: integer
+        seguimiento_etapa:
+          type: integer
+        programado_por:
+          type: integer
+          nullable: true
+        iniciado_por:
+          type: integer
+          nullable: true
+        cerrado_por:
+          type: integer
+          nullable: true
+      required:
+      - created_at
+      - evaluaciones
+      - fecha_programada
+      - id
+      - participantes
+      - postulacion
+      - seguimiento_etapa
+      - tipo_evento
+      - updated_at
+    EventoDefensaEstadoEnum:
+      enum:
+      - PROGRAMADA
+      - EN_CURSO
+      - FINALIZADA
+      - SUSPENDIDA
+      - CANCELADA
+      type: string
+      description: |-
+        * `PROGRAMADA` - Programada
+        * `EN_CURSO` - En curso
+        * `FINALIZADA` - Finalizada
+        * `SUSPENDIDA` - Suspendida
+        * `CANCELADA` - Cancelada
+    FinalizarAsignacion:
+      type: object
+      description: Payload para finalizar una asignación activa.
+      properties:
+        observaciones:
+          type: string
+          default: ''
+    FlujoPostulacion:
+      type: object
+      description: Serializer agregado para exponer el flujo de una postulación.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          readOnly: true
+          title: Código
+        modalidad:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        etapa_actual:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
+        porcentaje_avance:
+          type: number
+          format: double
+          readOnly: true
+        etapas:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          readOnly: true
+      required:
+      - codigo
+      - etapa_actual
+      - etapas
+      - id
+      - modalidad
+      - porcentaje_avance
     HistorialEstado:
       type: object
       description: Serializer para registrar el historial de cambios de estado de
@@ -2508,6 +4676,82 @@ components:
       - id
       - nombre
       - updated_at
+    ModalidadCapabilities:
+      type: object
+      properties:
+        codigo:
+          type: string
+        nombre:
+          type: string
+        soportada:
+          type: boolean
+        workflow_configurado:
+          type: boolean
+        eventos_soportados:
+          type: boolean
+        evaluaciones_soportadas:
+          type: boolean
+        asignaciones_soportadas:
+          type: boolean
+        condiciones_soportadas:
+          type: boolean
+        entregas_soportadas:
+          type: boolean
+        cierre_soportado:
+          type: boolean
+        tipos_evento:
+          type: array
+          items:
+            type: string
+        tipos_evaluacion:
+          type: array
+          items:
+            type: string
+        etapas:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+        advertencias:
+          type: array
+          items:
+            type: string
+        configuracion_valida:
+          type: boolean
+      required:
+      - advertencias
+      - asignaciones_soportadas
+      - cierre_soportado
+      - codigo
+      - condiciones_soportadas
+      - configuracion_valida
+      - entregas_soportadas
+      - etapas
+      - evaluaciones_soportadas
+      - eventos_soportados
+      - nombre
+      - soportada
+      - tipos_evaluacion
+      - tipos_evento
+      - workflow_configurado
+    ModalidadEventoEnum:
+      enum:
+      - PRESENCIAL
+      - VIRTUAL
+      - MIXTA
+      type: string
+      description: |-
+        * `PRESENCIAL` - Presencial
+        * `VIRTUAL` - Virtual
+        * `MIXTA` - Mixta
+    ModalidadRegistroEnum:
+      enum:
+      - INDIVIDUAL
+      - CONSENSO
+      type: string
+      description: |-
+        * `INDIVIDUAL` - Individual
+        * `CONSENSO` - Consenso
     ModalidadRequisito:
       type: object
       description: Serializer para exponer y validar la relación entre modalidad y
@@ -2543,6 +4787,14 @@ components:
       - orden
       - requisito
       - updated_at
+    ObservaSeguimientoEtapa:
+      type: object
+      description: Payload para observar una etapa.
+      properties:
+        observaciones:
+          type: string
+      required:
+      - observaciones
     Observacion:
       type: object
       description: Serializer para representar observaciones registradas sobre una
@@ -2642,6 +4894,59 @@ components:
       - updated_at
       - usuario
       - version_documento
+    OmitirSeguimientoEtapa:
+      type: object
+      description: Payload para omitir una etapa.
+      properties:
+        observaciones:
+          type: string
+          default: ''
+    PaginatedAsignacionPostulacionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AsignacionPostulacion'
+    PaginatedCondicionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condicion'
     PaginatedDocumentoPostulacionList:
       type: object
       required:
@@ -2665,6 +4970,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DocumentoPostulacion'
+    PaginatedEntregaList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Entrega'
     PaginatedEstadoDocumentoList:
       type: object
       required:
@@ -2711,6 +5039,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EstadoPostulacion'
+    PaginatedEventoDefensaList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventoDefensa'
     PaginatedHistorialEstadoList:
       type: object
       required:
@@ -2895,6 +5246,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Requisito'
+    PaginatedSeguimientoEtapaList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeguimientoEtapa'
     PaginatedTipoDocumentoList:
       type: object
       required:
@@ -2941,6 +5315,51 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/VersionDocumento'
+    ParticipanteEvento:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de actualización
+        activo:
+          type: boolean
+        rol_evento:
+          $ref: '#/components/schemas/RolEventoEnum'
+        convocado:
+          type: boolean
+        presente:
+          type: boolean
+          nullable: true
+        fecha_registro_asistencia:
+          type: string
+          format: date-time
+          nullable: true
+        observaciones:
+          type: string
+        evento:
+          type: integer
+        asignacion:
+          type: integer
+        registrado_por:
+          type: integer
+          nullable: true
+      required:
+      - asignacion
+      - created_at
+      - evento
+      - id
+      - rol_evento
+      - updated_at
     PatchedDocumentoPostulacion:
       type: object
       description: Serializador para documentos de postulación, incluyendo sus versiones
@@ -3418,6 +5837,24 @@ components:
           type: string
       required:
       - motivo
+    RechazarSeguimientoEtapa:
+      type: object
+      description: Payload para rechazar una etapa.
+      properties:
+        observaciones:
+          type: string
+          default: ''
+    ReemplazarActor:
+      type: object
+      description: Payload para reemplazar un actor manteniendo historial.
+      properties:
+        nuevo_usuario:
+          type: integer
+        observaciones:
+          type: string
+          default: ''
+      required:
+      - nuevo_usuario
     RegistrarObservacionDocumento:
       type: object
       description: Serializador para registrar una observación de un documento.
@@ -3464,6 +5901,191 @@ components:
       - id
       - nombre
       - updated_at
+    ResultadoCualitativoEnum:
+      enum:
+      - SUFICIENTE
+      - INSUFICIENTE
+      - POSTERGADO
+      - APROBADO
+      - APROBACION_PLENA
+      - APROBACION_PLENA_CON_FELICITACION
+      type: string
+      description: |-
+        * `SUFICIENTE` - Suficiente
+        * `INSUFICIENTE` - Insuficiente
+        * `POSTERGADO` - Postergado
+        * `APROBADO` - Aprobado
+        * `APROBACION_PLENA` - Aprobación plena
+        * `APROBACION_PLENA_CON_FELICITACION` - Aprobación plena con felicitación
+    ResultadoFinal:
+      type: object
+      properties:
+        nota_publica:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          nullable: true
+        aporte_publica:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+        resultado:
+          type: string
+        nota_final:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          nullable: true
+        limitacion_normativa:
+          type: string
+      required:
+      - aporte_publica
+      - limitacion_normativa
+      - nota_final
+      - nota_publica
+      - resultado
+    RolEventoEnum:
+      enum:
+      - TUTOR
+      - TRIBUNAL
+      - DOCENTE_MODALIDAD
+      - PRESIDENTE
+      - SECRETARIO
+      type: string
+      description: |-
+        * `TUTOR` - Tutor
+        * `TRIBUNAL` - Tribunal
+        * `DOCENTE_MODALIDAD` - Docente de modalidad
+        * `PRESIDENTE` - Presidente
+        * `SECRETARIO` - Secretario
+    SeguimientoEtapa:
+      type: object
+      description: Serializer de solo lectura para el seguimiento de etapas.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        postulacion:
+          type: integer
+          readOnly: true
+          title: Postulación
+        etapa_id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          readOnly: true
+        nombre:
+          type: string
+          readOnly: true
+        orden:
+          type: integer
+          readOnly: true
+        obligatoria:
+          type: boolean
+          readOnly: true
+        permite_repeticion:
+          type: boolean
+          readOnly: true
+        modalidad_id:
+          type: integer
+          readOnly: true
+        estado:
+          allOf:
+          - $ref: '#/components/schemas/SeguimientoEtapaEstadoEnum'
+          readOnly: true
+          description: |-
+            Estado técnico del sistema; no corresponde a nombres oficiales del reglamento.
+
+            * `PENDIENTE` - Pendiente
+            * `EN_PROCESO` - En proceso
+            * `OBSERVADA` - Observada
+            * `APROBADA` - Aprobada
+            * `RECHAZADA` - Rechazada
+            * `OMITIDA` - Omitida
+        numero_intento:
+          type: integer
+          readOnly: true
+          title: Número de intento
+        fecha_inicio:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          title: Fecha de inicio
+        fecha_fin:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          title: Fecha de fin
+        abierta_por:
+          type: integer
+          readOnly: true
+          nullable: true
+        abierta_por_nombre:
+          type: string
+          readOnly: true
+        cerrada_por:
+          type: integer
+          readOnly: true
+          nullable: true
+        cerrada_por_nombre:
+          type: string
+          readOnly: true
+        observaciones:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        activo:
+          type: boolean
+          readOnly: true
+      required:
+      - abierta_por
+      - abierta_por_nombre
+      - activo
+      - cerrada_por
+      - cerrada_por_nombre
+      - codigo
+      - created_at
+      - estado
+      - etapa_id
+      - fecha_fin
+      - fecha_inicio
+      - id
+      - modalidad_id
+      - nombre
+      - numero_intento
+      - obligatoria
+      - observaciones
+      - orden
+      - permite_repeticion
+      - postulacion
+      - updated_at
+    SeguimientoEtapaEstadoEnum:
+      enum:
+      - PENDIENTE
+      - EN_PROCESO
+      - OBSERVADA
+      - APROBADA
+      - RECHAZADA
+      - OMITIDA
+      type: string
+      description: |-
+        * `PENDIENTE` - Pendiente
+        * `EN_PROCESO` - En proceso
+        * `OBSERVADA` - Observada
+        * `APROBADA` - Aprobada
+        * `RECHAZADA` - Rechazada
+        * `OMITIDA` - Omitida
     SubirDocumento:
       type: object
       description: Serializador para la solicitud de subida de un documento.
@@ -3532,6 +6154,58 @@ components:
       - id
       - nombre
       - updated_at
+    TipoEnum:
+      enum:
+      - PLAN_ESTUDIOS
+      - ADMISION_COMPLETA
+      - SOLVENCIA_UNIVERSITARIA
+      - SOLVENCIA_BIBLIOTECA
+      - MATRICULA_VIGENTE
+      - PLAZO_MAXIMO
+      type: string
+      description: |-
+        * `PLAN_ESTUDIOS` - Plan de estudios
+        * `ADMISION_COMPLETA` - Admisión completa
+        * `SOLVENCIA_UNIVERSITARIA` - Solvencia universitaria
+        * `SOLVENCIA_BIBLIOTECA` - Solvencia de biblioteca
+        * `MATRICULA_VIGENTE` - Matrícula vigente
+        * `PLAZO_MAXIMO` - Plazo máximo
+    TipoEvaluacionEnum:
+      enum:
+      - PERFIL
+      - PRIVADA
+      - PUBLICA
+      - RESULTADO_FINAL
+      type: string
+      description: |-
+        * `PERFIL` - Perfil
+        * `PRIVADA` - Privada
+        * `PUBLICA` - Pública
+        * `RESULTADO_FINAL` - Resultado final
+    TipoEventoEnum:
+      enum:
+      - DEFENSA_PERFIL
+      - DEFENSA_PRIVADA
+      - DEFENSA_PUBLICA
+      type: string
+      description: |-
+        * `DEFENSA_PERFIL` - Defensa de perfil
+        * `DEFENSA_PRIVADA` - Defensa privada
+        * `DEFENSA_PUBLICA` - Defensa pública
+    TipoParticipacionEnum:
+      enum:
+      - TUTOR
+      - TRIBUNAL
+      - DOCENTE_MODALIDAD
+      - PRESIDENTE
+      - SECRETARIO
+      type: string
+      description: |-
+        * `TUTOR` - Tutor
+        * `TRIBUNAL` - Tribunal
+        * `DOCENTE_MODALIDAD` - Docente de modalidad
+        * `PRESIDENTE` - Presidente
+        * `SECRETARIO` - Secretario
     TokenRefresh:
       type: object
       properties:
@@ -3581,13 +6255,19 @@ components:
           type: string
           readOnly: true
         correo_personal:
-          type: string
-          format: email
-          maxLength: 254
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
         correo_institucional:
-          type: string
-          format: email
-          maxLength: 254
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 254
+          - type: string
+            maxLength: 0
       required:
       - id
       - nombre_completo
