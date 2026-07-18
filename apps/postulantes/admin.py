@@ -7,6 +7,11 @@ from apps.postulantes.models import (
     Observacion,
     Postulacion,
     SeguimientoEtapa,
+    EventoDefensa,
+    ParticipanteEvento,
+    EvaluacionDefensa,
+    CondicionPostulacion,
+    EntregaFisica,
 )
 
 
@@ -82,6 +87,10 @@ class PostulacionAdmin(admin.ModelAdmin):
         "modalidad",
         "periodo",
         "estado_actual",
+        "revision_final_aprobada",
+        "cierre_documental_aprobado",
+        "condiciones_pendientes",
+        "entregas_pendientes",
         "fecha_postulacion",
         "activo",
     )
@@ -101,6 +110,16 @@ class PostulacionAdmin(admin.ModelAdmin):
         "fecha_postulacion",
     )
     ordering = ("-fecha_postulacion",)
+    readonly_fields = ("estado_actual", "fecha_postulacion", "created_at", "updated_at")
+
+    @admin.display(boolean=True, description="Revisión final aprobada")
+    def revision_final_aprobada(self,obj): return obj.seguimientos_etapa.filter(etapa__codigo="REVISION_FINAL_POST_PUBLICA",estado="APROBADA",activo=True).exists()
+    @admin.display(boolean=True, description="Cierre aprobado")
+    def cierre_documental_aprobado(self,obj): return obj.seguimientos_etapa.filter(etapa__codigo="CIERRE_DOCUMENTAL",estado="APROBADA",activo=True).exists()
+    @admin.display(description="Condiciones pendientes")
+    def condiciones_pendientes(self,obj): return obj.condiciones.filter(activo=True).exclude(estado="CUMPLE").count()
+    @admin.display(description="Entregas pendientes")
+    def entregas_pendientes(self,obj): return obj.entregas_fisicas.filter(activo=True).exclude(estado="COMPLETA").count()
 
 
 @admin.register(SeguimientoEtapa)
@@ -187,3 +206,38 @@ class AsignacionPostulacionAdmin(admin.ModelAdmin):
                 ]
             )
         return tuple(readonly)
+
+@admin.register(EventoDefensa)
+class EventoDefensaAdmin(admin.ModelAdmin):
+    list_display=("postulacion","tipo_evento","numero_intento","estado","fecha_programada","modalidad_evento","activo")
+    list_filter=("tipo_evento","estado","modalidad_evento","activo")
+    search_fields=("postulacion__codigo","lugar","observaciones")
+    readonly_fields=("estado","fecha_inicio_real","fecha_fin_real","iniciado_por","cerrado_por","created_at","updated_at")
+
+@admin.register(ParticipanteEvento)
+class ParticipanteEventoAdmin(admin.ModelAdmin):
+    list_display=("evento","asignacion","rol_evento","convocado","presente","activo")
+    list_filter=("rol_evento","convocado","presente","activo")
+    search_fields=("evento__postulacion__codigo","asignacion__usuario__username")
+    readonly_fields=("presente","fecha_registro_asistencia","registrado_por","created_at","updated_at")
+
+@admin.register(EvaluacionDefensa)
+class EvaluacionDefensaAdmin(admin.ModelAdmin):
+    list_display=("evento","tipo_evaluacion","modalidad_registro","resultado_cualitativo","nota_numerica","es_resultado_final_evento")
+    list_filter=("tipo_evaluacion","modalidad_registro","resultado_cualitativo","es_resultado_final_evento")
+    search_fields=("evento__postulacion__codigo","observaciones")
+    readonly_fields=("nota_numerica","ponderacion","aporte_ponderado","es_resultado_final_evento","registrado_por","created_at","updated_at")
+
+@admin.register(CondicionPostulacion)
+class CondicionPostulacionAdmin(admin.ModelAdmin):
+    list_display=("postulacion","codigo","estado","fecha_verificacion","verificado_por","activo")
+    list_filter=("tipo","estado","activo")
+    search_fields=("postulacion__codigo","codigo","nombre","observaciones")
+    readonly_fields=("estado","fecha_verificacion","verificado_por","created_at","updated_at")
+
+@admin.register(EntregaFisica)
+class EntregaFisicaAdmin(admin.ModelAdmin):
+    list_display=("postulacion","codigo","cantidad_recibida","estado","fecha_entrega","recibido_por","activo")
+    list_filter=("codigo","estado","activo")
+    search_fields=("postulacion__codigo","codigo","nombre","observaciones")
+    readonly_fields=("cantidad_recibida","estado","fecha_entrega","recibido_por","created_at","updated_at")

@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
+from apps.postulantes.defensas_api import PostulacionEventosView, ResultadoFinalView
+from apps.postulantes.cierre_api import CierreAccionView, CierreEstadoView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
@@ -9,6 +11,14 @@ urlpatterns = [
     path('api/v1/postulaciones/', include('apps.postulantes.urls')),
     path('api/v1/asignaciones/', include('apps.postulantes.asignaciones_urls')),
     path('api/v1/seguimientos-etapa/', include('apps.postulantes.workflow_urls')),
+    path('api/v1/eventos-defensa/', include('apps.postulantes.defensas_urls')),
+    path('api/v1/gestion-complementaria/', include('apps.postulantes.complementarios_urls')),
+    path('api/v1/postulaciones/<int:pk>/eventos-defensa/', PostulacionEventosView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/eventos-defensa/programar/', PostulacionEventosView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/resultado-final/', ResultadoFinalView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/resultado-final/calcular/', ResultadoFinalView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/cierre/', CierreEstadoView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/cierre/<str:action>/', CierreAccionView.as_view()),
     path('api/v1/documentos/', include('apps.documentos.urls')),
     path('api/v1/seguimiento/', include('apps.seguimiento.urls')),
     path('api/v1/reportes/', include('apps.reportes.urls')),

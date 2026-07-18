@@ -113,6 +113,7 @@ class WorkflowService:
         seguimiento: SeguimientoEtapa,
         usuario: CustomUser,
         observaciones: str = "",
+        actualizar_estado_general: bool = True,
     ) -> SeguimientoEtapa:
         WorkflowService._validar_seguimiento(seguimiento)
         WorkflowService._validar_usuario(usuario)
@@ -138,7 +139,7 @@ class WorkflowService:
                 update_fields=["estado", "fecha_fin", "cerrada_por", "observaciones", "updated_at"],
             )
 
-            if seguimiento.etapa.codigo == WorkflowService.CLOSING_STAGE_CODE:
+            if actualizar_estado_general and seguimiento.etapa.codigo == WorkflowService.CLOSING_STAGE_CODE:
                 WorkflowService._actualizar_estado_general(
                     postulacion=seguimiento.postulacion,
                     codigo_estado="CONCLUIDA",

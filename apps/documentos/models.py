@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.postulantes.models import Postulacion
@@ -111,6 +112,14 @@ class DocumentoPostulacion(BaseModel):
         related_name="documentos",
         verbose_name="Postulación",
     )
+    evento_defensa = models.ForeignKey(
+        "postulantes.EventoDefensa",
+        on_delete=models.SET_NULL,
+        related_name="documentos_vinculados",
+        null=True,
+        blank=True,
+        verbose_name="Evento de defensa relacionado",
+    )
     tipo_documento = models.ForeignKey(
         TipoDocumento,
         on_delete=models.PROTECT,
@@ -162,6 +171,11 @@ class DocumentoPostulacion(BaseModel):
     def __str__(self) -> str:
         """Retorna una representación legible del documento de postulación."""
         return f"{self.postulacion} - {self.tipo_documento}"
+
+    def clean(self):
+        super().clean()
+        if self.evento_defensa_id and self.evento_defensa.postulacion_id != self.postulacion_id:
+            raise ValidationError({"evento_defensa": "El evento debe pertenecer a la misma postulación."})
 
 
 class VersionDocumento(BaseModel):

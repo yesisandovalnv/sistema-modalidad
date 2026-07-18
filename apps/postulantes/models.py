@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from decimal import Decimal
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.usuarios.models import CustomUser
@@ -479,3 +480,198 @@ class AsignacionPostulacion(BaseModel):
     def __str__(self) -> str:
         """Retorna una representación legible de la asignación."""
         return f"{self.postulacion.codigo} - {self.tipo_participacion} - {self.usuario}"
+
+
+class CondicionPostulacion(BaseModel):
+    """Verificación administrativa no representable como archivo digital."""
+
+    class Tipo(models.TextChoices):
+        PLAN_ESTUDIOS = "PLAN_ESTUDIOS", "Plan de estudios"
+        ADMISION_COMPLETA = "ADMISION_COMPLETA", "Admisión completa"
+        SOLVENCIA_UNIVERSITARIA = "SOLVENCIA_UNIVERSITARIA", "Solvencia universitaria"
+        SOLVENCIA_BIBLIOTECA = "SOLVENCIA_BIBLIOTECA", "Solvencia de biblioteca"
+        MATRICULA_VIGENTE = "MATRICULA_VIGENTE", "Matrícula vigente"
+        PLAZO_MAXIMO = "PLAZO_MAXIMO", "Plazo máximo"
+
+    class Estado(models.TextChoices):
+        PENDIENTE = "PENDIENTE", "Pendiente"
+        CUMPLE = "CUMPLE", "Cumple"
+        NO_CUMPLE = "NO_CUMPLE", "No cumple"
+
+    postulacion = models.ForeignKey(Postulacion, models.CASCADE, related_name="condiciones")
+    codigo = models.CharField(max_length=40, choices=Tipo.choices)
+    nombre = models.CharField(max_length=150)
+    tipo = models.CharField(max_length=40, choices=Tipo.choices)
+    estado = models.CharField(max_length=15, choices=Estado.choices, default=Estado.PENDIENTE)
+    fecha_verificacion = models.DateTimeField(null=True, blank=True)
+    verificado_por = models.ForeignKey(CustomUser, models.PROTECT, null=True, blank=True, related_name="condiciones_verificadas")
+    observaciones = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["postulacion", "codigo"], name="condicion_codigo_postulacion_unico")]
+        ordering = ["postulacion", "codigo"]
+
+    def clean(self):
+        super().clean(); errors = {}
+        self.codigo = (self.codigo or "").strip().upper(); self.tipo = (self.tipo or "").strip().upper(); self.nombre = (self.nombre or "").strip()
+        if self.codigo != self.tipo: errors["tipo"] = "El tipo debe corresponder al código normativo."
+        if not self.nombre: errors["nombre"] = "El nombre es obligatorio."
+        if self.verificado_por_id and not self.verificado_por.is_active: errors["verificado_por"] = "El usuario verificador debe estar activo."
+        if self.estado == self.Estado.PENDIENTE and (self.fecha_verificacion or self.verificado_por_id): errors["estado"] = "Una condición pendiente no puede figurar como verificada."
+        if self.estado != self.Estado.PENDIENTE and (not self.fecha_verificacion or not self.verificado_por_id): errors["estado"] = "La verificación requiere fecha y responsable."
+        if errors: raise ValidationError(errors)
+
+    def save(self, *args, **kwargs): self.full_clean(); return super().save(*args, **kwargs)
+
+
+class EntregaFisica(BaseModel):
+    """Control administrativo de elementos físicos entregados."""
+
+    class Tipo(models.TextChoices):
+        FOLDER_AMARILLO = "FOLDER_AMARILLO", "Folder amarillo"
+        CD_RESPALDO = "CD_RESPALDO", "CD de respaldo"
+        EJEMPLARES_IMPRESOS = "EJEMPLARES_IMPRESOS", "Ejemplares impresos"
+        TIMBRE_UNIVERSITARIO = "TIMBRE_UNIVERSITARIO", "Timbre universitario"
+
+    class Estado(models.TextChoices):
+        PENDIENTE = "PENDIENTE", "Pendiente"
+        PARCIAL = "PARCIAL", "Parcial"
+        COMPLETA = "COMPLETA", "Completa"
+
+    postulacion = models.ForeignKey(Postulacion, models.CASCADE, related_name="entregas_fisicas")
+    codigo = models.CharField(max_length=40, choices=Tipo.choices)
+    nombre = models.CharField(max_length=150)
+    cantidad = models.PositiveIntegerField(null=True, blank=True)
+    cantidad_recibida = models.PositiveIntegerField(default=0)
+    estado = models.CharField(max_length=15, choices=Estado.choices, default=Estado.PENDIENTE)
+    fecha_entrega = models.DateTimeField(null=True, blank=True)
+    recibido_por = models.ForeignKey(CustomUser, models.PROTECT, null=True, blank=True, related_name="entregas_fisicas_recibidas")
+    observaciones = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["postulacion", "codigo"], name="entrega_codigo_postulacion_unico")]
+        ordering = ["postulacion", "codigo"]
+
+    def clean(self):
+        super().clean(); errors = {}
+        self.codigo = (self.codigo or "").strip().upper(); self.nombre = (self.nombre or "").strip()
+        if not self.nombre: errors["nombre"] = "El nombre es obligatorio."
+        if self.recibido_por_id and not self.recibido_por.is_active: errors["recibido_por"] = "El usuario receptor debe estar activo."
+        if self.estado == self.Estado.PENDIENTE and self.cantidad_recibida: errors["estado"] = "Una entrega pendiente no puede tener cantidad recibida."
+        if self.estado != self.Estado.PENDIENTE and (not self.fecha_entrega or not self.recibido_por_id): errors["estado"] = "La entrega requiere fecha y responsable."
+        if errors: raise ValidationError(errors)
+
+    def save(self, *args, **kwargs): self.full_clean(); return super().save(*args, **kwargs)
+
+
+class EventoDefensa(BaseModel):
+    """Evento académico genérico; sus estados son técnicos del sistema."""
+
+    class Tipo(models.TextChoices):
+        DEFENSA_PERFIL = "DEFENSA_PERFIL", "Defensa de perfil"
+        DEFENSA_PRIVADA = "DEFENSA_PRIVADA", "Defensa privada"
+        DEFENSA_PUBLICA = "DEFENSA_PUBLICA", "Defensa pública"
+    class Estado(models.TextChoices):
+        PROGRAMADA = "PROGRAMADA", "Programada"
+        EN_CURSO = "EN_CURSO", "En curso"
+        FINALIZADA = "FINALIZADA", "Finalizada"
+        SUSPENDIDA = "SUSPENDIDA", "Suspendida"
+        CANCELADA = "CANCELADA", "Cancelada"
+    class ModalidadEvento(models.TextChoices):
+        PRESENCIAL = "PRESENCIAL", "Presencial"
+        VIRTUAL = "VIRTUAL", "Virtual"
+        MIXTA = "MIXTA", "Mixta"
+
+    postulacion = models.ForeignKey(Postulacion, models.CASCADE, related_name="eventos_defensa")
+    seguimiento_etapa = models.ForeignKey(SeguimientoEtapa, models.PROTECT, related_name="eventos_defensa")
+    tipo_evento = models.CharField(max_length=30, choices=Tipo.choices)
+    numero_intento = models.PositiveIntegerField(default=1)
+    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PROGRAMADA)
+    fecha_programada = models.DateTimeField()
+    fecha_inicio_real = models.DateTimeField(null=True, blank=True)
+    fecha_fin_real = models.DateTimeField(null=True, blank=True)
+    lugar = models.CharField(max_length=250, blank=True)
+    modalidad_evento = models.CharField(max_length=15, choices=ModalidadEvento.choices, default=ModalidadEvento.PRESENCIAL)
+    enlace_virtual = models.URLField(blank=True)
+    programado_por = models.ForeignKey(CustomUser, models.SET_NULL, null=True, related_name="eventos_programados")
+    iniciado_por = models.ForeignKey(CustomUser, models.SET_NULL, null=True, blank=True, related_name="eventos_iniciados")
+    cerrado_por = models.ForeignKey(CustomUser, models.SET_NULL, null=True, blank=True, related_name="eventos_cerrados")
+    observaciones = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(check=models.Q(numero_intento__gte=1), name="evento_intento_gte_1"),
+            models.UniqueConstraint(fields=["postulacion", "tipo_evento", "numero_intento"], condition=models.Q(activo=True), name="evento_defensa_activo_unico"),
+        ]
+
+    def clean(self):
+        super().clean(); errors = {}
+        if self.seguimiento_etapa_id and self.postulacion_id and self.seguimiento_etapa.postulacion_id != self.postulacion_id:
+            errors["seguimiento_etapa"] = "El seguimiento debe pertenecer a la postulación."
+        expected = {self.Tipo.DEFENSA_PERFIL: "PERFIL_PROYECTO", self.Tipo.DEFENSA_PRIVADA: "DEFENSA_PRIVADA", self.Tipo.DEFENSA_PUBLICA: "DEFENSA_PUBLICA"}
+        if self.seguimiento_etapa_id and expected.get(self.tipo_evento) != self.seguimiento_etapa.etapa.codigo:
+            errors["tipo_evento"] = "El tipo de evento no corresponde a la etapa."
+        if self.numero_intento < 1: errors["numero_intento"] = "El intento debe ser mayor o igual a 1."
+        if self.fecha_inicio_real and self.fecha_fin_real and self.fecha_fin_real < self.fecha_inicio_real: errors["fecha_fin_real"] = "La fecha final no puede ser anterior al inicio."
+        if self.modalidad_evento in (self.ModalidadEvento.VIRTUAL, self.ModalidadEvento.MIXTA) and not self.enlace_virtual: errors["enlace_virtual"] = "El enlace virtual es obligatorio."
+        if self.modalidad_evento == self.ModalidadEvento.PRESENCIAL and not self.lugar.strip(): errors["lugar"] = "El lugar es obligatorio."
+        if errors: raise ValidationError(errors)
+
+    def save(self, *args, **kwargs): self.full_clean(); return super().save(*args, **kwargs)
+
+
+class ParticipanteEvento(BaseModel):
+    class Rol(models.TextChoices):
+        TUTOR="TUTOR", "Tutor"; TRIBUNAL="TRIBUNAL", "Tribunal"; DOCENTE_MODALIDAD="DOCENTE_MODALIDAD", "Docente de modalidad"; PRESIDENTE="PRESIDENTE", "Presidente"; SECRETARIO="SECRETARIO", "Secretario"
+    evento = models.ForeignKey(EventoDefensa, models.CASCADE, related_name="participantes")
+    asignacion = models.ForeignKey(AsignacionPostulacion, models.PROTECT, related_name="participaciones_evento")
+    rol_evento = models.CharField(max_length=30, choices=Rol.choices)
+    convocado = models.BooleanField(default=True)
+    presente = models.BooleanField(null=True, blank=True)
+    fecha_registro_asistencia = models.DateTimeField(null=True, blank=True)
+    registrado_por = models.ForeignKey(CustomUser, models.SET_NULL, null=True, blank=True, related_name="asistencias_registradas")
+    observaciones = models.TextField(blank=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=["evento", "asignacion"], name="participante_evento_asignacion_unica")]
+    def clean(self):
+        super().clean(); errors={}
+        if self.evento_id and self.asignacion_id and self.asignacion.postulacion_id != self.evento.postulacion_id: errors["asignacion"]="La asignación no pertenece a la postulación."
+        if self.asignacion_id and not self.asignacion.activo: errors["asignacion"]="La asignación debe estar activa al agregarla al evento."
+        if self.asignacion_id and self.asignacion.tipo_participacion != self.rol_evento: errors["rol_evento"]="El rol no es compatible con la asignación."
+        if self.presente is not None and self.evento_id and self.evento.estado != EventoDefensa.Estado.EN_CURSO: errors["presente"]="La asistencia solo se registra con el evento en curso."
+        if errors: raise ValidationError(errors)
+    def save(self,*args,**kwargs): self.full_clean(); return super().save(*args,**kwargs)
+
+
+class EvaluacionDefensa(BaseModel):
+    class Tipo(models.TextChoices): PERFIL="PERFIL","Perfil"; PRIVADA="PRIVADA","Privada"; PUBLICA="PUBLICA","Pública"; RESULTADO_FINAL="RESULTADO_FINAL","Resultado final"
+    class ModalidadRegistro(models.TextChoices): INDIVIDUAL="INDIVIDUAL","Individual"; CONSENSO="CONSENSO","Consenso"
+    class Resultado(models.TextChoices): SUFICIENTE="SUFICIENTE","Suficiente"; INSUFICIENTE="INSUFICIENTE","Insuficiente"; POSTERGADO="POSTERGADO","Postergado"; APROBADO="APROBADO","Aprobado"; APROBACION_PLENA="APROBACION_PLENA","Aprobación plena"; APROBACION_PLENA_CON_FELICITACION="APROBACION_PLENA_CON_FELICITACION","Aprobación plena con felicitación"
+    evento=models.ForeignKey(EventoDefensa,models.CASCADE,related_name="evaluaciones")
+    evaluador=models.ForeignKey(ParticipanteEvento,models.PROTECT,null=True,blank=True,related_name="evaluaciones")
+    tipo_evaluacion=models.CharField(max_length=20,choices=Tipo.choices)
+    modalidad_registro=models.CharField(max_length=15,choices=ModalidadRegistro.choices)
+    resultado_cualitativo=models.CharField(max_length=45,choices=Resultado.choices,blank=True)
+    nota_numerica=models.DecimalField(max_digits=5,decimal_places=2,null=True,blank=True)
+    ponderacion=models.DecimalField(max_digits=5,decimal_places=2,null=True,blank=True)
+    aporte_ponderado=models.DecimalField(max_digits=6,decimal_places=2,null=True,blank=True)
+    es_resultado_final_evento=models.BooleanField(default=False)
+    observaciones=models.TextField(blank=True)
+    registrado_por=models.ForeignKey(CustomUser,models.SET_NULL,null=True,blank=True,related_name="evaluaciones_registradas")
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=["evento","evaluador","tipo_evaluacion"],condition=models.Q(evaluador__isnull=False),name="evaluacion_individual_unica")]
+    def clean(self):
+        super().clean(); errors={}; cual={self.Resultado.SUFICIENTE,self.Resultado.INSUFICIENTE}
+        if self.evaluador_id and self.evaluador.evento_id != self.evento_id: errors["evaluador"]="El evaluador no pertenece al evento."
+        if self.modalidad_registro==self.ModalidadRegistro.INDIVIDUAL and not self.evaluador_id: errors["evaluador"]="La evaluación individual requiere evaluador."
+        if self.tipo_evaluacion==self.Tipo.PERFIL and (self.resultado_cualitativo not in cual or self.nota_numerica is not None or self.ponderacion is not None): errors["tipo_evaluacion"]="El perfil es cualitativo y sin ponderación."
+        if self.tipo_evaluacion==self.Tipo.PRIVADA and self.resultado_cualitativo not in cual: errors["resultado_cualitativo"]="La privada requiere SUFICIENTE o INSUFICIENTE."
+        if self.tipo_evaluacion==self.Tipo.PRIVADA and self.nota_numerica is not None: errors["nota_numerica"]="La norma recuperable no permite una nota privada reproducible."
+        if self.tipo_evaluacion==self.Tipo.PRIVADA and self.aporte_ponderado is not None: errors["aporte_ponderado"]="No se puede calcular un aporte privado ficticio."
+        if self.tipo_evaluacion==self.Tipo.PRIVADA and self.ponderacion not in (None, Decimal("30.00")): errors["ponderacion"]="La referencia normativa privada es 30 %."
+        if self.tipo_evaluacion==self.Tipo.PUBLICA and (self.nota_numerica is None or not 1 <= self.nota_numerica <= 100): errors["nota_numerica"]="La nota pública debe estar entre 1 y 100."
+        expected = {EventoDefensa.Tipo.DEFENSA_PERFIL:self.Tipo.PERFIL, EventoDefensa.Tipo.DEFENSA_PRIVADA:self.Tipo.PRIVADA, EventoDefensa.Tipo.DEFENSA_PUBLICA:self.Tipo.PUBLICA}
+        if self.tipo_evaluacion != self.Tipo.RESULTADO_FINAL and self.evento_id and expected.get(self.evento.tipo_evento) != self.tipo_evaluacion: errors["tipo_evaluacion"]="La evaluación no corresponde al tipo de evento."
+        if self.tipo_evaluacion == self.Tipo.RESULTADO_FINAL and not self.es_resultado_final_evento: errors["es_resultado_final_evento"]="El resultado final debe provenir de la consolidación."
+        if errors: raise ValidationError(errors)
+    def save(self,*args,**kwargs): self.full_clean(); return super().save(*args,**kwargs)
