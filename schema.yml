@@ -3876,6 +3876,232 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/reportes/dashboard/:
+    get:
+      operationId: v1_reportes_dashboard_retrieve
+      description: Dashboard institucional de solo lectura. Las métricas de notificaciones
+        pertenecen únicamente al usuario autenticado.
+      parameters:
+      - in: query
+        name: buscar
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 1
+      - in: query
+        name: estado_general
+        schema:
+          type: integer
+      - in: query
+        name: etapa_actual
+        schema:
+          type: integer
+      - in: query
+        name: fecha_desde
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: fecha_hasta
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: gestion
+        schema:
+          type: integer
+          maximum: 2200
+          minimum: 1900
+      - in: query
+        name: modalidad
+        schema:
+          type: integer
+      - in: query
+        name: ordering
+        schema:
+          type: string
+          maxLength: 40
+          minLength: 1
+      - in: query
+        name: semestre
+        schema:
+          enum:
+          - 1
+          - 2
+          type: integer
+        description: |-
+          * `1` - 1
+          * `2` - 2
+      - in: query
+        name: tutor
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+          description: ''
+  /api/v1/reportes/postulaciones/:
+    get:
+      operationId: v1_reportes_postulaciones_list
+      description: Reporte paginado, sin datos personales sensibles y limitado al
+        alcance del usuario.
+      parameters:
+      - in: query
+        name: buscar
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 1
+      - in: query
+        name: estado_general
+        schema:
+          type: integer
+      - in: query
+        name: etapa_actual
+        schema:
+          type: integer
+      - in: query
+        name: fecha_desde
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: fecha_hasta
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: gestion
+        schema:
+          type: integer
+          maximum: 2200
+          minimum: 1900
+      - in: query
+        name: modalidad
+        schema:
+          type: integer
+      - in: query
+        name: ordering
+        schema:
+          type: string
+          maxLength: 40
+          minLength: 1
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a devolver por página.
+        schema:
+          type: integer
+      - in: query
+        name: semestre
+        schema:
+          enum:
+          - 1
+          - 2
+          type: integer
+        description: |-
+          * `1` - 1
+          * `2` - 2
+      - in: query
+        name: tutor
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedReportePostulacionList'
+          description: ''
+  /api/v1/reportes/postulaciones/exportar/:
+    get:
+      operationId: v1_reportes_postulaciones_exportar_retrieve
+      description: Exportación CSV UTF-8 con BOM, protección contra fórmulas y límite
+        configurable.
+      parameters:
+      - in: query
+        name: buscar
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 1
+      - in: query
+        name: estado_general
+        schema:
+          type: integer
+      - in: query
+        name: etapa_actual
+        schema:
+          type: integer
+      - in: query
+        name: fecha_desde
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: fecha_hasta
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: gestion
+        schema:
+          type: integer
+          maximum: 2200
+          minimum: 1900
+      - in: query
+        name: modalidad
+        schema:
+          type: integer
+      - in: query
+        name: ordering
+        schema:
+          type: string
+          maxLength: 40
+          minLength: 1
+      - in: query
+        name: semestre
+        schema:
+          enum:
+          - 1
+          - 2
+          type: integer
+        description: |-
+          * `1` - 1
+          * `2` - 2
+      - in: query
+        name: tutor
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
   /api/v1/seguimientos-etapa/:
     get:
       operationId: v1_seguimientos_etapa_list
@@ -4315,6 +4541,54 @@ components:
         * `PENDIENTE` - Pendiente
         * `CUMPLE` - Cumple
         * `NO_CUMPLE` - No cumple
+    Dashboard:
+      type: object
+      properties:
+        filtros_aplicados:
+          type: object
+          additionalProperties: {}
+        resumen:
+          type: object
+          additionalProperties: {}
+        modalidades:
+          type: array
+          items: {}
+        etapas:
+          type: array
+          items: {}
+        estados:
+          type: array
+          items: {}
+        documentos:
+          type: object
+          additionalProperties: {}
+        defensas:
+          type: object
+          additionalProperties: {}
+        cierre:
+          type: object
+          additionalProperties: {}
+        notificaciones:
+          type: object
+          additionalProperties: {}
+        tendencia:
+          type: array
+          items: {}
+        advertencias:
+          type: array
+          items: {}
+      required:
+      - advertencias
+      - cierre
+      - defensas
+      - documentos
+      - estados
+      - etapas
+      - filtros_aplicados
+      - modalidades
+      - notificaciones
+      - resumen
+      - tendencia
     DocumentoPostulacion:
       type: object
       description: Serializador para documentos de postulación, incluyendo sus versiones
@@ -5483,6 +5757,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Postulacion'
+    PaginatedReportePostulacionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReportePostulacion'
     PaginatedRequisitoList:
       type: object
       required:
@@ -6123,6 +6420,75 @@ components:
           type: string
       required:
       - comentario
+    ReportePostulacion:
+      type: object
+      properties:
+        postulacion_id:
+          type: integer
+        postulante_id:
+          type: integer
+        postulante_nombre:
+          type: string
+        modalidad:
+          type: object
+          additionalProperties: {}
+        gestion:
+          type: integer
+        semestre:
+          type: integer
+        titulo_trabajo:
+          type: string
+          nullable: true
+        tutor_activo:
+          type: string
+          nullable: true
+        etapa_actual:
+          type: string
+          nullable: true
+        estado_general:
+          type: string
+          nullable: true
+        porcentaje_etapas_aprobadas:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+        documentos_pendientes:
+          type: integer
+        proxima_defensa:
+          type: string
+          format: date-time
+          nullable: true
+        revision_final_aprobada:
+          type: boolean
+        cierre_documental_aprobado:
+          type: boolean
+        concluida:
+          type: boolean
+        fecha_creacion:
+          type: string
+          format: date-time
+        fecha_actualizacion:
+          type: string
+          format: date-time
+      required:
+      - cierre_documental_aprobado
+      - concluida
+      - documentos_pendientes
+      - estado_general
+      - etapa_actual
+      - fecha_actualizacion
+      - fecha_creacion
+      - gestion
+      - modalidad
+      - porcentaje_etapas_aprobadas
+      - postulacion_id
+      - postulante_id
+      - postulante_nombre
+      - proxima_defensa
+      - revision_final_aprobada
+      - semestre
+      - titulo_trabajo
+      - tutor_activo
     Requisito:
       type: object
       description: Serializer para exponer y validar el catálogo de requisitos.
