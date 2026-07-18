@@ -82,6 +82,96 @@ class Modalidad(BaseModel):
         return self.nombre
 
 
+class EtapaModalidad(BaseModel):
+    """Configuración reutilizable de etapas por modalidad de graduación."""
+
+    modalidad = models.ForeignKey(
+        Modalidad,
+        on_delete=models.PROTECT,
+        related_name="etapas",
+        verbose_name="Modalidad",
+    )
+    codigo = models.CharField(
+        max_length=50,
+        verbose_name="Código",
+    )
+    nombre = models.CharField(
+        max_length=150,
+        verbose_name="Nombre",
+    )
+    orden = models.PositiveIntegerField(
+        verbose_name="Orden",
+    )
+    obligatoria = models.BooleanField(
+        default=True,
+        verbose_name="Obligatoria",
+    )
+    permite_repeticion = models.BooleanField(
+        default=False,
+        verbose_name="Permite repetición",
+    )
+    origen_normativo = models.TextField(
+        verbose_name="Origen normativo",
+    )
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        """Configuración del modelo EtapaModalidad para administración y consultas."""
+
+        verbose_name = "Etapa de modalidad"
+        verbose_name_plural = "Etapas de modalidad"
+        ordering = ["modalidad", "orden"]
+        app_label = "academico"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["modalidad", "codigo"],
+                name="unique_modalidad_etapa_codigo",
+            ),
+            models.UniqueConstraint(
+                fields=["modalidad", "orden"],
+                name="unique_modalidad_etapa_orden",
+            ),
+            models.CheckConstraint(
+                check=models.Q(orden__gte=1),
+                name="check_etapa_modalidad_orden_gte_1",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["modalidad", "activo"], name="idx_etapa_modalidad_activo"),
+            models.Index(fields=["modalidad", "orden"], name="idx_etapa_modalidad_orden"),
+        ]
+
+    def clean(self) -> None:
+        """Normaliza y valida los campos base de la etapa."""
+        super().clean()
+        self.codigo = (self.codigo or "").strip().upper()
+        self.nombre = (self.nombre or "").strip()
+        self.origen_normativo = (self.origen_normativo or "").strip()
+
+        errors = {}
+        if not self.codigo:
+            errors["codigo"] = "El código es obligatorio."
+        if not self.nombre:
+            errors["nombre"] = "El nombre es obligatorio."
+        if not self.origen_normativo:
+            errors["origen_normativo"] = "El origen normativo es obligatorio."
+        if self.orden is not None and self.orden <= 0:
+            errors["orden"] = "El orden debe ser mayor que cero."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs) -> None:
+        """Guarda la etapa aplicando validaciones antes de persistirla."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        """Retorna la representación legible de la etapa."""
+        return f"{self.modalidad.codigo} - {self.codigo}"
+
+
 class Requisito(BaseModel):
     """Catálogo maestro de requisitos académicos."""
 

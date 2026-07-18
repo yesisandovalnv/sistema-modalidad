@@ -7,6 +7,8 @@ urlpatterns = [
     path('api/v1/auth/', include('apps.usuarios.urls')),
     path('api/v1/academico/', include('apps.academico.urls')),
     path('api/v1/postulaciones/', include('apps.postulantes.urls')),
+    path('api/v1/asignaciones/', include('apps.postulantes.asignaciones_urls')),
+    path('api/v1/seguimientos-etapa/', include('apps.postulantes.workflow_urls')),
     path('api/v1/documentos/', include('apps.documentos.urls')),
     path('api/v1/seguimiento/', include('apps.seguimiento.urls')),
     path('api/v1/reportes/', include('apps.reportes.urls')),

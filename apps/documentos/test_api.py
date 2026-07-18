@@ -1,4 +1,6 @@
-from tempfile import TemporaryDirectory
+import shutil
+from pathlib import Path
+from uuid import uuid4
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -27,8 +29,12 @@ class DocumentoAPITestCase(APITestCase):
     """Base de pruebas API para el módulo de documentos."""
 
     def setUp(self) -> None:
-        self._tmp_media = TemporaryDirectory()
-        self.override_media = override_settings(MEDIA_ROOT=self._tmp_media.name)
+        temp_root = Path(settings.BASE_DIR) / ".tmp_test_media"
+        temp_root.mkdir(exist_ok=True)
+        self._tmp_media = temp_root / uuid4().hex
+        self._tmp_media.mkdir(parents=True, exist_ok=False)
+        (self._tmp_media / "documentos" / "versiones").mkdir(parents=True, exist_ok=True)
+        self.override_media = override_settings(MEDIA_ROOT=str(self._tmp_media))
         self.override_media.enable()
 
         self.admin_role = Role.objects.create(codigo="ADMIN", nombre="Administrador")
@@ -91,8 +97,11 @@ class DocumentoAPITestCase(APITestCase):
         )
 
     def tearDown(self) -> None:
+        for version in VersionDocumento.all_objects.all():
+            if version.archivo.name:
+                version.archivo.close()
         self.override_media.disable()
-        self._tmp_media.cleanup()
+        shutil.rmtree(self._tmp_media, ignore_errors=False)
 
     def authenticate_user(self, user: User) -> None:
         token = RefreshToken.for_user(user).access_token

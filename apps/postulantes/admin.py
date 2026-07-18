@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Observacion, Postulacion
+from apps.postulantes.models import (
+    AsignacionPostulacion,
+    EstadoPostulacion,
+    HistorialEstado,
+    Observacion,
+    Postulacion,
+    SeguimientoEtapa,
+)
 
 
 @admin.register(EstadoPostulacion)
@@ -94,3 +101,89 @@ class PostulacionAdmin(admin.ModelAdmin):
         "fecha_postulacion",
     )
     ordering = ("-fecha_postulacion",)
+
+
+@admin.register(SeguimientoEtapa)
+class SeguimientoEtapaAdmin(admin.ModelAdmin):
+    """Configuración administrativa del modelo SeguimientoEtapa."""
+
+    list_display = (
+        "postulacion",
+        "etapa",
+        "estado",
+        "numero_intento",
+        "fecha_inicio",
+        "fecha_fin",
+        "activo",
+    )
+    list_filter = (
+        "etapa__modalidad",
+        "etapa",
+        "estado",
+        "numero_intento",
+        "activo",
+    )
+    search_fields = (
+        "postulacion__codigo",
+        "postulacion__estudiante__username",
+        "etapa__codigo",
+        "etapa__nombre",
+    )
+    ordering = ("postulacion", "etapa__orden", "numero_intento")
+
+
+@admin.register(AsignacionPostulacion)
+class AsignacionPostulacionAdmin(admin.ModelAdmin):
+    """Configuración administrativa del modelo AsignacionPostulacion."""
+
+    list_display = (
+        "postulacion",
+        "usuario",
+        "tipo_participacion",
+        "orden_cargo",
+        "seguimiento_etapa",
+        "fecha_designacion",
+        "fecha_finalizacion",
+        "activo",
+    )
+    list_filter = (
+        "tipo_participacion",
+        "activo",
+        "fecha_designacion",
+        "seguimiento_etapa__etapa",
+    )
+    search_fields = (
+        "postulacion__estudiante__nombres",
+        "postulacion__estudiante__apellido_paterno",
+        "postulacion__estudiante__apellido_materno",
+        "postulacion__estudiante__ru",
+        "usuario__nombres",
+        "usuario__apellido_paterno",
+        "usuario__apellido_materno",
+        "usuario__email",
+        "usuario__correo_personal",
+        "usuario__correo_institucional",
+        "tipo_participacion",
+    )
+    readonly_fields = (
+        "designado_por",
+        "fecha_designacion",
+        "fecha_finalizacion",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("postulacion", "tipo_participacion", "orden_cargo", "-fecha_designacion")
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(super().get_readonly_fields(request, obj))
+        if obj is not None:
+            readonly.extend(
+                [
+                    "postulacion",
+                    "usuario",
+                    "tipo_participacion",
+                    "orden_cargo",
+                    "seguimiento_etapa",
+                ]
+            )
+        return tuple(readonly)

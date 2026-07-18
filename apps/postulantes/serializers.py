@@ -1,7 +1,14 @@
 from rest_framework import serializers
 
-from apps.academico.models import Modalidad, Periodo
-from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Observacion, Postulacion
+from apps.academico.models import EtapaModalidad, Modalidad, Periodo
+from apps.postulantes.models import (
+    AsignacionPostulacion,
+    EstadoPostulacion,
+    HistorialEstado,
+    Observacion,
+    Postulacion,
+    SeguimientoEtapa,
+)
 from apps.usuarios.models import CustomUser
 
 
@@ -159,3 +166,251 @@ class ObservacionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"usuario": "El usuario es obligatorio."})
 
         return attrs
+
+
+class EtapaModalidadSerializer(serializers.ModelSerializer):
+    """Serializer de solo lectura para etapas configuradas por modalidad."""
+
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+    activo = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = EtapaModalidad
+        fields = (
+            "id",
+            "modalidad",
+            "codigo",
+            "nombre",
+            "orden",
+            "obligatoria",
+            "permite_repeticion",
+            "origen_normativo",
+            "created_at",
+            "updated_at",
+            "activo",
+        )
+        read_only_fields = fields
+
+
+class SeguimientoEtapaSerializer(serializers.ModelSerializer):
+    """Serializer de solo lectura para el seguimiento de etapas."""
+
+    etapa_id = serializers.IntegerField(source="etapa.id", read_only=True)
+    codigo = serializers.CharField(source="etapa.codigo", read_only=True)
+    nombre = serializers.CharField(source="etapa.nombre", read_only=True)
+    orden = serializers.IntegerField(source="etapa.orden", read_only=True)
+    obligatoria = serializers.BooleanField(source="etapa.obligatoria", read_only=True)
+    permite_repeticion = serializers.BooleanField(source="etapa.permite_repeticion", read_only=True)
+    modalidad_id = serializers.IntegerField(source="etapa.modalidad_id", read_only=True)
+    abierta_por_nombre = serializers.CharField(source="abierta_por.username", read_only=True)
+    cerrada_por_nombre = serializers.CharField(source="cerrada_por.username", read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+    activo = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = SeguimientoEtapa
+        fields = (
+            "id",
+            "postulacion",
+            "etapa_id",
+            "codigo",
+            "nombre",
+            "orden",
+            "obligatoria",
+            "permite_repeticion",
+            "modalidad_id",
+            "estado",
+            "numero_intento",
+            "fecha_inicio",
+            "fecha_fin",
+            "abierta_por",
+            "abierta_por_nombre",
+            "cerrada_por",
+            "cerrada_por_nombre",
+            "observaciones",
+            "created_at",
+            "updated_at",
+            "activo",
+        )
+        read_only_fields = fields
+
+
+class FlujoPostulacionSerializer(serializers.ModelSerializer):
+    """Serializer agregado para exponer el flujo de una postulación."""
+
+    modalidad = serializers.SerializerMethodField()
+    etapa_actual = serializers.SerializerMethodField()
+    porcentaje_avance = serializers.SerializerMethodField()
+    etapas = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Postulacion
+        fields = (
+            "id",
+            "codigo",
+            "modalidad",
+            "etapa_actual",
+            "porcentaje_avance",
+            "etapas",
+        )
+        read_only_fields = fields
+
+    def get_modalidad(self, obj: Postulacion) -> dict:
+        return {
+            "id": obj.modalidad_id,
+            "codigo": obj.modalidad.codigo,
+            "nombre": obj.modalidad.nombre,
+        }
+
+    def get_etapas(self, obj: Postulacion) -> list[dict]:
+        seguimientos = self._obtener_seguimientos(obj)
+        return SeguimientoEtapaSerializer(seguimientos, many=True, context=self.context).data
+
+    def get_etapa_actual(self, obj: Postulacion) -> dict | None:
+        seguimientos = self._obtener_seguimientos(obj)
+        actual = next(
+            (
+                seguimiento
+                for seguimiento in seguimientos
+                if seguimiento.estado in (
+                    SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+                    SeguimientoEtapa.EstadoChoices.OBSERVADA,
+                )
+            ),
+            None,
+        )
+        if actual is None:
+            actual = next(
+                (
+                    seguimiento
+                    for seguimiento in seguimientos
+                    if seguimiento.estado == SeguimientoEtapa.EstadoChoices.PENDIENTE
+                ),
+                None,
+            )
+        if actual is None and seguimientos:
+            actual = seguimientos[-1]
+        if actual is None:
+            return None
+        return SeguimientoEtapaSerializer(actual, context=self.context).data
+
+    def get_porcentaje_avance(self, obj: Postulacion) -> float:
+        seguimientos = self._obtener_seguimientos(obj)
+        etapas_obligatorias_ids = {
+            seguimiento.etapa_id
+            for seguimiento in seguimientos
+            if seguimiento.etapa.obligatoria and seguimiento.etapa.activo
+        }
+        if not etapas_obligatorias_ids:
+            return 0.0
+
+        etapas_aprobadas_ids = {
+            seguimiento.etapa_id
+            for seguimiento in seguimientos
+            if seguimiento.estado == SeguimientoEtapa.EstadoChoices.APROBADA
+            and seguimiento.etapa.obligatoria
+            and seguimiento.etapa.activo
+        }
+        return round((len(etapas_aprobadas_ids) / len(etapas_obligatorias_ids)) * 100, 2)
+
+    def _obtener_seguimientos(self, obj: Postulacion) -> list[SeguimientoEtapa]:
+        seguimientos = getattr(obj, "_prefetched_flujo", None)
+        if seguimientos is not None:
+            return list(seguimientos)
+        queryset = obj.seguimientos_etapa.select_related("etapa", "abierta_por", "cerrada_por").order_by(
+            "etapa__orden",
+            "numero_intento",
+        )
+        return list(queryset)
+
+
+class ObservaSeguimientoEtapaSerializer(serializers.Serializer):
+    """Payload para observar una etapa."""
+
+    observaciones = serializers.CharField(required=True, allow_blank=False)
+
+
+class AprobarSeguimientoEtapaSerializer(serializers.Serializer):
+    """Payload para aprobar una etapa."""
+
+    observaciones = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class RechazarSeguimientoEtapaSerializer(serializers.Serializer):
+    """Payload para rechazar una etapa."""
+
+    observaciones = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class OmitirSeguimientoEtapaSerializer(serializers.Serializer):
+    """Payload para omitir una etapa."""
+
+    observaciones = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class AsignacionPostulacionSerializer(serializers.ModelSerializer):
+    """Serializer de solo lectura para asignaciones de actores en postulaciones."""
+
+    usuario_nombre_completo = serializers.CharField(source="usuario.nombre_completo", read_only=True)
+    designado_por_nombre = serializers.CharField(source="designado_por.nombre_completo", read_only=True)
+    tipo_participacion_nombre = serializers.CharField(source="get_tipo_participacion_display", read_only=True)
+    etapa_id = serializers.IntegerField(source="seguimiento_etapa.etapa_id", read_only=True)
+    etapa_codigo = serializers.CharField(source="seguimiento_etapa.etapa.codigo", read_only=True)
+    etapa_nombre = serializers.CharField(source="seguimiento_etapa.etapa.nombre", read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+    activo = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = AsignacionPostulacion
+        fields = (
+            "id",
+            "postulacion",
+            "usuario",
+            "usuario_nombre_completo",
+            "tipo_participacion",
+            "tipo_participacion_nombre",
+            "orden_cargo",
+            "seguimiento_etapa",
+            "etapa_id",
+            "etapa_codigo",
+            "etapa_nombre",
+            "fecha_designacion",
+            "fecha_finalizacion",
+            "activo",
+            "designado_por",
+            "designado_por_nombre",
+            "observaciones",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+
+class AsignarActorSerializer(serializers.Serializer):
+    """Payload para asignar un actor a una postulación."""
+
+    usuario = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all())
+    tipo_participacion = serializers.ChoiceField(choices=AsignacionPostulacion.TipoParticipacionChoices.choices)
+    orden_cargo = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    seguimiento_etapa = serializers.PrimaryKeyRelatedField(
+        queryset=SeguimientoEtapa.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    observaciones = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class FinalizarAsignacionSerializer(serializers.Serializer):
+    """Payload para finalizar una asignación activa."""
+
+    observaciones = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ReemplazarActorSerializer(serializers.Serializer):
+    """Payload para reemplazar un actor manteniendo historial."""
+
+    nuevo_usuario = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all())
+    observaciones = serializers.CharField(required=False, allow_blank=True, default="")

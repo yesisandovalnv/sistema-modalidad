@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.test import SimpleTestCase, TestCase
 
-from apps.academico.models import Modalidad, ModalidadRequisito, Periodo, Requisito
+from apps.academico.models import EtapaModalidad, Modalidad, ModalidadRequisito, Periodo, Requisito
 
 
 class PeriodoModelTest(TestCase):
@@ -66,3 +66,75 @@ class ModalidadRequisitoModelTest(SimpleTestCase):
 
         with self.assertRaises(ValidationError):
             relacion.full_clean()
+
+
+class EtapaModalidadModelTest(TestCase):
+    """Pruebas para la configuración de etapas por modalidad."""
+
+    def setUp(self) -> None:
+        self.modalidad = Modalidad.objects.create(codigo="PG", nombre="Proyecto de Grado")
+        self.otra_modalidad = Modalidad.objects.create(codigo="TD", nombre="Trabajo Dirigido")
+
+    def test_etapa_modalidad_normaliza_codigo_y_campos(self):
+        etapa = EtapaModalidad.objects.create(
+            modalidad=self.modalidad,
+            codigo=" perfil_proyecto ",
+            nombre="  Perfil de Proyecto  ",
+            orden=1,
+            origen_normativo="  Capítulo III  ",
+        )
+
+        self.assertEqual(etapa.codigo, "PERFIL_PROYECTO")
+        self.assertEqual(etapa.nombre, "Perfil de Proyecto")
+        self.assertEqual(etapa.origen_normativo, "Capítulo III")
+        self.assertTrue(etapa.activo)
+
+    def test_etapa_modalidad_rechaza_orden_invalido(self):
+        etapa = EtapaModalidad(
+            modalidad=self.modalidad,
+            codigo="INSCRIPCION",
+            nombre="Inscripción",
+            orden=0,
+            origen_normativo="Capítulo II",
+        )
+
+        with self.assertRaises(ValidationError):
+            etapa.full_clean()
+
+    def test_etapa_modalidad_exige_unicidad_por_modalidad(self):
+        EtapaModalidad.objects.create(
+            modalidad=self.modalidad,
+            codigo="INSCRIPCION",
+            nombre="Inscripción",
+            orden=1,
+            origen_normativo="Capítulo II",
+        )
+
+        etapa_codigo_duplicado = EtapaModalidad(
+            modalidad=self.modalidad,
+            codigo="inscripcion",
+            nombre="Inscripción duplicada",
+            orden=2,
+            origen_normativo="Capítulo II",
+        )
+        etapa_orden_duplicado = EtapaModalidad(
+            modalidad=self.modalidad,
+            codigo="PERFIL",
+            nombre="Perfil",
+            orden=1,
+            origen_normativo="Capítulo III",
+        )
+        etapa_otra_modalidad = EtapaModalidad(
+            modalidad=self.otra_modalidad,
+            codigo="INSCRIPCION",
+            nombre="Inscripción",
+            orden=1,
+            origen_normativo="Capítulo II",
+        )
+
+        with self.assertRaises(ValidationError):
+            etapa_codigo_duplicado.full_clean()
+        with self.assertRaises(ValidationError):
+            etapa_orden_duplicado.full_clean()
+
+        etapa_otra_modalidad.full_clean()

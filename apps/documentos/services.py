@@ -189,7 +189,7 @@ class DocumentoService:
             NotFound: Si el documento no existe o no está activo.
             PermissionDenied: Si el usuario no tiene permisos administrativos.
             ValidationError: Si el documento no tiene versiones, no tiene versión actual,
-                ya está aprobado, el estado APR no existe, o la postulación está finalizada/rechazada.
+                ya está aprobado, el estado APR no existe, o la postulación está concluida/rechazada.
         """
         self._validar_documento_activo(documento)
         self._validar_usuario_administrativo(usuario)
@@ -256,7 +256,7 @@ class DocumentoService:
             PermissionDenied: Si el usuario no tiene permisos administrativos.
             ValidationError: Si el motivo está vacío, el documento no tiene versiones,
                 no tiene versión actual, ya está rechazado, el estado REC no existe,
-                o la postulación está finalizada/rechazada.
+                o la postulación está concluida/rechazada.
         """
         self._validar_documento_activo(documento)
         self._validar_usuario_administrativo(usuario)
@@ -480,8 +480,8 @@ class DocumentoService:
     def _validar_postulacion_editable(self, postulacion: Postulacion) -> Postulacion:
         postulacion = self._validar_postulacion_activa(postulacion)
         estado_actual = postulacion.estado_actual
-        if estado_actual and getattr(estado_actual, "codigo", None) in ("FINALIZADA", "RECHAZADA"):
-            raise ValidationError("La postulación está finalizada o rechazada.")
+        if estado_actual and getattr(estado_actual, "codigo", None) in ("CONCLUIDA", "RECHAZADA"):
+            raise ValidationError("La postulación está concluida o rechazada.")
         return postulacion
 
     def _validar_archivo(self, archivo: Any, tipo_documento: TipoDocumento) -> str:

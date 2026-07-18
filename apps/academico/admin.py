@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.academico.models import Modalidad, ModalidadRequisito, Periodo, Requisito
+from apps.academico.models import EtapaModalidad, Modalidad, ModalidadRequisito, Periodo, Requisito
 
 
 @admin.register(Periodo)
@@ -39,4 +39,14 @@ class ModalidadRequisitoAdmin(admin.ModelAdmin):
     list_display = ("modalidad", "requisito", "orden", "activo")
     list_filter = ("modalidad", "requisito", "activo")
     search_fields = ("modalidad__nombre", "requisito__nombre")
+    ordering = ("modalidad", "orden")
+
+
+@admin.register(EtapaModalidad)
+class EtapaModalidadAdmin(admin.ModelAdmin):
+    """Configuración administrativa del modelo EtapaModalidad."""
+
+    list_display = ("modalidad", "orden", "codigo", "nombre", "obligatoria", "permite_repeticion", "activo")
+    list_filter = ("modalidad", "obligatoria", "permite_repeticion", "activo")
+    search_fields = ("modalidad__nombre", "codigo", "nombre")
     ordering = ("modalidad", "orden")
