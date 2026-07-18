@@ -16,6 +16,7 @@ from apps.documentos.models import (
 )
 from apps.postulantes.models import Postulacion
 from apps.usuarios.models import AuditLog
+from apps.notificaciones.events import EventTypes, publish_domain_event
 
 
 class DocumentoService:
@@ -165,6 +166,10 @@ class DocumentoService:
                 request=request,
             )
 
+            event_type = EventTypes.DOCUMENTO_SUBIDO if version.numero_version == 1 else EventTypes.DOCUMENTO_NUEVA_VERSION
+            publish_domain_event(event_type, version, usuario, documento.postulacion,
+                {"documento": documento.tipo_documento.nombre}, f"{event_type}:{version.pk}")
+
             return version
 
     def aprobar_documento(
@@ -230,6 +235,9 @@ class DocumentoService:
                 ),
                 request=request,
             )
+
+            publish_domain_event(EventTypes.DOCUMENTO_APROBADO, documento, usuario, documento.postulacion,
+                {"documento": documento.tipo_documento.nombre}, f"DOCUMENTO_APROBADO:{documento.pk}:{version_actual.pk}")
 
             return documento
 
@@ -299,6 +307,9 @@ class DocumentoService:
                 request=request,
             )
 
+            publish_domain_event(EventTypes.DOCUMENTO_RECHAZADO, documento, usuario, documento.postulacion,
+                {"documento": documento.tipo_documento.nombre}, f"DOCUMENTO_RECHAZADO:{documento.pk}:{version_actual.pk}")
+
             return documento
 
     def registrar_observacion(
@@ -355,6 +366,9 @@ class DocumentoService:
                 ),
                 request=request,
             )
+
+            publish_domain_event(EventTypes.DOCUMENTO_OBSERVADO, observacion, usuario, documento.postulacion,
+                {"documento": documento.tipo_documento.nombre}, f"DOCUMENTO_OBSERVADO:{observacion.pk}")
 
             return observacion
 

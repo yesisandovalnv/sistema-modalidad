@@ -10,6 +10,7 @@ from apps.postulantes.models import (AsignacionPostulacion, EvaluacionDefensa,
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import AuditLog
 from apps.modalidades.policies import ModalidadPolicyRegistry
+from apps.notificaciones.events import EventTypes, publish_domain_event
 
 
 def _audit(user, action, description):
@@ -60,7 +61,8 @@ class EventoDefensaService:
         evento=EventoDefensa(postulacion=postulacion,seguimiento_etapa=seguimiento,tipo_evento=tipo_evento,
             numero_intento=seguimiento.numero_intento,fecha_programada=fecha_programada,programado_por=usuario,
             lugar=lugar,modalidad_evento=modalidad_evento,enlace_virtual=enlace_virtual,observaciones=observaciones)
-        evento.save(); _audit(usuario,"PROGRAM",f"Evento {evento.pk} programado para {postulacion.codigo}."); return evento
+        evento.save(); _audit(usuario,"PROGRAM",f"Evento {evento.pk} programado para {postulacion.codigo}.")
+        publish_domain_event(EventTypes.DEFENSA_PROGRAMADA,evento,usuario,postulacion,{"tipo_evento":evento.get_tipo_evento_display(),"fecha":evento.fecha_programada.isoformat()},f"DEFENSA_PROGRAMADA:{evento.pk}:{evento.fecha_programada.isoformat()}"); return evento
 
     @staticmethod
     @transaction.atomic
@@ -107,7 +109,8 @@ class EventoDefensaService:
         evento=EventoDefensa.objects.select_for_update().get(pk=evento.pk)
         if evento.estado != evento.Estado.EN_CURSO: raise ValidationError("El evento no está en curso.")
         if not EventoDefensaService.validar_quorum(evento,usuario)["valido"]: raise ValidationError("No se puede finalizar sin quórum.")
-        evento.estado=evento.Estado.FINALIZADA; evento.fecha_fin_real=timezone.now(); evento.cerrado_por=usuario; evento.save(); _audit(usuario,"FINISH",f"Evento {evento.pk} finalizado."); return evento
+        evento.estado=evento.Estado.FINALIZADA; evento.fecha_fin_real=timezone.now(); evento.cerrado_por=usuario; evento.save(); _audit(usuario,"FINISH",f"Evento {evento.pk} finalizado.")
+        publish_domain_event(EventTypes.DEFENSA_FINALIZADA,evento,usuario,evento.postulacion,{},f"DEFENSA_FINALIZADA:{evento.pk}:{evento.fecha_fin_real.isoformat()}"); return evento
 
     @staticmethod
     @transaction.atomic
@@ -115,7 +118,9 @@ class EventoDefensaService:
         evento=EventoDefensa.objects.select_for_update().get(pk=evento.pk)
         if evento.estado in (evento.Estado.FINALIZADA,evento.Estado.CANCELADA): raise ValidationError("El evento no puede modificarse.")
         if not motivo.strip(): raise ValidationError("El motivo es obligatorio.")
-        evento.estado=estado; evento.observaciones=(evento.observaciones+"\n"+motivo).strip(); evento.cerrado_por=usuario; evento.fecha_fin_real=timezone.now(); evento.save(); _audit(usuario,accion,f"Evento {evento.pk}: {motivo}"); return evento
+        evento.estado=estado; evento.observaciones=(evento.observaciones+"\n"+motivo).strip(); evento.cerrado_por=usuario; evento.fecha_fin_real=timezone.now(); evento.save(); _audit(usuario,accion,f"Evento {evento.pk}: {motivo}")
+        event_type=EventTypes.DEFENSA_SUSPENDIDA if estado==EventoDefensa.Estado.SUSPENDIDA else EventTypes.DEFENSA_CANCELADA
+        publish_domain_event(event_type,evento,usuario,evento.postulacion,{},f"{event_type}:{evento.pk}:{evento.fecha_fin_real.isoformat()}"); return evento
     suspender_evento=staticmethod(lambda evento,usuario,motivo: EventoDefensaService._cerrar(evento,usuario,EventoDefensa.Estado.SUSPENDIDA,motivo,"SUSPEND"))
     cancelar_evento=staticmethod(lambda evento,usuario,motivo: EventoDefensaService._cerrar(evento,usuario,EventoDefensa.Estado.CANCELADA,motivo,"CANCEL"))
 
@@ -126,7 +131,8 @@ class EventoDefensaService:
         if evento.estado not in (evento.Estado.PROGRAMADA,evento.Estado.SUSPENDIDA): raise ValidationError("El evento no admite reprogramación.")
         if not motivo.strip(): raise ValidationError("El motivo es obligatorio.")
         if evento.tipo_evento==evento.Tipo.DEFENSA_PUBLICA and nueva_fecha < timezone.now()+timedelta(hours=48): raise ValidationError("La defensa pública requiere 48 horas de anticipación.")
-        evento.fecha_programada=nueva_fecha; evento.estado=evento.Estado.PROGRAMADA; evento.observaciones=(evento.observaciones+"\nReprogramación: "+motivo).strip(); evento.save(); _audit(usuario,"RESCHEDULE",f"Evento {evento.pk} reprogramado: {motivo}"); return evento
+        evento.fecha_programada=nueva_fecha; evento.estado=evento.Estado.PROGRAMADA; evento.observaciones=(evento.observaciones+"\nReprogramación: "+motivo).strip(); evento.save(); _audit(usuario,"RESCHEDULE",f"Evento {evento.pk} reprogramado: {motivo}")
+        publish_domain_event(EventTypes.DEFENSA_REPROGRAMADA,evento,usuario,evento.postulacion,{"tipo_evento":evento.get_tipo_evento_display(),"fecha":nueva_fecha.isoformat()},f"DEFENSA_REPROGRAMADA:{evento.pk}:{nueva_fecha.isoformat()}"); return evento
 
 
 class EvaluacionDefensaService:
@@ -162,6 +168,7 @@ class EvaluacionDefensaService:
             resultado=EvaluacionDefensa.Resultado.SUFICIENTE if all(x.resultado_cualitativo==EvaluacionDefensa.Resultado.SUFICIENTE for x in qs) else EvaluacionDefensa.Resultado.INSUFICIENTE
             e=EvaluacionDefensa(evento=evento,tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,modalidad_registro=EvaluacionDefensa.ModalidadRegistro.CONSENSO,resultado_cualitativo=resultado,es_resultado_final_evento=True,registrado_por=usuario)
         e.save(); _audit(usuario,"CONSOLIDATE",f"Evento {evento.pk} consolidado.")
+        publish_domain_event(EventTypes.EVALUACION_CONSOLIDADA,e,usuario,evento.postulacion,{},f"EVALUACION_CONSOLIDADA:{evento.pk}:{e.pk}")
         if resultado in (EvaluacionDefensa.Resultado.SUFICIENTE,EvaluacionDefensa.Resultado.APROBADO): WorkflowService.aprobar_etapa(evento.seguimiento_etapa,usuario,"Aprobada por evaluación de defensa.")
         return e
 

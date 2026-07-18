@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from apps.postulantes.models import AsignacionPostulacion, Postulacion, SeguimientoEtapa
 from apps.usuarios.models import AuditLog, CustomUser
+from apps.notificaciones.events import EventTypes, publish_domain_event
 
 
 class AsignacionService:
@@ -97,6 +98,8 @@ class AsignacionService:
                     f"{postulacion.codigo}."
                 ),
             )
+            publish_domain_event(EventTypes.ACTOR_ASIGNADO, asignacion, designado_por, postulacion,
+                {"usuario_id": usuario_asignado.pk, "actor_tipo": tipo_participacion}, f"ACTOR_ASIGNADO:{asignacion.pk}")
             return asignacion
 
     @staticmethod
@@ -132,6 +135,8 @@ class AsignacionService:
                     f"en la postulación {asignacion.postulacion.codigo}."
                 ),
             )
+            publish_domain_event(EventTypes.ASIGNACION_FINALIZADA, asignacion, usuario, asignacion.postulacion,
+                {"usuario_id": asignacion.usuario_id, "actor_tipo": asignacion.tipo_participacion}, f"ASIGNACION_FINALIZADA:{asignacion.pk}:{asignacion.fecha_finalizacion.isoformat()}")
             return asignacion
 
     @staticmethod
@@ -173,6 +178,8 @@ class AsignacionService:
                     f"{asignacion_actual.tipo_participacion} en la postulación {asignacion_actual.postulacion.codigo}."
                 ),
             )
+            publish_domain_event(EventTypes.ACTOR_REEMPLAZADO, nueva_asignacion, usuario_responsable, asignacion_actual.postulacion,
+                {"usuario_id": nuevo_usuario.pk, "actor_tipo": asignacion_actual.tipo_participacion}, f"ACTOR_REEMPLAZADO:{asignacion_actual.pk}:{nueva_asignacion.pk}")
             return nueva_asignacion
 
     @staticmethod

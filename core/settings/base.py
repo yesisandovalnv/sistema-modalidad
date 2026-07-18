@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'apps.usuarios',
     'apps.academico',
     'apps.modalidades',
+    'apps.notificaciones',
     'apps.postulantes',
     'apps.documentos',
     'apps.seguimiento',

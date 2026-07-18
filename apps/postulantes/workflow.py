@@ -10,6 +10,7 @@ from apps.academico.models import EtapaModalidad
 from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Postulacion, SeguimientoEtapa
 from apps.usuarios.models import CustomUser
 from apps.modalidades.policies import ModalidadPolicyRegistry
+from apps.notificaciones.events import EventTypes, publish_domain_event
 
 
 class WorkflowService:
@@ -74,6 +75,8 @@ class WorkflowService:
             seguimiento.save(
                 update_fields=["estado", "fecha_inicio", "abierta_por", "updated_at"],
             )
+            publish_domain_event(EventTypes.ETAPA_INICIADA, seguimiento, usuario, seguimiento.postulacion,
+                {"etapa": seguimiento.etapa.nombre}, f"ETAPA_INICIADA:{seguimiento.pk}:{seguimiento.updated_at.isoformat()}")
 
             WorkflowService._actualizar_estado_general(
                 postulacion=seguimiento.postulacion,
@@ -141,6 +144,8 @@ class WorkflowService:
             seguimiento.save(
                 update_fields=["estado", "fecha_fin", "cerrada_por", "observaciones", "updated_at"],
             )
+            publish_domain_event(EventTypes.ETAPA_APROBADA, seguimiento, usuario, seguimiento.postulacion,
+                {"etapa": seguimiento.etapa.nombre}, f"ETAPA_APROBADA:{seguimiento.pk}:{seguimiento.updated_at.isoformat()}")
 
             policy = ModalidadPolicyRegistry.get(seguimiento.postulacion)
             final_codes = {x.codigo for x in policy.get_etapas_finales()}
@@ -184,6 +189,8 @@ class WorkflowService:
             seguimiento.save(
                 update_fields=["estado", "fecha_fin", "cerrada_por", "observaciones", "updated_at"],
             )
+            publish_domain_event(EventTypes.ETAPA_RECHAZADA, seguimiento, usuario, seguimiento.postulacion,
+                {"etapa": seguimiento.etapa.nombre}, f"ETAPA_RECHAZADA:{seguimiento.pk}:{seguimiento.updated_at.isoformat()}")
             return seguimiento
 
     @staticmethod
@@ -324,6 +331,9 @@ class WorkflowService:
             usuario=usuario,
             comentario=comentario,
         )
+        history = HistorialEstado.objects.filter(postulacion=postulacion, estado_nuevo=estado_objetivo).order_by("-pk").first()
+        publish_domain_event(EventTypes.POSTULACION_ESTADO_CAMBIADO, history, usuario, postulacion,
+            {"estado": estado_objetivo.nombre}, f"POSTULACION_ESTADO_CAMBIADO:{postulacion.pk}:{history.pk}")
 
     @staticmethod
     def _bloquear_seguimiento(seguimiento_id: int) -> SeguimientoEtapa:

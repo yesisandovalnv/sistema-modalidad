@@ -2624,6 +2624,157 @@ paths:
               schema:
                 $ref: '#/components/schemas/ModalidadCapabilities'
           description: ''
+  /api/v1/notificaciones/:
+    get:
+      operationId: v1_notificaciones_list
+      description: Lista exclusivamente las notificaciones del usuario autenticado.
+        No envía correo ni push.
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a devolver por página.
+        schema:
+          type: integer
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedNotificacionList'
+          description: ''
+  /api/v1/notificaciones/{id}/:
+    get:
+      operationId: v1_notificaciones_retrieve
+      description: Obtiene una notificación propia.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notificacion'
+          description: ''
+  /api/v1/notificaciones/{id}/marcar-leida/:
+    post:
+      operationId: v1_notificaciones_marcar_leida_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Notificacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Notificacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Notificacion'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notificacion'
+          description: ''
+  /api/v1/notificaciones/{id}/marcar-no-leida/:
+    post:
+      operationId: v1_notificaciones_marcar_no_leida_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Notificacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Notificacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Notificacion'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notificacion'
+          description: ''
+  /api/v1/notificaciones/marcar-todas-leidas/:
+    post:
+      operationId: v1_notificaciones_marcar_todas_leidas_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Notificacion'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Notificacion'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Notificacion'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notificacion'
+          description: ''
+  /api/v1/notificaciones/no-leidas/count/:
+    get:
+      operationId: v1_notificaciones_no_leidas_count_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notificacion'
+          description: ''
   /api/v1/postulaciones/:
     get:
       operationId: v1_postulaciones_list
@@ -3842,6 +3993,19 @@ paths:
           description: ''
 components:
   schemas:
+    ActorResumen:
+      type: object
+      properties:
+        id:
+          type: integer
+        nombre:
+          type: string
+        username:
+          type: string
+      required:
+      - id
+      - nombre
+      - username
     AprobarDocumento:
       type: object
       description: Serializador para la aprobación de un documento.
@@ -4787,6 +4951,79 @@ components:
       - orden
       - requisito
       - updated_at
+    NivelEnum:
+      enum:
+      - INFO
+      - SUCCESS
+      - WARNING
+      - ERROR
+      type: string
+      description: |-
+        * `INFO` - Información
+        * `SUCCESS` - Éxito
+        * `WARNING` - Advertencia
+        * `ERROR` - Error
+    Notificacion:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        tipo:
+          type: string
+          readOnly: true
+        titulo:
+          type: string
+          readOnly: true
+        mensaje:
+          type: string
+          readOnly: true
+        nivel:
+          allOf:
+          - $ref: '#/components/schemas/NivelEnum'
+          readOnly: true
+        leida:
+          type: boolean
+          readOnly: true
+        fecha_lectura:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        actor:
+          allOf:
+          - $ref: '#/components/schemas/ActorResumen'
+          readOnly: true
+        postulacion_id:
+          type: integer
+          readOnly: true
+        aggregate_type:
+          type: string
+          readOnly: true
+        aggregate_id:
+          type: string
+          readOnly: true
+        metadata:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Fecha de creación
+      required:
+      - actor
+      - aggregate_id
+      - aggregate_type
+      - created_at
+      - fecha_lectura
+      - id
+      - leida
+      - mensaje
+      - metadata
+      - nivel
+      - postulacion_id
+      - tipo
+      - titulo
     ObservaSeguimientoEtapa:
       type: object
       description: Payload para observar una etapa.
@@ -5131,6 +5368,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ModalidadRequisito'
+    PaginatedNotificacionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notificacion'
     PaginatedObservacionDocumentoList:
       type: object
       required:

@@ -8,6 +8,7 @@ from apps.postulantes.models import (CondicionPostulacion, EntregaFisica,
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import AuditLog
 from apps.modalidades.policies import BaseCierrePolicy, ModalidadPolicyRegistry
+from apps.notificaciones.events import EventTypes, publish_domain_event
 
 
 class ProyectoGradoCierrePolicy(BaseCierrePolicy):
@@ -109,7 +110,8 @@ class CierrePostulacionService:
         post=Postulacion.objects.select_for_update().get(pk=postulacion.pk); result=cls._policy(post).evaluar_revision_final(post)
         if not result["cumple"]: raise ValidationError({"faltantes":result["faltantes"],"advertencias":result["advertencias"]})
         stage=cls._prepare(cls._stage(post,"REVISION_FINAL_POST_PUBLICA"),usuario); WorkflowService.aprobar_etapa(stage,usuario,observaciones)
-        cls._audit(usuario,"APPROVE_FINAL_REVIEW",post,stage.estado,"APROBADA",stage.etapa.codigo,str(result)); return post
+        cls._audit(usuario,"APPROVE_FINAL_REVIEW",post,stage.estado,"APROBADA",stage.etapa.codigo,str(result))
+        publish_domain_event(EventTypes.REVISION_FINAL_APROBADA,stage,usuario,post,{"etapa":stage.etapa.nombre},f"REVISION_FINAL_APROBADA:{stage.pk}:{stage.updated_at.isoformat()}"); return post
 
     @classmethod
     @transaction.atomic
@@ -117,7 +119,8 @@ class CierrePostulacionService:
         post=Postulacion.objects.select_for_update().get(pk=postulacion.pk); result=cls._policy(post).evaluar_cierre_documental(post)
         if not result["cumple"]: raise ValidationError({"faltantes":result["faltantes"],"advertencias":result["advertencias"]})
         stage=cls._prepare(cls._stage(post,"CIERRE_DOCUMENTAL"),usuario); WorkflowService.aprobar_etapa(stage,usuario,observaciones,actualizar_estado_general=False)
-        cls._audit(usuario,"APPROVE_DOCUMENTARY_CLOSURE",post,stage.estado,"APROBADA",stage.etapa.codigo,str(result)); return post
+        cls._audit(usuario,"APPROVE_DOCUMENTARY_CLOSURE",post,stage.estado,"APROBADA",stage.etapa.codigo,str(result))
+        publish_domain_event(EventTypes.CIERRE_DOCUMENTAL_APROBADO,stage,usuario,post,{"etapa":stage.etapa.nombre},f"CIERRE_DOCUMENTAL_APROBADO:{stage.pk}:{stage.updated_at.isoformat()}"); return post
 
     @classmethod
     @transaction.atomic
@@ -126,7 +129,9 @@ class CierrePostulacionService:
         if post.estado_actual and post.estado_actual.codigo=="CONCLUIDA": return post
         if not cls._policy(post).puede_concluir(post): raise ValidationError("El cierre documental y todas las etapas obligatorias deben estar aprobados.")
         before=post.estado_actual.codigo if post.estado_actual else None; WorkflowService._actualizar_estado_general(post,"CONCLUIDA",usuario,observaciones or "Conclusión controlada posterior al cierre documental.",True); post.refresh_from_db()
-        cls._audit(usuario,"CONCLUDE_APPLICATION",post,before,"CONCLUIDA","CIERRE_DOCUMENTAL",observaciones); return post
+        cls._audit(usuario,"CONCLUDE_APPLICATION",post,before,"CONCLUIDA","CIERRE_DOCUMENTAL",observaciones)
+        history=HistorialEstado.objects.filter(postulacion=post,estado_nuevo__codigo="CONCLUIDA").order_by("-pk").first()
+        publish_domain_event(EventTypes.POSTULACION_CONCLUIDA,history,usuario,post,{},f"POSTULACION_CONCLUIDA:{post.pk}:{history.pk}"); return post
 
     @classmethod
     @transaction.atomic
@@ -138,6 +143,7 @@ class CierrePostulacionService:
         target=(HistorialEstado.objects.filter(postulacion=post,estado_nuevo=before).order_by("-fecha_cambio").first().estado_anterior if before and before.codigo=="CONCLUIDA" else before)
         if target and before_id_not_equal(before,target):
             post.estado_actual=target; post.save(update_fields=["estado_actual","updated_at"]); HistorialEstado.objects.create(postulacion=post,estado_anterior=before,estado_nuevo=target,usuario=usuario,comentario=motivo)
-        cls._audit(usuario,"REOPEN_CLOSURE",post,before.codigo if before else None,target.codigo if target else None,"CIERRE_DOCUMENTAL",motivo); return post
+        cls._audit(usuario,"REOPEN_CLOSURE",post,before.codigo if before else None,target.codigo if target else None,"CIERRE_DOCUMENTAL",motivo)
+        publish_domain_event(EventTypes.CIERRE_REABIERTO,stage,usuario,post,{"etapa":stage.etapa.nombre},f"CIERRE_REABIERTO:{stage.pk}:{stage.updated_at.isoformat()}"); return post
 
 def before_id_not_equal(before,target): return not before or before.pk!=target.pk
