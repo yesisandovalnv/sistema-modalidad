@@ -17,7 +17,7 @@ const links = [
 ]
 
 export function Sidebar({ open, onToggle }) {
-  const { hasPermission } = useAuth()
+  const { hasPermission, logout } = useAuth()
   const { unreadCount } = useNotifications()
   return (
     <aside className={`fixed inset-y-0 left-0 z-40 w-72 border-r border-slate-200 bg-white/90 p-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 ${open ? 'translate-x-0' : '-translate-x-full'} transition md:translate-x-0 md:static md:block`}>
@@ -52,7 +52,7 @@ export function Sidebar({ open, onToggle }) {
         <p className="mt-1 text-sm text-slate-500">La autenticación se conectará con Django REST Framework en el siguiente paso.</p>
       </div>
 
-      <Button variant="secondary" className="mt-8 w-full justify-start gap-2">
+      <Button variant="secondary" className="mt-8 w-full justify-start gap-2" onClick={logout}>
         <LogOut className="h-4 w-4" />
         Cerrar sesión
       </Button>

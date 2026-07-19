@@ -7,4 +7,7 @@ export const authService = {
   async me() {
     return apiClient.get('/v1/auth/me/')
   },
+  async logout(refresh) {
+    return apiClient.post('/v1/auth/logout/', { refresh })
+  },
 }

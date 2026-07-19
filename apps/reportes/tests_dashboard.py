@@ -5,6 +5,7 @@ from apps.academico.models import Modalidad,Periodo,EtapaModalidad
 from apps.postulantes.models import Postulacion,EstadoPostulacion,SeguimientoEtapa,AsignacionPostulacion
 from apps.notificaciones.models import Notificacion
 from apps.usuarios.models import CustomUser,Role,AuditLog
+from apps.reportes.views import safe_csv
 
 
 class ReportBase(TestCase):
@@ -48,6 +49,10 @@ class ReportListPermissionTests(ReportBase):
 
 
 class ExportTests(ReportBase):
+    def test_formula_injection_variants(self):
+        for value in ("=1+1", "+SUM(A1)", "-2+3", "@cmd", "  =1+1", "\t=1+1", "\r+cmd", "\n-cmd"):
+            with self.subTest(value=value): self.assertTrue(safe_csv(value).startswith("'"))
+        self.assertEqual(safe_csv('texto, "seguro" ñ'), 'texto, "seguro" ñ')
     def test_csv_y_auditoria(self):
         r=self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=csv"); self.assertEqual(r.status_code,200); self.assertTrue(r.content.startswith(b"\xef\xbb\xbf")); self.assertEqual(AuditLog.objects.filter(accion="EXPORT_APPLICATION_REPORT").count(),1)
     def test_formato_no_soportado(self): self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx").status_code,400)

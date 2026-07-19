@@ -518,6 +518,17 @@ class DocumentoService:
             raise ValidationError(
                 f"La extensión '{extension}' no está permitida para el tipo de documento {tipo_documento.nombre}."
             )
+        size = getattr(archivo, "size", None)
+        if size is not None and size > tipo_documento.tamano_maximo_mb * 1024 * 1024:
+            raise ValidationError(
+                f"El archivo supera el tamaÃ±o mÃ¡ximo permitido de {tipo_documento.tamano_maximo_mb} MB."
+            )
+        if extension == "pdf":
+            position = archivo.tell() if hasattr(archivo, "tell") else 0
+            signature = archivo.read(5)
+            archivo.seek(position)
+            if signature != b"%PDF-":
+                raise ValidationError("El contenido del archivo no corresponde a un PDF vÃ¡lido.")
         return nombre_original
 
     def _obtener_estado_documento(self, codigo: str) -> EstadoDocumento:

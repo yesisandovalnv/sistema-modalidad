@@ -1,14 +1,15 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import { AuthProvider } from './AuthProvider'
 import { useAuth } from '../hooks/useAuth'
 import { authService } from '../services/authService'
 
-vi.mock('../services/authService', () => ({ authService: { me: vi.fn() } }))
+vi.mock('../services/authService', () => ({ authService: { me: vi.fn(), logout: vi.fn() } }))
 
 function Probe() {
   const auth = useAuth()
-  return <div>{auth.loading ? 'cargando' : `${auth.roleCode}|${auth.hasPermission('puede_ver_reportes')}|${auth.user?.rol?.nombre || 'anonimo'}`}</div>
+  return <><div>{auth.loading ? 'cargando' : `${auth.roleCode}|${auth.hasPermission('puede_ver_reportes')}|${auth.user?.rol?.nombre || 'anonimo'}`}</div><button onClick={auth.logout}>salir</button></>
 }
 
 describe('AuthProvider', () => {
@@ -30,5 +31,22 @@ describe('AuthProvider', () => {
     render(<AuthProvider><Probe /></AuthProvider>)
     expect(screen.getByText('|false|anonimo')).toBeInTheDocument()
     expect(authService.me).not.toHaveBeenCalled()
+  })
+
+  it('recarga el usuario después del evento de login', async () => {
+    authService.me.mockResolvedValue({ data: { rol: { codigo: 'ADMIN', nombre: 'Administración' }, permisos: {} } })
+    render(<AuthProvider><Probe /></AuthProvider>)
+    localStorage.setItem('auth_access_token', 'nuevo')
+    window.dispatchEvent(new Event('auth-authenticated'))
+    await waitFor(() => expect(screen.getByText('ADMIN|false|Administración')).toBeInTheDocument())
+  })
+
+  it('logout remoto limpia tokens y usuario', async () => {
+    localStorage.setItem('auth_access_token', 'token'); localStorage.setItem('auth_refresh_token', 'refresh')
+    authService.me.mockResolvedValue({ data: { rol: { codigo: 'ADMIN', nombre: 'Administración' }, permisos: {} } }); authService.logout.mockResolvedValue({})
+    render(<AuthProvider><Probe /></AuthProvider>); await screen.findByText('ADMIN|false|Administración')
+    await userEvent.click(screen.getByRole('button', { name: 'salir' }))
+    await waitFor(() => expect(screen.getByText('|false|anonimo')).toBeInTheDocument())
+    expect(localStorage.getItem('auth_access_token')).toBeNull()
   })
 })

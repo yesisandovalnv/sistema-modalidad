@@ -4,8 +4,10 @@ from apps.postulantes.defensas_api import PostulacionEventosView, ResultadoFinal
 from apps.postulantes.cierre_api import CierreAccionView, CierreEstadoView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.academico.views import ModalidadViewSet
+from core.health import HealthCheckView
 
 urlpatterns = [
+    path('api/health/', HealthCheckView.as_view(), name='health-check'),
     path('admin/', admin.site.urls),
     path('api/v1/auth/', include('apps.usuarios.urls')),
     path('api/v1/academico/', include('apps.academico.urls')),

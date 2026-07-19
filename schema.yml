@@ -4,6 +4,21 @@ info:
   version: 1.0.0
   description: API preparada para gestionar postulantes, documentos y seguimiento.
 paths:
+  /api/health/:
+    get:
+      operationId: health_retrieve
+      description: Comprueba el proceso y una consulta mínima a la base de datos.
+      tags:
+      - health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+          description: ''
   /api/v1/academico/modalidad-requisitos/:
     get:
       operationId: v1_academico_modalidad_requisitos_list
@@ -5069,6 +5084,16 @@ components:
       - id
       - modalidad
       - porcentaje_avance
+    HealthCheck:
+      type: object
+      properties:
+        status:
+          type: string
+        database:
+          type: string
+      required:
+      - database
+      - status
     HistorialEstado:
       type: object
       description: Serializer para registrar el historial de cambios de estado de

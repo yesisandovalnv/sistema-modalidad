@@ -183,6 +183,16 @@ class TestDocumentoUpload(DocumentoAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("extensión", str(response.data).lower())
 
+    def test_subida_rechaza_pdf_disfrazado(self) -> None:
+        response = self.upload_document(
+            self.student_user,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            SimpleUploadedFile("documento.pdf", b"contenido ejecutable", content_type="application/pdf"),
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("contenido", str(response.data).lower())
+
     def test_subida_rechaza_archivo_grande(self) -> None:
         """La subida debe rechazar archivos que superan el límite de tamaño."""
         file_too_large = self.create_pdf_file(size=(self.tipo_pdf.tamano_maximo_mb * 1024 * 1024) + 1)

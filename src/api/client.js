@@ -18,4 +18,15 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
+let sessionExpired = false
+apiClient.interceptors.response.use((response) => { sessionExpired = false; return response }, (error) => {
+  if (error?.response?.status === 401 && !sessionExpired) {
+    sessionExpired = true
+    localStorage.removeItem('auth_access_token')
+    localStorage.removeItem('auth_refresh_token')
+    window.dispatchEvent(new Event('auth-session-expired'))
+  }
+  return Promise.reject(error)
+})
+
 export default apiClient

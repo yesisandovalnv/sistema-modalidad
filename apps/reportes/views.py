@@ -33,7 +33,8 @@ class PostulacionesReportView(GenericAPIView):
 
 def safe_csv(v):
     text="" if v is None else str(v)
-    return "'"+text if text.startswith(("=","+","-","@")) else text
+    candidate=text.lstrip(" \t\r\n")
+    return "'"+text if candidate.startswith(("=","+","-","@")) or text.startswith(("\t","\r","\n")) else text
 class ExportView(GenericAPIView):
     permission_classes=(CanExportReports,); serializer_class=ReportFilterSerializer
     @extend_schema(parameters=[ReportFilterSerializer],responses={200:bytes},description="Exportación CSV UTF-8 con BOM, protección contra fórmulas y límite configurable.")

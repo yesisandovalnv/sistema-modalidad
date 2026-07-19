@@ -1,16 +1,34 @@
-# React + Vite
+# Sistema de Modalidad
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Aplicación Django REST Framework + React/Vite para gestión de modalidades de titulación. La única modalidad con política académica completa es **Proyecto de Grado**. Las demás modalidades permanecen bloqueadas para operaciones normativas específicas.
 
-Currently, two official plugins are available:
+## Desarrollo local
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Requisitos: Python 3.12, Node 20 y PostgreSQL. Copie `.env.example` a `.env`, use valores locales y luego ejecute:
 
-## React Compiler
+```powershell
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python manage.py migrate
+.venv\Scripts\python manage.py seed_initial_data
+.venv\Scripts\python manage.py createsuperuser
+npm ci
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+API: `http://localhost:8000/api/`; frontend: `http://localhost:5173/`; salud: `GET /api/health/`; OpenAPI: `GET /api/schema/`.
 
-## Expanding the Oxlint configuration
+## Verificación
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+```powershell
+python manage.py makemigrations --check
+python manage.py check
+python manage.py test
+python manage.py validate_modalidad_policies
+npm run lint
+npm run test:run
+npm run build
+docker compose config
+```
+
+Consulte [despliegue](docs/DEPLOYMENT.md), [entorno](docs/ENVIRONMENT.md), [pruebas](docs/TESTING.md), [arquitectura](docs/ARCHITECTURE.md) y [checklist de release](docs/RELEASE_CHECKLIST.md).
