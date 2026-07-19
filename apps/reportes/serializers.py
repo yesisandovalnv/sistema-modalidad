@@ -8,7 +8,7 @@ class ReportFilterSerializer(serializers.Serializer):
     modalidad=serializers.PrimaryKeyRelatedField(queryset=Modalidad.objects.all(),required=False)
     gestion=serializers.IntegerField(min_value=1900,max_value=2200,required=False)
     semestre=serializers.ChoiceField(choices=(1,2),required=False)
-    etapa_actual=serializers.PrimaryKeyRelatedField(queryset=EtapaModalidad.objects.all(),required=False)
+    etapa_actual=serializers.PrimaryKeyRelatedField(queryset=EtapaModalidad.objects.all(),required=False,help_text="ID persistido de EtapaModalidad; no acepta código ni nombre.")
     estado_general=serializers.PrimaryKeyRelatedField(queryset=EstadoPostulacion.objects.all(),required=False)
     tutor=serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all(),required=False)
     fecha_desde=serializers.DateField(required=False); fecha_hasta=serializers.DateField(required=False)
@@ -34,4 +34,3 @@ class ReportePostulacionSerializer(serializers.Serializer):
     titulo_trabajo=serializers.CharField(allow_null=True); tutor_activo=serializers.CharField(allow_null=True); etapa_actual=serializers.CharField(allow_null=True); estado_general=serializers.CharField(allow_null=True)
     porcentaje_etapas_aprobadas=serializers.DecimalField(max_digits=5,decimal_places=2); documentos_pendientes=serializers.IntegerField(); proxima_defensa=serializers.DateTimeField(allow_null=True)
     revision_final_aprobada=serializers.BooleanField(); cierre_documental_aprobado=serializers.BooleanField(); concluida=serializers.BooleanField(); fecha_creacion=serializers.DateTimeField(); fecha_actualizacion=serializers.DateTimeField()
-

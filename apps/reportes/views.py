@@ -18,14 +18,14 @@ def filters(request):
 
 class DashboardView(GenericAPIView):
     permission_classes=(CanViewInstitutionalReports,); serializer_class=DashboardSerializer
-    @extend_schema(parameters=[ReportFilterSerializer],responses=DashboardSerializer,description="Dashboard institucional de solo lectura. Las métricas de notificaciones pertenecen únicamente al usuario autenticado.")
+    @extend_schema(parameters=[ReportFilterSerializer],responses=DashboardSerializer,description="Dashboard institucional de solo lectura. etapa_actual espera el ID persistido de EtapaModalidad, no código ni nombre. Las métricas de notificaciones pertenecen únicamente al usuario autenticado.")
     def get(self,request): return Response(DashboardService.obtener_dashboard(filters(request),request.user))
 
 
 ORDER={"postulante_nombre":"estudiante__apellido_paterno","modalidad":"modalidad__nombre","gestion":"periodo__fecha_inicio","semestre":"periodo__fecha_inicio","etapa_actual":"etapa_actual_codigo","estado_general":"estado_actual__codigo","fecha_creacion":"created_at","fecha_actualizacion":"updated_at"}
 class PostulacionesReportView(GenericAPIView):
     permission_classes=(CanViewInstitutionalReports,); serializer_class=ReportePostulacionSerializer; pagination_class=StandardResultsSetPagination
-    @extend_schema(parameters=[ReportFilterSerializer],responses=ReportePostulacionSerializer(many=True),description="Reporte paginado, sin datos personales sensibles y limitado al alcance del usuario.")
+    @extend_schema(parameters=[ReportFilterSerializer],responses=ReportePostulacionSerializer(many=True),description="Reporte paginado, sin datos personales sensibles y limitado al alcance del usuario. etapa_actual espera el ID persistido de EtapaModalidad.")
     def get(self,request):
         f=filters(request); qs=ReportePostulacionesService.construir_queryset_postulaciones(f,request.user); raw=f.get("ordering","-fecha_creacion"); prefix="-" if raw.startswith("-") else ""; qs=qs.order_by(prefix+ORDER[raw.lstrip("-")])
         page=self.paginate_queryset(qs); rows=[ReportePostulacionesService.row(x) for x in page]; return self.get_paginated_response(rows)
@@ -47,4 +47,3 @@ class ExportView(GenericAPIView):
             r=ReportePostulacionesService.row(p); w.writerow([safe_csv(r["postulacion_id"]),safe_csv(r["postulante_nombre"]),safe_csv(r["modalidad"]["nombre"]),r["gestion"],r["semestre"],safe_csv(r["tutor_activo"]),safe_csv(r["etapa_actual"]),safe_csv(r["estado_general"]),r["porcentaje_etapas_aprobadas"],r["documentos_pendientes"],r["proxima_defensa"] or "",r["concluida"]])
         AuditLog.objects.create(usuario=request.user,accion="EXPORT_APPLICATION_REPORT",modulo="REPORTES",descripcion=f"CSV de postulaciones exportado; filas={count}; filtros={json.dumps(f,default=str,sort_keys=True)}")
         response=HttpResponse("\ufeff"+stream.getvalue(),content_type="text/csv; charset=utf-8"); response["Content-Disposition"]='attachment; filename="postulaciones.csv"'; return response
-

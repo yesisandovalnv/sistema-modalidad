@@ -5,8 +5,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from drf_spectacular.utils import extend_schema
 
 from apps.usuarios.serializers import LoginSerializer, LogoutSerializer, UserProfileSerializer
+from core.permissions import IsActiveUser
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -42,7 +44,7 @@ class CustomTokenRefreshView(TokenRefreshView):
 class LogoutView(APIView):
     """Endpoint para cerrar sesión invalidando el refresh token."""
 
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsAuthenticated, IsActiveUser)
     serializer_class = LogoutSerializer
 
     def post(self, request, *args, **kwargs):
@@ -61,9 +63,13 @@ class LogoutView(APIView):
 class MeView(APIView):
     """Endpoint para obtener el perfil del usuario autenticado."""
 
-    permission_classes = (IsAuthenticated,)
+    permission_classes = (IsAuthenticated, IsActiveUser)
     serializer_class = UserProfileSerializer
 
+    @extend_schema(
+        responses=UserProfileSerializer,
+        description="Usuario autenticado con rol.codigo estable y capacidades informativas. Los campos role y nombre_completo se conservan temporalmente por compatibilidad y están deprecados para clientes nuevos.",
+    )
     def get(self, request, *args, **kwargs):
         """Devuelve los datos básicos del usuario autenticado."""
         serializer = UserProfileSerializer(request.user)

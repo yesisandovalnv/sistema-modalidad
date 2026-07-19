@@ -1,6 +1,6 @@
 import { Bell, Moon, Sun, Menu } from 'lucide-react'
 import { Button } from '../ui/button'
-import { useTheme } from '../../context/ThemeContext'
+import { useTheme } from '../../hooks/useTheme'
 
 export function Navbar({ onToggle }) {
   const { theme, toggleTheme } = useTheme()

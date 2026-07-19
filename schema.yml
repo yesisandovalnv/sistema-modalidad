@@ -363,8 +363,10 @@ paths:
   /api/v1/academico/modalidades/{id}/capacidades/:
     get:
       operationId: v1_academico_modalidades_capacidades_retrieve
-      description: Capacidades académicas configuradas. Una modalidad sin policy se
-        devuelve como soportada=false; no existe fallback.
+      description: Capacidades académicas configuradas. Cada etapa incluye el ID persistido
+        de EtapaModalidad; id=null indica una definición declarativa no persistida
+        y configuracion_valida=false. Una modalidad sin policy conserva sus etapas
+        persistidas sólo para consulta y se devuelve como soportada=false.
       parameters:
       - in: path
         name: id
@@ -1050,7 +1052,9 @@ paths:
   /api/v1/auth/me/:
     get:
       operationId: v1_auth_me_retrieve
-      description: Devuelve los datos básicos del usuario autenticado.
+      description: Usuario autenticado con rol.codigo estable y capacidades informativas.
+        Los campos role y nombre_completo se conservan temporalmente por compatibilidad
+        y están deprecados para clientes nuevos.
       tags:
       - v1
       security:
@@ -2605,8 +2609,10 @@ paths:
   /api/v1/modalidades/{id}/capacidades/:
     get:
       operationId: v1_modalidades_capacidades_retrieve
-      description: Capacidades académicas configuradas. Una modalidad sin policy se
-        devuelve como soportada=false; no existe fallback.
+      description: Capacidades académicas configuradas. Cada etapa incluye el ID persistido
+        de EtapaModalidad; id=null indica una definición declarativa no persistida
+        y configuracion_valida=false. Una modalidad sin policy conserva sus etapas
+        persistidas sólo para consulta y se devuelve como soportada=false.
       parameters:
       - in: path
         name: id
@@ -3879,7 +3885,8 @@ paths:
   /api/v1/reportes/dashboard/:
     get:
       operationId: v1_reportes_dashboard_retrieve
-      description: Dashboard institucional de solo lectura. Las métricas de notificaciones
+      description: Dashboard institucional de solo lectura. etapa_actual espera el
+        ID persistido de EtapaModalidad, no código ni nombre. Las métricas de notificaciones
         pertenecen únicamente al usuario autenticado.
       parameters:
       - in: query
@@ -3896,6 +3903,7 @@ paths:
         name: etapa_actual
         schema:
           type: integer
+        description: ID persistido de EtapaModalidad; no acepta código ni nombre.
       - in: query
         name: fecha_desde
         schema:
@@ -3951,7 +3959,7 @@ paths:
     get:
       operationId: v1_reportes_postulaciones_list
       description: Reporte paginado, sin datos personales sensibles y limitado al
-        alcance del usuario.
+        alcance del usuario. etapa_actual espera el ID persistido de EtapaModalidad.
       parameters:
       - in: query
         name: buscar
@@ -3967,6 +3975,7 @@ paths:
         name: etapa_actual
         schema:
           type: integer
+        description: ID persistido de EtapaModalidad; no acepta código ni nombre.
       - in: query
         name: fecha_desde
         schema:
@@ -4050,6 +4059,7 @@ paths:
         name: etapa_actual
         schema:
           type: integer
+        description: ID persistido de EtapaModalidad; no acepta código ni nombre.
       - in: query
         name: fecha_desde
         schema:
@@ -4372,6 +4382,16 @@ components:
       required:
       - tipo_participacion
       - usuario
+    AuthenticatedRole:
+      type: object
+      properties:
+        codigo:
+          type: string
+        nombre:
+          type: string
+      required:
+      - codigo
+      - nombre
     BlankEnum:
       enum:
       - ''
@@ -4807,6 +4827,44 @@ components:
       - id
       - nombre
       - updated_at
+    EtapaCapabilities:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+          description: ID persistido de EtapaModalidad; null indica inconsistencia
+            de configuración.
+        codigo:
+          type: string
+        nombre:
+          type: string
+        orden:
+          type: integer
+        obligatoria:
+          type: boolean
+        inicial:
+          type: boolean
+        final:
+          type: boolean
+        permite_reapertura:
+          type: boolean
+        siguientes_permitidas:
+          type: array
+          items:
+            type: string
+        capacidades_requeridas:
+          type: array
+          items:
+            type: string
+      required:
+      - codigo
+      - final
+      - id
+      - inicial
+      - nombre
+      - obligatoria
+      - orden
     EvaluacionDefensa:
       type: object
       properties:
@@ -5148,8 +5206,7 @@ components:
         etapas:
           type: array
           items:
-            type: object
-            additionalProperties: {}
+            $ref: '#/components/schemas/EtapaCapabilities'
         advertencias:
           type: array
           items:
@@ -6843,6 +6900,40 @@ components:
       required:
       - access
       - refresh
+    UserPermissions:
+      type: object
+      properties:
+        puede_ver_dashboard:
+          type: boolean
+        puede_ver_reportes:
+          type: boolean
+        puede_exportar_reportes:
+          type: boolean
+        puede_ver_notificaciones:
+          type: boolean
+        puede_gestionar_postulaciones:
+          type: boolean
+        puede_gestionar_documentos:
+          type: boolean
+        puede_gestionar_asignaciones:
+          type: boolean
+        puede_gestionar_defensas:
+          type: boolean
+        puede_gestionar_evaluaciones:
+          type: boolean
+        puede_gestionar_cierre:
+          type: boolean
+      required:
+      - puede_exportar_reportes
+      - puede_gestionar_asignaciones
+      - puede_gestionar_cierre
+      - puede_gestionar_defensas
+      - puede_gestionar_documentos
+      - puede_gestionar_evaluaciones
+      - puede_gestionar_postulaciones
+      - puede_ver_dashboard
+      - puede_ver_notificaciones
+      - puede_ver_reportes
     UserProfile:
       type: object
       description: Serializer para exponer datos básicos del usuario autenticado.
@@ -6867,6 +6958,9 @@ components:
           type: string
           description: Retorna el nombre completo del usuario en formato legible.
           readOnly: true
+        nombre:
+          type: string
+          readOnly: true
         ru:
           type: string
           nullable: true
@@ -6879,6 +6973,14 @@ components:
           maxLength: 20
         role:
           type: string
+          readOnly: true
+        rol:
+          allOf:
+          - $ref: '#/components/schemas/AuthenticatedRole'
+          readOnly: true
+        permisos:
+          allOf:
+          - $ref: '#/components/schemas/UserPermissions'
           readOnly: true
         correo_personal:
           oneOf:
@@ -6896,7 +6998,10 @@ components:
             maxLength: 0
       required:
       - id
+      - nombre
       - nombre_completo
+      - permisos
+      - rol
       - role
       - username
     VersionDocumento:

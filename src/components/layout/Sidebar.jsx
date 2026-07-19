@@ -1,21 +1,21 @@
 import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, FileText, Users, FolderKanban, MonitorPlay, Settings, LogOut, Menu } from 'lucide-react'
 import { Button } from '../ui/button'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../hooks/useAuth'
 
 const links = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: 'puede_ver_dashboard' },
   { to: '/postulantes', label: 'Postulantes', icon: Users },
   { to: '/documentos', label: 'Documentos', icon: FileText },
   { to: '/modalidades', label: 'Modalidades', icon: FolderKanban },
   { to: '/seguimiento', label: 'Seguimiento', icon: MonitorPlay },
   { to: '/usuarios', label: 'Usuarios', icon: Users },
-  { to: '/reportes/postulaciones', label: 'Reportes', icon: FileText, reports: true },
+  { to: '/reportes/postulaciones', label: 'Reportes', icon: FileText, permission: 'puede_ver_reportes' },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
 ]
 
 export function Sidebar({ open, onToggle }) {
-  const { isStudent } = useAuth()
+  const { hasPermission } = useAuth()
   return (
     <aside className={`fixed inset-y-0 left-0 z-40 w-72 border-r border-slate-200 bg-white/90 p-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 ${open ? 'translate-x-0' : '-translate-x-full'} transition md:translate-x-0 md:static md:block`}>
       <div className="flex items-center justify-between md:justify-start">
@@ -29,7 +29,7 @@ export function Sidebar({ open, onToggle }) {
       </div>
 
       <nav className="mt-8 space-y-1">
-        {links.filter((link) => !(link.reports && isStudent)).map(({ to, label, icon: Icon }) => (
+        {links.filter((link) => !link.permission || hasPermission(link.permission)).map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}

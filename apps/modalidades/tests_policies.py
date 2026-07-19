@@ -65,6 +65,29 @@ class CapabilitiesApiTests(TestCase):
         self.assertTrue(response.data["soportada"])
         self.assertIn("configuracion_valida", response.data)
 
+    def test_api_vincula_etapas_persistidas_y_reporta_faltantes(self):
+        stored = EtapaModalidad.objects.create(
+            modalidad=self.pg, codigo="INSCRIPCION", nombre="Inscripción persistida",
+            orden=1, obligatoria=True, origen_normativo="Norma",
+        )
+        response = self.client.get(reverse("modalidad-capacidades", args=[self.pg.pk]))
+        inscription = next(stage for stage in response.data["etapas"] if stage["codigo"] == "INSCRIPCION")
+        missing = next(stage for stage in response.data["etapas"] if stage["codigo"] == "PERFIL_PROYECTO")
+        self.assertEqual(inscription["id"], stored.pk)
+        self.assertEqual(inscription["nombre"], stored.nombre)
+        self.assertEqual(inscription["orden"], stored.orden)
+        self.assertIsNone(missing["id"])
+        self.assertFalse(response.data["configuracion_valida"])
+
+    def test_api_no_soportada_expone_etapas_persistidas_solo_para_consulta(self):
+        stored = EtapaModalidad.objects.create(
+            modalidad=self.other, codigo="CONSULTA", nombre="Consulta", orden=1,
+            obligatoria=False, origen_normativo="Norma",
+        )
+        response = self.client.get(reverse("modalidad-capacidades", args=[self.other.pk]))
+        self.assertFalse(response.data["soportada"])
+        self.assertEqual(response.data["etapas"][0]["id"], stored.pk)
+
     def test_api_modalidad_sin_policy_no_es_500(self):
         response = self.client.get(reverse("modalidad-capacidades", args=[self.other.pk]))
         self.assertEqual(response.status_code, 200)

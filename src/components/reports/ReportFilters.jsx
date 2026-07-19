@@ -4,12 +4,12 @@ import { reportesService } from '../../services/reportesService'
 
 const empty = { modalidad: '', gestion: '', semestre: '', etapa_actual: '', buscar: '', fecha_desde: '', fecha_hasta: '' }
 export function ReportFilters({ initial = empty, onApply, showSearch = false }) {
-  const [draft, setDraft] = useState({ ...empty, ...initial }); const [modalidades, setModalidades] = useState([]); const [etapas, setEtapas] = useState([]); const [advanced, setAdvanced] = useState(false)
+  const [draft, setDraft] = useState({ ...empty, ...initial }); const [modalidades, setModalidades] = useState([]); const [etapas, setEtapas] = useState([]); const [advanced, setAdvanced] = useState(false); const [loadingStages, setLoadingStages] = useState(false); const [stageError, setStageError] = useState(''); const [configurationWarning, setConfigurationWarning] = useState('')
   useEffect(() => { const controller = new AbortController(); reportesService.obtenerModalidades(controller.signal).then(setModalidades).catch(() => {}); return () => controller.abort() }, [])
   useEffect(() => {
-    setDraft((current) => ({ ...current, etapa_actual: '' })); setEtapas([])
+    setDraft((current) => ({ ...current, etapa_actual: '' })); setEtapas([]); setStageError(''); setConfigurationWarning(''); setLoadingStages(false)
     if (!draft.modalidad) return
-    const controller = new AbortController(); reportesService.obtenerCapacidades(draft.modalidad, controller.signal).then((data) => setEtapas(data.etapas || [])).catch(() => setEtapas([])); return () => controller.abort()
+    const controller = new AbortController(); setLoadingStages(true); reportesService.obtenerCapacidades(draft.modalidad, controller.signal).then((data) => { setEtapas((data.etapas || []).filter((stage) => stage.id != null)); if (data.configuracion_valida === false) setConfigurationWarning((data.advertencias || [])[0] || 'La modalidad tiene etapas sin configurar.') }).catch((error) => { if (!error.canceled) setStageError('No se pudieron cargar las etapas.') }).finally(() => { if (!controller.signal.aborted) setLoadingStages(false) }); return () => controller.abort()
   }, [draft.modalidad])
   const set = (key) => (e) => setDraft((current) => ({ ...current, [key]: e.target.value }))
   const field = 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950'
@@ -18,7 +18,7 @@ export function ReportFilters({ initial = empty, onApply, showSearch = false }) 
       <label className="grid gap-1 text-sm">Modalidad<select className={field} value={draft.modalidad} onChange={set('modalidad')}><option value="">Todas</option>{modalidades.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}</select></label>
       <label className="grid gap-1 text-sm">Gestión<input className={field} type="number" min="1900" max="2200" value={draft.gestion} onChange={set('gestion')} placeholder="2026" /></label>
       <label className="grid gap-1 text-sm">Semestre<select className={field} value={draft.semestre} onChange={set('semestre')}><option value="">Todos</option><option value="1">Primero</option><option value="2">Segundo</option></select></label>
-      <label className="grid gap-1 text-sm">Etapa actual<select className={field} value={draft.etapa_actual} onChange={set('etapa_actual')} disabled={!draft.modalidad || !etapas.some((e) => e.id)}><option value="">Todas</option>{etapas.filter((e) => e.id).map((e) => <option key={e.codigo} value={e.id}>{e.nombre}</option>)}</select>{draft.modalidad && !etapas.some((e) => e.id) && <span className="text-xs text-amber-700">El catálogo actual no expone IDs de etapa.</span>}</label>
+      <label className="grid gap-1 text-sm">Etapa actual<select aria-label="Etapa actual" className={field} value={draft.etapa_actual} onChange={set('etapa_actual')} disabled={!draft.modalidad || loadingStages || etapas.length === 0}><option value="">{loadingStages ? 'Cargando etapas…' : etapas.length === 0 && draft.modalidad ? 'Sin etapas disponibles' : 'Todas'}</option>{etapas.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}</select>{stageError && <span role="alert" className="text-xs text-red-700">{stageError}</span>}{configurationWarning && <span role="status" className="text-xs text-amber-700">{configurationWarning}</span>}</label>
       {showSearch && <label className="grid gap-1 text-sm">Buscar<input className={field} value={draft.buscar} onChange={set('buscar')} placeholder="Nombre o código" /></label>}
     </div>
     {advanced && <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm">Fecha desde<input className={field} type="date" value={draft.fecha_desde} onChange={set('fecha_desde')} /></label><label className="grid gap-1 text-sm">Fecha hasta<input className={field} type="date" value={draft.fecha_hasta} onChange={set('fecha_hasta')} /></label></div>}

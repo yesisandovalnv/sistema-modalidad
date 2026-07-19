@@ -39,6 +39,19 @@ class ModalidadSerializer(serializers.ModelSerializer):
         read_only_fields = ("created_at", "updated_at", "activo")
 
 
+class EtapaCapabilitiesSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True, help_text="ID persistido de EtapaModalidad; null indica inconsistencia de configuración.")
+    codigo = serializers.CharField()
+    nombre = serializers.CharField()
+    orden = serializers.IntegerField()
+    obligatoria = serializers.BooleanField()
+    inicial = serializers.BooleanField()
+    final = serializers.BooleanField()
+    permite_reapertura = serializers.BooleanField(required=False)
+    siguientes_permitidas = serializers.ListField(child=serializers.CharField(), required=False)
+    capacidades_requeridas = serializers.ListField(child=serializers.CharField(), required=False)
+
+
 class ModalidadCapabilitiesSerializer(serializers.Serializer):
     codigo = serializers.CharField()
     nombre = serializers.CharField()
@@ -52,7 +65,7 @@ class ModalidadCapabilitiesSerializer(serializers.Serializer):
     cierre_soportado = serializers.BooleanField()
     tipos_evento = serializers.ListField(child=serializers.CharField())
     tipos_evaluacion = serializers.ListField(child=serializers.CharField())
-    etapas = serializers.ListField(child=serializers.DictField())
+    etapas = EtapaCapabilitiesSerializer(many=True)
     advertencias = serializers.ListField(child=serializers.CharField())
     configuracion_valida = serializers.BooleanField()
 
