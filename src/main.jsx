@@ -3,9 +3,10 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { AuthProvider } from './context/AuthProvider'
+import { NotificationProvider } from './context/NotificationProvider'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <AuthProvider><App /></AuthProvider>
+    <AuthProvider><NotificationProvider><App /></NotificationProvider></AuthProvider>
   </StrictMode>,
 )

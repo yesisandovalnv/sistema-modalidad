@@ -1,10 +1,12 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, FileText, Users, FolderKanban, MonitorPlay, Settings, LogOut, Menu } from 'lucide-react'
+import { LayoutDashboard, FileText, Users, FolderKanban, MonitorPlay, Settings, LogOut, Menu, Bell } from 'lucide-react'
 import { Button } from '../ui/button'
 import { useAuth } from '../../hooks/useAuth'
+import { useNotifications } from '../../hooks/useNotifications'
 
 const links = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: 'puede_ver_dashboard' },
+  { to: '/notificaciones', label: 'Notificaciones', icon: Bell, permission: 'puede_ver_notificaciones' },
   { to: '/postulantes', label: 'Postulantes', icon: Users },
   { to: '/documentos', label: 'Documentos', icon: FileText },
   { to: '/modalidades', label: 'Modalidades', icon: FolderKanban },
@@ -16,6 +18,7 @@ const links = [
 
 export function Sidebar({ open, onToggle }) {
   const { hasPermission } = useAuth()
+  const { unreadCount } = useNotifications()
   return (
     <aside className={`fixed inset-y-0 left-0 z-40 w-72 border-r border-slate-200 bg-white/90 p-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 ${open ? 'translate-x-0' : '-translate-x-full'} transition md:translate-x-0 md:static md:block`}>
       <div className="flex items-center justify-between md:justify-start">
@@ -39,6 +42,7 @@ export function Sidebar({ open, onToggle }) {
           >
             <Icon className="h-4 w-4" />
             {label}
+            {to === '/notificaciones' && unreadCount > 0 && <span role="status" aria-label={`${unreadCount} notificaciones no leídas`} className="ml-auto min-w-8 rounded-full bg-rose-600 px-2 py-0.5 text-center text-xs font-bold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
           </NavLink>
         ))}
       </nav>
