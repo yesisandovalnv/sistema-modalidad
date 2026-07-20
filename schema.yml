@@ -3019,7 +3019,7 @@ paths:
           description: ''
     delete:
       operationId: v1_postulaciones_destroy
-      description: Mantiene el comportamiento estándar de eliminación del modelo.
+      description: ViewSet para administrar las postulaciones y su estado actual.
       parameters:
       - in: path
         name: id
@@ -3646,7 +3646,7 @@ paths:
   /api/v1/postulaciones/historial/:
     get:
       operationId: v1_postulaciones_historial_list
-      description: ViewSet para consultar y gestionar el historial de cambios de estado.
+      description: Historial inmutable, generado exclusivamente por servicios de dominio.
       parameters:
       - name: ordering
         required: false
@@ -3677,36 +3677,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedHistorialEstadoList'
           description: ''
-    post:
-      operationId: v1_postulaciones_historial_create
-      description: ViewSet para consultar y gestionar el historial de cambios de estado.
-      tags:
-      - v1
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HistorialEstado'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/HistorialEstado'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/HistorialEstado'
-        required: true
-      security:
-      - jwtAuth: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HistorialEstado'
-          description: ''
   /api/v1/postulaciones/historial/{id}/:
     get:
       operationId: v1_postulaciones_historial_retrieve
-      description: ViewSet para consultar y gestionar el historial de cambios de estado.
+      description: Historial inmutable, generado exclusivamente por servicios de dominio.
       parameters:
       - in: path
         name: id
@@ -3725,88 +3699,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/HistorialEstado'
           description: ''
-    put:
-      operationId: v1_postulaciones_historial_update
-      description: ViewSet para consultar y gestionar el historial de cambios de estado.
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: Un valor de entero único que identifique este Historial de estado.
-        required: true
-      tags:
-      - v1
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/HistorialEstado'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/HistorialEstado'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/HistorialEstado'
-        required: true
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HistorialEstado'
-          description: ''
-    patch:
-      operationId: v1_postulaciones_historial_partial_update
-      description: ViewSet para consultar y gestionar el historial de cambios de estado.
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: Un valor de entero único que identifique este Historial de estado.
-        required: true
-      tags:
-      - v1
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PatchedHistorialEstado'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/PatchedHistorialEstado'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/PatchedHistorialEstado'
-      security:
-      - jwtAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HistorialEstado'
-          description: ''
-    delete:
-      operationId: v1_postulaciones_historial_destroy
-      description: ViewSet para consultar y gestionar el historial de cambios de estado.
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        description: Un valor de entero único que identifique este Historial de estado.
-        required: true
-      tags:
-      - v1
-      security:
-      - jwtAuth: []
-      responses:
-        '204':
-          description: No response body
   /api/v1/postulaciones/observaciones/:
     get:
       operationId: v1_postulaciones_observaciones_list
@@ -6270,43 +6162,6 @@ components:
         activo:
           type: boolean
           readOnly: true
-    PatchedHistorialEstado:
-      type: object
-      description: Serializer para registrar el historial de cambios de estado de
-        una postulación.
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        postulacion:
-          type: integer
-          title: Postulación
-        estado_anterior:
-          type: integer
-          nullable: true
-        estado_nuevo:
-          type: integer
-        usuario:
-          type: integer
-        fecha_cambio:
-          type: string
-          format: date-time
-          readOnly: true
-          title: Fecha de cambio
-        comentario:
-          type: string
-          nullable: true
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-        activo:
-          type: boolean
-          readOnly: true
     PatchedModalidad:
       type: object
       description: Serializer para exponer y validar las modalidades académicas.
@@ -6454,6 +6309,23 @@ components:
         estado_actual:
           type: integer
           nullable: true
+        estudiante_detalle:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        modalidad_detalle:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        periodo_detalle:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        estado_actual_detalle:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
         fecha_postulacion:
           type: string
           format: date-time
@@ -6623,6 +6495,23 @@ components:
         estado_actual:
           type: integer
           nullable: true
+        estudiante_detalle:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        modalidad_detalle:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        periodo_detalle:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        estado_actual_detalle:
+          type: object
+          additionalProperties: {}
+          nullable: true
+          readOnly: true
         fecha_postulacion:
           type: string
           format: date-time
@@ -6646,11 +6535,15 @@ components:
       - activo
       - codigo
       - created_at
+      - estado_actual_detalle
       - estudiante
+      - estudiante_detalle
       - fecha_postulacion
       - id
       - modalidad
+      - modalidad_detalle
       - periodo
+      - periodo_detalle
       - updated_at
     RechazarDocumento:
       type: object
@@ -7169,17 +7062,41 @@ components:
           type: boolean
         puede_gestionar_cierre:
           type: boolean
+        puede_ver_postulaciones:
+          type: boolean
+        puede_ver_documentos:
+          type: boolean
+        puede_cargar_documentos:
+          type: boolean
+        puede_ver_seguimiento:
+          type: boolean
+        puede_gestionar_seguimiento:
+          type: boolean
+        puede_gestionar_catalogos:
+          type: boolean
+        puede_gestionar_usuarios:
+          type: boolean
+        puede_ver_configuracion:
+          type: boolean
       required:
+      - puede_cargar_documentos
       - puede_exportar_reportes
       - puede_gestionar_asignaciones
+      - puede_gestionar_catalogos
       - puede_gestionar_cierre
       - puede_gestionar_defensas
       - puede_gestionar_documentos
       - puede_gestionar_evaluaciones
       - puede_gestionar_postulaciones
+      - puede_gestionar_seguimiento
+      - puede_gestionar_usuarios
+      - puede_ver_configuracion
       - puede_ver_dashboard
+      - puede_ver_documentos
       - puede_ver_notificaciones
+      - puede_ver_postulaciones
       - puede_ver_reportes
+      - puede_ver_seguimiento
     UserProfile:
       type: object
       description: Serializer para exponer datos básicos del usuario autenticado.

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '../../components/ui/button'
 import { DataState, Field, Modal, PageHeader, Pager, SearchBar } from '../../components/crud/CrudShell'
 import { crudService, endpoints, listAll } from '../../services/crudService'
@@ -186,6 +187,9 @@ export default function PostulantesPage() {
                   </dl>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Link className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800" to={`/postulaciones/${item.id}`}>
+                    Abrir expediente
+                  </Link>
                   <Button variant="secondary" onClick={() => setSelected(item)}>Detalle</Button>
                   {canManage && (
                     <>

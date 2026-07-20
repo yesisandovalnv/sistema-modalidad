@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import { AuthContext } from '../../context/AuthContext'
+import { MemoryRouter } from 'react-router-dom'
 import PostulantesPage from './PostulantesPage'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { crudService, endpoints, listAll } from '../../services/crudService'
@@ -17,10 +18,10 @@ const period = { id: 8, nombre: '2026-II', gestion: 2026, semestre: 'II', activo
 const modality = { id: 3, nombre: 'Proyecto de Grado', activo: true }
 const auth = { hasPermission: (name) => name === 'puede_gestionar_postulaciones' }
 
-function setup({ periods = [period] } = {}) {
-  crudService.list.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+function setup({ periods = [period], rows = [] } = {}) {
+  crudService.list.mockResolvedValue({ count: rows.length, next: null, previous: null, results: rows })
   listAll.mockImplementation((path) => Promise.resolve(path === endpoints.modalidades ? [modality] : path === endpoints.periodos ? periods : [student]))
-  return render(<AuthContext.Provider value={auth}><PostulantesPage /></AuthContext.Provider>)
+  return render(<MemoryRouter><AuthContext.Provider value={auth}><PostulantesPage /></AuthContext.Provider></MemoryRouter>)
 }
 
 describe('Nueva postulación', () => {
@@ -61,7 +62,7 @@ describe('Nueva postulación', () => {
 
   it('oculta el alta sin permiso explícito', async () => {
     crudService.list.mockResolvedValue({ count:0, results:[] })
-    render(<AuthContext.Provider value={{ hasPermission: () => false }}><PostulantesPage /></AuthContext.Provider>)
+    render(<MemoryRouter><AuthContext.Provider value={{ hasPermission: () => false }}><PostulantesPage /></AuthContext.Provider></MemoryRouter>)
     await waitFor(() => expect(crudService.list).toHaveBeenCalled())
     expect(screen.queryByRole('button', { name: /Nueva postulaci/ })).not.toBeInTheDocument()
   })
@@ -82,5 +83,12 @@ describe('Nueva postulación', () => {
 
     expect(await screen.findByText('Ya existe una postulación con este código.')).toBeInTheDocument()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('ofrece acceso al expediente sin retirar las acciones existentes', async () => {
+    setup({ rows: [{ id: 41, codigo: 'POST-041', estudiante: 17, modalidad: 3, periodo: 8 }] })
+    const link = await screen.findByRole('link', { name: 'Abrir expediente' })
+    expect(link).toHaveAttribute('href', '/postulaciones/41')
+    expect(screen.getByRole('button', { name: 'Detalle' })).toBeInTheDocument()
   })
 })

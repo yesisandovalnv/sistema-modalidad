@@ -42,6 +42,10 @@ class EstadoPostulacionSerializer(serializers.ModelSerializer):
 class PostulacionSerializer(serializers.ModelSerializer):
     """Serializer para representar una postulación y su estado actual."""
 
+    estudiante_detalle = serializers.SerializerMethodField()
+    modalidad_detalle = serializers.SerializerMethodField()
+    periodo_detalle = serializers.SerializerMethodField()
+    estado_actual_detalle = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
     activo = serializers.BooleanField(read_only=True)
@@ -57,6 +61,10 @@ class PostulacionSerializer(serializers.ModelSerializer):
             "modalidad",
             "periodo",
             "estado_actual",
+            "estudiante_detalle",
+            "modalidad_detalle",
+            "periodo_detalle",
+            "estado_actual_detalle",
             "fecha_postulacion",
             "observaciones_generales",
             "created_at",
@@ -64,6 +72,38 @@ class PostulacionSerializer(serializers.ModelSerializer):
             "activo",
         )
         read_only_fields = ("id", "fecha_postulacion", "created_at", "updated_at", "activo")
+
+    def get_estudiante_detalle(self, obj: Postulacion) -> dict:
+        return {
+            "id": obj.estudiante_id,
+            "username": obj.estudiante.username,
+            "nombre_completo": obj.estudiante.nombre_completo,
+            "ru": obj.estudiante.ru,
+        }
+
+    def get_modalidad_detalle(self, obj: Postulacion) -> dict:
+        return {
+            "id": obj.modalidad_id,
+            "codigo": obj.modalidad.codigo,
+            "nombre": obj.modalidad.nombre,
+        }
+
+    def get_periodo_detalle(self, obj: Postulacion) -> dict:
+        return {
+            "id": obj.periodo_id,
+            "nombre": obj.periodo.nombre,
+            "gestion": obj.periodo.gestion,
+            "semestre": obj.periodo.semestre,
+        }
+
+    def get_estado_actual_detalle(self, obj: Postulacion) -> dict | None:
+        if not obj.estado_actual_id:
+            return None
+        return {
+            "id": obj.estado_actual_id,
+            "codigo": obj.estado_actual.codigo,
+            "nombre": obj.estado_actual.nombre,
+        }
 
     def validate_codigo(self, value: str) -> str:
         """Valida que el código no esté vacío ni contenga solo espacios."""
