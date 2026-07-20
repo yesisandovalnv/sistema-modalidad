@@ -5,6 +5,7 @@ import { DataState, Field, Modal, PageHeader, Pager, SearchBar } from '../../com
 import { crudService, endpoints, listAll } from '../../services/crudService'
 import { useAuth } from '../../hooks/useAuth'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
+import { postulacionesService } from '../../services/postulacionesService'
 
 const emptyForm = { codigo: '', estudiante: '', modalidad: '', periodo: '', observaciones_generales: '' }
 
@@ -20,6 +21,8 @@ export default function PostulantesPage() {
   const [error, setError] = useState('')
   const [catalogError, setCatalogError] = useState('')
   const [selected, setSelected] = useState(null)
+  const [detail, setDetail] = useState(null)
+  const [detailRevision, setDetailRevision] = useState(0)
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState(null)
   const [fieldErrors, setFieldErrors] = useState({})
@@ -73,6 +76,27 @@ export default function PostulantesPage() {
     return () => controller.abort()
   }, [load, revision])
 
+  const detailId = detail?.id
+  useEffect(() => {
+    if (!detailId) return undefined
+    const controller = new AbortController()
+    setDetail((old) => ({ ...old, data: null, loading: true, error: '' }))
+    postulacionesService.obtenerDetalle(detailId, controller.signal)
+      .then((value) => setDetail((old) => (
+        old?.id === detailId ? { ...old, data: value, loading: false, error: '' } : old
+      )))
+      .catch((requestError) => {
+        if (!requestError.canceled) {
+          setDetail((old) => (
+            old?.id === detailId
+              ? { ...old, data: null, loading: false, error: requestError.message }
+              : old
+          ))
+        }
+      })
+    return () => controller.abort()
+  }, [detailId, detailRevision])
+
   const activePeriods = useMemo(
     () => [...catalogs.periodos].sort(
       (a, b) => (b.gestion || 0) - (a.gestion || 0)
@@ -93,13 +117,9 @@ export default function PostulantesPage() {
     setEditing(Boolean(item))
     setFieldErrors({})
     setStudentQuery('')
-    setForm(item ? {
-      codigo: item.codigo,
-      estudiante: String(item.estudiante),
-      modalidad: String(item.modalidad),
-      periodo: String(item.periodo),
-      observaciones_generales: item.observaciones_generales || '',
-    } : { ...emptyForm })
+    setForm(item
+      ? { codigo: item.codigo, observaciones_generales: item.observaciones_generales || '' }
+      : { ...emptyForm })
   }
 
   const change = (name, value) => {
@@ -110,7 +130,7 @@ export default function PostulantesPage() {
   const save = async (event) => {
     event.preventDefault()
     if (saving) return
-    const required = ['codigo', 'estudiante', 'modalidad', 'periodo']
+    const required = editing ? ['codigo'] : ['codigo', 'estudiante', 'modalidad', 'periodo']
     const localErrors = Object.fromEntries(
       required
         .filter((name) => !String(form[name] || '').trim())
@@ -124,7 +144,10 @@ export default function PostulantesPage() {
     setSaving(true)
     setError('')
     setFieldErrors({})
-    const payload = {
+    const payload = editing ? {
+      codigo: form.codigo,
+      observaciones_generales: form.observaciones_generales,
+    } : {
       ...form,
       estudiante: Number(form.estudiante),
       modalidad: Number(form.modalidad),
@@ -149,6 +172,16 @@ export default function PostulantesPage() {
 
   const studentName = (id) => catalogs.estudiantes.find((item) => item.id === Number(id))
   const periodName = (id) => catalogs.periodos.find((item) => item.id === Number(id))
+  const studentLabel = (item) => item.estudiante_detalle
+    ? formatStudentLabel(item.estudiante_detalle)
+    : studentName(item.estudiante) ? formatStudentLabel(studentName(item.estudiante)) : 'Estudiante registrado'
+  const modalityLabel = (item) => item.modalidad_detalle?.nombre
+    || catalogs.modalidades.find((value) => value.id === item.modalidad)?.nombre
+    || 'Modalidad registrada'
+  const periodLabel = (item) => item.periodo_detalle
+    ? formatPeriodoLabel(item.periodo_detalle)
+    : periodName(item.periodo) ? formatPeriodoLabel(periodName(item.periodo)) : 'Periodo registrado'
+  const stateLabel = (item) => item.estado_actual_detalle?.nombre || 'Sin estado'
 
   return (
     <section className="mx-auto max-w-6xl space-y-5">
@@ -180,17 +213,17 @@ export default function PostulantesPage() {
                 <div>
                   <h2 className="text-lg font-bold">{item.codigo}</h2>
                   <dl className="mt-2 grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
-                    <Info label="Estudiante" value={studentName(item.estudiante) ? formatStudentLabel(studentName(item.estudiante)) : 'Estudiante registrado'} />
-                    <Info label="Modalidad" value={catalogs.modalidades.find((value) => value.id === item.modalidad)?.nombre || 'Modalidad registrada'} />
-                    <Info label="Periodo" value={periodName(item.periodo) ? formatPeriodoLabel(periodName(item.periodo)) : 'Periodo registrado'} />
-                    <Info label="Estado" value={item.estado_actual || 'Sin estado'} />
+                    <Info label="Estudiante" value={studentLabel(item)} />
+                    <Info label="Modalidad" value={modalityLabel(item)} />
+                    <Info label="Periodo" value={periodLabel(item)} />
+                    <Info label="Estado" value={stateLabel(item)} />
                   </dl>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Link className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800" to={`/postulaciones/${item.id}`}>
                     Abrir expediente
                   </Link>
-                  <Button variant="secondary" onClick={() => setSelected(item)}>Detalle</Button>
+                  <Button variant="secondary" onClick={() => setDetail({ id: item.id, codigo: item.codigo, data: null, loading: true, error: '' })}>Detalle</Button>
                   {canManage && (
                     <>
                       <Button onClick={() => open(item)}>Editar</Button>
@@ -203,9 +236,30 @@ export default function PostulantesPage() {
           <Pager data={data} page={page} onPage={setPage} />
         </div>
       </DataState>
-      {selected && !form && (
-        <Modal title={`Postulación ${selected.codigo}`} onClose={() => setSelected(null)}>
-          <p className="mt-4">{selected.observaciones_generales || 'Sin observaciones.'}</p>
+      {detail && (
+        <Modal title={`Postulación ${detail.codigo}`} onClose={() => setDetail(null)}>
+          <DataState
+            loading={detail.loading}
+            error={detail.error}
+            empty={!detail.loading && !detail.error && !detail.data}
+            onRetry={() => setDetailRevision((value) => value + 1)}
+          >
+            {detail.data && (
+              <div className="mt-4 space-y-4">
+                <dl className="grid gap-4 sm:grid-cols-2">
+                  <Info label="Código" value={detail.data.codigo} />
+                  <Info label="Estudiante" value={studentLabel(detail.data)} />
+                  <Info label="Modalidad" value={modalityLabel(detail.data)} />
+                  <Info label="Gestión y semestre" value={periodLabel(detail.data)} />
+                  <Info label="Estado técnico" value={stateLabel(detail.data)} />
+                  <Info label="Observaciones generales" value={detail.data.observaciones_generales || 'Sin observaciones generales.'} />
+                </dl>
+                <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                  Estos son datos técnicos básicos y no sustituyen actos administrativos o institucionales.
+                </p>
+              </div>
+            )}
+          </DataState>
         </Modal>
       )}
       {form && (
@@ -217,7 +271,18 @@ export default function PostulantesPage() {
             <FormField error={fieldErrors.codigo}>
               <Field label="Código" required value={form.codigo} onChange={(event) => change('codigo', event.target.value)} />
             </FormField>
-            <div>
+            {editing ? (
+              <div className="rounded-lg border bg-slate-50 p-4 sm:col-span-2 dark:border-slate-800 dark:bg-slate-950">
+                <p className="text-sm font-semibold">Datos de solo lectura</p>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Info label="Estudiante" value={studentLabel(selected)} />
+                  <Info label="Modalidad" value={modalityLabel(selected)} />
+                  <Info label="Gestión y semestre" value={periodLabel(selected)} />
+                  <Info label="Estado técnico" value={stateLabel(selected)} />
+                </dl>
+                <p className="mt-3 text-xs text-slate-500">Estudiante, modalidad, periodo y estado no se modifican desde esta edición básica.</p>
+              </div>
+            ) : <div>
               <label className="text-sm" htmlFor="student-search">Buscar estudiante</label>
               <input
                 id="student-search"
@@ -243,23 +308,23 @@ export default function PostulantesPage() {
               {!catalogs.estudiantes.length && (
                 <p className="mt-1 text-sm text-slate-500">No se encontraron estudiantes activos.</p>
               )}
-            </div>
-            <Select
+            </div>}
+            {!editing && <Select
               label="Modalidad"
               value={form.modalidad}
               items={catalogs.modalidades}
               format={(item) => item.nombre}
               onChange={(value) => change('modalidad', value)}
               error={fieldErrors.modalidad}
-            />
-            <Select
+            />}
+            {!editing && <Select
               label="Gestión / Semestre"
               value={form.periodo}
               items={activePeriods}
               format={formatPeriodoLabel}
               onChange={(value) => change('periodo', value)}
               error={fieldErrors.periodo}
-            />
+            />}
             <label className="text-sm sm:col-span-2">
               Observaciones
               <textarea
@@ -268,15 +333,18 @@ export default function PostulantesPage() {
                 className="mt-1 w-full rounded-lg border p-3 dark:bg-slate-950"
               />
             </label>
-            {!activePeriods.length && (
+            {!editing && !activePeriods.length && (
               <p role="status" className="text-sm text-amber-700 sm:col-span-2">
                 No existen periodos académicos activos.
               </p>
             )}
             {error && <p role="alert" className="text-red-600 sm:col-span-2">{error}</p>}
-            <Button disabled={saving || !activePeriods.length} className="sm:col-span-2">
+            <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">
+              <Button type="button" variant="outline" disabled={saving} onClick={() => { setSelected(null); setForm(null) }}>Cancelar</Button>
+              <Button disabled={saving || (!editing && !activePeriods.length)}>
               {saving ? 'Guardando…' : 'Guardar'}
-            </Button>
+              </Button>
+            </div>
           </form>
         </Modal>
       )}

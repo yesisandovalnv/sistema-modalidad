@@ -113,9 +113,9 @@ class PostulacionSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs: dict) -> dict:
         """Valida que la postulación cuente con los datos base necesarios."""
-        estudiante = attrs.get("estudiante")
-        modalidad = attrs.get("modalidad")
-        periodo = attrs.get("periodo")
+        estudiante = attrs.get("estudiante", getattr(self.instance, "estudiante", None))
+        modalidad = attrs.get("modalidad", getattr(self.instance, "modalidad", None))
+        periodo = attrs.get("periodo", getattr(self.instance, "periodo", None))
 
         if not estudiante:
             raise serializers.ValidationError({"estudiante": "El estudiante es obligatorio."})

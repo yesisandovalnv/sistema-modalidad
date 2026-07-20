@@ -7,6 +7,24 @@ vi.mock('./api', () => ({ default: { get: vi.fn() } }))
 describe('postulacionesService', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('obtiene el detalle básico con AbortSignal', async () => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: { id: 5, codigo: 'BASIC-005' } })
+    await expect(postulacionesService.obtenerDetalle(5, signal)).resolves.toEqual({
+      id: 5,
+      codigo: 'BASIC-005',
+    })
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/postulaciones/5/', { signal })
+  })
+
+  it.each([
+    [403, 'No tienes autorización para consultar esta postulación.'],
+    [404, 'La postulación solicitada no está disponible.'],
+  ])('normaliza el error %s del detalle', async (status, message) => {
+    apiClient.get.mockRejectedValue({ response: { status } })
+    await expect(postulacionesService.obtenerDetalle(5)).rejects.toEqual({ status, message })
+  })
+
   it('carga detalle y flujo una sola vez con la misma señal', async () => {
     const signal = new AbortController().signal
     apiClient.get

@@ -58,6 +58,11 @@ class PostulacionViewSet(viewsets.ModelViewSet):
     search_fields = ["codigo", "estudiante__username"]
     ordering_fields = ["codigo", "fecha_postulacion", "created_at"]
 
+    def get_permissions(self):
+        if self.action == "destroy":
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
     def get_queryset(self):
         queryset = Postulacion.objects.select_related(
             "estudiante",

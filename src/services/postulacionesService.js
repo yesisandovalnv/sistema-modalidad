@@ -9,6 +9,17 @@ function normalize(error) {
 }
 
 export const postulacionesService = {
+  async obtenerDetalle(id, signal) {
+    try {
+      return (await apiClient.get(`/api/v1/postulaciones/${id}/`, { signal })).data
+    } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') throw { canceled: true }
+      const status = error?.response?.status
+      if (status === 403) throw { status, message: 'No tienes autorización para consultar esta postulación.' }
+      if (status === 404) throw { status, message: 'La postulación solicitada no está disponible.' }
+      throw { status, message: 'No se pudo cargar el detalle. Intenta nuevamente.' }
+    }
+  },
   async obtenerExpediente(id, signal) {
     try {
       const [detalle, flujo] = await Promise.all([
