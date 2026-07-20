@@ -25,7 +25,7 @@ class DefensaMixin:
         self.other=User.objects.create_user(username="otrodef",role=sr)
         self.docs=[User.objects.create_user(username=f"docdef{i}",role=dr) for i in range(5)]
         self.mod=Modalidad.objects.create(codigo="PROYECTO_GRADO",nombre="Proyecto grado defensa")
-        self.period=Periodo.objects.create(nombre="2026-DEF",fecha_inicio="2026-01-01",fecha_fin="2026-12-31")
+        self.period=Periodo.objects.create(nombre="2026-DEF",gestion=2026,semestre="I",fecha_inicio="2026-01-01",fecha_fin="2026-12-31")
         state=EstadoPostulacion.objects.create(codigo="REGDEF",nombre="Registrada defensa")
         self.post=Postulacion.objects.create(codigo="P-DEF",estudiante=self.student,modalidad=self.mod,periodo=self.period,estado_actual=state)
         self.other_post=Postulacion.objects.create(codigo="P-OTRA-DEF",estudiante=self.other,modalidad=self.mod,periodo=self.period,estado_actual=state)

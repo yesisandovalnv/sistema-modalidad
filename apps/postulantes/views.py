@@ -4,14 +4,15 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError as DRFValidationError
+from rest_framework.exceptions import MethodNotAllowed, NotFound, PermissionDenied, ValidationError as DRFValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.academico.models import EtapaModalidad
 from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, HistorialEstado, Observacion, Postulacion
-from apps.postulantes.permissions import IsAssignmentAdminOrRelatedReadOnly, IsWorkflowAdminOrReadOnlyOwner
+from apps.postulantes.permissions import IsAssignmentAdminOrRelatedReadOnly, IsStaffOrReadOnly, IsWorkflowAdminOrReadOnlyOwner
+from core.permissions import is_staff_user
 from apps.postulantes.serializers import (
     AsignacionPostulacionSerializer,
     AsignarActorSerializer,
@@ -38,10 +39,13 @@ class EstadoPostulacionViewSet(viewsets.ModelViewSet):
 
     queryset = EstadoPostulacion.objects.all()
     serializer_class = EstadoPostulacionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["codigo", "nombre"]
     ordering_fields = ["codigo", "nombre", "created_at"]
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail="Los estados técnicos deben desactivarse, no eliminarse.")
 
 
 class PostulacionViewSet(viewsets.ModelViewSet):
@@ -49,7 +53,7 @@ class PostulacionViewSet(viewsets.ModelViewSet):
 
     queryset = Postulacion.objects.all()
     serializer_class = PostulacionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["codigo", "estudiante__username"]
     ordering_fields = ["codigo", "fecha_postulacion", "created_at"]
@@ -66,9 +70,9 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not getattr(user, "is_authenticated", False):
             return queryset.none()
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        if is_staff_user(user):
             return queryset
-        return queryset.filter(estudiante=user)
+        return queryset.filter(Q(estudiante=user) | Q(asignaciones__usuario=user)).distinct()
 
     def _get_postulacion_for_assignment_access(self, pk=None) -> Postulacion:
         queryset = Postulacion.objects.select_related(
@@ -82,7 +86,7 @@ class PostulacionViewSet(viewsets.ModelViewSet):
             raise NotFound("La postulación no existe.")
 
         user = self.request.user
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        if is_staff_user(user):
             return postulacion
         if postulacion.estudiante_id == user.id:
             return postulacion
@@ -172,7 +176,7 @@ class PostulacionViewSet(viewsets.ModelViewSet):
     @extend_schema(request=None, responses={200: FlujoPostulacionSerializer})
     @action(detail=True, methods=["post"], url_path="flujo/inicializar")
     def inicializar_flujo(self, request, pk=None):
-        if not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)):
+        if not is_staff_user(request.user):
             raise PermissionDenied("No tiene permisos para inicializar el flujo.")
 
         postulacion = self.get_object()
@@ -194,7 +198,7 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         url_path=r"etapas/(?P<etapa_id>[^/.]+)/nuevo-intento",
     )
     def nuevo_intento(self, request, pk=None, etapa_id=None):
-        if not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)):
+        if not is_staff_user(request.user):
             raise PermissionDenied("No tiene permisos para crear un nuevo intento.")
 
         postulacion = self.get_object()
@@ -243,7 +247,7 @@ class PostulacionViewSet(viewsets.ModelViewSet):
     @extend_schema(request=AsignarActorSerializer, responses={201: AsignacionPostulacionSerializer})
     @action(detail=True, methods=["post"], url_path="asignaciones/asignar", serializer_class=AsignarActorSerializer)
     def asignar(self, request, pk=None):
-        if not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)):
+        if not is_staff_user(request.user):
             raise PermissionDenied("No tiene permisos para asignar actores.")
 
         postulacion = self.get_object()
@@ -270,15 +274,17 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        """Mantiene el comportamiento estándar de eliminación del modelo."""
-        return super().destroy(request, *args, **kwargs)
+        raise MethodNotAllowed(
+            "DELETE",
+            detail="La postulación no admite eliminación física; use una transición trazable.",
+        )
 
 
-class HistorialEstadoViewSet(viewsets.ModelViewSet):
-    """ViewSet para consultar y gestionar el historial de cambios de estado."""
+class HistorialEstadoViewSet(viewsets.ReadOnlyModelViewSet):
+    """Historial inmutable, generado exclusivamente por servicios de dominio."""
 
     serializer_class = HistorialEstadoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["postulacion__codigo"]
     ordering_fields = ["fecha_cambio", "created_at"]
@@ -295,16 +301,18 @@ class HistorialEstadoViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not getattr(user, "is_authenticated", False):
             return queryset.none()
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        if is_staff_user(user):
             return queryset
-        return queryset.filter(postulacion__estudiante=user)
+        return queryset.filter(
+            Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user)
+        ).distinct()
 
 
 class ObservacionViewSet(viewsets.ModelViewSet):
     """ViewSet para gestionar las observaciones registradas sobre postulaciones."""
 
     serializer_class = ObservacionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["postulacion__codigo", "comentario"]
     ordering_fields = ["fecha_observacion", "created_at"]
@@ -316,9 +324,11 @@ class ObservacionViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not getattr(user, "is_authenticated", False):
             return queryset.none()
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        if is_staff_user(user):
             return queryset
-        return queryset.filter(postulacion__estudiante=user)
+        return queryset.filter(
+            Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user)
+        ).distinct()
 
     def create(self, request, *args, **kwargs):
         """Crea una observación usando la lógica de negocio del servicio."""
@@ -368,9 +378,11 @@ class SeguimientoEtapaViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         if not getattr(user, "is_authenticated", False):
             return queryset.none()
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        if is_staff_user(user):
             return queryset
-        return queryset.filter(postulacion__estudiante=user)
+        return queryset.filter(
+            Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user)
+        ).distinct()
 
     @extend_schema(request=None, responses={200: SeguimientoEtapaSerializer})
     @action(detail=True, methods=["post"], url_path="iniciar")
@@ -444,7 +456,7 @@ class AsignacionPostulacionViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         if not getattr(user, "is_authenticated", False):
             return queryset.none()
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        if is_staff_user(user):
             return queryset
         return queryset.filter(Q(postulacion__estudiante=user) | Q(usuario=user)).distinct()
 

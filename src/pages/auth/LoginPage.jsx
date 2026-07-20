@@ -26,8 +26,17 @@ export default function LoginPage() {
       localStorage.setItem('auth_refresh_token', response.data.refresh)
       window.dispatchEvent(new Event('auth-authenticated'))
       navigate('/dashboard')
-    } catch {
-      setError('Credenciales incorrectas. Verifica tu usuario y contraseña.')
+    } catch (requestError) {
+      if (!requestError.response) {
+        setError('No se pudo conectar con el servidor.')
+      } else if (requestError.response.status === 401) {
+        setError('Usuario o contraseña incorrectos.')
+      } else if (requestError.response.status === 403) {
+        setError('No tienes permiso para acceder.')
+      } else {
+        const detail = requestError.response.data?.detail
+        setError(typeof detail === 'string' ? detail : 'No fue posible iniciar sesión. Intenta nuevamente.')
+      }
     } finally {
       setIsLoading(false)
     }

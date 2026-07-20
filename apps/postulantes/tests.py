@@ -26,9 +26,12 @@ class TestCrearPostulacion(APITestCase):
             apellido_materno="Gómez",
             ci="1234567",
             ru="RU1234567",
+            is_staff=True,
         )
         self.periodo = Periodo.objects.create(
             nombre="2025-I",
+            gestion=2025,
+            semestre="I",
             fecha_inicio="2025-01-01",
             fecha_fin="2025-06-30",
         )
@@ -129,9 +132,12 @@ class TestCambioEstado(APITestCase):
             apellido_materno="Rojas",
             ci="7654321",
             ru="RU7654321",
+            is_staff=True,
         )
         self.periodo = Periodo.objects.create(
             nombre="2025-II",
+            gestion=2025,
+            semestre="II",
             fecha_inicio="2025-07-01",
             fecha_fin="2025-12-31",
         )
@@ -211,9 +217,12 @@ class TestObservaciones(APITestCase):
             apellido_materno="Vega",
             ci="1122334",
             ru="RU1122334",
+            is_staff=True,
         )
         self.periodo = Periodo.objects.create(
             nombre="2026-I",
+            gestion=2026,
+            semestre="I",
             fecha_inicio="2026-01-01",
             fecha_fin="2026-06-30",
         )
@@ -311,9 +320,12 @@ class TestErrores(APITestCase):
             apellido_materno="Ruiz",
             ci="5555555",
             ru="RU5555555",
+            is_staff=True,
         )
         self.periodo = Periodo.objects.create(
             nombre="2026-II",
+            gestion=2026,
+            semestre="II",
             fecha_inicio="2026-07-01",
             fecha_fin="2026-12-31",
         )
@@ -438,6 +450,8 @@ class TestSeguridadPropietario(APITestCase):
         )
         self.periodo = Periodo.objects.create(
             nombre="2027-I",
+            gestion=2027,
+            semestre="I",
             fecha_inicio="2027-01-01",
             fecha_fin="2027-06-30",
         )
@@ -525,7 +539,7 @@ class TestSeguridadPropietario(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_estudiante_ajeno_no_puede_ver_historial_por_id(self) -> None:
         self.authenticate(self.owner)
@@ -545,7 +559,7 @@ class TestSeguridadPropietario(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_admin_puede_ver_todas_las_postulaciones_y_observaciones(self) -> None:
         self.authenticate(self.admin)

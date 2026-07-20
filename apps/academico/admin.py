@@ -7,9 +7,10 @@ from apps.academico.models import EtapaModalidad, Modalidad, ModalidadRequisito,
 class PeriodoAdmin(admin.ModelAdmin):
     """Configuración administrativa del modelo Periodo."""
 
-    list_display = ("nombre", "fecha_inicio", "fecha_fin", "activo")
-    search_fields = ("nombre",)
-    ordering = ("-fecha_inicio",)
+    list_display = ("nombre", "gestion", "semestre", "fecha_inicio", "fecha_fin", "activo")
+    search_fields = ("nombre", "gestion")
+    list_filter = ("gestion", "semestre", "activo")
+    ordering = ("-gestion", "-semestre", "-fecha_inicio")
 
 
 @admin.register(Modalidad)

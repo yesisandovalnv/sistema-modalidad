@@ -22,7 +22,7 @@ class DashboardView(GenericAPIView):
     def get(self,request): return Response(DashboardService.obtener_dashboard(filters(request),request.user))
 
 
-ORDER={"postulante_nombre":"estudiante__apellido_paterno","modalidad":"modalidad__nombre","gestion":"periodo__fecha_inicio","semestre":"periodo__fecha_inicio","etapa_actual":"etapa_actual_codigo","estado_general":"estado_actual__codigo","fecha_creacion":"created_at","fecha_actualizacion":"updated_at"}
+ORDER={"postulante_nombre":"estudiante__apellido_paterno","modalidad":"modalidad__nombre","gestion":"periodo__gestion","semestre":"periodo__semestre","etapa_actual":"etapa_actual_codigo","estado_general":"estado_actual__codigo","fecha_creacion":"created_at","fecha_actualizacion":"updated_at"}
 class PostulacionesReportView(GenericAPIView):
     permission_classes=(CanViewInstitutionalReports,); serializer_class=ReportePostulacionSerializer; pagination_class=StandardResultsSetPagination
     @extend_schema(parameters=[ReportFilterSerializer],responses=ReportePostulacionSerializer(many=True),description="Reporte paginado, sin datos personales sensibles y limitado al alcance del usuario. etapa_actual espera el ID persistido de EtapaModalidad.")

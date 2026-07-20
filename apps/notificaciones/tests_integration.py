@@ -11,7 +11,7 @@ from apps.usuarios.models import CustomUser
 class IntegrationTests(TestCase):
     def setUp(self):
         self.actor=CustomUser.objects.create_user(username="notif-actor",is_staff=True); self.student=CustomUser.objects.create_user(username="notif-student"); self.tutor=CustomUser.objects.create_user(username="notif-tutor")
-        mod=Modalidad.objects.create(codigo="PROYECTO_GRADO",nombre="PG notif"); period=Periodo.objects.create(nombre="N-2026",fecha_inicio="2026-01-01",fecha_fin="2026-12-31"); state=EstadoPostulacion.objects.create(codigo="NREG",nombre="N reg")
+        mod=Modalidad.objects.create(codigo="PROYECTO_GRADO",nombre="PG notif"); period=Periodo.objects.create(nombre="N-2026",gestion=2026,semestre="I",fecha_inicio="2026-01-01",fecha_fin="2026-12-31"); state=EstadoPostulacion.objects.create(codigo="NREG",nombre="N reg")
         self.post=Postulacion.objects.create(codigo="N-P",estudiante=self.student,modalidad=mod,periodo=period,estado_actual=state)
         stage=EtapaModalidad.objects.create(modalidad=mod,codigo="INSCRIPCION",nombre="Inscripción",orden=1,origen_normativo="Norma")
         self.follow=SeguimientoEtapa.objects.create(postulacion=self.post,etapa=stage,estado="EN_PROCESO")

@@ -12,7 +12,7 @@ class ReportBase(TestCase):
     def setUp(self):
         self.admin=CustomUser.objects.create_user(username="rep-admin",is_staff=True); er=Role.objects.create(codigo="ESTUDIANTE",nombre="Estudiante R"); dr=Role.objects.create(codigo="DOCENTE",nombre="Docente R")
         self.student=CustomUser.objects.create_user(username="rep-est",nombres="Ana",apellido_paterno="Pérez",role=er); self.other=CustomUser.objects.create_user(username="rep-other",role=er); self.doc=CustomUser.objects.create_user(username="rep-doc",role=dr)
-        self.mod=Modalidad.objects.create(codigo="PROYECTO_GRADO",nombre="Proyecto R"); self.period=Periodo.objects.create(nombre="2026-II-R",fecha_inicio="2026-07-01",fecha_fin="2026-12-31"); self.reg=EstadoPostulacion.objects.create(codigo="REGISTRADA_R",nombre="Registrada R"); self.con=EstadoPostulacion.objects.create(codigo="CONCLUIDA",nombre="Concluida R")
+        self.mod=Modalidad.objects.create(codigo="PROYECTO_GRADO",nombre="Proyecto R"); self.period=Periodo.objects.create(nombre="2026-II-R",gestion=2026,semestre="II",fecha_inicio="2025-01-01",fecha_fin="2025-12-31"); self.reg=EstadoPostulacion.objects.create(codigo="REGISTRADA_R",nombre="Registrada R"); self.con=EstadoPostulacion.objects.create(codigo="CONCLUIDA",nombre="Concluida R")
         self.p=Postulacion.objects.create(codigo="REP-1",estudiante=self.student,modalidad=self.mod,periodo=self.period,estado_actual=self.reg); self.p2=Postulacion.objects.create(codigo="REP-2",estudiante=self.other,modalidad=self.mod,periodo=self.period,estado_actual=self.con)
         stage=EtapaModalidad.objects.create(modalidad=self.mod,codigo="INSCRIPCION",nombre="Inscripción",orden=1,origen_normativo="Norma"); SeguimientoEtapa.objects.create(postulacion=self.p,etapa=stage,estado="EN_PROCESO")
         AsignacionPostulacion.objects.create(postulacion=self.p,usuario=self.doc,tipo_participacion="TUTOR",designado_por=self.admin)
@@ -22,7 +22,12 @@ class ReportBase(TestCase):
 class DashboardTests(ReportBase):
     def test_resumen_distribuciones(self):
         r=self.client.get("/api/v1/reportes/dashboard/"); self.assertEqual(r.status_code,200); self.assertEqual(r.data["resumen"]["total_postulaciones"],2); self.assertEqual(r.data["resumen"]["concluidas"],1); self.assertEqual(r.data["modalidades"][0]["total"],2)
-    def test_filtros_gestion_semestre(self): self.assertEqual(self.client.get("/api/v1/reportes/dashboard/?gestion=2026&semestre=2").data["resumen"]["total_postulaciones"],2)
+    def test_filtros_gestion_semestre(self): self.assertEqual(self.client.get("/api/v1/reportes/dashboard/?gestion=2026&semestre=II").data["resumen"]["total_postulaciones"],2)
+
+    def test_reportes_no_infieren_clasificacion_desde_fechas(self):
+        row = self.client.get("/api/v1/reportes/postulaciones/").data["results"][0]
+        self.assertEqual((row["gestion"], row["semestre"]), (2026, "II"))
+        self.assertEqual(self.client.get("/api/v1/reportes/dashboard/?gestion=2025&semestre=I").data["resumen"]["total_postulaciones"], 0)
     def test_modalidad_etapa_incoherente_400(self):
         m=Modalidad.objects.create(codigo="TESIS_GRADO",nombre="Tesis R"); e=EtapaModalidad.objects.create(modalidad=m,codigo="X",nombre="X",orden=1,origen_normativo="N")
         self.assertEqual(self.client.get(f"/api/v1/reportes/dashboard/?modalidad={self.mod.pk}&etapa_actual={e.pk}").status_code,400)

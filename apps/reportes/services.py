@@ -1,6 +1,5 @@
 from decimal import Decimal, ROUND_HALF_UP
 from django.db.models import Count,Q,Subquery,OuterRef,Value,IntegerField,CharField,DateTimeField,F,Exists
-from django.db.models.functions import ExtractYear
 from django.utils import timezone
 from apps.postulantes.models import Postulacion,SeguimientoEtapa,EventoDefensa,EvaluacionDefensa,CondicionPostulacion,EntregaFisica,AsignacionPostulacion
 from apps.documentos.models import DocumentoPostulacion
@@ -11,8 +10,8 @@ class ReportFilters:
     @staticmethod
     def apply(qs,f):
         if f.get("modalidad"): qs=qs.filter(modalidad_id=f["modalidad"])
-        if f.get("gestion"): qs=qs.filter(periodo__fecha_inicio__year=f["gestion"])
-        if f.get("semestre"): qs=qs.filter(periodo__fecha_inicio__month__lte=6) if f["semestre"]==1 else qs.filter(periodo__fecha_inicio__month__gte=7)
+        if f.get("gestion"): qs=qs.filter(periodo__gestion=f["gestion"])
+        if f.get("semestre"): qs=qs.filter(periodo__semestre=f["semestre"])
         if f.get("estado_general"): qs=qs.filter(estado_actual_id=f["estado_general"])
         if f.get("tutor"): qs=qs.filter(asignaciones__usuario_id=f["tutor"],asignaciones__tipo_participacion="TUTOR",asignaciones__activo=True)
         if f.get("fecha_desde"): qs=qs.filter(fecha_postulacion__date__gte=f["fecha_desde"])
@@ -50,7 +49,7 @@ class ReportePostulacionesService:
     def row(p):
         pct=Decimal("0.00") if not p.total_etapas else (Decimal(p.etapas_aprobadas)*100/Decimal(p.total_etapas)).quantize(Decimal("0.01"),ROUND_HALF_UP)
         return {"postulacion_id":p.pk,"postulante_id":p.estudiante_id,"postulante_nombre":p.estudiante.nombre_completo or p.estudiante.username,
-          "modalidad":{"codigo":p.modalidad.codigo,"nombre":p.modalidad.nombre},"gestion":p.periodo.fecha_inicio.year,"semestre":1 if p.periodo.fecha_inicio.month<=6 else 2,
+          "modalidad":{"codigo":p.modalidad.codigo,"nombre":p.modalidad.nombre},"gestion":p.periodo.gestion,"semestre":p.periodo.semestre,
           "titulo_trabajo":None,"tutor_activo":p.tutor_nombre,"etapa_actual":p.etapa_actual_codigo,"estado_general":getattr(p.estado_actual,"codigo",None),
           "porcentaje_etapas_aprobadas":pct,"documentos_pendientes":p.documentos_pendientes_count,"proxima_defensa":p.proxima_defensa,
           "revision_final_aprobada":p.revision_final_aprobada,"cierre_documental_aprobado":p.cierre_documental_aprobado,"concluida":getattr(p.estado_actual,"codigo",None)=="CONCLUIDA",
@@ -78,4 +77,4 @@ class DashboardService:
           "defensas":{"programadas":defenses.filter(estado="PROGRAMADA").count(),"en_curso":defenses.filter(estado="EN_CURSO").count(),"finalizadas":defenses.filter(estado="FINALIZADA").count(),"suspendidas":defenses.filter(estado="SUSPENDIDA").count(),"canceladas":defenses.filter(estado="CANCELADA").count(),"proximas":defenses.filter(estado="PROGRAMADA",fecha_programada__gte=now).count(),"por_tipo":list(defenses.values("tipo_evento").annotate(total=Count("pk"))),"evaluaciones_consolidadas":EvaluacionDefensa.objects.filter(evento__postulacion_id__in=ids,tipo_evaluacion="RESULTADO_FINAL").count()},
           "cierre":{"revision_final_aprobada":SeguimientoEtapa.objects.filter(postulacion_id__in=ids,etapa__codigo="REVISION_FINAL_POST_PUBLICA",estado="APROBADA").values("postulacion").distinct().count(),"cierre_documental_aprobado":SeguimientoEtapa.objects.filter(postulacion_id__in=ids,etapa__codigo="CIERRE_DOCUMENTAL",estado="APROBADA").values("postulacion").distinct().count(),"concluidas":concluded,"condiciones_pendientes":CondicionPostulacion.objects.filter(postulacion_id__in=ids).exclude(estado="CUMPLE").count(),"entregas_pendientes":EntregaFisica.objects.filter(postulacion_id__in=ids).exclude(estado="COMPLETA").count()},
           "notificaciones":{"no_leidas":notifications.filter(leida=False).count(),"leidas":notifications.filter(leida=True).count(),"por_nivel":list(notifications.values("nivel").annotate(total=Count("pk"))),"por_tipo":list(notifications.values("tipo").annotate(total=Count("pk")))},
-          "tendencia":list(qs.annotate(gestion=ExtractYear("periodo__fecha_inicio")).values("gestion").annotate(total=Count("pk")).order_by("gestion")),"advertencias":["Cierre no evaluado para modalidades sin policy; solo se agregan evidencias persistidas."]}
+          "tendencia":list(qs.values(gestion=F("periodo__gestion")).annotate(total=Count("pk")).order_by("gestion")),"advertencias":["Cierre no evaluado para modalidades sin policy; solo se agregan evidencias persistidas."]}

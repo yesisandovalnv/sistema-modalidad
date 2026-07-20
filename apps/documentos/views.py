@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, status, viewsets
@@ -21,6 +22,7 @@ from apps.documentos.serializers import (
 )
 from apps.documentos.services import DocumentoService
 from apps.postulantes.models import Postulacion
+from core.permissions import IsStaffOrReadOnly
 
 
 class EstadoDocumentoViewSet(viewsets.ModelViewSet):
@@ -28,10 +30,13 @@ class EstadoDocumentoViewSet(viewsets.ModelViewSet):
 
     queryset = EstadoDocumento.objects.all()
     serializer_class = EstadoDocumentoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["codigo", "nombre"]
     ordering_fields = ["codigo", "nombre", "created_at"]
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail="Los estados técnicos deben desactivarse, no eliminarse.")
 
 
 class TipoDocumentoViewSet(viewsets.ModelViewSet):
@@ -39,7 +44,7 @@ class TipoDocumentoViewSet(viewsets.ModelViewSet):
 
     queryset = TipoDocumento.objects.all()
     serializer_class = TipoDocumentoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["codigo", "nombre"]
     ordering_fields = ["codigo", "nombre", "created_at"]
@@ -76,10 +81,18 @@ class DocumentoPostulacionViewSet(viewsets.ModelViewSet):
             return queryset.none()
         if user.is_authenticated and (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
             return queryset
-        return queryset.filter(postulacion__estudiante=user)
+        return queryset.filter(
+            Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user)
+        ).distinct()
 
     def create(self, request, *args, **kwargs):
         raise MethodNotAllowed("POST", detail="Los documentos deben subirse mediante la acción /subir/." )
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed(request.method, detail="Los documentos se modifican mediante acciones del workflow.")
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail="Los documentos no se eliminan desde la API operativa.")
 
     @extend_schema(
         request=SubirDocumentoSerializer,
@@ -118,12 +131,6 @@ class DocumentoPostulacionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="versiones", serializer_class=VersionDocumentoSerializer)
     def versiones(self, request, pk=None):
         documento = self.get_object()
-        if not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)):
-            if documento.postulacion.estudiante != request.user:
-                from rest_framework.exceptions import PermissionDenied
-
-                raise PermissionDenied("No tiene permiso para ver las versiones de este documento.")
-
         versiones = documento.versiones.order_by("-numero_version").select_related("subido_por")
         serializer = self.get_serializer(versiones, many=True)
         return Response(serializer.data)
@@ -204,7 +211,7 @@ class VersionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para consultar versiones de documento."""
 
     serializer_class = VersionDocumentoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "documento__postulacion__codigo",
@@ -227,14 +234,17 @@ class VersionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             return queryset.none()
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
             return queryset
-        return queryset.filter(documento__postulacion__estudiante=user)
+        return queryset.filter(
+            Q(documento__postulacion__estudiante=user)
+            | Q(documento__postulacion__asignaciones__usuario=user)
+        ).distinct()
 
 
 class ObservacionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para consultar observaciones sobre versiones de documento."""
 
     serializer_class = ObservacionDocumentoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsStaffOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "version_documento__documento__postulacion__codigo",
@@ -257,7 +267,10 @@ class ObservacionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             return queryset.none()
         if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
             return queryset
-        return queryset.filter(version_documento__documento__postulacion__estudiante=user)
+        return queryset.filter(
+            Q(version_documento__documento__postulacion__estudiante=user)
+            | Q(version_documento__documento__postulacion__asignaciones__usuario=user)
+        ).distinct()
 
     @action(detail=True, methods=["post"], url_path="marcar-corregida")
     def marcar_corregida(self, request, pk=None):

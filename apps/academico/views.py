@@ -13,6 +13,7 @@ from apps.academico.serializers import (
     RequisitoSerializer,
 )
 from core.pagination import StandardResultsSetPagination
+from core.permissions import IsStaffOrReadOnly
 
 
 class PeriodoViewSet(viewsets.ModelViewSet):
@@ -20,13 +21,13 @@ class PeriodoViewSet(viewsets.ModelViewSet):
 
     queryset = Periodo.objects.all()
     serializer_class = PeriodoSerializer
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated, IsStaffOrReadOnly)
     pagination_class = StandardResultsSetPagination
     filter_backends = (DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter)
-    filterset_fields = ("activo",)
-    search_fields = ("nombre",)
-    ordering_fields = ("nombre", "fecha_inicio", "fecha_fin", "created_at")
-    ordering = ("-fecha_inicio",)
+    filterset_fields = ("activo", "gestion", "semestre")
+    search_fields = ("nombre", "gestion")
+    ordering_fields = ("nombre", "gestion", "semestre", "fecha_inicio", "fecha_fin", "created_at")
+    ordering = ("-gestion", "-semestre", "-fecha_inicio")
 
 
 class ModalidadViewSet(viewsets.ModelViewSet):
@@ -34,7 +35,7 @@ class ModalidadViewSet(viewsets.ModelViewSet):
 
     queryset = Modalidad.objects.all()
     serializer_class = ModalidadSerializer
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated, IsStaffOrReadOnly)
     pagination_class = StandardResultsSetPagination
     filter_backends = (DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter)
     filterset_fields = ("activo",)
@@ -76,7 +77,7 @@ class RequisitoViewSet(viewsets.ModelViewSet):
 
     queryset = Requisito.objects.all()
     serializer_class = RequisitoSerializer
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated, IsStaffOrReadOnly)
     pagination_class = StandardResultsSetPagination
     filter_backends = (DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter)
     filterset_fields = ("activo", "obligatorio")
@@ -90,7 +91,7 @@ class ModalidadRequisitoViewSet(viewsets.ModelViewSet):
 
     queryset = ModalidadRequisito.objects.all()
     serializer_class = ModalidadRequisitoSerializer
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated, IsStaffOrReadOnly)
     pagination_class = StandardResultsSetPagination
     filter_backends = (DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter)
     filterset_fields = ("activo", "modalidad", "requisito")

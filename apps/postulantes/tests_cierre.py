@@ -16,7 +16,7 @@ class Base:
     def setUp(self):
         super().setUp(); ar=Role.objects.create(codigo="ADMCIE",nombre="Admin cierre"); sr=Role.objects.create(codigo="ESTCIE",nombre="Estudiante cierre"); dr=Role.objects.create(codigo="DOCCIE",nombre="Docente cierre")
         self.admin=User.objects.create_user(username="admincie",role=ar,is_staff=True); self.student=User.objects.create_user(username="estcie",role=sr); self.other=User.objects.create_user(username="othercie",role=sr); self.doc=User.objects.create_user(username="doccie",role=dr)
-        mod=Modalidad.objects.create(codigo="PROYECTO_GRADO",nombre="Proyecto grado cierre"); period=Periodo.objects.create(nombre="2026-CIE",fecha_inicio="2026-01-01",fecha_fin="2026-12-31")
+        mod=Modalidad.objects.create(codigo="PROYECTO_GRADO",nombre="Proyecto grado cierre"); period=Periodo.objects.create(nombre="2026-CIE",gestion=2026,semestre="I",fecha_inicio="2026-01-01",fecha_fin="2026-12-31")
         self.registered=EstadoPostulacion.objects.create(codigo="REGISTRADA",nombre="Registrada cierre"); self.concluded=EstadoPostulacion.objects.create(codigo="CONCLUIDA",nombre="Concluida cierre")
         self.post=Postulacion.objects.create(codigo="POST-CIE",estudiante=self.student,modalidad=mod,periodo=period,estado_actual=self.registered)
         self.other_post=Postulacion.objects.create(codigo="POST-OTRA-CIE",estudiante=self.other,modalidad=mod,periodo=period,estado_actual=self.registered)

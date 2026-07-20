@@ -13,14 +13,13 @@ class PeriodoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Periodo
-        fields = ("id", "nombre", "fecha_inicio", "fecha_fin", "created_at", "updated_at", "activo")
+        fields = ("id", "nombre", "gestion", "semestre", "fecha_inicio", "fecha_fin", "created_at", "updated_at", "activo")
         read_only_fields = ("created_at", "updated_at", "activo")
 
     def validate(self, attrs):
         """Valida que la fecha de fin sea posterior a la fecha de inicio."""
         fecha_inicio = attrs.get("fecha_inicio")
         fecha_fin = attrs.get("fecha_fin")
-
         if fecha_inicio and fecha_fin and fecha_fin <= fecha_inicio:
             raise serializers.ValidationError({"fecha_fin": "La fecha de fin debe ser posterior a la fecha de inicio."})
         return attrs

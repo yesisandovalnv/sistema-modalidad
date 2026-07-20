@@ -1,6 +1,6 @@
-import apiClient from '../api/client'
+import apiClient from './api'
 
-const base = '/v1/notificaciones/'
+const base = '/api/v1/notificaciones/'
 
 function cleanParams(params = {}) {
   return Object.fromEntries(Object.entries(params).filter(([, value]) => value !== '' && value !== null && value !== undefined))

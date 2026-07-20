@@ -409,6 +409,10 @@ paths:
         name: activo
         schema:
           type: boolean
+      - in: query
+        name: gestion
+        schema:
+          type: integer
       - name: ordering
         required: false
         in: query
@@ -433,6 +437,16 @@ paths:
         description: Un término de búsqueda.
         schema:
           type: string
+      - in: query
+        name: semestre
+        schema:
+          type: string
+          enum:
+          - I
+          - II
+        description: |-
+          * `I` - Semestre I
+          * `II` - Semestre II
       tags:
       - v1
       security:
@@ -1011,6 +1025,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AsignacionPostulacion'
+          description: ''
+  /api/v1/auth/estudiantes/:
+    get:
+      operationId: v1_auth_estudiantes_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a devolver por página.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedStudentOptionList'
+          description: ''
+  /api/v1/auth/estudiantes/{id}/:
+    get:
+      operationId: v1_auth_estudiantes_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Usuario.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentOption'
           description: ''
   /api/v1/auth/login/:
     post:
@@ -3949,12 +4023,13 @@ paths:
         name: semestre
         schema:
           enum:
-          - 1
-          - 2
-          type: integer
+          - I
+          - II
+          type: string
+          minLength: 1
         description: |-
-          * `1` - 1
-          * `2` - 2
+          * `I` - I
+          * `II` - II
       - in: query
         name: tutor
         schema:
@@ -4033,12 +4108,13 @@ paths:
         name: semestre
         schema:
           enum:
-          - 1
-          - 2
-          type: integer
+          - I
+          - II
+          type: string
+          minLength: 1
         description: |-
-          * `1` - 1
-          * `2` - 2
+          * `I` - I
+          * `II` - II
       - in: query
         name: tutor
         schema:
@@ -4105,12 +4181,13 @@ paths:
         name: semestre
         schema:
           enum:
-          - 1
-          - 2
-          type: integer
+          - I
+          - II
+          type: string
+          minLength: 1
         description: |-
-          * `1` - 1
-          * `2` - 2
+          * `I` - I
+          * `II` - II
       - in: query
         name: tutor
         schema:
@@ -4241,6 +4318,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SeguimientoEtapa'
+          description: ''
+  /api/v1/usuarios/estudiantes/:
+    get:
+      operationId: v1_usuarios_estudiantes_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qué campo usar para ordenar los resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Un número de página dentro del conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a devolver por página.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Un término de búsqueda.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedStudentOptionList'
+          description: ''
+  /api/v1/usuarios/estudiantes/{id}/:
+    get:
+      operationId: v1_usuarios_estudiantes_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Usuario.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentOption'
           description: ''
 components:
   schemas:
@@ -5908,6 +6045,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SeguimientoEtapa'
+    PaginatedStudentOptionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentOption'
     PaginatedTipoDocumentoList:
       type: object
       required:
@@ -6247,6 +6407,13 @@ components:
         nombre:
           type: string
           maxLength: 50
+        gestion:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Gestión
+        semestre:
+          $ref: '#/components/schemas/PeriodoSemestreEnum'
         fecha_inicio:
           type: string
           format: date
@@ -6391,6 +6558,13 @@ components:
         nombre:
           type: string
           maxLength: 50
+        gestion:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Gestión
+        semestre:
+          $ref: '#/components/schemas/PeriodoSemestreEnum'
         fecha_inicio:
           type: string
           format: date
@@ -6415,9 +6589,19 @@ components:
       - created_at
       - fecha_fin
       - fecha_inicio
+      - gestion
       - id
       - nombre
+      - semestre
       - updated_at
+    PeriodoSemestreEnum:
+      enum:
+      - I
+      - II
+      type: string
+      description: |-
+        * `I` - Semestre I
+        * `II` - Semestre II
     Postulacion:
       type: object
       description: Serializer para representar una postulación y su estado actual.
@@ -6517,7 +6701,7 @@ components:
         gestion:
           type: integer
         semestre:
-          type: integer
+          $ref: '#/components/schemas/ReportePostulacionSemestreEnum'
         titulo_trabajo:
           type: string
           nullable: true
@@ -6571,6 +6755,14 @@ components:
       - semestre
       - titulo_trabajo
       - tutor_activo
+    ReportePostulacionSemestreEnum:
+      enum:
+      - I
+      - II
+      type: string
+      description: |-
+        * `I` - I
+        * `II` - II
     Requisito:
       type: object
       description: Serializer para exponer y validar el catálogo de requisitos.
@@ -6794,6 +6986,35 @@ components:
         * `APROBADA` - Aprobada
         * `RECHAZADA` - Rechazada
         * `OMITIDA` - Omitida
+    StudentOption:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          readOnly: true
+        ru:
+          type: string
+          readOnly: true
+          nullable: true
+          title: R.U.
+        ci:
+          type: string
+          readOnly: true
+          nullable: true
+          title: Cédula de identidad
+        nombre_completo:
+          type: string
+          description: Retorna el nombre completo del usuario en formato legible.
+          readOnly: true
+      required:
+      - ci
+      - codigo
+      - id
+      - nombre_completo
+      - ru
     SubirDocumento:
       type: object
       description: Serializador para la solicitud de subida de un documento.

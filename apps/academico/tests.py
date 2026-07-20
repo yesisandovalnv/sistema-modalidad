@@ -1,5 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.test import SimpleTestCase, TestCase
+from rest_framework.test import APITestCase
+from apps.usuarios.models import CustomUser
 
 from apps.academico.models import EtapaModalidad, Modalidad, ModalidadRequisito, Periodo, Requisito
 
@@ -8,7 +10,7 @@ class PeriodoModelTest(TestCase):
     """Pruebas básicas para validar la creación y reglas del modelo Periodo."""
 
     def test_periodo_can_be_instantiated_with_valid_dates(self):
-        periodo = Periodo(nombre="2025-I", fecha_inicio="2025-01-01", fecha_fin="2025-06-30")
+        periodo = Periodo(nombre="2025-I", gestion=2025, semestre="I", fecha_inicio="2025-01-01", fecha_fin="2025-06-30")
 
         self.assertEqual(periodo.nombre, "2025-I")
         self.assertEqual(periodo.fecha_inicio, "2025-01-01")
@@ -16,10 +18,27 @@ class PeriodoModelTest(TestCase):
         self.assertTrue(periodo.activo)
 
     def test_periodo_rejects_invalid_date_range(self):
-        periodo = Periodo(nombre="2025-II", fecha_inicio="2025-06-30", fecha_fin="2025-06-01")
+        periodo = Periodo(nombre="2025-II", gestion=2025, semestre="II", fecha_inicio="2025-06-30", fecha_fin="2025-06-01")
 
         with self.assertRaises(ValidationError):
             periodo.full_clean()
+
+
+class PeriodoApiTest(APITestCase):
+    def setUp(self):
+        self.client.force_authenticate(CustomUser.objects.create_user(username="period-admin", is_staff=True))
+
+    def test_periodo_exposes_gestion_semestre_and_filters_active(self):
+        Periodo.objects.create(nombre="2026-II", gestion=2026, semestre="II", fecha_inicio="2026-07-01", fecha_fin="2026-12-31")
+        response = self.client.get("/api/v1/academico/periodos/?activo=true")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["results"][0]["gestion"], 2026)
+        self.assertEqual(response.data["results"][0]["semestre"], "II")
+
+    def test_api_requires_gestion_and_semestre_for_new_period(self):
+        response = self.client.post("/api/v1/academico/periodos/", {"nombre":"2027-I", "fecha_inicio":"2027-01-01", "fecha_fin":"2027-06-30"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("gestion", response.data)
 
 
 class ModalidadModelTest(SimpleTestCase):

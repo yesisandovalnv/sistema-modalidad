@@ -13,9 +13,9 @@ router = DefaultRouter()
 """Router principal del módulo de postulaciones."""
 
 router.register(r"observaciones", ObservacionViewSet, basename="observaciones")
-router.register(r"", PostulacionViewSet, basename="postulaciones")
 router.register(r"estados", EstadoPostulacionViewSet, basename="estados")
 router.register(r"historial", HistorialEstadoViewSet, basename="historial")
+router.register(r"", PostulacionViewSet, basename="postulaciones")
 
 urlpatterns = [
     path("", include(router.urls)),

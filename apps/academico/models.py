@@ -6,6 +6,10 @@ from core.models import BaseModel
 
 
 class Periodo(BaseModel):
+    class Semestre(models.TextChoices):
+        PRIMERO = "I", "Semestre I"
+        SEGUNDO = "II", "Semestre II"
+
     """Período académico con rango de fechas y estado activo."""
 
     nombre = models.CharField(
@@ -19,6 +23,14 @@ class Periodo(BaseModel):
     fecha_fin = models.DateField(
         verbose_name="Fecha de fin",
     )
+    gestion = models.PositiveSmallIntegerField(
+        verbose_name="Gestión",
+    )
+    semestre = models.CharField(
+        max_length=2,
+        choices=Semestre.choices,
+        verbose_name="Semestre",
+    )
 
     objects = ActiveManager()
     all_objects = models.Manager()
@@ -28,8 +40,14 @@ class Periodo(BaseModel):
 
         verbose_name = "Período"
         verbose_name_plural = "Períodos"
-        ordering = ["-fecha_inicio"]
+        ordering = ["-gestion", "-semestre"]
         app_label = "academico"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["gestion", "semestre"],
+                name="unique_periodo_gestion_semestre",
+            )
+        ]
 
     def clean(self) -> None:
         """Valida que la fecha de fin sea mayor que la fecha de inicio."""

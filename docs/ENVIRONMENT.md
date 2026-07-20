@@ -12,6 +12,6 @@ Parta de `.env.example`; `.env` nunca debe versionarse.
 | `CSRF_TRUSTED_ORIGINS` | Orígenes HTTPS confiables |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL |
 | `REPORT_EXPORT_MAX_ROWS` | Límite de exportación CSV |
-| `VITE_API_BASE_URL` | URL pública terminada en `/api` |
+| `VITE_API_BASE_URL` | Origen público del backend, sin `/api` y sin barra final |
 
 Producción rechaza el arranque sin `SECRET_KEY` y `ALLOWED_HOSTS`. No use comodines. `USE_TZ=True` y la zona configurada es `America/Lima`; el navegador presenta fechas en su zona local.

@@ -141,6 +141,8 @@ class TestDocumentoPostulacion(TestCase):
         )
         self.periodo = Periodo.objects.create(
             nombre="2026-1",
+            gestion=2026,
+            semestre="I",
             fecha_inicio="2026-01-01",
             fecha_fin="2026-06-30",
         )
@@ -223,6 +225,8 @@ class TestVersionDocumento(TestCase):
         )
         self.periodo = Periodo.objects.create(
             nombre="2026-2",
+            gestion=2026,
+            semestre="II",
             fecha_inicio="2026-07-01",
             fecha_fin="2026-12-31",
         )
@@ -327,6 +331,8 @@ class TestObservacionDocumento(TestCase):
         )
         self.periodo = Periodo.objects.create(
             nombre="2026-3",
+            gestion=2026,
+            semestre="II",
             fecha_inicio="2026-09-01",
             fecha_fin="2026-12-31",
         )

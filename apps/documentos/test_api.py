@@ -60,6 +60,8 @@ class DocumentoAPITestCase(APITestCase):
 
         self.periodo = Periodo.objects.create(
             nombre="2026-1",
+            gestion=2026,
+            semestre="I",
             fecha_inicio="2026-01-01",
             fecha_fin="2026-06-30",
         )

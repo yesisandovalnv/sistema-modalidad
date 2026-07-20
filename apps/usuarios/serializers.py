@@ -22,6 +22,14 @@ class UserPermissionsSerializer(serializers.Serializer):
     puede_gestionar_defensas = serializers.BooleanField()
     puede_gestionar_evaluaciones = serializers.BooleanField()
     puede_gestionar_cierre = serializers.BooleanField()
+    puede_ver_postulaciones = serializers.BooleanField()
+    puede_ver_documentos = serializers.BooleanField()
+    puede_cargar_documentos = serializers.BooleanField()
+    puede_ver_seguimiento = serializers.BooleanField()
+    puede_gestionar_seguimiento = serializers.BooleanField()
+    puede_gestionar_catalogos = serializers.BooleanField()
+    puede_gestionar_usuarios = serializers.BooleanField()
+    puede_ver_configuracion = serializers.BooleanField()
 
 
 class LogoutSerializer(serializers.Serializer):
@@ -81,3 +89,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "correo_personal",
             "correo_institucional",
         )
+
+
+class StudentOptionSerializer(serializers.ModelSerializer):
+    nombre_completo = serializers.ReadOnlyField()
+    codigo = serializers.SerializerMethodField()
+
+    def get_codigo(self, obj) -> str:
+        return obj.ru or obj.ci or obj.username
+
+    class Meta:
+        model = CustomUser
+        fields = ("id", "codigo", "ru", "ci", "nombre_completo")
+        read_only_fields = fields

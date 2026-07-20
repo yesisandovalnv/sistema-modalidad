@@ -24,15 +24,29 @@ class UserCapabilitiesService:
         "puede_gestionar_defensas",
         "puede_gestionar_evaluaciones",
         "puede_gestionar_cierre",
+        "puede_ver_postulaciones",
+        "puede_ver_documentos",
+        "puede_cargar_documentos",
+        "puede_ver_seguimiento",
+        "puede_gestionar_seguimiento",
+        "puede_gestionar_catalogos",
+        "puede_gestionar_usuarios",
+        "puede_ver_configuracion",
     )
 
     @classmethod
     def resolve(cls, user):
         code = (getattr(getattr(user, "role", None), "codigo", "") or "").strip().upper()
-        is_admin = bool(user.is_staff or user.is_superuser or code in cls.ADMIN_CODES)
+        is_admin = bool(user.is_staff or user.is_superuser)
         is_student = code in cls.STUDENT_CODES
         values = {name: False for name in cls.NAMES}
         values["puede_ver_notificaciones"] = True
+        values.update(
+            puede_ver_postulaciones=True,
+            puede_ver_documentos=True,
+            puede_cargar_documentos=is_student,
+            puede_ver_seguimiento=True,
+        )
         if is_admin:
             values = {name: True for name in cls.NAMES}
             values["puede_exportar_reportes"] = bool(user.is_staff or user.is_superuser)
@@ -41,9 +55,6 @@ class UserCapabilitiesService:
             values.update(
                 puede_ver_dashboard=True,
                 puede_ver_reportes=True,
-                puede_gestionar_postulaciones=True,
-                puede_gestionar_documentos=True,
-                puede_gestionar_asignaciones=True,
                 puede_gestionar_defensas=True,
                 puede_gestionar_evaluaciones=True,
             )

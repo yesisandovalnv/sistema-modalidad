@@ -4,7 +4,7 @@
 
 Backend: Python 3.12, `pip install -r requirements.txt`, `python manage.py migrate && python manage.py collectstatic --noinput`, y un servidor WSGI como Gunicorn. Configure PostgreSQL y todas las variables de `ENVIRONMENT.md`. El healthcheck es `/api/health/`. El repositorio actual no incluye Gunicorn ni un manifiesto Render; deben configurarse antes de promover la RC.
 
-Frontend: Node 20, `npm ci && npm run build`, directorio publicado `dist`, `VITE_API_BASE_URL=https://<backend>/api` y rewrite SPA de `/*` a `/index.html`.
+Frontend: Node 20, `npm ci && npm run build`, directorio publicado `dist`, `VITE_API_BASE_URL=https://<backend>` y rewrite SPA de `/*` a `/index.html`.
 
 Docker Compose incluido está orientado a desarrollo: monta el repositorio, usa `runserver` y Vite dev server. No debe tratarse como imagen productiva sin servidor WSGI, servidor estático y almacenamiento persistente de media.
 

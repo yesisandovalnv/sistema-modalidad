@@ -1,13 +1,17 @@
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework import filters, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.utils import extend_schema
 
-from apps.usuarios.serializers import LoginSerializer, LogoutSerializer, UserProfileSerializer
+from apps.usuarios.serializers import LoginSerializer, LogoutSerializer, StudentOptionSerializer, UserProfileSerializer
+from apps.usuarios.models import CustomUser
+from apps.usuarios.services import UserCapabilitiesService
+from core.pagination import StandardResultsSetPagination
 from core.permissions import IsActiveUser
 
 
@@ -74,3 +78,28 @@ class MeView(APIView):
         """Devuelve los datos básicos del usuario autenticado."""
         serializer = UserProfileSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class CanManageApplications(BasePermission):
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and UserCapabilitiesService.resolve(request.user)["puede_gestionar_postulaciones"]
+        )
+
+
+class StudentOptionViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = StudentOptionSerializer
+    permission_classes = (IsAuthenticated, IsActiveUser, CanManageApplications)
+    pagination_class = StandardResultsSetPagination
+    filter_backends = (filters.SearchFilter, filters.OrderingFilter)
+    search_fields = ("ru", "ci", "username", "nombres", "apellido_paterno", "apellido_materno")
+    ordering_fields = ("ru", "ci", "apellido_paterno", "apellido_materno", "nombres")
+    ordering = ("apellido_paterno", "apellido_materno", "nombres")
+
+    def get_queryset(self):
+        return CustomUser.objects.filter(
+            is_active=True,
+            role__codigo__in=UserCapabilitiesService.STUDENT_CODES,
+        ).select_related("role")

@@ -94,6 +94,8 @@ class AssignmentBaseMixin:
         )
         self.periodo = Periodo.objects.create(
             nombre="2026-III",
+            gestion=2026,
+            semestre="II",
             fecha_inicio="2026-07-01",
             fecha_fin="2026-12-31",
         )

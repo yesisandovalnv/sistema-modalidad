@@ -7,13 +7,13 @@ import { useNotifications } from '../../hooks/useNotifications'
 const links = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: 'puede_ver_dashboard' },
   { to: '/notificaciones', label: 'Notificaciones', icon: Bell, permission: 'puede_ver_notificaciones' },
-  { to: '/postulantes', label: 'Postulantes', icon: Users },
-  { to: '/documentos', label: 'Documentos', icon: FileText },
-  { to: '/modalidades', label: 'Modalidades', icon: FolderKanban },
-  { to: '/seguimiento', label: 'Seguimiento', icon: MonitorPlay },
-  { to: '/usuarios', label: 'Usuarios', icon: Users },
+  { to: '/postulantes', label: 'Postulantes', icon: Users, permission: 'puede_ver_postulaciones' },
+  { to: '/documentos', label: 'Documentos', icon: FileText, permission: 'puede_ver_documentos' },
+  { to: '/modalidades', label: 'Modalidades', icon: FolderKanban, permission: 'puede_gestionar_catalogos' },
+  { to: '/seguimiento', label: 'Seguimiento', icon: MonitorPlay, permission: 'puede_ver_seguimiento' },
+  { to: '/usuarios', label: 'Usuarios', icon: Users, permission: 'puede_gestionar_usuarios' },
   { to: '/reportes/postulaciones', label: 'Reportes', icon: FileText, permission: 'puede_ver_reportes' },
-  { to: '/configuracion', label: 'Configuración', icon: Settings },
+  { to: '/configuracion', label: 'Configuración', icon: Settings, permission: 'puede_ver_configuracion' },
 ]
 
 export function Sidebar({ open, onToggle }) {
@@ -24,7 +24,7 @@ export function Sidebar({ open, onToggle }) {
       <div className="flex items-center justify-between md:justify-start">
         <div>
           <p className="text-sm font-semibold text-slate-500">Sistema de modalidad</p>
-          <h2 className="text-lg font-semibold">Panel Administrativo</h2>
+          <h2 className="text-lg font-semibold">Gestión académica</h2>
         </div>
         <Button variant="ghost" className="md:hidden" onClick={onToggle}>
           <Menu className="h-5 w-5" />
@@ -46,11 +46,6 @@ export function Sidebar({ open, onToggle }) {
           </NavLink>
         ))}
       </nav>
-
-      <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
-        <p className="text-sm font-semibold">Preparado para JWT</p>
-        <p className="mt-1 text-sm text-slate-500">La autenticación se conectará con Django REST Framework en el siguiente paso.</p>
-      </div>
 
       <Button variant="secondary" className="mt-8 w-full justify-start gap-2" onClick={logout}>
         <LogOut className="h-4 w-4" />
