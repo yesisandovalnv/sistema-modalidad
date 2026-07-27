@@ -1,6 +1,23 @@
+from django.db.models import Q
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 from core.permissions import is_staff_user
+
+
+def postulaciones_in_scope(queryset, user):
+    """Aplica el alcance tecnico vigente del expediente a un queryset."""
+    if is_staff_user(user):
+        return queryset
+    return queryset.filter(Q(estudiante=user) | Q(asignaciones__usuario=user)).distinct()
+
+
+def get_postulacion_in_scope(queryset, user, pk):
+    """Obtiene una postulacion visible sin revelar objetos fuera del alcance."""
+    postulacion = postulaciones_in_scope(queryset, user).filter(pk=pk).first()
+    if not postulacion:
+        raise NotFound("La postulacion no existe.")
+    return postulacion
 
 
 class IsStaffOrReadOnly(BasePermission):

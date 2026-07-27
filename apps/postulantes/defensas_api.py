@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from apps.postulantes.defensas import EventoDefensaService, EvaluacionDefensaService
 from apps.postulantes.models import AsignacionPostulacion, EventoDefensa, ParticipanteEvento, EvaluacionDefensa, SeguimientoEtapa
 from apps.postulantes.models import Postulacion
+from apps.postulantes.permissions import get_postulacion_in_scope
 
 
 class ParticipanteEventoSerializer(serializers.ModelSerializer):
@@ -118,12 +119,13 @@ class PostulacionEventosView(APIView):
 class ResultadoFinalView(APIView):
     permission_classes=[IsAuthenticated]
     serializer_class=ResultadoFinalSerializer
-    def get(self,request,pk):
-        post=Postulacion.objects.filter(pk=pk).first()
-        if not post or not (request.user.is_staff or request.user.is_superuser or post.estudiante_id==request.user.id): raise PermissionDenied("No tiene acceso.")
-        try: data=EvaluacionDefensaService.calcular_resultado_final(post,request.user)
+    def _resultado(self,request,pk,auditar):
+        post=get_postulacion_in_scope(Postulacion.objects.all(),request.user,pk)
+        try: data=EvaluacionDefensaService.calcular_resultado_final(post,request.user,auditar=auditar)
         except DjangoValidationError as e: raise ValidationError(e.messages) from e
         return Response(data)
+    def get(self,request,pk):
+        return self._resultado(request,pk,auditar=False)
     def post(self,request,pk):
         if not (request.user.is_staff or request.user.is_superuser): raise PermissionDenied("Se requiere permiso administrativo.")
-        return self.get(request,pk)
+        return self._resultado(request,pk,auditar=True)

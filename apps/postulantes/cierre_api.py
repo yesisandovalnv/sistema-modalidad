@@ -1,12 +1,13 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
-from rest_framework.exceptions import NotFound,PermissionDenied,ValidationError
+from rest_framework.exceptions import PermissionDenied,ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.postulantes.cierre import CierrePostulacionService
 from apps.postulantes.models import Postulacion
+from apps.postulantes.permissions import get_postulacion_in_scope
 
 class CierreEstadoSerializer(serializers.Serializer):
     postulacion_id=serializers.IntegerField(); modalidad=serializers.CharField(); estado_general=serializers.CharField(allow_null=True); etapa_actual=serializers.CharField(allow_null=True)
@@ -20,11 +21,8 @@ class MotivoSerializer(serializers.Serializer): motivo=serializers.CharField(all
 
 class CierreAccessMixin:
     def _post(self,request,pk):
-        qs=Postulacion.objects.select_related("modalidad","estado_actual").filter(pk=pk); u=request.user
-        if not (u.is_staff or u.is_superuser): qs=qs.filter(estudiante=u) | qs.filter(asignaciones__usuario=u,asignaciones__activo=True)
-        obj=qs.distinct().first()
-        if not obj: raise NotFound("Postulación no accesible.")
-        return obj
+        qs=Postulacion.objects.select_related("modalidad","estado_actual")
+        return get_postulacion_in_scope(qs,request.user,pk)
     def _admin(self,request):
         if not (request.user.is_staff or request.user.is_superuser): raise PermissionDenied("Se requiere permiso administrativo.")
     def _call(self,fn,*args):

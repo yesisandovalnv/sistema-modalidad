@@ -32,4 +32,8 @@ Autoridad administrativa: `is_staff` o `is_superuser`. El código o nombre del r
 | seguimiento | Staff: todo; estudiante: propio; docente: asignado | No CRUD | No CRUD | No CRUD | iniciar/observar/aprobar/rechazar/omitir: Staff | Lectura por alcance; transiciones con permiso explícito. |
 | asignaciones | Staff: todas; estudiante/asignado: relacionadas | No CRUD | No CRUD | No CRUD | finalizar/reemplazar y transiciones: Staff | Acciones operativas reservadas y lectura relacionada. |
 
+### Alcance técnico del expediente
+
+Los endpoints de consulta de detalle, flujo, resultado final y cierre comparten el mismo alcance por objeto: Staff o superusuario puede consultar cualquier postulación; el estudiante consulta la propia; y un actor conserva acceso a la postulación que le fue asignada tanto mientras la asignación está activa como cuando queda histórica. Un usuario autenticado no relacionado recibe `404` y un usuario anónimo recibe `401`. Esta es una política técnica vigente del sistema para mantener un expediente coherente; no constituye una regla institucional permanente y deberá revisarse si aparece una disposición explícita sobre la revocación del acceso histórico.
+
 El frontend consume capacidades devueltas por `/api/v1/auth/me/`: ver postulaciones, ver documentos, cargar documentos, ver/gestionar seguimiento, gestionar catálogos, usuarios y configuración. Las rutas y el menú usan esas capacidades; los errores 403 muestran un mensaje uniforme.

@@ -11,7 +11,9 @@ from rest_framework.response import Response
 from apps.academico.models import EtapaModalidad
 from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, HistorialEstado, Observacion, Postulacion
-from apps.postulantes.permissions import IsAssignmentAdminOrRelatedReadOnly, IsStaffOrReadOnly, IsWorkflowAdminOrReadOnlyOwner
+from apps.postulantes.permissions import (IsAssignmentAdminOrRelatedReadOnly,
+    IsStaffOrReadOnly, IsWorkflowAdminOrReadOnlyOwner,
+    postulaciones_in_scope)
 from core.permissions import is_staff_user
 from apps.postulantes.serializers import (
     AsignacionPostulacionSerializer,
@@ -75,9 +77,7 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not getattr(user, "is_authenticated", False):
             return queryset.none()
-        if is_staff_user(user):
-            return queryset
-        return queryset.filter(Q(estudiante=user) | Q(asignaciones__usuario=user)).distinct()
+        return postulaciones_in_scope(queryset, user)
 
     def _get_postulacion_for_assignment_access(self, pk=None) -> Postulacion:
         queryset = Postulacion.objects.select_related(

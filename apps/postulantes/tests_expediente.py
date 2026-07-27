@@ -1,25 +1,32 @@
+from decimal import Decimal
+
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.postulantes.models import (
     AsignacionPostulacion,
     EstadoPostulacion,
+    EvaluacionDefensa,
+    EventoDefensa,
     Postulacion,
     SeguimientoEtapa,
 )
-from apps.usuarios.models import CustomUser
+from apps.usuarios.models import AuditLog, CustomUser
 
 
 class ExpedienteAccessContractTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.staff = CustomUser.objects.create_user("exp-staff", is_staff=True)
+        cls.superuser = CustomUser.objects.create_superuser("exp-superuser")
         cls.owner = CustomUser.objects.create_user(
             "exp-owner", nombres="Ana", apellido_paterno="Pérez", ru="RU-100"
         )
         cls.other = CustomUser.objects.create_user("exp-other")
         cls.assigned = CustomUser.objects.create_user("exp-assigned")
+        cls.historical = CustomUser.objects.create_user("exp-historical")
         cls.unassigned = CustomUser.objects.create_user("exp-unassigned")
         cls.modalidad = Modalidad.objects.create(
             codigo="PROYECTO_GRADO", nombre="Proyecto de Grado"
@@ -62,6 +69,13 @@ class ExpedienteAccessContractTests(TestCase):
             orden=2,
             origen_normativo="Contrato funcional, etapa de perfil",
         )
+        cls.defensa_publica = EtapaModalidad.objects.create(
+            modalidad=cls.modalidad,
+            codigo="DEFENSA_PUBLICA",
+            nombre="Defensa publica",
+            orden=3,
+            origen_normativo="Contrato funcional, defensa publica",
+        )
         SeguimientoEtapa.objects.create(
             postulacion=cls.postulacion,
             etapa=cls.inscripcion,
@@ -72,11 +86,44 @@ class ExpedienteAccessContractTests(TestCase):
             etapa=cls.perfil,
             estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
         )
+        seguimiento_publico = SeguimientoEtapa.objects.create(
+            postulacion=cls.postulacion,
+            etapa=cls.defensa_publica,
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA,
+        )
         AsignacionPostulacion.objects.create(
             postulacion=cls.postulacion,
             usuario=cls.assigned,
             tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TUTOR,
             designado_por=cls.staff,
+        )
+        asignacion_historica = AsignacionPostulacion.objects.create(
+            postulacion=cls.postulacion,
+            usuario=cls.historical,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
+            designado_por=cls.staff,
+        )
+        asignacion_historica.activo = False
+        asignacion_historica.save(update_fields=["activo"])
+        evento = EventoDefensa.objects.create(
+            postulacion=cls.postulacion,
+            seguimiento_etapa=seguimiento_publico,
+            tipo_evento=EventoDefensa.Tipo.DEFENSA_PUBLICA,
+            estado=EventoDefensa.Estado.FINALIZADA,
+            fecha_programada=timezone.now(),
+            lugar="Sala",
+            programado_por=cls.staff,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=evento,
+            tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,
+            modalidad_registro=EvaluacionDefensa.ModalidadRegistro.CONSENSO,
+            resultado_cualitativo=EvaluacionDefensa.Resultado.APROBADO,
+            nota_numerica=Decimal("80.00"),
+            ponderacion=Decimal("70.00"),
+            aporte_ponderado=Decimal("56.00"),
+            es_resultado_final_evento=True,
+            registrado_por=cls.staff,
         )
 
     def client_for(self, user=None):
@@ -89,6 +136,11 @@ class ExpedienteAccessContractTests(TestCase):
         postulacion = postulacion or self.postulacion
         base = f"/api/v1/postulaciones/{postulacion.pk}/"
         return base, f"{base}flujo/"
+
+    def expediente_urls(self, pk=None):
+        pk = pk or self.postulacion.pk
+        base = f"/api/v1/postulaciones/{pk}/"
+        return (base, f"{base}flujo/", f"{base}resultado-final/", f"{base}cierre/")
 
     def assert_access(self, user, expected):
         detail, flow = self.urls()
@@ -128,5 +180,57 @@ class ExpedienteAccessContractTests(TestCase):
         data = self.client_for(self.assigned).get(flow).data
         self.assertEqual(data["modalidad"]["codigo"], "PROYECTO_GRADO")
         self.assertEqual(data["etapa_actual"]["codigo"], "PERFIL_PROYECTO")
-        self.assertEqual(data["porcentaje_avance"], 50.0)
-        self.assertEqual([item["codigo"] for item in data["etapas"]], ["INSCRIPCION", "PERFIL_PROYECTO"])
+        self.assertEqual(data["porcentaje_avance"], 66.67)
+        self.assertEqual([item["codigo"] for item in data["etapas"]], ["INSCRIPCION", "PERFIL_PROYECTO", "DEFENSA_PUBLICA"])
+
+    def test_matriz_canonicamente_autorizada_en_los_cuatro_endpoints(self):
+        for user in (self.staff, self.superuser, self.owner, self.assigned, self.historical):
+            with self.subTest(user=user.username):
+                client = self.client_for(user)
+                self.assertEqual(
+                    [client.get(url).status_code for url in self.expediente_urls()],
+                    [200, 200, 200, 200],
+                )
+
+    def test_matriz_oculta_objetos_a_usuarios_no_relacionados(self):
+        for user in (self.other, self.unassigned):
+            with self.subTest(user=user.username):
+                client = self.client_for(user)
+                self.assertEqual(
+                    [client.get(url).status_code for url in self.expediente_urls()],
+                    [404, 404, 404, 404],
+                )
+
+    def test_matriz_anonima_e_inexistente_es_uniforme(self):
+        self.assertEqual(
+            [self.client_for().get(url).status_code for url in self.expediente_urls()],
+            [401, 401, 401, 401],
+        )
+        client = self.client_for(self.staff)
+        self.assertEqual(
+            [client.get(url).status_code for url in self.expediente_urls(999999)],
+            [404, 404, 404, 404],
+        )
+
+    def test_consultas_conservan_resultado_cierre_y_no_auditan(self):
+        client = self.client_for(self.historical)
+        before = AuditLog.objects.count()
+        detail = client.get(self.expediente_urls()[0])
+        flow = client.get(self.expediente_urls()[1])
+        result = client.get(self.expediente_urls()[2])
+        closure = client.get(self.expediente_urls()[3])
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(flow.status_code, 200)
+        self.assertIsNone(result.data["nota_final"])
+        self.assertEqual(result.data["aporte_publica"], Decimal("56.00"))
+        self.assertIn("advertencias_normativas", closure.data)
+        self.assertIn("condiciones_faltantes", closure.data)
+        self.assertEqual(AuditLog.objects.count(), before)
+
+    def test_metodos_no_permitidos_del_expediente_se_conservan(self):
+        client = self.client_for(self.staff)
+        detail, flow, result, closure = self.expediente_urls()
+        self.assertEqual(client.delete(detail).status_code, 405)
+        self.assertEqual(client.patch(flow, {}).status_code, 405)
+        self.assertEqual(client.put(result, {}).status_code, 405)
+        self.assertEqual(client.patch(closure, {}).status_code, 405)

@@ -173,11 +173,11 @@ class EvaluacionDefensaService:
         return e
 
     @staticmethod
-    def calcular_resultado_final(postulacion,usuario):
+    def calcular_resultado_final(postulacion,usuario,auditar=True):
         policy=ModalidadPolicyRegistry.get(postulacion)
         if not policy.permite_evaluaciones(): raise ValidationError("La modalidad no soporta evaluaciones.")
         # La privada es cualitativa en el texto recuperable: no existe una nota reproducible para sumar su 30 %.
         publica=EvaluacionDefensa.objects.filter(evento__postulacion=postulacion,tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,evento__tipo_evento=EventoDefensa.Tipo.DEFENSA_PUBLICA).order_by("-created_at").first()
         if not publica: raise ValidationError("No existe resultado consolidado de defensa pública.")
-        _audit(usuario,"CALCULATE_FINAL_RESULT",f"Resultado final consultado para {postulacion.codigo}; cálculo total pendiente por límite normativo.")
+        if auditar: _audit(usuario,"CALCULATE_FINAL_RESULT",f"Resultado final consultado para {postulacion.codigo}; cálculo total pendiente por límite normativo.")
         return {"nota_publica": publica.nota_numerica, "aporte_publica": publica.aporte_ponderado, "resultado": publica.resultado_cualitativo, "nota_final": None, "limitacion_normativa": "La defensa privada representa 30 %, pero la fuente no aporta una nota numérica reproducible."}
