@@ -133,6 +133,14 @@ class HistorialEstadoSerializer(serializers.ModelSerializer):
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
     activo = serializers.BooleanField(read_only=True)
+    estado_anterior_nombre = serializers.CharField(source="estado_anterior.nombre", read_only=True, allow_null=True)
+    estado_nuevo_nombre = serializers.CharField(source="estado_nuevo.nombre", read_only=True)
+    actor_nombre = serializers.SerializerMethodField()
+
+    def get_actor_nombre(self, obj: HistorialEstado) -> str | None:
+        if not obj.usuario:
+            return None
+        return obj.usuario.nombre_completo or obj.usuario.username
 
     class Meta:
         """Configuración del serializer para el modelo HistorialEstado."""
@@ -142,8 +150,11 @@ class HistorialEstadoSerializer(serializers.ModelSerializer):
             "id",
             "postulacion",
             "estado_anterior",
+            "estado_anterior_nombre",
             "estado_nuevo",
+            "estado_nuevo_nombre",
             "usuario",
+            "actor_nombre",
             "fecha_cambio",
             "comentario",
             "created_at",

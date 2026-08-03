@@ -1,13 +1,23 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ExpedientePage from './ExpedientePage'
 import { postulacionesService } from '../../services/postulacionesService'
 
 vi.mock('../../services/postulacionesService', () => ({
-  postulacionesService: { obtenerExpediente: vi.fn() },
+  postulacionesService: { obtenerExpediente: vi.fn(), obtenerHistorial: vi.fn() },
 }))
+
+const historyResponse = {
+  count: 21,
+  next: '/api/v1/postulaciones/historial/?page=2',
+  previous: null,
+  results: [
+    { id: 1, estado_anterior_nombre: null, estado_nuevo_nombre: 'Registrada', actor_nombre: null, fecha_cambio: '2026-01-01T10:00:00Z', comentario: '' },
+    { id: 2, estado_anterior_nombre: 'Registrada', estado_nuevo_nombre: 'En proceso', actor_nombre: 'María Rojas', fecha_cambio: '2026-01-02T10:00:00Z', comentario: 'Inicio de revisión' },
+  ],
+}
 
 const response = {
   detalle: {
@@ -24,6 +34,14 @@ const response = {
     porcentaje_avance: 25,
     etapas: [],
   },
+  resultado: {
+    data: { nota_publica: '80.00', aporte_publica: '56.00', resultado: 'APROBADO', nota_final: null, limitacion_normativa: 'El aporte privado no puede calcularse.' },
+    error: '',
+  },
+  cierre: {
+    data: { advertencias_normativas: ['La cantidad registrada no certifica la cantidad oficial.'], condiciones_faltantes: ['ACTA'], entregas_faltantes: ['EJEMPLARES'], documentos_faltantes: ['INFORME'] },
+    error: '',
+  },
 }
 
 function renderPage() {
@@ -35,7 +53,10 @@ function renderPage() {
 }
 
 describe('ExpedientePage US-008', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    postulacionesService.obtenerHistorial.mockResolvedValue(historyResponse)
+  })
 
   it('renderiza el resumen, macroetapa, avance y advertencia institucional', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
@@ -49,14 +70,36 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('En proceso')).toBeInTheDocument()
     expect(screen.getByText('Perfil de Proyecto')).toBeInTheDocument()
     expect(screen.getByRole('progressbar', { name: 'Avance del macroflujo' })).toHaveValue(25)
-    expect(screen.getByRole('note')).toHaveTextContent(/no sustituyen actas/i)
+    expect(screen.getByRole('heading', { name: 'Resultado académico técnico' })).toBeInTheDocument()
+    expect(screen.getByText('80.00')).toBeInTheDocument()
+    expect(screen.getByText('56.00')).toBeInTheDocument()
+    expect(screen.getByText('Pendiente de definición institucional')).toBeInTheDocument()
+    expect(screen.queryByText('0')).not.toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveAccessibleName('Límites normativos')
+    expect(screen.getByRole('note')).toHaveTextContent(/defensa privada representa el 30 %/i)
+    expect(screen.getByRole('note')).toHaveTextContent(/aprobación y originalidad del tema/i)
+    expect(screen.getByRole('note')).toHaveTextContent(/clasificación final institucional/i)
+    expect(screen.getByRole('note')).toHaveTextContent(/cantidad oficial de ejemplares/i)
+    expect(screen.getByRole('note')).toHaveTextContent(/proyectos grupales/i)
+    expect(screen.getByRole('note')).toHaveTextContent(/plazos reglamentarios/i)
+    expect(screen.getByRole('note')).toHaveTextContent(/no equivale a legalización/i)
+    expect(screen.getByRole('note')).toHaveTextContent(/cantidad registrada no certifica/i)
+    expect(screen.getByRole('heading', { name: 'Estado técnico de cierre' })).toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveClass('overflow-hidden')
+    expect(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).toHaveClass('overflow-hidden')
+    expect(screen.getByRole('heading', { name: 'Estado técnico de cierre' }).parentElement).toHaveClass('overflow-hidden')
+    expect(screen.getByText('ACTA')).toBeInTheDocument()
+    expect(screen.getByText('EJEMPLARES')).toBeInTheDocument()
+    expect(screen.getByText('INFORME')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Volver a postulaciones' })).toHaveAttribute('href', '/postulantes')
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
   })
 
   it.each([
+    ['Debes iniciar sesión para consultar este expediente.', 401],
     ['No tienes autorización para consultar este expediente.', 403],
     ['El expediente solicitado no está disponible.', 404],
+    ['No se pudo cargar el expediente. Intenta nuevamente.', undefined],
   ])('muestra error recuperable para respuesta %s', async (message, status) => {
     postulacionesService.obtenerExpediente.mockRejectedValueOnce({ status, message }).mockResolvedValueOnce(response)
     renderPage()
@@ -70,11 +113,30 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerExpediente.mockResolvedValue({
       detalle: { codigo: 'EXP-008', estudiante_detalle: null, modalidad_detalle: null, periodo_detalle: null, estado_actual_detalle: null },
       flujo: { modalidad: null, etapa_actual: null, porcentaje_avance: null, etapas: [] },
+      resultado: { data: { nota_publica: null, aporte_publica: null, resultado: null, nota_final: null }, error: '' },
+      cierre: { data: { advertencias_normativas: [], condiciones_faltantes: [], entregas_faltantes: [], documentos_faltantes: [] }, error: '' },
     })
     renderPage()
     await screen.findByText('EXP-008')
     expect(screen.getAllByText('No registrado').length).toBeGreaterThanOrEqual(5)
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  })
+
+  it('mantiene expediente y advertencias ante errores parciales y permite reintentar', async () => {
+    const partial = {
+      ...response,
+      resultado: { data: null, error: 'Resultado final todavía no disponible' },
+      cierre: { data: null, error: 'Estado de cierre técnico todavía no disponible' },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValueOnce(partial).mockResolvedValueOnce(response)
+    renderPage()
+    expect(await screen.findByText('EXP-007')).toBeInTheDocument()
+    expect(screen.getByText('Resultado final todavía no disponible')).toBeInTheDocument()
+    expect(screen.getByText('Estado de cierre técnico todavía no disponible')).toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent(/proyectos grupales/i)
+    await userEvent.click(screen.getAllByRole('button', { name: 'Reintentar' })[0])
+    expect(await screen.findByText('80.00')).toBeInTheDocument()
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2)
   })
 
   it('cancela la solicitud al desmontar', async () => {
@@ -87,5 +149,69 @@ describe('ExpedientePage US-008', () => {
     await waitFor(() => expect(receivedSignal).toBeDefined())
     view.unmount()
     expect(receivedSignal.aborted).toBe(true)
+  })
+
+  it('integra el historial legible, neutral, accesible y paginado', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerHistorial
+      .mockResolvedValueOnce(historyResponse)
+      .mockResolvedValueOnce({ count: 21, next: null, previous: 'page=1', results: [{ ...historyResponse.results[1], id: 21 }] })
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'Historial' })).toBeInTheDocument()
+    expect(screen.getByText('Estado inicial → Registrada')).toBeInTheDocument()
+    expect(screen.getByText('Registrada → En proceso')).toBeInTheDocument()
+    expect(screen.getByText('Sistema')).toBeInTheDocument()
+    expect(screen.getByText('Sin comentario')).toBeInTheDocument()
+    expect(screen.getByText('María Rojas')).toBeInTheDocument()
+    expect(screen.getByText('Inicio de revisión')).toBeInTheDocument()
+    expect(screen.queryByText(/kardex oficial/i)).not.toBeInTheDocument()
+    expect(postulacionesService.obtenerHistorial).toHaveBeenCalledWith('7', 1, expect.any(AbortSignal))
+    expect(postulacionesService.obtenerHistorial).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+    await waitFor(() => expect(postulacionesService.obtenerHistorial).toHaveBeenLastCalledWith('7', 2, expect.any(AbortSignal)))
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+  })
+
+  it('muestra estado vacío sin afectar el expediente', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerHistorial.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+    renderPage()
+    expect(await screen.findByText('No se registraron cambios de estado.')).toBeInTheDocument()
+    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['Debes iniciar sesión para consultar el historial.', 401],
+    ['El historial solicitado no está disponible.', 404],
+    ['No se pudo cargar el historial. Intenta nuevamente.', undefined],
+  ])('mantiene el expediente ante error parcial de historial %s y permite reintentar', async (message, status) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerHistorial.mockRejectedValueOnce({ status, message }).mockResolvedValueOnce(historyResponse)
+    renderPage()
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar historial' }))
+    expect(await screen.findByText('Estado inicial → Registrada')).toBeInTheDocument()
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancela historial al desmontar y usa el nuevo id al cambiar de expediente', async () => {
+    const signals = []
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerHistorial.mockImplementation((_id, _page, signal) => {
+      signals.push(signal)
+      return new Promise(() => {})
+    })
+    const view = render(
+      <MemoryRouter initialEntries={['/postulaciones/7']}>
+        <Routes><Route path="/postulaciones/:id" element={<><ExpedientePage /><Link to="/postulaciones/8">Cambiar expediente</Link></>} /></Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(signals).toHaveLength(1))
+    await userEvent.click(screen.getByRole('link', { name: 'Cambiar expediente' }))
+    await waitFor(() => expect(postulacionesService.obtenerHistorial).toHaveBeenCalledWith('8', 1, expect.any(AbortSignal)))
+    expect(signals[0].aborted).toBe(true)
+    view.unmount()
+    expect(signals.at(-1).aborted).toBe(true)
   })
 })

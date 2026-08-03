@@ -10,9 +10,11 @@ from apps.postulantes.models import (
     EstadoPostulacion,
     EvaluacionDefensa,
     EventoDefensa,
+    HistorialEstado,
     Postulacion,
     SeguimientoEtapa,
 )
+from apps.postulantes.serializers import HistorialEstadoSerializer
 from apps.usuarios.models import AuditLog, CustomUser
 
 
@@ -125,6 +127,30 @@ class ExpedienteAccessContractTests(TestCase):
             es_resultado_final_evento=True,
             registrado_por=cls.staff,
         )
+        cls.estado_inicial = EstadoPostulacion.objects.create(
+            codigo="REGISTRADA_EXP", nombre="Registrada"
+        )
+        cls.historial_inicial = HistorialEstado.objects.create(
+            postulacion=cls.postulacion,
+            estado_anterior=None,
+            estado_nuevo=cls.estado_inicial,
+            usuario=cls.owner,
+            comentario="",
+        )
+        cls.historial_actual = HistorialEstado.objects.create(
+            postulacion=cls.postulacion,
+            estado_anterior=cls.estado_inicial,
+            estado_nuevo=cls.estado,
+            usuario=cls.staff,
+            comentario="Inicio de revisión",
+        )
+        cls.historial_ajeno = HistorialEstado.objects.create(
+            postulacion=cls.ajena,
+            estado_anterior=None,
+            estado_nuevo=cls.estado,
+            usuario=cls.other,
+            comentario="Registro ajeno",
+        )
 
     def client_for(self, user=None):
         client = APIClient()
@@ -234,3 +260,65 @@ class ExpedienteAccessContractTests(TestCase):
         self.assertEqual(client.patch(flow, {}).status_code, 405)
         self.assertEqual(client.put(result, {}).status_code, 405)
         self.assertEqual(client.patch(closure, {}).status_code, 405)
+
+    def test_historial_filtra_exactamente_y_expone_etiquetas_legibles(self):
+        response = self.client_for(self.staff).get(
+            "/api/v1/postulaciones/historial/",
+            {"postulacion": self.postulacion.pk, "ordering": "fecha_cambio"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual([item["postulacion"] for item in response.data["results"]], [self.postulacion.pk] * 2)
+        first, last = response.data["results"]
+        self.assertIsNone(first["estado_anterior"])
+        self.assertIsNone(first["estado_anterior_nombre"])
+        self.assertEqual(first["estado_nuevo_nombre"], "Registrada")
+        self.assertEqual(first["actor_nombre"], "Ana Pérez")
+        self.assertEqual(last["estado_anterior_nombre"], "Registrada")
+        self.assertEqual(last["estado_nuevo_nombre"], "En proceso")
+        self.assertEqual(last["actor_nombre"], "exp-staff")
+        historial_sin_actor = type("HistorialSinActor", (), {"usuario": None})()
+        self.assertIsNone(HistorialEstadoSerializer().get_actor_nombre(historial_sin_actor))
+
+    def test_historial_respeta_alcance_canonico_y_no_audita_get(self):
+        url = "/api/v1/postulaciones/historial/"
+        for user in (self.staff, self.superuser, self.owner, self.assigned, self.historical):
+            with self.subTest(user=user.username):
+                before = AuditLog.objects.count()
+                response = self.client_for(user).get(url, {"postulacion": self.postulacion.pk})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.data["count"], 2)
+                self.assertEqual(AuditLog.objects.count(), before)
+        for user in (self.other, self.unassigned):
+            with self.subTest(user=user.username):
+                response = self.client_for(user).get(url, {"postulacion": self.postulacion.pk})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.data["count"], 0)
+        self.assertEqual(self.client_for().get(url).status_code, 401)
+        self.assertEqual(self.client_for(self.owner).get(f"{url}{self.historial_ajeno.pk}/").status_code, 404)
+
+    def test_historial_conserva_paginacion_y_solo_lectura(self):
+        HistorialEstado.objects.bulk_create([
+            HistorialEstado(
+                postulacion=self.postulacion,
+                estado_anterior=self.estado_inicial,
+                estado_nuevo=self.estado,
+                usuario=self.staff,
+                comentario=f"Cambio {index}",
+            )
+            for index in range(20)
+        ])
+        url = "/api/v1/postulaciones/historial/"
+        client = self.client_for(self.staff)
+        first = client.get(url, {"postulacion": self.postulacion.pk, "ordering": "fecha_cambio"})
+        second = client.get(url, {"postulacion": self.postulacion.pk, "ordering": "fecha_cambio", "page": 2})
+        self.assertEqual(first.data["count"], 22)
+        self.assertEqual(len(first.data["results"]), 20)
+        self.assertEqual(len(second.data["results"]), 2)
+        self.assertIsNotNone(first.data["next"])
+        self.assertIsNotNone(second.data["previous"])
+        detail = f"{url}{self.historial_inicial.pk}/"
+        self.assertEqual(client.post(url, {}).status_code, 405)
+        self.assertEqual(client.put(detail, {}).status_code, 405)
+        self.assertEqual(client.patch(detail, {}).status_code, 405)
+        self.assertEqual(client.delete(detail).status_code, 405)

@@ -25,22 +25,40 @@ describe('postulacionesService', () => {
     await expect(postulacionesService.obtenerDetalle(5)).rejects.toEqual({ status, message })
   })
 
-  it('carga detalle y flujo una sola vez con la misma señal', async () => {
+  it('carga cada recurso del expediente una sola vez con la misma señal', async () => {
     const signal = new AbortController().signal
     apiClient.get
       .mockResolvedValueOnce({ data: { id: 7, codigo: 'EXP-007' } })
       .mockResolvedValueOnce({ data: { id: 7, etapas: [] } })
+      .mockResolvedValueOnce({ data: { nota_final: null } })
+      .mockResolvedValueOnce({ data: { advertencias_normativas: [] } })
 
     await expect(postulacionesService.obtenerExpediente(7, signal)).resolves.toEqual({
       detalle: { id: 7, codigo: 'EXP-007' },
       flujo: { id: 7, etapas: [] },
+      resultado: { data: { nota_final: null }, error: '' },
+      cierre: { data: { advertencias_normativas: [] }, error: '' },
     })
     expect(apiClient.get).toHaveBeenNthCalledWith(1, '/api/v1/postulaciones/7/', { signal })
     expect(apiClient.get).toHaveBeenNthCalledWith(2, '/api/v1/postulaciones/7/flujo/', { signal })
-    expect(apiClient.get).toHaveBeenCalledTimes(2)
+    expect(apiClient.get).toHaveBeenNthCalledWith(3, '/api/v1/postulaciones/7/resultado-final/', { signal })
+    expect(apiClient.get).toHaveBeenNthCalledWith(4, '/api/v1/postulaciones/7/cierre/', { signal })
+    expect(apiClient.get).toHaveBeenCalledTimes(4)
+  })
+
+  it('conserva detalle y flujo ante errores de resultado y cierre', async () => {
+    apiClient.get
+      .mockResolvedValueOnce({ data: { id: 7 } })
+      .mockResolvedValueOnce({ data: { etapas: [] } })
+      .mockRejectedValueOnce({ response: { status: 400 } })
+      .mockRejectedValueOnce(new Error('red'))
+    const data = await postulacionesService.obtenerExpediente(7)
+    expect(data.resultado.error).toBe('Resultado final todavía no disponible')
+    expect(data.cierre.error).toBe('Estado de cierre técnico todavía no disponible')
   })
 
   it.each([
+    [401, 'Debes iniciar sesión para consultar este expediente.'],
     [403, 'No tienes autorización para consultar este expediente.'],
     [404, 'El expediente solicitado no está disponible.'],
   ])('normaliza %s sin revelar información sensible', async (status, message) => {
@@ -51,5 +69,30 @@ describe('postulacionesService', () => {
   it('identifica una cancelación sin convertirla en error visible', async () => {
     apiClient.get.mockRejectedValue({ code: 'ERR_CANCELED' })
     await expect(postulacionesService.obtenerExpediente(9)).rejects.toEqual({ canceled: true })
+  })
+
+  it('consulta una sola página de historial con filtro exacto y orden cronológico', async () => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: { count: 21, next: 'page=2', previous: null, results: [] } })
+    await expect(postulacionesService.obtenerHistorial(7, 1, signal)).resolves.toMatchObject({ count: 21 })
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/postulaciones/historial/', {
+      params: { postulacion: 7, ordering: 'fecha_cambio', page: 1 },
+      signal,
+    })
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    [401, 'Debes iniciar sesión para consultar el historial.'],
+    [404, 'El historial solicitado no está disponible.'],
+    [undefined, 'No se pudo cargar el historial. Intenta nuevamente.'],
+  ])('normaliza el error %s del historial', async (status, message) => {
+    apiClient.get.mockRejectedValue({ response: status ? { status } : undefined })
+    await expect(postulacionesService.obtenerHistorial(7, 1)).rejects.toEqual({ status, message })
+  })
+
+  it('cancela la consulta del historial', async () => {
+    apiClient.get.mockRejectedValue({ code: 'ERR_CANCELED' })
+    await expect(postulacionesService.obtenerHistorial(7, 1)).rejects.toEqual({ canceled: true })
   })
 })

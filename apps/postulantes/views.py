@@ -293,6 +293,7 @@ class HistorialEstadoViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["postulacion__codigo"]
     ordering_fields = ["fecha_cambio", "created_at"]
+    filterset_fields = ["postulacion"]
 
     def get_queryset(self):
         queryset = HistorialEstado.objects.select_related(
