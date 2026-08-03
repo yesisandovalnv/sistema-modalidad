@@ -15,6 +15,22 @@ function optionalResult(result, unavailableMessage) {
   return { data: null, error: unavailableMessage }
 }
 
+function normalizeDocuments(error, resource) {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  if (status === 401) return { status, message: `Debes iniciar sesión para consultar ${resource}.` }
+  if (status === 404) return { status, message: `${resource[0].toUpperCase()}${resource.slice(1)} no disponibles.` }
+  return { status, message: `No se pudieron cargar ${resource}. Intenta nuevamente.` }
+}
+
+async function getDocumentResource(url, params, signal, resource) {
+  try {
+    return (await apiClient.get(url, { params, signal })).data
+  } catch (error) {
+    throw normalizeDocuments(error, resource)
+  }
+}
+
 export const postulacionesService = {
   async obtenerDetalle(id, signal) {
     try {
@@ -60,5 +76,14 @@ export const postulacionesService = {
       if (status === 404) throw { status, message: 'El historial solicitado no está disponible.' }
       throw { status, message: 'No se pudo cargar el historial. Intenta nuevamente.' }
     }
+  },
+  obtenerDocumentos(postulacion, page, signal) {
+    return getDocumentResource('/api/v1/documentos/documentos/', { postulacion, ordering: '-fecha_subida', page }, signal, 'los documentos')
+  },
+  obtenerVersiones(documento, page, signal) {
+    return getDocumentResource('/api/v1/documentos/versiones/', { documento, ordering: 'numero_version', page }, signal, 'las versiones')
+  },
+  obtenerObservaciones(versionDocumento, page, signal) {
+    return getDocumentResource('/api/v1/documentos/observaciones/', { version_documento: versionDocumento, ordering: 'fecha_observacion', page }, signal, 'las observaciones')
   },
 }

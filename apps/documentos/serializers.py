@@ -50,6 +50,13 @@ class TipoDocumentoSerializer(serializers.ModelSerializer):
 class VersionDocumentoSerializer(serializers.ModelSerializer):
     """Serializador para versiones de documento."""
 
+    subido_por_nombre = serializers.SerializerMethodField()
+
+    def get_subido_por_nombre(self, obj: VersionDocumento) -> str | None:
+        if not obj.subido_por:
+            return None
+        return obj.subido_por.nombre_completo or obj.subido_por.username
+
     class Meta:
         model = VersionDocumento
         fields = [
@@ -62,6 +69,7 @@ class VersionDocumentoSerializer(serializers.ModelSerializer):
             "hash_sha256",
             "fecha_subida",
             "subido_por",
+            "subido_por_nombre",
             "es_version_actual",
             "activo",
             "created_at",
@@ -86,12 +94,20 @@ class VersionDocumentoSerializer(serializers.ModelSerializer):
 class ObservacionDocumentoSerializer(serializers.ModelSerializer):
     """Serializador para observaciones de documentos."""
 
+    usuario_nombre = serializers.SerializerMethodField()
+
+    def get_usuario_nombre(self, obj: ObservacionDocumento) -> str | None:
+        if not obj.usuario:
+            return None
+        return obj.usuario.nombre_completo or obj.usuario.username
+
     class Meta:
         model = ObservacionDocumento
         fields = [
             "id",
             "version_documento",
             "usuario",
+            "usuario_nombre",
             "comentario",
             "leida_por_estudiante",
             "corregida",
@@ -117,6 +133,8 @@ class DocumentoPostulacionSerializer(serializers.ModelSerializer):
     """Serializador para documentos de postulación, incluyendo sus versiones anidadas."""
 
     versiones = VersionDocumentoSerializer(many=True, read_only=True)
+    tipo_documento_nombre = serializers.CharField(source="tipo_documento.nombre", read_only=True)
+    estado_nombre = serializers.CharField(source="estado.nombre", read_only=True)
 
     class Meta:
         model = DocumentoPostulacion
@@ -124,7 +142,9 @@ class DocumentoPostulacionSerializer(serializers.ModelSerializer):
             "id",
             "postulacion",
             "tipo_documento",
+            "tipo_documento_nombre",
             "estado",
+            "estado_nombre",
             "fecha_subida",
             "fecha_revision",
             "observacion_general",

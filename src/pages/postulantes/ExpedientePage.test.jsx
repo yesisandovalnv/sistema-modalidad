@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -6,7 +6,10 @@ import ExpedientePage from './ExpedientePage'
 import { postulacionesService } from '../../services/postulacionesService'
 
 vi.mock('../../services/postulacionesService', () => ({
-  postulacionesService: { obtenerExpediente: vi.fn(), obtenerHistorial: vi.fn() },
+  postulacionesService: {
+    obtenerExpediente: vi.fn(), obtenerHistorial: vi.fn(), obtenerDocumentos: vi.fn(),
+    obtenerVersiones: vi.fn(), obtenerObservaciones: vi.fn(),
+  },
 }))
 
 const historyResponse = {
@@ -16,6 +19,27 @@ const historyResponse = {
   results: [
     { id: 1, estado_anterior_nombre: null, estado_nuevo_nombre: 'Registrada', actor_nombre: null, fecha_cambio: '2026-01-01T10:00:00Z', comentario: '' },
     { id: 2, estado_anterior_nombre: 'Registrada', estado_nuevo_nombre: 'En proceso', actor_nombre: 'María Rojas', fecha_cambio: '2026-01-02T10:00:00Z', comentario: 'Inicio de revisión' },
+  ],
+}
+
+const documentsResponse = {
+  count: 1, next: null, previous: null,
+  results: [{ id: 31, tipo_documento_nombre: 'Informe final', estado_nombre: 'Enviado', fecha_subida: '2026-02-01T10:00:00Z', fecha_revision: null, requiere_correccion: true, observacion_general: 'Revisión técnica pendiente', versiones: [{ id: 301 }] }],
+}
+
+const versionsResponse = {
+  count: 2, next: null, previous: null,
+  results: [
+    { id: 301, numero_version: 1, fecha_subida: '2026-02-01T10:00:00Z', nombre_original: 'informe-largo.pdf', tamano_bytes: 2048, subido_por_nombre: 'Ana Pérez', es_version_actual: false, archivo: '/media/documentos/versiones/informe-v1.pdf' },
+    { id: 302, numero_version: 2, fecha_subida: '2026-02-02T10:00:00Z', nombre_original: 'informe-final.pdf', tamano_bytes: 4096, subido_por_nombre: 'Ana Pérez', es_version_actual: true, archivo: '/media/documentos/versiones/informe-v2.pdf' },
+  ],
+}
+
+const observationsResponse = {
+  count: 2, next: null, previous: null,
+  results: [
+    { id: 401, comentario: 'Corregir portada', usuario_nombre: 'Revisor Uno', fecha_observacion: '2026-02-03T10:00:00Z', corregida: false, fecha_correccion: null },
+    { id: 402, comentario: 'Numeración corregida', usuario_nombre: 'Revisor Dos', fecha_observacion: '2026-02-04T10:00:00Z', corregida: true, fecha_correccion: '2026-02-05T10:00:00Z' },
   ],
 }
 
@@ -56,6 +80,9 @@ describe('ExpedientePage US-008', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     postulacionesService.obtenerHistorial.mockResolvedValue(historyResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue(documentsResponse)
+    postulacionesService.obtenerVersiones.mockResolvedValue(versionsResponse)
+    postulacionesService.obtenerObservaciones.mockResolvedValue(observationsResponse)
   })
 
   it('renderiza el resumen, macroetapa, avance y advertencia institucional', async () => {
@@ -167,7 +194,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByText(/kardex oficial/i)).not.toBeInTheDocument()
     expect(postulacionesService.obtenerHistorial).toHaveBeenCalledWith('7', 1, expect.any(AbortSignal))
     expect(postulacionesService.obtenerHistorial).toHaveBeenCalledTimes(1)
-    await userEvent.click(screen.getByRole('button', { name: 'Siguiente' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Siguiente' }).find((button) => !button.disabled))
     await waitFor(() => expect(postulacionesService.obtenerHistorial).toHaveBeenLastCalledWith('7', 2, expect.any(AbortSignal)))
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
   })
@@ -213,5 +240,112 @@ describe('ExpedientePage US-008', () => {
     expect(signals[0].aborted).toBe(true)
     view.unmount()
     expect(signals.at(-1).aborted).toBe(true)
+  })
+
+  it('consulta documentos por postulación y muestra etiquetas sin acciones de escritura', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderPage()
+    expect(await screen.findByRole('heading', { name: 'Documentos' })).toBeInTheDocument()
+    expect(screen.getByText('Informe final')).toBeInTheDocument()
+    expect(screen.getByText(/Estado técnico: Enviado/)).toBeInTheDocument()
+    expect(screen.getByText('Requerida')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentos).toHaveBeenCalledWith('7', 1, expect.any(AbortSignal))
+    expect(postulacionesService.obtenerDocumentos).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: /subir|aprobar|rechazar|observar/i })).not.toBeInTheDocument()
+  })
+
+  it('abre detalle, pagina versiones y consulta observaciones por versión exacta', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerVersiones
+      .mockResolvedValueOnce({ ...versionsResponse, count: 21, next: 'page=2' })
+      .mockResolvedValueOnce({ count: 21, next: null, previous: 'page=1', results: [versionsResponse.results[1]] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    const dialog = screen.getByRole('dialog', { name: 'Detalle del documento' })
+    expect(dialog).toBeInTheDocument()
+    expect(await screen.findByText('Versión 1')).toBeInTheDocument()
+    expect(screen.getByText('Versión 2')).toBeInTheDocument()
+    expect(screen.getByText('Versión actual')).toBeInTheDocument()
+    expect(screen.getByText('informe-largo.pdf')).toBeInTheDocument()
+    expect(screen.getByText('2.0 KB')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Abrir archivo autorizado de la versión 1' })).toHaveAttribute('href', '/media/documentos/versiones/informe-v1.pdf')
+    expect(postulacionesService.obtenerVersiones).toHaveBeenCalledWith(31, 1, expect.any(AbortSignal))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Ver observaciones' })[0])
+    expect(await screen.findByText('Corregir portada')).toBeInTheDocument()
+    expect(screen.getByText('Pendiente')).toBeInTheDocument()
+    expect(screen.getByText('Corregida')).toBeInTheDocument()
+    expect(postulacionesService.obtenerObservaciones).toHaveBeenCalledWith(301, 1, expect.any(AbortSignal))
+    await userEvent.click(within(dialog).getAllByRole('button', { name: 'Siguiente' }).find((button) => !button.disabled))
+    await waitFor(() => expect(postulacionesService.obtenerVersiones).toHaveBeenLastCalledWith(31, 2, expect.any(AbortSignal)))
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('muestra documentos y observaciones vacíos con lenguaje neutral', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDocumentos.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+    renderPage()
+    expect(await screen.findByText('No se registraron documentos.')).toBeInTheDocument()
+    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+  })
+
+  it('muestra versiones vacías, incluidos campos opcionales ausentes', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerVersiones.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    expect(await screen.findByText('No se registraron versiones.')).toBeInTheDocument()
+    expect(screen.getAllByText('No registrada').length).toBeGreaterThan(0)
+  })
+
+  it('muestra el estado vacío de observaciones para la versión exacta', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerObservaciones.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Ver observaciones' }))[0])
+    expect(await screen.findByText('Sin observaciones registradas.')).toBeInTheDocument()
+    expect(postulacionesService.obtenerObservaciones).toHaveBeenCalledWith(301, 1, expect.any(AbortSignal))
+  })
+
+  it('cancela versiones al cerrar el detalle y observaciones al cambiar de versión', async () => {
+    const versionSignals = []
+    const observationSignals = []
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerVersiones.mockImplementation((_id, _page, signal) => {
+      versionSignals.push(signal)
+      return versionSignals.length === 1 ? new Promise(() => {}) : Promise.resolve(versionsResponse)
+    })
+    postulacionesService.obtenerObservaciones.mockImplementation((_id, _page, signal) => {
+      observationSignals.push(signal)
+      return new Promise(() => {})
+    })
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    await waitFor(() => expect(versionSignals).toHaveLength(1))
+    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+    expect(versionSignals[0].aborted).toBe(true)
+    await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }))
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Ver observaciones' }))[0])
+    await waitFor(() => expect(observationSignals).toHaveLength(1))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Ver observaciones' })[1])
+    await waitFor(() => expect(observationSignals).toHaveLength(2))
+    expect(observationSignals[0].aborted).toBe(true)
+  })
+
+  it.each([
+    ['Debes iniciar sesión para consultar los documentos.', 401],
+    ['Los documentos no disponibles.', 404],
+    ['No se pudieron cargar los documentos. Intenta nuevamente.', undefined],
+  ])('mantiene expediente ante error documental parcial %s y reintenta', async (message, status) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDocumentos.mockRejectedValueOnce({ status, message }).mockResolvedValueOnce(documentsResponse)
+    renderPage()
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
+    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar documentos' }))
+    expect(await screen.findByText('Informe final')).toBeInTheDocument()
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
   })
 })

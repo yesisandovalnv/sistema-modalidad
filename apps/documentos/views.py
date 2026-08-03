@@ -71,6 +71,7 @@ class DocumentoPostulacionViewSet(viewsets.ModelViewSet):
         "fecha_revision",
         "created_at",
     ]
+    filterset_fields = ["postulacion"]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -219,6 +220,7 @@ class VersionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         "subido_por__username",
     ]
     ordering_fields = ["numero_version", "fecha_subida", "created_at"]
+    filterset_fields = ["documento"]
 
     def get_queryset(self):
         queryset = VersionDocumento.objects.select_related(
@@ -252,6 +254,7 @@ class ObservacionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         "comentario",
     ]
     ordering_fields = ["fecha_observacion", "fecha_correccion", "created_at"]
+    filterset_fields = ["version_documento"]
 
     def get_queryset(self):
         queryset = ObservacionDocumento.objects.select_related(

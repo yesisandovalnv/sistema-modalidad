@@ -95,4 +95,31 @@ describe('postulacionesService', () => {
     apiClient.get.mockRejectedValue({ code: 'ERR_CANCELED' })
     await expect(postulacionesService.obtenerHistorial(7, 1)).rejects.toEqual({ canceled: true })
   })
+
+  it.each([
+    ['obtenerDocumentos', [7, 2], '/api/v1/documentos/documentos/', { postulacion: 7, ordering: '-fecha_subida', page: 2 }],
+    ['obtenerVersiones', [31, 3], '/api/v1/documentos/versiones/', { documento: 31, ordering: 'numero_version', page: 3 }],
+    ['obtenerObservaciones', [301, 4], '/api/v1/documentos/observaciones/', { version_documento: 301, ordering: 'fecha_observacion', page: 4 }],
+  ])('consulta %s una sola vez con filtro exacto y paginación', async (method, args, url, params) => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: { count: 21, results: [] } })
+    await postulacionesService[method](...args, signal)
+    expect(apiClient.get).toHaveBeenCalledWith(url, { params, signal })
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['obtenerDocumentos', 'los documentos'],
+    ['obtenerVersiones', 'las versiones'],
+    ['obtenerObservaciones', 'las observaciones'],
+  ])('normaliza errores y cancelación de %s', async (method, resource) => {
+    apiClient.get.mockRejectedValueOnce({ response: { status: 401 } })
+    await expect(postulacionesService[method](1, 1)).rejects.toEqual({ status: 401, message: `Debes iniciar sesión para consultar ${resource}.` })
+    apiClient.get.mockRejectedValueOnce({ response: { status: 404 } })
+    await expect(postulacionesService[method](1, 1)).rejects.toEqual({ status: 404, message: `${resource[0].toUpperCase()}${resource.slice(1)} no disponibles.` })
+    apiClient.get.mockRejectedValueOnce(new Error('red'))
+    await expect(postulacionesService[method](1, 1)).rejects.toEqual({ status: undefined, message: `No se pudieron cargar ${resource}. Intenta nuevamente.` })
+    apiClient.get.mockRejectedValueOnce({ code: 'ERR_CANCELED' })
+    await expect(postulacionesService[method](1, 1)).rejects.toEqual({ canceled: true })
+  })
 })

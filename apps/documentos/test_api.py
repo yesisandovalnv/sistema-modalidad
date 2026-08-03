@@ -18,7 +18,7 @@ from apps.documentos.models import (
     TipoDocumento,
     VersionDocumento,
 )
-from apps.postulantes.models import EstadoPostulacion, Postulacion
+from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, Postulacion
 from apps.usuarios.models import AuditLog, Role
 
 
@@ -290,6 +290,117 @@ class TestDocumentoSeguridad(DocumentoAPITestCase):
         self.assertIsNone(response.data["next"])
         self.assertIsNone(response.data["previous"])
         self.assertEqual(len(response.data["results"]), 2)
+
+    def test_filtros_exactos_y_campos_legibles_conservan_ids(self) -> None:
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        self.upload_document(self.other_student, self.other_postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion)
+        version = VersionDocumento.objects.get(documento=documento)
+        self.authenticate_user(self.admin_user)
+        observation = self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/observar/",
+            {"comentario": "Observación exacta"}, format="json",
+        )
+        self.assertEqual(observation.status_code, 201)
+
+        documents = self.client.get("/api/v1/documentos/documentos/", {"postulacion": self.postulacion.id})
+        versions = self.client.get("/api/v1/documentos/versiones/", {"documento": documento.id})
+        observations = self.client.get("/api/v1/documentos/observaciones/", {"version_documento": version.id})
+        self.assertEqual(documents.data["count"], 1)
+        self.assertEqual(documents.data["results"][0]["postulacion"], self.postulacion.id)
+        self.assertEqual(documents.data["results"][0]["tipo_documento"], self.tipo_pdf.id)
+        self.assertEqual(documents.data["results"][0]["tipo_documento_nombre"], "Documento PDF")
+        self.assertEqual(documents.data["results"][0]["estado"], self.estado_env.id)
+        self.assertEqual(documents.data["results"][0]["estado_nombre"], "Enviado")
+        self.assertEqual(versions.data["count"], 1)
+        self.assertEqual(versions.data["results"][0]["documento"], documento.id)
+        self.assertEqual(versions.data["results"][0]["subido_por_nombre"], "estudiante_documentos")
+        self.assertEqual(observations.data["count"], 1)
+        self.assertEqual(observations.data["results"][0]["version_documento"], version.id)
+        self.assertEqual(observations.data["results"][0]["usuario_nombre"], "admin_documentos")
+
+    def test_actores_activo_e_historico_consultan_documentos_y_archivo_autorizado(self) -> None:
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion)
+        version = VersionDocumento.objects.get(documento=documento)
+        active = User.objects.create_user(username="revisor-activo")
+        historical = User.objects.create_user(username="revisor-historico")
+        AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion, usuario=active,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
+            designado_por=self.admin_user,
+        )
+        old = AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion, usuario=historical,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TUTOR,
+            designado_por=self.admin_user,
+        )
+        old.activo = False
+        old.save(update_fields=["activo"])
+        for user in (active, historical):
+            with self.subTest(user=user.username):
+                self.authenticate_user(user)
+                listing = self.client.get("/api/v1/documentos/documentos/", {"postulacion": self.postulacion.id})
+                detail = self.client.get(f"/api/v1/documentos/versiones/{version.id}/")
+                self.assertEqual(listing.data["count"], 1)
+                self.assertEqual(detail.status_code, 200)
+                self.assertTrue(detail.data["archivo"])
+        self.authenticate_user(self.other_student)
+        self.assertEqual(self.client.get(f"/api/v1/documentos/versiones/{version.id}/").status_code, 404)
+
+    def test_staff_y_anonimo_conservan_alcance_de_consulta(self) -> None:
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        staff = User.objects.create_user(username="staff-documentos", is_staff=True)
+        self.authenticate_user(staff)
+        self.assertEqual(
+            self.client.get("/api/v1/documentos/documentos/", {"postulacion": self.postulacion.id}).data["count"],
+            1,
+        )
+        self.client.credentials()
+        for url in (
+            "/api/v1/documentos/documentos/",
+            "/api/v1/documentos/versiones/",
+            "/api/v1/documentos/observaciones/",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 401)
+
+    def test_consultas_no_auditan_y_metodos_base_siguen_bloqueados(self) -> None:
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion)
+        version = VersionDocumento.objects.get(documento=documento)
+        self.authenticate_user(self.admin_user)
+        before = AuditLog.objects.count()
+        self.client.get("/api/v1/documentos/documentos/", {"postulacion": self.postulacion.id})
+        self.client.get("/api/v1/documentos/versiones/", {"documento": documento.id})
+        self.client.get("/api/v1/documentos/observaciones/", {"version_documento": version.id})
+        self.assertEqual(AuditLog.objects.count(), before)
+        detail = f"/api/v1/documentos/documentos/{documento.id}/"
+        self.assertEqual(self.client.post("/api/v1/documentos/documentos/", {}).status_code, 405)
+        self.assertEqual(self.client.put(detail, {}).status_code, 405)
+        self.assertEqual(self.client.patch(detail, {}).status_code, 405)
+        self.assertEqual(self.client.delete(detail).status_code, 405)
+
+    def test_versiones_y_observaciones_paginan_sin_perder_registros(self) -> None:
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        for index in range(1, 22):
+            self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(name=f"v{index + 1}.pdf"))
+        documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion)
+        versions = VersionDocumento.objects.filter(documento=documento).order_by("numero_version")
+        self.assertEqual(versions.count(), 22)
+        self.assertEqual(versions.filter(es_version_actual=True).count(), 1)
+        self.authenticate_user(self.admin_user)
+        first = self.client.get("/api/v1/documentos/versiones/", {"documento": documento.id, "ordering": "numero_version"})
+        second = self.client.get("/api/v1/documentos/versiones/", {"documento": documento.id, "ordering": "numero_version", "page": 2})
+        self.assertEqual((len(first.data["results"]), len(second.data["results"])), (20, 2))
+        current = versions.get(es_version_actual=True)
+        ObservacionDocumento.objects.bulk_create([
+            ObservacionDocumento(version_documento=current, usuario=self.admin_user, comentario=f"Observación {index}")
+            for index in range(21)
+        ])
+        observations = self.client.get("/api/v1/documentos/observaciones/", {"version_documento": current.id})
+        observations_2 = self.client.get("/api/v1/documentos/observaciones/", {"version_documento": current.id, "page": 2})
+        self.assertEqual((len(observations.data["results"]), len(observations_2.data["results"])), (20, 1))
 
     def test_estudiante_no_accede_versiones_de_otro_documento(self) -> None:
         """Un estudiante no debe acceder a las versiones de un documento ajeno."""

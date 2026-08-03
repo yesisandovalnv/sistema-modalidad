@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { PageHeader, DataState } from '../../components/crud/CrudShell'
+import { PageHeader, DataState, Modal } from '../../components/crud/CrudShell'
 import { Card } from '../../components/ui/card'
+import { Button } from '../../components/ui/button'
 import { Pagination } from '../../components/reports/ReportComponents'
 import { postulacionesService } from '../../services/postulacionesService'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
@@ -27,6 +28,23 @@ export default function ExpedientePage() {
   const [historyRevision, setHistoryRevision] = useState(0)
   const [historyView, setHistoryView] = useState({ id: null, page: 1 })
   const historyPage = String(historyView.id) === String(id) ? historyView.page : 1
+  const [documents, setDocuments] = useState({ data: null, loading: true, error: '' })
+  const [documentsView, setDocumentsView] = useState({ id: null, page: 1 })
+  const [documentsRevision, setDocumentsRevision] = useState(0)
+  const documentsPage = String(documentsView.id) === String(id) ? documentsView.page : 1
+  const [selectedDocument, setSelectedDocument] = useState(null)
+  const [versions, setVersions] = useState({ data: null, loading: false, error: '' })
+  const [versionsPage, setVersionsPage] = useState(1)
+  const [versionsRevision, setVersionsRevision] = useState(0)
+  const [selectedVersion, setSelectedVersion] = useState(null)
+  const [observations, setObservations] = useState({ data: null, loading: false, error: '' })
+  const [observationsPage, setObservationsPage] = useState(1)
+  const [observationsRevision, setObservationsRevision] = useState(0)
+
+  useEffect(() => {
+    setSelectedDocument(null)
+    setSelectedVersion(null)
+  }, [id])
 
   const load = useCallback(async (signal) => {
     setData(null)
@@ -57,6 +75,41 @@ export default function ExpedientePage() {
       })
     return () => controller.abort()
   }, [id, historyPage, historyRevision])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setDocuments({ data: null, loading: true, error: '' })
+    postulacionesService.obtenerDocumentos(id, documentsPage, controller.signal)
+      .then((documentData) => setDocuments({ data: documentData, loading: false, error: '' }))
+      .catch((requestError) => {
+        if (!requestError.canceled) setDocuments({ data: null, loading: false, error: requestError.message })
+      })
+    return () => controller.abort()
+  }, [id, documentsPage, documentsRevision])
+
+  useEffect(() => {
+    if (!selectedDocument) return undefined
+    const controller = new AbortController()
+    setVersions({ data: null, loading: true, error: '' })
+    postulacionesService.obtenerVersiones(selectedDocument.id, versionsPage, controller.signal)
+      .then((versionData) => setVersions({ data: versionData, loading: false, error: '' }))
+      .catch((requestError) => {
+        if (!requestError.canceled) setVersions({ data: null, loading: false, error: requestError.message })
+      })
+    return () => controller.abort()
+  }, [selectedDocument, versionsPage, versionsRevision])
+
+  useEffect(() => {
+    if (!selectedVersion) return undefined
+    const controller = new AbortController()
+    setObservations({ data: null, loading: true, error: '' })
+    postulacionesService.obtenerObservaciones(selectedVersion.id, observationsPage, controller.signal)
+      .then((observationData) => setObservations({ data: observationData, loading: false, error: '' }))
+      .catch((requestError) => {
+        if (!requestError.canceled) setObservations({ data: null, loading: false, error: requestError.message })
+      })
+    return () => controller.abort()
+  }, [selectedVersion, observationsPage, observationsRevision])
 
   if (loading || error || !data) {
     return (
@@ -143,8 +196,123 @@ export default function ExpedientePage() {
         onPage={(page) => setHistoryView({ id, page })}
         onRetry={() => setHistoryRevision((value) => value + 1)}
       />
+
+      <DocumentsCard
+        documents={documents}
+        page={documentsPage}
+        onPage={(page) => setDocumentsView({ id, page })}
+        onRetry={() => setDocumentsRevision((value) => value + 1)}
+        onSelect={(document) => {
+          setSelectedDocument(document)
+          setVersionsPage(1)
+          setSelectedVersion(null)
+          setObservations({ data: null, loading: false, error: '' })
+        }}
+      />
+
+      {selectedDocument && (
+        <DocumentDetail
+          document={selectedDocument}
+          versions={versions}
+          versionsPage={versionsPage}
+          onVersionsPage={(page) => { setVersionsPage(page); setSelectedVersion(null) }}
+          onVersionsRetry={() => setVersionsRevision((value) => value + 1)}
+          selectedVersion={selectedVersion}
+          observations={observations}
+          observationsPage={observationsPage}
+          onSelectVersion={(version) => { setSelectedVersion(version); setObservationsPage(1) }}
+          onObservationsPage={setObservationsPage}
+          onObservationsRetry={() => setObservationsRevision((value) => value + 1)}
+          onClose={() => { setSelectedDocument(null); setSelectedVersion(null) }}
+        />
+      )}
     </section>
   )
+}
+
+function DocumentsCard({ documents, page, onPage, onRetry, onSelect }) {
+  const rows = documents.data?.results || []
+  return (
+    <Card className="overflow-hidden" aria-labelledby="documentos-title">
+      <h2 id="documentos-title" className="text-xl font-bold">Documentos</h2>
+      <p className="mt-1 text-sm text-slate-500">Evidencias técnicas registradas para esta postulación.</p>
+      {documents.loading && <p role="status" className="mt-4 text-sm">Cargando documentos…</p>}
+      {documents.error && <SectionError message={documents.error} label="Reintentar documentos" onRetry={onRetry} />}
+      {!documents.loading && !documents.error && rows.length === 0 && <p className="mt-4 text-sm text-slate-500">No se registraron documentos.</p>}
+      {!documents.loading && !documents.error && rows.length > 0 && <><ul className="mt-5 space-y-4">{rows.map((document) => (
+        <li key={document.id} className="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0"><h3 className="break-words font-semibold">{document.tipo_documento_nombre || 'Tipo no registrado'}</h3><p className="mt-1 text-sm">Estado técnico: {document.estado_nombre || 'No registrado'}</p></div>
+            <Button variant="secondary" onClick={() => onSelect(document)}>Ver detalle</Button>
+          </div>
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <Info label="Subido" value={formatDocumentDate(document.fecha_subida)} />
+            <Info label="Revisado" value={formatDocumentDate(document.fecha_revision)} />
+            <Info label="Corrección" value={document.requiere_correccion ? 'Requerida' : 'No requerida'} />
+            <Info label="Versiones" value={document.versiones?.length ?? 0} />
+          </dl>
+        </li>
+      ))}</ul><Pagination count={documents.data.count} page={page} hasNext={Boolean(documents.data.next)} hasPrevious={Boolean(documents.data.previous)} onPage={onPage} /></>}
+    </Card>
+  )
+}
+
+function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVersionsRetry, selectedVersion, observations, observationsPage, onSelectVersion, onObservationsPage, onObservationsRetry, onClose }) {
+  const rows = versions.data?.results || []
+  return (
+    <Modal title="Detalle del documento" onClose={onClose}>
+      <div className="mt-4 min-w-0 space-y-5">
+        <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          <Info label="Tipo documental" value={document.tipo_documento_nombre} />
+          <Info label="Estado técnico" value={document.estado_nombre} />
+          <Info label="Fecha de subida" value={formatDocumentDate(document.fecha_subida)} />
+          <Info label="Fecha de revisión" value={formatDocumentDate(document.fecha_revision)} />
+          <Info label="Requiere corrección" value={document.requiere_correccion ? 'Sí' : 'No'} />
+        </dl>
+        {document.observacion_general && <p className="break-words rounded-lg bg-amber-50 p-3 text-sm dark:bg-amber-950">{document.observacion_general}</p>}
+        <section aria-labelledby="versiones-title"><h3 id="versiones-title" className="text-lg font-bold">Versiones</h3>
+          {versions.loading && <p role="status" className="mt-3">Cargando versiones…</p>}
+          {versions.error && <SectionError message={versions.error} label="Reintentar versiones" onRetry={onVersionsRetry} />}
+          {!versions.loading && !versions.error && rows.length === 0 && <p className="mt-3 text-sm text-slate-500">No se registraron versiones.</p>}
+          {!versions.loading && !versions.error && rows.length > 0 && <><ol className="mt-3 space-y-3">{rows.map((version) => (
+            <li key={version.id} className="min-w-0 rounded-lg border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold">Versión {version.numero_version}</h4>{version.es_version_actual && <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">Versión actual</span>}</div>
+              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><Info label="Fecha" value={formatDocumentDate(version.fecha_subida)} /><Info label="Autor" value={version.subido_por_nombre || 'No registrado'} /><Info label="Archivo" value={version.nombre_original || 'No registrado'} /><Info label="Tamaño" value={formatBytes(version.tamano_bytes)} /></dl>
+              <div className="mt-3 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => onSelectVersion(version)}>Ver observaciones</Button>{version.archivo && <a aria-label={`Abrir archivo autorizado de la versión ${version.numero_version}`} className="rounded-md border px-3 py-2 text-sm font-medium" href={version.archivo} target="_blank" rel="noreferrer">Abrir archivo autorizado</a>}</div>
+            </li>
+          ))}</ol><Pagination count={versions.data.count} page={versionsPage} hasNext={Boolean(versions.data.next)} hasPrevious={Boolean(versions.data.previous)} onPage={onVersionsPage} /></>}
+        </section>
+        {selectedVersion && <ObservationsPanel version={selectedVersion} observations={observations} page={observationsPage} onPage={onObservationsPage} onRetry={onObservationsRetry} />}
+      </div>
+    </Modal>
+  )
+}
+
+function ObservationsPanel({ version, observations, page, onPage, onRetry }) {
+  const rows = observations.data?.results || []
+  return <section aria-labelledby="observaciones-title"><h3 id="observaciones-title" className="text-lg font-bold">Observaciones de la versión {version.numero_version}</h3>
+    {observations.loading && <p role="status" className="mt-3">Cargando observaciones…</p>}
+    {observations.error && <SectionError message={observations.error} label="Reintentar observaciones" onRetry={onRetry} />}
+    {!observations.loading && !observations.error && rows.length === 0 && <p className="mt-3 text-sm text-slate-500">Sin observaciones registradas.</p>}
+    {!observations.loading && !observations.error && rows.length > 0 && <><ul className="mt-3 space-y-3">{rows.map((observation) => <li key={observation.id} className="min-w-0 rounded-lg border p-3 text-sm"><p className="break-words">{observation.comentario || 'Sin comentario'}</p><dl className="mt-3 grid gap-2 sm:grid-cols-2"><Info label="Autor" value={observation.usuario_nombre || 'No registrado'} /><Info label="Fecha" value={formatDocumentDate(observation.fecha_observacion)} /><Info label="Estado" value={observation.corregida ? 'Corregida' : 'Pendiente'} /><Info label="Fecha de corrección" value={formatDocumentDate(observation.fecha_correccion)} /></dl></li>)}</ul><Pagination count={observations.data.count} page={page} hasNext={Boolean(observations.data.next)} hasPrevious={Boolean(observations.data.previous)} onPage={onPage} /></>}
+  </section>
+}
+
+function SectionError({ message, label, onRetry }) {
+  return <div role="alert" className="mt-3 rounded-lg border border-red-200 p-3 text-sm"><p>{message}</p><Button className="mt-3" variant="secondary" onClick={onRetry}>{label}</Button></div>
+}
+
+function formatDocumentDate(value) {
+  if (!value) return 'No registrada'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'No registrada' : date.toLocaleString('es-BO')
+}
+
+function formatBytes(value) {
+  const bytes = Number(value)
+  if (!Number.isFinite(bytes) || bytes < 0) return 'No registrado'
+  if (bytes < 1024) return `${bytes} B`
+  return `${(bytes / 1024).toFixed(1)} KB`
 }
 
 function HistoryCard({ history, page, onPage, onRetry }) {
