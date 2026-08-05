@@ -144,4 +144,23 @@ describe('postulacionesService', () => {
     await expect(postulacionesService.cargarDocumento({ postulacionId: 7, tipoDocumentoId: 4, archivo: new File([], 'vacio.pdf') }))
       .rejects.toEqual({ status: 400, message: 'Revisa los datos del documento.', fields })
   })
+
+  it.each([
+    ['aprobarDocumento', [31, 'Revisión técnica'], '/api/v1/documentos/documentos/31/aprobar/', { comentario: 'Revisión técnica' }],
+    ['rechazarDocumento', [31, 'Archivo incompleto'], '/api/v1/documentos/documentos/31/rechazar/', { motivo: 'Archivo incompleto' }],
+    ['observarDocumento', [31, 'Corregir portada'], '/api/v1/documentos/documentos/31/observar/', { comentario: 'Corregir portada' }],
+    ['marcarObservacionCorregida', [401], '/api/v1/documentos/observaciones/401/marcar-corregida/', {}],
+  ])('ejecuta %s con endpoint y payload contractuales', async (method, args, url, payload) => {
+    const signal = new AbortController().signal
+    apiClient.post.mockResolvedValue({ data: { id: 31 } })
+    await postulacionesService[method](...args, signal)
+    expect(apiClient.post).toHaveBeenCalledWith(url, payload, { signal })
+  })
+
+  it.each([400, 409])('conserva campos y conflicto funcional de revisión %s', async (status) => {
+    const fields = { motivo: ['Este campo es obligatorio.'] }
+    apiClient.post.mockRejectedValue({ response: { status, data: fields } })
+    await expect(postulacionesService.rechazarDocumento(31, ''))
+      .rejects.toEqual({ status, message: 'La acción no es válida para el estado actual del documento.', fields })
+  })
 })

@@ -228,8 +228,9 @@ class DocumentoService:
             self._validar_postulacion_editable(documento.postulacion)
 
             version_actual = self.obtener_version_actual(documento)
-            if documento.estado and getattr(documento.estado, "codigo", None) == "APR":
-                raise ValidationError("El documento ya está aprobado.")
+            self._validar_estado_revision(documento)
+            if version_actual.observaciones.filter(activo=True, corregida=False).exists():
+                raise ValidationError("La versión actual tiene observaciones pendientes.")
 
             estado_apr = self._obtener_estado_documento("APR")
             documento.estado = estado_apr
@@ -300,8 +301,7 @@ class DocumentoService:
             self._validar_postulacion_editable(documento.postulacion)
 
             version_actual = self.obtener_version_actual(documento)
-            if documento.estado and getattr(documento.estado, "codigo", None) == "REC":
-                raise ValidationError("El documento ya está rechazado.")
+            self._validar_estado_revision(documento)
 
             estado_rec = self._obtener_estado_documento("REC")
             documento.estado = estado_rec
@@ -362,8 +362,12 @@ class DocumentoService:
             raise ValidationError("El comentario de la observación es obligatorio.")
 
         with transaction.atomic():
-            documento = DocumentoPostulacion.objects.select_for_update().get(pk=documento.pk)
+            documento = DocumentoPostulacion.objects.select_for_update().select_related(
+                "postulacion", "estado"
+            ).get(pk=documento.pk)
             self._validar_documento_activo(documento)
+            self._validar_postulacion_editable(documento.postulacion)
+            self._validar_estado_revision(documento)
 
             version_actual = self.obtener_version_actual(documento)
             observacion = ObservacionDocumento.objects.create(
@@ -435,24 +439,24 @@ class DocumentoService:
             observacion.fecha_correccion = timezone.now()
             observacion.save(update_fields=["corregida", "fecha_correccion"])
 
-            version_actual = observacion.version_documento
+            version_observada = observacion.version_documento
+            documento = version_observada.documento
+            version_actual = self.obtener_version_actual(documento)
             observaciones_pendientes = version_actual.observaciones.filter(
                 activo=True,
                 corregida=False,
             ).exists()
 
-            if not observaciones_pendientes:
-                documento = version_actual.documento
-                documento.requiere_correccion = False
-                documento.save(update_fields=["requiere_correccion"])
+            documento.requiere_correccion = observaciones_pendientes
+            documento.save(update_fields=["requiere_correccion"])
 
             self._registrar_auditoria(
                 usuario_id=getattr(usuario, "id", None),
                 accion="CORRECT",
                 modulo="DOCUMENTOS",
                 descripcion=(
-                    f"Observación {observacion.pk} corregida para el documento {version_actual.documento}. "
-                    f"Versión: {version_actual.numero_version}."
+                    f"Observación {observacion.pk} corregida para el documento {documento}. "
+                    f"Versión: {version_observada.numero_version}."
                 ),
                 request=request,
             )
@@ -504,6 +508,11 @@ class DocumentoService:
         if not (getattr(usuario, "is_staff", False) or getattr(usuario, "is_superuser", False)):
             raise PermissionDenied("El usuario no tiene permisos administrativos para esta acción.")
         return usuario
+
+    def _validar_estado_revision(self, documento: DocumentoPostulacion) -> None:
+        codigo = getattr(documento.estado, "codigo", None)
+        if codigo != "ENV":
+            raise ValidationError("El documento solo puede revisarse cuando está en estado ENV.")
 
     def _validar_postulacion_activa(self, postulacion: Postulacion) -> Postulacion:
         if not isinstance(postulacion, Postulacion) or not postulacion.pk:

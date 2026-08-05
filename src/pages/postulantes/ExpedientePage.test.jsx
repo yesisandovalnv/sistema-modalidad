@@ -10,6 +10,7 @@ vi.mock('../../services/postulacionesService', () => ({
   postulacionesService: {
     obtenerExpediente: vi.fn(), obtenerHistorial: vi.fn(), obtenerDocumentos: vi.fn(),
     obtenerVersiones: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), cargarDocumento: vi.fn(),
+    aprobarDocumento: vi.fn(), rechazarDocumento: vi.fn(), observarDocumento: vi.fn(), marcarObservacionCorregida: vi.fn(),
   },
 }))
 
@@ -25,7 +26,7 @@ const historyResponse = {
 
 const documentsResponse = {
   count: 1, next: null, previous: null,
-  results: [{ id: 31, tipo_documento: 4, tipo_documento_nombre: 'Informe final', estado_nombre: 'Enviado', fecha_subida: '2026-02-01T10:00:00Z', fecha_revision: null, requiere_correccion: true, observacion_general: 'Revisión técnica pendiente', versiones: [{ id: 301 }] }],
+  results: [{ id: 31, tipo_documento: 4, tipo_documento_nombre: 'Informe final', estado_codigo: 'ENV', estado_nombre: 'Enviado', fecha_subida: '2026-02-01T10:00:00Z', fecha_revision: null, requiere_correccion: true, tiene_observaciones_pendientes: false, observacion_general: 'Revisión técnica pendiente', versiones: [{ id: 301 }] }],
 }
 
 const versionsResponse = {
@@ -82,6 +83,11 @@ function renderOwnerPage() {
   return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 }
 
+function renderReviewerPage() {
+  const auth = { user: { id: 9 }, hasPermission: (name) => name === 'puede_gestionar_documentos' }
+  return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+}
+
 describe('ExpedientePage US-008', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -91,6 +97,10 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerObservaciones.mockResolvedValue(observationsResponse)
     postulacionesService.obtenerTiposDocumento.mockResolvedValue({ results: [{ id: 4, nombre: 'Informe final', activo: true }] })
     postulacionesService.cargarDocumento.mockResolvedValue({ id: 303, numero_version: 3, es_version_actual: true })
+    postulacionesService.aprobarDocumento.mockResolvedValue({ id: 31, estado_codigo: 'APR' })
+    postulacionesService.rechazarDocumento.mockResolvedValue({ id: 31, estado_codigo: 'REC' })
+    postulacionesService.observarDocumento.mockResolvedValue({ id: 403, version_documento: 302 })
+    postulacionesService.marcarObservacionCorregida.mockResolvedValue({ id: 401, corregida: true })
   })
 
   it('renderiza el resumen, macroetapa, avance y advertencia institucional', async () => {
@@ -286,7 +296,7 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.obtenerObservaciones).toHaveBeenCalledWith(301, 1, expect.any(AbortSignal))
     await userEvent.click(within(dialog).getAllByRole('button', { name: 'Siguiente' }).find((button) => !button.disabled))
     await waitFor(() => expect(postulacionesService.obtenerVersiones).toHaveBeenLastCalledWith(31, 2, expect.any(AbortSignal)))
-    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Cerrar' }).at(-1))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
@@ -387,5 +397,81 @@ describe('ExpedientePage US-008', () => {
     ))
     expect(await screen.findByText('Nueva versión cargada')).toBeInTheDocument()
     await waitFor(() => expect(postulacionesService.obtenerVersiones).toHaveBeenCalledTimes(2))
+  })
+
+  it('muestra revisión solo con capacidad y aprueba el documento seleccionado', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderReviewerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Aprobar documento' }))
+    expect(screen.getByText(/Confirma la aprobación técnica/)).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(/Comentario/), 'Revisado')
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await waitFor(() => expect(postulacionesService.aprobarDocumento).toHaveBeenCalledWith(31, 'Revisado', expect.any(AbortSignal)))
+    expect(postulacionesService.obtenerDocumentos).toHaveBeenCalledTimes(2)
+  })
+
+  it('valida motivo y conserva el error de campo al rechazar', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderReviewerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Rechazar documento' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Este campo es obligatorio.')
+    expect(postulacionesService.rechazarDocumento).not.toHaveBeenCalled()
+  })
+
+  it('observa el documento y marca una observación pendiente concreta como corregida', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderReviewerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar observación' }))
+    await userEvent.type(screen.getByLabelText('Comentario'), 'Ajustar portada')
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await waitFor(() => expect(postulacionesService.observarDocumento).toHaveBeenCalledWith(31, 'Ajustar portada', expect.any(AbortSignal)))
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Ver observaciones' }))[1])
+    await userEvent.click(await screen.findByRole('button', { name: 'Marcar observación corregida' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await waitFor(() => expect(postulacionesService.marcarObservacionCorregida).toHaveBeenCalledWith(401, expect.any(AbortSignal)))
+  })
+
+  it('oculta acciones de revisión al estudiante propietario', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderOwnerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    expect(screen.queryByRole('button', { name: 'Aprobar documento' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Rechazar documento' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Registrar observación' })).not.toBeInTheDocument()
+  })
+
+  it('oculta transiciones para un documento que no está en ENV', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDocumentos.mockResolvedValue({
+      ...documentsResponse,
+      results: [{ ...documentsResponse.results[0], estado_codigo: 'APR', estado_nombre: 'Aprobado' }],
+    })
+    renderReviewerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    expect(screen.queryByRole('button', { name: 'Aprobar documento' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Rechazar documento' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Registrar observación' })).not.toBeInTheDocument()
+  })
+
+  it('bloquea doble revisión, muestra Procesando y cancela al cerrar', async () => {
+    let signal
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.aprobarDocumento.mockImplementation((_id, _comment, receivedSignal) => {
+      signal = receivedSignal
+      return new Promise(() => {})
+    })
+    renderReviewerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Aprobar documento' }))
+    const confirm = screen.getByRole('button', { name: 'Confirmar' })
+    await userEvent.click(confirm)
+    expect(await screen.findByRole('button', { name: 'Procesando…' })).toBeDisabled()
+    expect(postulacionesService.aprobarDocumento).toHaveBeenCalledTimes(1)
+    await userEvent.click(screen.getAllByRole('button', { name: 'Cerrar' }).at(-1))
+    expect(signal.aborted).toBe(true)
   })
 })

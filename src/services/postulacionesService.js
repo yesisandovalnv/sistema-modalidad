@@ -34,6 +34,25 @@ function normalizeUpload(error) {
   return { status, message: 'No se pudo cargar el documento. Comprueba tu conexión e intenta nuevamente.' }
 }
 
+function normalizeReview(error) {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  const data = error?.response?.data
+  if (status === 400 || status === 409) return { status, message: 'La acción no es válida para el estado actual del documento.', fields: data && typeof data === 'object' ? data : {} }
+  if (status === 401) return { status, message: 'Debes iniciar sesión para revisar documentos.' }
+  if (status === 403) return { status, message: 'No tienes autorización para revisar este documento.' }
+  if (status === 404) return { status, message: 'El documento o la observación ya no está disponible.' }
+  return { status, message: 'No se pudo completar la revisión. Comprueba tu conexión e intenta nuevamente.' }
+}
+
+async function reviewAction(url, payload, signal) {
+  try {
+    return (await apiClient.post(url, payload, { signal })).data
+  } catch (error) {
+    throw normalizeReview(error)
+  }
+}
+
 async function getDocumentResource(url, params, signal, resource) {
   try {
     return (await apiClient.get(url, { params, signal })).data
@@ -114,5 +133,17 @@ export const postulacionesService = {
     } catch (error) {
       throw normalizeUpload(error)
     }
+  },
+  aprobarDocumento(documentoId, comentario, signal) {
+    return reviewAction(`/api/v1/documentos/documentos/${documentoId}/aprobar/`, { comentario }, signal)
+  },
+  rechazarDocumento(documentoId, motivo, signal) {
+    return reviewAction(`/api/v1/documentos/documentos/${documentoId}/rechazar/`, { motivo }, signal)
+  },
+  observarDocumento(documentoId, comentario, signal) {
+    return reviewAction(`/api/v1/documentos/documentos/${documentoId}/observar/`, { comentario }, signal)
+  },
+  marcarObservacionCorregida(observacionId, signal) {
+    return reviewAction(`/api/v1/documentos/observaciones/${observacionId}/marcar-corregida/`, {}, signal)
   },
 }

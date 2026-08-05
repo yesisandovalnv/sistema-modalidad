@@ -735,3 +735,136 @@ class TestDocumentoRevision(DocumentoAPITestCase):
         self.authenticate_user(self.student_user)
         response = self.client.post(f"/api/v1/documentos/observaciones/{observacion.id}/marcar-corregida/", {}, format="json")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_apr_no_puede_rechazarse_ni_observarse(self) -> None:
+        documento = self._create_documento_con_version()
+        self.authenticate_user(self.admin_user)
+        self.client.post(f"/api/v1/documentos/documentos/{documento.id}/aprobar/", {}, format="json")
+        rechazo = self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/rechazar/", {"motivo": "Cambio"}, format="json",
+        )
+        observacion = self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": "Cambio"}, format="json",
+        )
+        self.assertEqual(rechazo.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(observacion.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rec_no_puede_aprobarse_sin_nueva_version(self) -> None:
+        documento = self._create_documento_con_version()
+        self.authenticate_user(self.admin_user)
+        self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/rechazar/", {"motivo": "Incompleto"}, format="json",
+        )
+        response = self.client.post(f"/api/v1/documentos/documentos/{documento.id}/aprobar/", {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_aprobar_falla_con_observaciones_pendientes_actuales(self) -> None:
+        documento = self._create_documento_con_version()
+        self.authenticate_user(self.admin_user)
+        self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": "Corregir"}, format="json",
+        )
+        response = self.client.post(f"/api/v1/documentos/documentos/{documento.id}/aprobar/", {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        documento.refresh_from_db()
+        self.assertEqual(documento.estado, self.estado_env)
+
+    def test_observaciones_historicas_no_bloquean_nueva_version_ni_aprobacion(self) -> None:
+        documento = self._create_documento_con_version()
+        self.authenticate_user(self.admin_user)
+        self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": "Corregir v1"}, format="json",
+        )
+        self.upload_document(
+            self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(name="documento-v2.pdf"),
+        )
+        documento.refresh_from_db()
+        self.assertFalse(documento.requiere_correccion)
+        self.authenticate_user(self.admin_user)
+        response = self.client.post(f"/api/v1/documentos/documentos/{documento.id}/aprobar/", {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(ObservacionDocumento.objects.filter(corregida=False).exists())
+
+    def test_corregir_recalcula_todas_las_observaciones_de_version_actual(self) -> None:
+        documento = self._create_documento_con_version()
+        self.authenticate_user(self.admin_user)
+        for comentario in ("Primera", "Segunda"):
+            self.client.post(
+                f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": comentario}, format="json",
+            )
+        observaciones = list(ObservacionDocumento.objects.order_by("pk"))
+        first = self.client.post(
+            f"/api/v1/documentos/observaciones/{observaciones[0].id}/marcar-corregida/", {}, format="json",
+        )
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        documento.refresh_from_db()
+        self.assertTrue(documento.requiere_correccion)
+        second = self.client.post(
+            f"/api/v1/documentos/observaciones/{observaciones[1].id}/marcar-corregida/", {}, format="json",
+        )
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        documento.refresh_from_db()
+        self.assertFalse(documento.requiere_correccion)
+        self.assertTrue(AuditLog.objects.filter(usuario=self.admin_user, accion="CORRECT", modulo="DOCUMENTOS").exists())
+
+    def test_corregir_observacion_historica_no_altera_pendientes_actuales(self) -> None:
+        documento = self._create_documento_con_version()
+        self.authenticate_user(self.admin_user)
+        self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": "Histórica"}, format="json",
+        )
+        historica = ObservacionDocumento.objects.get(comentario="Histórica")
+        self.upload_document(
+            self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(name="documento-v2.pdf"),
+        )
+        self.authenticate_user(self.admin_user)
+        self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": "Actual"}, format="json",
+        )
+        response = self.client.post(
+            f"/api/v1/documentos/observaciones/{historica.id}/marcar-corregida/", {}, format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        documento.refresh_from_db()
+        self.assertTrue(documento.requiere_correccion)
+
+    def test_observar_rechaza_postulacion_concluida(self) -> None:
+        documento = self._create_documento_con_version()
+        concluida = EstadoPostulacion.objects.create(codigo="CONCLUIDA", nombre="Concluida")
+        self.postulacion.estado_actual = concluida
+        self.postulacion.save(update_fields=["estado_actual"])
+        self.authenticate_user(self.admin_user)
+        response = self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": "Fuera de flujo"}, format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_staff_y_superuser_pueden_revisar_pero_actor_asignado_no(self) -> None:
+        documento = self._create_documento_con_version()
+        staff = User.objects.create_user(username="staff-revisor", is_staff=True)
+        self.authenticate_user(staff)
+        aprobado = self.client.post(f"/api/v1/documentos/documentos/{documento.id}/aprobar/", {}, format="json")
+        self.assertEqual(aprobado.status_code, status.HTTP_200_OK)
+
+        self.upload_document(
+            self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(name="documento-v2.pdf"),
+        )
+        actor = User.objects.create_user(username="actor-revisor")
+        AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion,
+            usuario=actor,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
+            designado_por=self.admin_user,
+        )
+        self.authenticate_user(actor)
+        denegado = self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": "Sin autoridad"}, format="json",
+        )
+        self.assertEqual(denegado.status_code, status.HTTP_403_FORBIDDEN)
+
+        superuser = User.objects.create_user(username="super-revisor", is_superuser=True)
+        self.authenticate_user(superuser)
+        observado = self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": "Revisión autorizada"}, format="json",
+        )
+        self.assertEqual(observado.status_code, status.HTTP_201_CREATED)

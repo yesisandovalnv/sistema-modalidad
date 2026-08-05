@@ -45,15 +45,28 @@ export default function ExpedientePage() {
   const [documentTypes, setDocumentTypes] = useState({ data: [], loading: false, error: '' })
   const [upload, setUpload] = useState(null)
   const uploadController = useRef(null)
+  const [review, setReview] = useState(null)
+  const reviewController = useRef(null)
 
   useEffect(() => {
     uploadController.current?.abort()
+    reviewController.current?.abort()
     setUpload(null)
+    setReview(null)
     setSelectedDocument(null)
     setSelectedVersion(null)
   }, [id])
 
-  useEffect(() => () => uploadController.current?.abort(), [])
+  useEffect(() => () => {
+    uploadController.current?.abort()
+    reviewController.current?.abort()
+  }, [])
+
+  useEffect(() => {
+    reviewController.current?.abort()
+    reviewController.current = null
+    setReview(null)
+  }, [selectedDocument?.id, selectedVersion?.id])
 
   const load = useCallback(async (signal) => {
     setData(null)
@@ -147,6 +160,7 @@ export default function ExpedientePage() {
   const isOwner = String(auth?.user?.id) === String(detalle.estudiante_detalle?.id)
   const isStaff = ['ADM', 'ADMIN', 'ADMINISTRACION', 'ADMINISTRADOR'].includes(roleCode)
   const canUpload = auth?.hasPermission?.('puede_cargar_documentos') === true && (isOwner || isStaff)
+  const canReview = auth?.hasPermission?.('puede_gestionar_documentos') === true
 
   const openUpload = async (document = null) => {
     uploadController.current?.abort()
@@ -191,6 +205,47 @@ export default function ExpedientePage() {
       if (upload.document) setVersionsRevision((value) => value + 1)
     } catch (requestError) {
       if (!requestError.canceled) setUpload((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
+    }
+  }
+
+  const openReview = (action, observation = null) => {
+    reviewController.current?.abort()
+    reviewController.current = new AbortController()
+    setReview({ action, observation, submitting: false, fields: {}, error: '' })
+  }
+
+  const closeReview = () => {
+    reviewController.current?.abort()
+    reviewController.current = null
+    setReview(null)
+  }
+
+  const submitReview = async (event) => {
+    event.preventDefault()
+    if (!review || review.submitting) return
+    const fields = event.currentTarget.elements
+    const value = fields.comentario?.value?.trim() || fields.motivo?.value?.trim() || ''
+    if ((review.action === 'rechazar' || review.action === 'observar') && !value) {
+      const name = review.action === 'rechazar' ? 'motivo' : 'comentario'
+      setReview((current) => ({ ...current, fields: { [name]: ['Este campo es obligatorio.'] }, error: '' }))
+      return
+    }
+    const controller = new AbortController()
+    reviewController.current?.abort()
+    reviewController.current = controller
+    setReview((current) => ({ ...current, submitting: true, fields: {}, error: '' }))
+    try {
+      if (review.action === 'aprobar') await postulacionesService.aprobarDocumento(selectedDocument.id, value, controller.signal)
+      if (review.action === 'rechazar') await postulacionesService.rechazarDocumento(selectedDocument.id, value, controller.signal)
+      if (review.action === 'observar') await postulacionesService.observarDocumento(selectedDocument.id, value, controller.signal)
+      if (review.action === 'corregir') await postulacionesService.marcarObservacionCorregida(review.observation.id, controller.signal)
+      setReview(null)
+      reviewController.current = null
+      setDocumentsRevision((current) => current + 1)
+      setVersionsRevision((current) => current + 1)
+      if (selectedVersion) setObservationsRevision((current) => current + 1)
+    } catch (requestError) {
+      if (!requestError.canceled) setReview((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
     }
   }
 
@@ -290,9 +345,12 @@ export default function ExpedientePage() {
           onClose={() => { setSelectedDocument(null); setSelectedVersion(null) }}
           canUpload={canUpload}
           onUpload={() => openUpload(selectedDocument)}
+          canReview={canReview}
+          onReview={openReview}
         />
       )}
       {upload && <UploadDialog upload={upload} types={documentTypes} onSubmit={submitUpload} onClose={closeUpload} />}
+      {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
     </section>
   )
 }
@@ -324,8 +382,9 @@ function DocumentsCard({ documents, page, onPage, onRetry, onSelect, canUpload, 
   )
 }
 
-function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVersionsRetry, selectedVersion, observations, observationsPage, onSelectVersion, onObservationsPage, onObservationsRetry, onClose, canUpload, onUpload }) {
+function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVersionsRetry, selectedVersion, observations, observationsPage, onSelectVersion, onObservationsPage, onObservationsRetry, onClose, canUpload, onUpload, canReview, onReview }) {
   const rows = versions.data?.results || []
+  const canTransition = canReview && document.estado_codigo === 'ENV'
   return (
     <Modal title="Detalle del documento" onClose={onClose}>
       <div className="mt-4 min-w-0 space-y-5">
@@ -337,6 +396,11 @@ function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVe
           <Info label="Requiere corrección" value={document.requiere_correccion ? 'Sí' : 'No'} />
         </dl>
         {canUpload && <Button onClick={onUpload}>Cargar nueva versión</Button>}
+        {canTransition && <div className="flex flex-wrap gap-2">
+          {!document.tiene_observaciones_pendientes && <Button onClick={() => onReview('aprobar')}>Aprobar documento</Button>}
+          <Button variant="secondary" onClick={() => onReview('rechazar')}>Rechazar documento</Button>
+          <Button variant="secondary" onClick={() => onReview('observar')}>Registrar observación</Button>
+        </div>}
         {document.observacion_general && <p className="break-words rounded-lg bg-amber-50 p-3 text-sm dark:bg-amber-950">{document.observacion_general}</p>}
         <section aria-labelledby="versiones-title"><h3 id="versiones-title" className="text-lg font-bold">Versiones</h3>
           {versions.loading && <p role="status" className="mt-3">Cargando versiones…</p>}
@@ -350,10 +414,28 @@ function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVe
             </li>
           ))}</ol><Pagination count={versions.data.count} page={versionsPage} hasNext={Boolean(versions.data.next)} hasPrevious={Boolean(versions.data.previous)} onPage={onVersionsPage} /></>}
         </section>
-        {selectedVersion && <ObservationsPanel version={selectedVersion} observations={observations} page={observationsPage} onPage={onObservationsPage} onRetry={onObservationsRetry} />}
+        {selectedVersion && <ObservationsPanel version={selectedVersion} observations={observations} page={observationsPage} onPage={onObservationsPage} onRetry={onObservationsRetry} canReview={canReview} onCorrect={(observation) => onReview('corregir', observation)} />}
       </div>
     </Modal>
   )
+}
+
+function ReviewDialog({ review, onSubmit, onClose }) {
+  const titles = { aprobar: 'Aprobar documento', rechazar: 'Rechazar documento', observar: 'Registrar observación', corregir: 'Marcar observación corregida' }
+  const fieldName = review.action === 'rechazar' ? 'motivo' : 'comentario'
+  const fieldValue = review.fields?.[fieldName]
+  const fieldError = Array.isArray(fieldValue) ? fieldValue.join(' ') : fieldValue
+  return <Modal title={titles[review.action]} onClose={onClose}>
+    <form className="mt-4 grid gap-4" onSubmit={onSubmit} noValidate>
+      {review.action === 'aprobar' && <p className="text-sm">Confirma la aprobación técnica del documento seleccionado.</p>}
+      {review.action === 'corregir' && <p className="text-sm">Confirma que la observación seleccionada fue corregida.</p>}
+      {(review.action === 'aprobar' || review.action === 'observar') && <label className="text-sm">Comentario {review.action === 'aprobar' && '(opcional)'}<textarea name="comentario" required={review.action === 'observar'} disabled={review.submitting} aria-describedby={fieldError ? 'review-field-error' : undefined} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>}
+      {review.action === 'rechazar' && <label className="text-sm">Motivo<textarea name="motivo" required disabled={review.submitting} aria-describedby={fieldError ? 'review-field-error' : undefined} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>}
+      {fieldError && <p id="review-field-error" role="alert" className="text-red-600">{fieldError}</p>}
+      {review.error && <p role="alert" className="text-red-600">{review.error}</p>}
+      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={review.submitting}>{review.submitting ? 'Procesando…' : 'Confirmar'}</Button><Button type="button" variant="secondary" disabled={review.submitting} onClick={onClose}>Cancelar</Button></div>
+    </form>
+  </Modal>
 }
 
 function UploadDialog({ upload, types, onSubmit, onClose }) {
@@ -383,13 +465,13 @@ function UploadDialog({ upload, types, onSubmit, onClose }) {
   </Modal>
 }
 
-function ObservationsPanel({ version, observations, page, onPage, onRetry }) {
+function ObservationsPanel({ version, observations, page, onPage, onRetry, canReview, onCorrect }) {
   const rows = observations.data?.results || []
   return <section aria-labelledby="observaciones-title"><h3 id="observaciones-title" className="text-lg font-bold">Observaciones de la versión {version.numero_version}</h3>
     {observations.loading && <p role="status" className="mt-3">Cargando observaciones…</p>}
     {observations.error && <SectionError message={observations.error} label="Reintentar observaciones" onRetry={onRetry} />}
     {!observations.loading && !observations.error && rows.length === 0 && <p className="mt-3 text-sm text-slate-500">Sin observaciones registradas.</p>}
-    {!observations.loading && !observations.error && rows.length > 0 && <><ul className="mt-3 space-y-3">{rows.map((observation) => <li key={observation.id} className="min-w-0 rounded-lg border p-3 text-sm"><p className="break-words">{observation.comentario || 'Sin comentario'}</p><dl className="mt-3 grid gap-2 sm:grid-cols-2"><Info label="Autor" value={observation.usuario_nombre || 'No registrado'} /><Info label="Fecha" value={formatDocumentDate(observation.fecha_observacion)} /><Info label="Estado" value={observation.corregida ? 'Corregida' : 'Pendiente'} /><Info label="Fecha de corrección" value={formatDocumentDate(observation.fecha_correccion)} /></dl></li>)}</ul><Pagination count={observations.data.count} page={page} hasNext={Boolean(observations.data.next)} hasPrevious={Boolean(observations.data.previous)} onPage={onPage} /></>}
+    {!observations.loading && !observations.error && rows.length > 0 && <><ul className="mt-3 space-y-3">{rows.map((observation) => <li key={observation.id} className="min-w-0 rounded-lg border p-3 text-sm"><p className="break-words">{observation.comentario || 'Sin comentario'}</p><dl className="mt-3 grid gap-2 sm:grid-cols-2"><Info label="Autor" value={observation.usuario_nombre || 'No registrado'} /><Info label="Fecha" value={formatDocumentDate(observation.fecha_observacion)} /><Info label="Estado" value={observation.corregida ? 'Corregida' : 'Pendiente'} /><Info label="Fecha de corrección" value={formatDocumentDate(observation.fecha_correccion)} /></dl>{canReview && !observation.corregida && <Button className="mt-3" variant="secondary" onClick={() => onCorrect(observation)}>Marcar observación corregida</Button>}</li>)}</ul><Pagination count={observations.data.count} page={page} hasNext={Boolean(observations.data.next)} hasPrevious={Boolean(observations.data.previous)} onPage={onPage} /></>}
   </section>
 }
 

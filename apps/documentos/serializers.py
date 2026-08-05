@@ -134,7 +134,17 @@ class DocumentoPostulacionSerializer(serializers.ModelSerializer):
 
     versiones = VersionDocumentoSerializer(many=True, read_only=True)
     tipo_documento_nombre = serializers.CharField(source="tipo_documento.nombre", read_only=True)
+    estado_codigo = serializers.CharField(source="estado.codigo", read_only=True)
     estado_nombre = serializers.CharField(source="estado.nombre", read_only=True)
+    tiene_observaciones_pendientes = serializers.SerializerMethodField()
+
+    def get_tiene_observaciones_pendientes(self, obj: DocumentoPostulacion) -> bool:
+        return ObservacionDocumento.objects.filter(
+            version_documento__documento=obj,
+            version_documento__es_version_actual=True,
+            activo=True,
+            corregida=False,
+        ).exists()
 
     class Meta:
         model = DocumentoPostulacion
@@ -144,11 +154,13 @@ class DocumentoPostulacionSerializer(serializers.ModelSerializer):
             "tipo_documento",
             "tipo_documento_nombre",
             "estado",
+            "estado_codigo",
             "estado_nombre",
             "fecha_subida",
             "fecha_revision",
             "observacion_general",
             "requiere_correccion",
+            "tiene_observaciones_pendientes",
             "versiones",
             "activo",
             "created_at",
