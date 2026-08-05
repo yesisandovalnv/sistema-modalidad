@@ -4,11 +4,12 @@ import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ExpedientePage from './ExpedientePage'
 import { postulacionesService } from '../../services/postulacionesService'
+import { AuthContext } from '../../context/AuthContext'
 
 vi.mock('../../services/postulacionesService', () => ({
   postulacionesService: {
     obtenerExpediente: vi.fn(), obtenerHistorial: vi.fn(), obtenerDocumentos: vi.fn(),
-    obtenerVersiones: vi.fn(), obtenerObservaciones: vi.fn(),
+    obtenerVersiones: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), cargarDocumento: vi.fn(),
   },
 }))
 
@@ -24,7 +25,7 @@ const historyResponse = {
 
 const documentsResponse = {
   count: 1, next: null, previous: null,
-  results: [{ id: 31, tipo_documento_nombre: 'Informe final', estado_nombre: 'Enviado', fecha_subida: '2026-02-01T10:00:00Z', fecha_revision: null, requiere_correccion: true, observacion_general: 'Revisión técnica pendiente', versiones: [{ id: 301 }] }],
+  results: [{ id: 31, tipo_documento: 4, tipo_documento_nombre: 'Informe final', estado_nombre: 'Enviado', fecha_subida: '2026-02-01T10:00:00Z', fecha_revision: null, requiere_correccion: true, observacion_general: 'Revisión técnica pendiente', versiones: [{ id: 301 }] }],
 }
 
 const versionsResponse = {
@@ -76,6 +77,11 @@ function renderPage() {
   )
 }
 
+function renderOwnerPage() {
+  const auth = { user: { id: 3, rol: { codigo: 'EST' } }, roleCode: 'EST', hasPermission: (name) => name === 'puede_cargar_documentos' }
+  return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+}
+
 describe('ExpedientePage US-008', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -83,6 +89,8 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerDocumentos.mockResolvedValue(documentsResponse)
     postulacionesService.obtenerVersiones.mockResolvedValue(versionsResponse)
     postulacionesService.obtenerObservaciones.mockResolvedValue(observationsResponse)
+    postulacionesService.obtenerTiposDocumento.mockResolvedValue({ results: [{ id: 4, nombre: 'Informe final', activo: true }] })
+    postulacionesService.cargarDocumento.mockResolvedValue({ id: 303, numero_version: 3, es_version_actual: true })
   })
 
   it('renderiza el resumen, macroetapa, avance y advertencia institucional', async () => {
@@ -347,5 +355,37 @@ describe('ExpedientePage US-008', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar documentos' }))
     expect(await screen.findByText('Informe final')).toBeInTheDocument()
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+  })
+
+  it('carga un documento inicial con postulación contextual y tipo por nombre', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderOwnerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+    expect(await screen.findByRole('option', { name: 'Informe final' })).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Tipo documental'), '4')
+    const file = new File(['%PDF-1.4'], 'informe.pdf', { type: 'application/pdf' })
+    await userEvent.upload(screen.getByLabelText('Archivo'), file)
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cargar documento' }))
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledWith(
+      { postulacionId: 7, tipoDocumentoId: '4', archivo: file }, expect.any(AbortSignal),
+    ))
+    expect(await screen.findByText('Documento cargado')).toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentos).toHaveBeenCalledTimes(2)
+  })
+
+  it('carga una nueva versión derivando postulación y tipo del detalle', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderOwnerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cargar nueva versión' }))
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    const file = new File(['%PDF-1.4'], 'informe-v3.pdf', { type: 'application/pdf' })
+    await userEvent.upload(screen.getByLabelText('Archivo'), file)
+    await userEvent.click(within(screen.getAllByRole('dialog').at(-1)).getByRole('button', { name: 'Cargar nueva versión' }))
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledWith(
+      { postulacionId: 7, tipoDocumentoId: 4, archivo: file }, expect.any(AbortSignal),
+    ))
+    expect(await screen.findByText('Nueva versión cargada')).toBeInTheDocument()
+    await waitFor(() => expect(postulacionesService.obtenerVersiones).toHaveBeenCalledTimes(2))
   })
 })

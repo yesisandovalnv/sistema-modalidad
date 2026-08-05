@@ -1,5 +1,6 @@
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from django.conf import settings
@@ -172,6 +173,50 @@ class TestDocumentoUpload(DocumentoAPITestCase):
         self.assertEqual(versiones.count(), 2)
         self.assertFalse(versiones[0].es_version_actual)
         self.assertTrue(versiones[1].es_version_actual)
+
+    def test_fallo_posterior_al_guardado_revierte_registros_y_elimina_solo_archivo_nuevo(self) -> None:
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion, tipo_documento=self.tipo_pdf)
+        anterior = VersionDocumento.objects.get(documento=documento)
+        ruta_anterior = Path(anterior.archivo.path)
+        archivos_antes = set(self._tmp_media.rglob("*.pdf"))
+
+        with patch("apps.documentos.services.DocumentoService._registrar_auditoria", side_effect=RuntimeError("fallo posterior")):
+            with self.assertRaises(RuntimeError):
+                self.upload_document(
+                    self.student_user, self.postulacion.id, self.tipo_pdf.id,
+                    self.create_pdf_file(name="version-fallida.pdf"),
+                )
+
+        self.assertEqual(VersionDocumento.objects.filter(documento=documento).count(), 1)
+        anterior.refresh_from_db()
+        self.assertTrue(anterior.es_version_actual)
+        self.assertTrue(ruta_anterior.exists())
+        self.assertEqual(set(self._tmp_media.rglob("*.pdf")), archivos_antes)
+
+    def test_fallo_en_primera_version_no_deja_documento_ni_archivo(self) -> None:
+        with patch("apps.documentos.services.DocumentoService._registrar_auditoria", side_effect=RuntimeError("fallo posterior")):
+            with self.assertRaises(RuntimeError):
+                self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        self.assertFalse(DocumentoPostulacion.all_objects.filter(postulacion=self.postulacion, tipo_documento=self.tipo_pdf).exists())
+        self.assertEqual(list(self._tmp_media.rglob("*.pdf")), [])
+
+    def test_staff_puede_subir_y_actor_asignado_no_staff_no_puede(self) -> None:
+        staff = User.objects.create_user(username="staff-carga", is_staff=True)
+        response = self.upload_document(staff, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        tipo_otro = TipoDocumento.objects.create(
+            codigo="PDF2", nombre="Segundo PDF", extensiones_permitidas="pdf", tamano_maximo_mb=1,
+        )
+        actor = User.objects.create_user(username="actor-asignado")
+        AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion, usuario=actor,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TUTOR,
+            designado_por=self.admin_user,
+        )
+        denied = self.upload_document(actor, self.postulacion.id, tipo_otro.id, self.create_pdf_file())
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_subida_rechaza_extension_invalida(self) -> None:
         """La subida debe rechazar archivos con extensión no permitida."""

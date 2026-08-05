@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PageHeader, DataState, Modal } from '../../components/crud/CrudShell'
 import { Card } from '../../components/ui/card'
@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/button'
 import { Pagination } from '../../components/reports/ReportComponents'
 import { postulacionesService } from '../../services/postulacionesService'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
+import { AuthContext } from '../../context/AuthContext'
 
 const EMPTY = 'No registrado'
 const CONTRACT_WARNINGS = [
@@ -20,6 +21,7 @@ const CONTRACT_WARNINGS = [
 
 export default function ExpedientePage() {
   const { id } = useParams()
+  const auth = useContext(AuthContext)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -40,11 +42,18 @@ export default function ExpedientePage() {
   const [observations, setObservations] = useState({ data: null, loading: false, error: '' })
   const [observationsPage, setObservationsPage] = useState(1)
   const [observationsRevision, setObservationsRevision] = useState(0)
+  const [documentTypes, setDocumentTypes] = useState({ data: [], loading: false, error: '' })
+  const [upload, setUpload] = useState(null)
+  const uploadController = useRef(null)
 
   useEffect(() => {
+    uploadController.current?.abort()
+    setUpload(null)
     setSelectedDocument(null)
     setSelectedVersion(null)
   }, [id])
+
+  useEffect(() => () => uploadController.current?.abort(), [])
 
   const load = useCallback(async (signal) => {
     setData(null)
@@ -80,7 +89,10 @@ export default function ExpedientePage() {
     const controller = new AbortController()
     setDocuments({ data: null, loading: true, error: '' })
     postulacionesService.obtenerDocumentos(id, documentsPage, controller.signal)
-      .then((documentData) => setDocuments({ data: documentData, loading: false, error: '' }))
+      .then((documentData) => {
+        setDocuments({ data: documentData, loading: false, error: '' })
+        setSelectedDocument((current) => current ? (documentData.results || []).find((item) => item.id === current.id) || current : null)
+      })
       .catch((requestError) => {
         if (!requestError.canceled) setDocuments({ data: null, loading: false, error: requestError.message })
       })
@@ -131,6 +143,56 @@ export default function ExpedientePage() {
   const safeProgress = progress !== null && Number.isFinite(progress)
     ? Math.min(100, Math.max(0, progress))
     : null
+  const roleCode = (auth?.roleCode || auth?.user?.rol?.codigo || '').toUpperCase()
+  const isOwner = String(auth?.user?.id) === String(detalle.estudiante_detalle?.id)
+  const isStaff = ['ADM', 'ADMIN', 'ADMINISTRACION', 'ADMINISTRADOR'].includes(roleCode)
+  const canUpload = auth?.hasPermission?.('puede_cargar_documentos') === true && (isOwner || isStaff)
+
+  const openUpload = async (document = null) => {
+    uploadController.current?.abort()
+    const controller = new AbortController()
+    uploadController.current = controller
+    setUpload({ document, submitting: false, fields: {}, error: '', success: '' })
+    if (document) return
+    setDocumentTypes((current) => ({ ...current, loading: true, error: '' }))
+    try {
+      const catalog = await postulacionesService.obtenerTiposDocumento(controller.signal)
+      const rows = (catalog.results || catalog || []).filter((type) => type.activo !== false)
+      setDocumentTypes({ data: rows, loading: false, error: '' })
+    } catch (requestError) {
+      if (!requestError.canceled) setDocumentTypes({ data: [], loading: false, error: requestError.message })
+    }
+  }
+
+  const closeUpload = () => {
+    uploadController.current?.abort()
+    uploadController.current = null
+    setUpload(null)
+  }
+
+  const submitUpload = async (event) => {
+    event.preventDefault()
+    if (!upload || upload.submitting) return
+    const form = event.currentTarget.elements
+    const file = form.archivo?.files?.[0]
+    const typeId = upload.document?.tipo_documento || form.tipo_documento_id?.value
+    if (!file || typeof file.size !== 'number' || file.size === 0 || !file.name) {
+      setUpload((current) => ({ ...current, fields: { archivo: ['Selecciona un archivo no vacío.'] }, error: '' }))
+      return
+    }
+    const controller = new AbortController()
+    uploadController.current?.abort()
+    uploadController.current = controller
+    setUpload((current) => ({ ...current, submitting: true, fields: {}, error: '' }))
+    try {
+      await postulacionesService.cargarDocumento({ postulacionId: detalle.id, tipoDocumentoId: typeId, archivo: file }, controller.signal)
+      setUpload((current) => ({ ...current, submitting: false, success: current.document ? 'Nueva versión cargada' : 'Documento cargado' }))
+      setDocumentsRevision((value) => value + 1)
+      if (upload.document) setVersionsRevision((value) => value + 1)
+    } catch (requestError) {
+      if (!requestError.canceled) setUpload((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
+    }
+  }
 
   return (
     <section className="mx-auto max-w-5xl space-y-5">
@@ -202,6 +264,8 @@ export default function ExpedientePage() {
         page={documentsPage}
         onPage={(page) => setDocumentsView({ id, page })}
         onRetry={() => setDocumentsRevision((value) => value + 1)}
+        canUpload={canUpload}
+        onUpload={() => openUpload()}
         onSelect={(document) => {
           setSelectedDocument(document)
           setVersionsPage(1)
@@ -224,17 +288,20 @@ export default function ExpedientePage() {
           onObservationsPage={setObservationsPage}
           onObservationsRetry={() => setObservationsRevision((value) => value + 1)}
           onClose={() => { setSelectedDocument(null); setSelectedVersion(null) }}
+          canUpload={canUpload}
+          onUpload={() => openUpload(selectedDocument)}
         />
       )}
+      {upload && <UploadDialog upload={upload} types={documentTypes} onSubmit={submitUpload} onClose={closeUpload} />}
     </section>
   )
 }
 
-function DocumentsCard({ documents, page, onPage, onRetry, onSelect }) {
+function DocumentsCard({ documents, page, onPage, onRetry, onSelect, canUpload, onUpload }) {
   const rows = documents.data?.results || []
   return (
     <Card className="overflow-hidden" aria-labelledby="documentos-title">
-      <h2 id="documentos-title" className="text-xl font-bold">Documentos</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="documentos-title" className="text-xl font-bold">Documentos</h2>{canUpload && <Button onClick={onUpload}>Cargar documento</Button>}</div>
       <p className="mt-1 text-sm text-slate-500">Evidencias técnicas registradas para esta postulación.</p>
       {documents.loading && <p role="status" className="mt-4 text-sm">Cargando documentos…</p>}
       {documents.error && <SectionError message={documents.error} label="Reintentar documentos" onRetry={onRetry} />}
@@ -257,7 +324,7 @@ function DocumentsCard({ documents, page, onPage, onRetry, onSelect }) {
   )
 }
 
-function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVersionsRetry, selectedVersion, observations, observationsPage, onSelectVersion, onObservationsPage, onObservationsRetry, onClose }) {
+function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVersionsRetry, selectedVersion, observations, observationsPage, onSelectVersion, onObservationsPage, onObservationsRetry, onClose, canUpload, onUpload }) {
   const rows = versions.data?.results || []
   return (
     <Modal title="Detalle del documento" onClose={onClose}>
@@ -269,6 +336,7 @@ function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVe
           <Info label="Fecha de revisión" value={formatDocumentDate(document.fecha_revision)} />
           <Info label="Requiere corrección" value={document.requiere_correccion ? 'Sí' : 'No'} />
         </dl>
+        {canUpload && <Button onClick={onUpload}>Cargar nueva versión</Button>}
         {document.observacion_general && <p className="break-words rounded-lg bg-amber-50 p-3 text-sm dark:bg-amber-950">{document.observacion_general}</p>}
         <section aria-labelledby="versiones-title"><h3 id="versiones-title" className="text-lg font-bold">Versiones</h3>
           {versions.loading && <p role="status" className="mt-3">Cargando versiones…</p>}
@@ -286,6 +354,33 @@ function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVe
       </div>
     </Modal>
   )
+}
+
+function UploadDialog({ upload, types, onSubmit, onClose }) {
+  const fixedType = upload.document
+  const fieldMessage = (name) => {
+    const value = upload.fields?.[name]
+    return Array.isArray(value) ? value.join(' ') : value
+  }
+  return <Modal title={fixedType ? 'Cargar nueva versión' : 'Cargar documento'} onClose={onClose}>
+    {upload.success ? <div className="mt-4"><p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-800">{upload.success}</p><Button className="mt-4" onClick={onClose}>Cerrar</Button></div> : <form className="mt-4 grid gap-4" onSubmit={onSubmit} noValidate>
+      {fixedType ? <div><p className="text-sm text-slate-500">Tipo documental</p><p className="break-words font-medium">{fixedType.tipo_documento_nombre}</p></div> : <label className="text-sm">Tipo documental
+        <select name="tipo_documento_id" required disabled={types.loading || upload.submitting} aria-describedby={fieldMessage('tipo_documento_id') ? 'tipo-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
+          <option value="">Seleccione un tipo documental</option>{types.data.map((type) => <option key={type.id} value={type.id}>{type.nombre}</option>)}
+        </select>{fieldMessage('tipo_documento_id') && <span id="tipo-error" className="mt-1 block text-red-600">{fieldMessage('tipo_documento_id')}</span>}
+      </label>}
+      {types.loading && <p role="status">Cargando tipos documentales…</p>}
+      {types.error && <p role="alert" className="text-red-600">{types.error}</p>}
+      {!fixedType && !types.loading && !types.error && types.data.length === 0 && <p role="status">No hay tipos documentales activos disponibles.</p>}
+      <label className="text-sm">Archivo
+        <input name="archivo" type="file" required disabled={upload.submitting} aria-describedby={fieldMessage('archivo') ? 'archivo-error' : undefined} className="mt-1 block w-full rounded-lg border p-2" />
+        {fieldMessage('archivo') && <span id="archivo-error" className="mt-1 block text-red-600">{fieldMessage('archivo')}</span>}
+      </label>
+      {fieldMessage('non_field_errors') && <p role="alert" className="text-red-600">{fieldMessage('non_field_errors')}</p>}
+      {upload.error && <p role="alert" className="text-red-600">{upload.error}</p>}
+      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={upload.submitting || types.loading || Boolean(types.error) || (!fixedType && types.data.length === 0)}>{upload.submitting ? 'Enviando…' : fixedType ? 'Cargar nueva versión' : 'Cargar documento'}</Button><Button type="button" variant="secondary" disabled={upload.submitting} onClick={onClose}>Cancelar</Button></div>
+    </form>}
+  </Modal>
 }
 
 function ObservationsPanel({ version, observations, page, onPage, onRetry }) {

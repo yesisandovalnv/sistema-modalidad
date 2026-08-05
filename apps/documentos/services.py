@@ -58,23 +58,32 @@ class DocumentoService:
         ):
             raise PermissionDenied("El usuario no tiene permisos para subir este documento.")
 
-        estado_env = self._obtener_estado_documento("ENV")
+        with transaction.atomic():
+            # Bloquear la postulación serializa también la primera carga, cuando
+            # todavía no existe un DocumentoPostulacion que pueda bloquearse.
+            postulacion = Postulacion.objects.select_for_update().get(pk=postulacion.pk)
+            self._validar_postulacion_editable(postulacion)
+            estado_env = self._obtener_estado_documento("ENV")
+            documento = DocumentoPostulacion.all_objects.select_for_update().filter(
+                postulacion=postulacion,
+                tipo_documento=tipo_documento,
+            ).first()
+            if documento is None:
+                documento = DocumentoPostulacion.objects.create(
+                    postulacion=postulacion,
+                    tipo_documento=tipo_documento,
+                    estado=estado_env,
+                    requiere_correccion=False,
+                )
+            else:
+                self._validar_documento_activo(documento)
 
-        documento, _created = DocumentoPostulacion.objects.get_or_create(
-            postulacion=postulacion,
-            tipo_documento=tipo_documento,
-            defaults={
-                "estado": estado_env,
-                "requiere_correccion": False,
-            },
-        )
-
-        return self.crear_nueva_version(
-            documento=documento,
-            archivo=archivo,
-            usuario=usuario,
-            request=request,
-        )
+            return self.crear_nueva_version(
+                documento=documento,
+                archivo=archivo,
+                usuario=usuario,
+                request=request,
+            )
 
     def crear_nueva_version(
         self,
@@ -104,58 +113,64 @@ class DocumentoService:
         self._validar_postulacion_editable(documento.postulacion)
         nombre_original = self._validar_archivo(archivo, documento.tipo_documento)
 
-        with transaction.atomic():
-            documento = DocumentoPostulacion.objects.select_for_update().get(pk=documento.pk)
-            self._validar_documento_activo(documento)
-            self._validar_postulacion_editable(documento.postulacion)
+        archivo_guardado = None
+        storage = None
+        try:
+            with transaction.atomic():
+                documento = DocumentoPostulacion.objects.select_for_update().get(pk=documento.pk)
+                self._validar_documento_activo(documento)
+                self._validar_postulacion_editable(documento.postulacion)
 
-            estado_env = self._obtener_estado_documento("ENV")
+                estado_env = self._obtener_estado_documento("ENV")
 
-            archivo.seek(0)
-            sha256 = hashlib.sha256()
-            total_bytes = 0
-            chunk = archivo.read(8192)
-            while chunk:
-                if isinstance(chunk, str):
-                    chunk = chunk.encode("utf-8")
-                total_bytes += len(chunk)
-                sha256.update(chunk)
+                archivo.seek(0)
+                sha256 = hashlib.sha256()
+                total_bytes = 0
                 chunk = archivo.read(8192)
-            archivo.seek(0)
+                while chunk:
+                    if isinstance(chunk, str):
+                        chunk = chunk.encode("utf-8")
+                    total_bytes += len(chunk)
+                    sha256.update(chunk)
+                    chunk = archivo.read(8192)
+                archivo.seek(0)
 
-            if total_bytes == 0:
-                raise ValidationError("El archivo enviado está vacío.")
+                if total_bytes == 0:
+                    raise ValidationError("El archivo enviado está vacío.")
 
-            if total_bytes > documento.tipo_documento.tamano_maximo_mb * 1024 * 1024:
-                raise ValidationError(
-                    f"El archivo supera el tamaño máximo permitido de {documento.tipo_documento.tamano_maximo_mb} MB."
+                if total_bytes > documento.tipo_documento.tamano_maximo_mb * 1024 * 1024:
+                    raise ValidationError(
+                        f"El archivo supera el tamaño máximo permitido de {documento.tipo_documento.tamano_maximo_mb} MB."
+                    )
+
+                versiones_qs = VersionDocumento.objects.select_for_update().filter(documento=documento)
+                ultimo_numero = versiones_qs.aggregate(max_num=Max("numero_version"))["max_num"]
+                numero_version = 1 if ultimo_numero is None else ultimo_numero + 1
+
+                if versiones_qs.exists():
+                    versiones_qs.update(es_version_actual=False)
+
+                documento.estado = estado_env
+                documento.fecha_subida = timezone.now()
+                documento.fecha_revision = None
+                documento.requiere_correccion = False
+                documento.save(update_fields=["estado", "fecha_subida", "fecha_revision", "requiere_correccion"])
+
+                version = VersionDocumento(
+                    documento=documento,
+                    subido_por=usuario,
+                    numero_version=numero_version,
+                    nombre_original=nombre_original,
+                    tamano_bytes=total_bytes,
+                    hash_sha256=sha256.hexdigest(),
+                    es_version_actual=True,
                 )
+                version.archivo.save(nombre_original, archivo, save=False)
+                archivo_guardado = version.archivo.name
+                storage = version.archivo.storage
+                version.save()
 
-            versiones_qs = VersionDocumento.objects.select_for_update().filter(documento=documento)
-            ultimo_numero = versiones_qs.aggregate(max_num=Max("numero_version"))["max_num"]
-            numero_version = 1 if ultimo_numero is None else ultimo_numero + 1
-
-            if versiones_qs.exists():
-                versiones_qs.update(es_version_actual=False)
-
-            documento.estado = estado_env
-            documento.fecha_subida = timezone.now()
-            documento.fecha_revision = None
-            documento.requiere_correccion = False
-            documento.save(update_fields=["estado", "fecha_subida", "fecha_revision", "requiere_correccion"])
-
-            version = VersionDocumento.objects.create(
-                documento=documento,
-                subido_por=usuario,
-                numero_version=numero_version,
-                archivo=archivo,
-                nombre_original=nombre_original,
-                tamano_bytes=total_bytes,
-                hash_sha256=sha256.hexdigest(),
-                es_version_actual=True,
-            )
-
-            self._registrar_auditoria(
+                self._registrar_auditoria(
                 usuario_id=getattr(usuario, "id", None),
                 accion="UPLOAD",
                 modulo="DOCUMENTOS",
@@ -164,13 +179,19 @@ class DocumentoService:
                     f"{documento.postulacion.codigo} como versión {version.numero_version}."
                 ),
                 request=request,
-            )
+                )
 
-            event_type = EventTypes.DOCUMENTO_SUBIDO if version.numero_version == 1 else EventTypes.DOCUMENTO_NUEVA_VERSION
-            publish_domain_event(event_type, version, usuario, documento.postulacion,
-                {"documento": documento.tipo_documento.nombre}, f"{event_type}:{version.pk}")
+                event_type = EventTypes.DOCUMENTO_SUBIDO if version.numero_version == 1 else EventTypes.DOCUMENTO_NUEVA_VERSION
+                publish_domain_event(event_type, version, usuario, documento.postulacion,
+                    {"documento": documento.tipo_documento.nombre}, f"{event_type}:{version.pk}")
 
-            return version
+                return version
+        except Exception:
+            # El storage no se revierte con transaction.atomic(). Solo se elimina
+            # el nombre recién creado; nunca se tocan archivos históricos.
+            if archivo_guardado and storage:
+                storage.delete(archivo_guardado)
+            raise
 
     def aprobar_documento(
         self,

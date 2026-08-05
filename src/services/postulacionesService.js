@@ -23,6 +23,17 @@ function normalizeDocuments(error, resource) {
   return { status, message: `No se pudieron cargar ${resource}. Intenta nuevamente.` }
 }
 
+function normalizeUpload(error) {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  const data = error?.response?.data
+  if (status === 400) return { status, message: 'Revisa los datos del documento.', fields: data && typeof data === 'object' ? data : {} }
+  if (status === 401) return { status, message: 'Debes iniciar sesión para cargar documentos.' }
+  if (status === 403) return { status, message: 'No tienes autorización para cargar documentos en esta postulación.' }
+  if (status === 404) return { status, message: 'La postulación, el tipo documental o el documento ya no está disponible.' }
+  return { status, message: 'No se pudo cargar el documento. Comprueba tu conexión e intenta nuevamente.' }
+}
+
 async function getDocumentResource(url, params, signal, resource) {
   try {
     return (await apiClient.get(url, { params, signal })).data
@@ -85,5 +96,23 @@ export const postulacionesService = {
   },
   obtenerObservaciones(versionDocumento, page, signal) {
     return getDocumentResource('/api/v1/documentos/observaciones/', { version_documento: versionDocumento, ordering: 'fecha_observacion', page }, signal, 'las observaciones')
+  },
+  async obtenerTiposDocumento(signal) {
+    try {
+      return (await apiClient.get('/api/v1/documentos/tipos-documento/', { params: { activo: true, page_size: 100, ordering: 'nombre' }, signal })).data
+    } catch (error) {
+      throw normalizeDocuments(error, 'los tipos documentales')
+    }
+  },
+  async cargarDocumento({ postulacionId, tipoDocumentoId, archivo }, signal) {
+    const body = new FormData()
+    body.append('postulacion_id', String(postulacionId))
+    body.append('tipo_documento_id', String(tipoDocumentoId))
+    body.append('archivo', archivo)
+    try {
+      return (await apiClient.post('/api/v1/documentos/documentos/subir/', body, { signal })).data
+    } catch (error) {
+      throw normalizeUpload(error)
+    }
   },
 }

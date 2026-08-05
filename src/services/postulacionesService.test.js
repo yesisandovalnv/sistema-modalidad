@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import apiClient from './api'
 import { postulacionesService } from './postulacionesService'
 
-vi.mock('./api', () => ({ default: { get: vi.fn() } }))
+vi.mock('./api', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 
 describe('postulacionesService', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -121,5 +121,27 @@ describe('postulacionesService', () => {
     await expect(postulacionesService[method](1, 1)).rejects.toEqual({ status: undefined, message: `No se pudieron cargar ${resource}. Intenta nuevamente.` })
     apiClient.get.mockRejectedValueOnce({ code: 'ERR_CANCELED' })
     await expect(postulacionesService[method](1, 1)).rejects.toEqual({ canceled: true })
+  })
+
+  it('carga con FormData exacto, URL fija, señal y sin Content-Type manual', async () => {
+    const signal = new AbortController().signal
+    const archivo = new File(['%PDF-'], 'informe.pdf', { type: 'application/pdf' })
+    apiClient.post.mockResolvedValue({ data: { id: 91, numero_version: 1 } })
+    await postulacionesService.cargarDocumento({ postulacionId: 7, tipoDocumentoId: 4, archivo }, signal)
+    const [url, body, config] = apiClient.post.mock.calls[0]
+    expect(url).toBe('/api/v1/documentos/documentos/subir/')
+    expect([...body.keys()]).toEqual(['postulacion_id', 'tipo_documento_id', 'archivo'])
+    expect(body.get('postulacion_id')).toBe('7')
+    expect(body.get('tipo_documento_id')).toBe('4')
+    expect(body.get('archivo')).toBe(archivo)
+    expect(config).toEqual({ signal })
+    expect(config.headers).toBeUndefined()
+  })
+
+  it('conserva errores DRF por campo en una carga inválida', async () => {
+    const fields = { archivo: ['El archivo no puede estar vacío.'], tipo_documento_id: ['Tipo inactivo.'] }
+    apiClient.post.mockRejectedValue({ response: { status: 400, data: fields } })
+    await expect(postulacionesService.cargarDocumento({ postulacionId: 7, tipoDocumentoId: 4, archivo: new File([], 'vacio.pdf') }))
+      .rejects.toEqual({ status: 400, message: 'Revisa los datos del documento.', fields })
   })
 })
