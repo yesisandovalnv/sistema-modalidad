@@ -9,6 +9,7 @@ import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { AuthContext } from '../../context/AuthContext'
 
 const EMPTY = 'No registrado'
+const DEFENSE_WARNING = 'Los datos de defensa, quórum y evaluación mostrados por el sistema son registros técnicos y no sustituyen convocatoria formal, acta firmada, legalización ni resultado académico institucional.'
 const CONTRACT_WARNINGS = [
   'La aprobación y originalidad del tema no están certificadas automáticamente por el sistema.',
   'La defensa privada representa el 30 %, pero la normativa disponible no define una nota numérica reproducible para calcular ese aporte.',
@@ -30,6 +31,13 @@ export default function ExpedientePage() {
   const [historyRevision, setHistoryRevision] = useState(0)
   const [historyView, setHistoryView] = useState({ id: null, page: 1 })
   const historyPage = String(historyView.id) === String(id) ? historyView.page : 1
+  const [activeActors, setActiveActors] = useState({ data: null, loading: true, error: '' })
+  const [historicalActors, setHistoricalActors] = useState({ data: null, loading: true, error: '' })
+  const [actorsView, setActorsView] = useState({ id: null, activePage: 1, historicalPage: 1 })
+  const [activeActorsRevision, setActiveActorsRevision] = useState(0)
+  const [historicalActorsRevision, setHistoricalActorsRevision] = useState(0)
+  const activeActorsPage = String(actorsView.id) === String(id) ? actorsView.activePage : 1
+  const historicalActorsPage = String(actorsView.id) === String(id) ? actorsView.historicalPage : 1
   const [documents, setDocuments] = useState({ data: null, loading: true, error: '' })
   const [documentsView, setDocumentsView] = useState({ id: null, page: 1 })
   const [documentsRevision, setDocumentsRevision] = useState(0)
@@ -47,6 +55,13 @@ export default function ExpedientePage() {
   const uploadController = useRef(null)
   const [review, setReview] = useState(null)
   const reviewController = useRef(null)
+  const [defenses, setDefenses] = useState({ data: null, loading: true, error: '' })
+  const [defensesView, setDefensesView] = useState({ id: null, page: 1 })
+  const [defensesRevision, setDefensesRevision] = useState(0)
+  const defensesPage = String(defensesView.id) === String(id) ? defensesView.page : 1
+  const [selectedDefense, setSelectedDefense] = useState(null)
+  const [quorum, setQuorum] = useState({ data: null, loading: false, error: '' })
+  const quorumController = useRef(null)
 
   useEffect(() => {
     uploadController.current?.abort()
@@ -55,11 +70,16 @@ export default function ExpedientePage() {
     setReview(null)
     setSelectedDocument(null)
     setSelectedVersion(null)
+    quorumController.current?.abort()
+    quorumController.current = null
+    setSelectedDefense(null)
+    setQuorum({ data: null, loading: false, error: '' })
   }, [id])
 
   useEffect(() => () => {
     uploadController.current?.abort()
     reviewController.current?.abort()
+    quorumController.current?.abort()
   }, [])
 
   useEffect(() => {
@@ -100,6 +120,28 @@ export default function ExpedientePage() {
 
   useEffect(() => {
     const controller = new AbortController()
+    setActiveActors({ data: null, loading: true, error: '' })
+    postulacionesService.obtenerActores(id, true, activeActorsPage, controller.signal)
+      .then((actorsData) => setActiveActors({ data: actorsData, loading: false, error: '' }))
+      .catch((requestError) => {
+        if (!requestError.canceled) setActiveActors({ data: null, loading: false, error: requestError.message })
+      })
+    return () => controller.abort()
+  }, [id, activeActorsPage, activeActorsRevision])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setHistoricalActors({ data: null, loading: true, error: '' })
+    postulacionesService.obtenerActores(id, false, historicalActorsPage, controller.signal)
+      .then((actorsData) => setHistoricalActors({ data: actorsData, loading: false, error: '' }))
+      .catch((requestError) => {
+        if (!requestError.canceled) setHistoricalActors({ data: null, loading: false, error: requestError.message })
+      })
+    return () => controller.abort()
+  }, [id, historicalActorsPage, historicalActorsRevision])
+
+  useEffect(() => {
+    const controller = new AbortController()
     setDocuments({ data: null, loading: true, error: '' })
     postulacionesService.obtenerDocumentos(id, documentsPage, controller.signal)
       .then((documentData) => {
@@ -111,6 +153,19 @@ export default function ExpedientePage() {
       })
     return () => controller.abort()
   }, [id, documentsPage, documentsRevision])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setDefenses({ data: null, loading: true, error: '' })
+    postulacionesService.obtenerDefensas(id, defensesPage, controller.signal)
+      .then((defenseData) => {
+        if (!controller.signal.aborted) setDefenses({ data: defenseData, loading: false, error: '' })
+      })
+      .catch((requestError) => {
+        if (!requestError.canceled && !controller.signal.aborted) setDefenses({ data: null, loading: false, error: requestError.message })
+      })
+    return () => controller.abort()
+  }, [id, defensesPage, defensesRevision])
 
   useEffect(() => {
     if (!selectedDocument) return undefined
@@ -214,6 +269,32 @@ export default function ExpedientePage() {
     setReview({ action, observation, submitting: false, fields: {}, error: '' })
   }
 
+  const loadQuorum = (defense) => {
+    quorumController.current?.abort()
+    const controller = new AbortController()
+    quorumController.current = controller
+    setQuorum({ data: null, loading: true, error: '' })
+    postulacionesService.obtenerQuorumDefensa(defense.id, controller.signal)
+      .then((quorumData) => {
+        if (!controller.signal.aborted) setQuorum({ data: quorumData, loading: false, error: '' })
+      })
+      .catch((requestError) => {
+        if (!requestError.canceled && !controller.signal.aborted) setQuorum({ data: null, loading: false, error: requestError.message })
+      })
+  }
+
+  const openDefense = (defense) => {
+    setSelectedDefense(defense)
+    loadQuorum(defense)
+  }
+
+  const closeDefense = () => {
+    quorumController.current?.abort()
+    quorumController.current = null
+    setSelectedDefense(null)
+    setQuorum({ data: null, loading: false, error: '' })
+  }
+
   const closeReview = () => {
     reviewController.current?.abort()
     reviewController.current = null
@@ -314,6 +395,25 @@ export default function ExpedientePage() {
         onRetry={() => setHistoryRevision((value) => value + 1)}
       />
 
+      <ActorsCard
+        active={activeActors}
+        historical={historicalActors}
+        activePage={activeActorsPage}
+        historicalPage={historicalActorsPage}
+        onActivePage={(page) => setActorsView((current) => ({ id, activePage: page, historicalPage: String(current.id) === String(id) ? current.historicalPage : 1 }))}
+        onHistoricalPage={(page) => setActorsView((current) => ({ id, activePage: String(current.id) === String(id) ? current.activePage : 1, historicalPage: page }))}
+        onRetryActive={() => setActiveActorsRevision((value) => value + 1)}
+        onRetryHistorical={() => setHistoricalActorsRevision((value) => value + 1)}
+      />
+
+      <DefensesCard
+        defenses={defenses}
+        page={defensesPage}
+        onPage={(page) => { closeDefense(); setDefensesView({ id, page }) }}
+        onRetry={() => setDefensesRevision((value) => value + 1)}
+        onSelect={openDefense}
+      />
+
       <DocumentsCard
         documents={documents}
         page={documentsPage}
@@ -349,10 +449,167 @@ export default function ExpedientePage() {
           onReview={openReview}
         />
       )}
+      {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} />}
       {upload && <UploadDialog upload={upload} types={documentTypes} onSubmit={submitUpload} onClose={closeUpload} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
     </section>
   )
+}
+
+function ActorsCard({ active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical }) {
+  return (
+    <Card className="overflow-hidden" aria-labelledby="actores-title">
+      <h2 id="actores-title" className="text-xl font-bold">Actores de la postulaciÃ³n</h2>
+      <p className="mt-1 text-sm text-slate-500">Participaciones tÃ©cnicas registradas para este expediente.</p>
+      <aside aria-label="Advertencias sobre las asignaciones" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950">
+        <p>La asignaciÃ³n registrada en el sistema no sustituye un memorando o acto formal de designaciÃ³n institucional.</p>
+        <p className="mt-2">Una asignaciÃ³n histÃ³rica representa una participaciÃ³n finalizada y no una funciÃ³n vigente.</p>
+      </aside>
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
+        <ActorGroup title="Asignaciones vigentes" stateLabel="Activa" actors={active} page={activePage} onPage={onActivePage} onRetry={onRetryActive} empty="No hay asignaciones vigentes registradas." />
+        <ActorGroup title="Asignaciones histÃ³ricas" stateLabel="HistÃ³rica" actors={historical} page={historicalPage} onPage={onHistoricalPage} onRetry={onRetryHistorical} empty="No hay asignaciones histÃ³ricas registradas." />
+      </div>
+    </Card>
+  )
+}
+
+function ActorGroup({ title, stateLabel, actors, page, onPage, onRetry, empty }) {
+  const rows = actors.data?.results || []
+  const slug = stateLabel === 'Activa' ? 'vigentes' : 'historicas'
+  return <section aria-labelledby={`actores-${slug}`} className="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700">
+    <h3 id={`actores-${slug}`} className="p-4 text-lg font-semibold">{title}</h3>
+    {actors.loading && <p role="status" className="px-4 pb-4 text-sm">Cargando {title.toLowerCase()}â€¦</p>}
+    {actors.error && <div className="px-4 pb-4"><SectionError message={actors.error} label={`Reintentar ${title.toLowerCase()}`} onRetry={onRetry} /></div>}
+    {!actors.loading && !actors.error && rows.length === 0 && <p className="px-4 pb-4 text-sm text-slate-500">{empty}</p>}
+    {!actors.loading && !actors.error && rows.length > 0 && <>
+      <ul className="space-y-3 px-4 pb-4">{rows.map((actor) => <ActorItem key={actor.id} actor={actor} stateLabel={stateLabel} />)}</ul>
+      <Pagination count={actors.data.count} page={page} hasNext={Boolean(actors.data.next)} hasPrevious={Boolean(actors.data.previous)} onPage={onPage} />
+    </>}
+  </section>
+}
+
+function ActorItem({ actor, stateLabel }) {
+  const order = actor.orden_cargo === null || actor.orden_cargo === undefined ? null : actor.orden_cargo
+  return <li className="min-w-0 rounded-lg border border-slate-200 p-4 text-sm dark:border-slate-700">
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="min-w-0"><h4 className="break-words font-semibold">{actor.usuario_nombre || 'Usuario no disponible'}</h4><p className="mt-1 break-words">{actor.tipo_participacion_display || actor.tipo_participacion_nombre || 'Tipo no registrado'}</p></div>
+      <span className="rounded-full border px-2 py-1 text-xs font-semibold">{stateLabel}</span>
+    </div>
+    <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+      {order !== null && <Info label="Orden de cargo" value={String(order)} />}
+      <Info label="Etapa" value={actor.etapa_nombre || 'Sin etapa asociada'} />
+      <Info label="Fecha de inicio" value={formatActorDate(actor.fecha_inicio || actor.fecha_designacion)} />
+      {stateLabel === 'HistÃ³rica' && <Info label="Fecha de finalizaciÃ³n" value={formatActorDate(actor.fecha_fin || actor.fecha_finalizacion, 'No registrada')} />}
+    </dl>
+    <div className="mt-4"><p className="text-sm text-slate-500">Observaciones</p><p className="mt-1 break-words font-medium">{actor.observaciones?.trim() || 'Sin observaciones'}</p></div>
+  </li>
+}
+
+function formatActorDate(value, fallback = 'No registrada') {
+  if (!value) return fallback
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString('es-BO')
+}
+
+function DefensesCard({ defenses, page, onPage, onRetry, onSelect }) {
+  const rows = defenses.data?.results || []
+  return <Card className="overflow-hidden" aria-labelledby="defensas-title">
+    <h2 id="defensas-title" className="text-xl font-bold">Defensas</h2>
+    <p className="mt-1 text-sm text-slate-500">Eventos técnicos registrados para esta postulación.</p>
+    <aside role="note" aria-label="Alcance contractual de las defensas" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950">{DEFENSE_WARNING}</aside>
+    {defenses.loading && <p role="status" className="mt-4 text-sm">Cargando defensas…</p>}
+    {defenses.error && <SectionError message={defenses.error} label="Reintentar defensas" onRetry={onRetry} />}
+    {!defenses.loading && !defenses.error && rows.length === 0 && <p className="mt-4 text-sm text-slate-500">No se registraron defensas.</p>}
+    {!defenses.loading && !defenses.error && rows.length > 0 && <>
+      <ul className="mt-5 space-y-4">{rows.map((defense) => <li key={defense.id} className="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0"><h3 className="break-words font-semibold">{defense.tipo_display || defense.tipo_evento || EMPTY}</h3><p className="mt-1 text-sm">Intento {defense.numero_intento ?? EMPTY}</p></div>
+          <span className="self-start rounded-full border px-2 py-1 text-xs font-semibold">{defense.estado_display || defense.estado || EMPTY}</span>
+        </div>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <Info label="Fecha programada" value={formatDefenseDate(defense.fecha_programada)} />
+          <Info label="Lugar" value={defense.lugar?.trim() || 'No registrado'} />
+          <Info label="Modalidad" value={defense.modalidad_display || defense.modalidad_evento} />
+          <Info label="Etapa técnica" value={defense.etapa_nombre || defense.etapa_codigo} />
+        </dl>
+        <Button className="mt-4" variant="secondary" onClick={() => onSelect(defense)}>Consultar defensa</Button>
+      </li>)}</ul>
+      <Pagination count={defenses.data.count} page={page} hasNext={Boolean(defenses.data.next)} hasPrevious={Boolean(defenses.data.previous)} onPage={onPage} />
+    </>}
+  </Card>
+}
+
+function DefenseDetail({ defense, quorum, onRetryQuorum, onClose }) {
+  const participants = defense.participantes || []
+  const evaluations = defense.evaluaciones || []
+  return <Modal title="Detalle de defensa" onClose={onClose}>
+    <div className="mt-4 min-w-0 space-y-6">
+      <section aria-labelledby="defensa-evento-title">
+        <h3 id="defensa-evento-title" className="text-lg font-bold">Evento técnico</h3>
+        <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+          <Info label="Tipo" value={defense.tipo_display || defense.tipo_evento} />
+          <Info label="Intento" value={defense.numero_intento} />
+          <Info label="Estado" value={defense.estado_display || defense.estado} />
+          <Info label="Etapa técnica" value={defense.etapa_nombre || defense.etapa_codigo} />
+          <Info label="Fecha programada" value={formatDefenseDate(defense.fecha_programada)} />
+          <Info label="Inicio real" value={formatDefenseDate(defense.fecha_inicio_real)} />
+          <Info label="Finalización real" value={formatDefenseDate(defense.fecha_fin_real)} />
+          <Info label="Lugar" value={defense.lugar?.trim() || 'No registrado'} />
+          <Info label="Modalidad" value={defense.modalidad_display || defense.modalidad_evento} />
+        </dl>
+        {defense.enlace_virtual && <a className="mt-4 inline-flex max-w-full break-all rounded-md border px-3 py-2 text-sm font-medium" href={defense.enlace_virtual} target="_blank" rel="noopener noreferrer">Abrir enlace virtual de la defensa</a>}
+      </section>
+
+      <section aria-labelledby="participantes-defensa-title"><h3 id="participantes-defensa-title" className="text-lg font-bold">Participantes</h3>
+        {participants.length === 0 ? <p className="mt-3 text-sm text-slate-500">No se registraron participantes.</p> : <ul className="mt-3 space-y-3">{participants.map((participant) => <li key={participant.id} className="min-w-0 rounded-lg border p-3 text-sm">
+          <h4 className="break-words font-semibold">{participant.usuario_nombre || 'Usuario no disponible'}</h4>
+          <dl className="mt-3 grid gap-2 sm:grid-cols-2"><Info label="Rol" value={participant.rol_display || participant.rol_evento} /><Info label="Convocatoria" value={(participant.convocatoria ?? participant.convocado) ? 'Convocado' : 'No convocado'} /><Info label="Asistencia" value={formatAttendance(participant.presente)} /><Info label="Fecha de asistencia" value={formatDefenseDate(participant.fecha_asistencia || participant.fecha_registro_asistencia)} /></dl>
+          <p className="mt-3 break-words"><span className="text-slate-500">Observaciones: </span>{participant.observaciones?.trim() || 'Sin observaciones'}</p>
+        </li>)}</ul>}
+      </section>
+
+      <section aria-labelledby="quorum-defensa-title"><h3 id="quorum-defensa-title" className="text-lg font-bold">Quórum técnico</h3>
+        {quorum.loading && <p role="status" className="mt-3 text-sm">Consultando quórum técnico…</p>}
+        {quorum.error && <SectionError message={quorum.error} label="Reintentar quórum técnico" onRetry={onRetryQuorum} />}
+        {!quorum.loading && !quorum.error && quorum.data && <div className="mt-3 space-y-3 text-sm"><p className="font-semibold">{quorum.data.valido ? 'Quórum técnico válido' : 'Quórum técnico no válido'}</p><TechnicalCounts title="Conteos" values={quorum.data.conteos} empty="Sin conteos registrados." /><TechnicalCounts title="Faltantes" values={quorum.data.faltantes} empty="Sin participantes faltantes." /><TechnicalCounts title="Detalle técnico" values={quorum.data.detalle} empty="Sin detalle adicional." /></div>}
+        <p className="mt-3 text-sm text-slate-500">Esta verificación técnica no certifica validez institucional.</p>
+      </section>
+
+      <section aria-labelledby="evaluaciones-defensa-title"><h3 id="evaluaciones-defensa-title" className="text-lg font-bold">Evaluaciones registradas</h3>
+        {evaluations.length === 0 ? <p className="mt-3 text-sm text-slate-500">No se registraron evaluaciones.</p> : <ul className="mt-3 space-y-3">{evaluations.map((evaluation) => <li key={evaluation.id} className="rounded-lg border p-3"><EvaluationData evaluation={evaluation} /></li>)}</ul>}
+      </section>
+
+      <section aria-labelledby="resultado-consolidado-title"><h3 id="resultado-consolidado-title" className="text-lg font-bold">Resultado consolidado</h3>
+        {defense.resultado_consolidado ? <div className="mt-3 rounded-lg border p-3"><EvaluationData evaluation={defense.resultado_consolidado} /></div> : <p className="mt-3 text-sm text-slate-500">Resultado consolidado todavía no disponible.</p>}
+      </section>
+      <aside role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950">{DEFENSE_WARNING}</aside>
+    </div>
+  </Modal>
+}
+
+function EvaluationData({ evaluation }) {
+  return <dl className="grid gap-2 text-sm sm:grid-cols-2"><Info label="Tipo" value={evaluation.tipo_display || evaluation.tipo_evaluacion} /><Info label="Evaluador" value={evaluation.evaluador_nombre || 'No registrado'} /><Info label="Modalidad de registro" value={evaluation.modalidad_registro_display || evaluation.modalidad_registro} /><Info label="Resultado cualitativo" value={evaluation.resultado_cualitativo || 'No registrado'} /><Info label="Nota" value={evaluation.nota_numerica ?? 'No registrada'} /><Info label="Ponderación" value={evaluation.ponderacion ?? 'No registrada'} /><Info label="Aporte" value={evaluation.aporte_ponderado ?? 'No registrado'} /></dl>
+}
+
+function TechnicalCounts({ title, values, empty }) {
+  const entries = Object.entries(values || {})
+  return <div><h4 className="font-semibold">{title}</h4>{entries.length === 0 ? <p className="text-slate-500">{empty}</p> : <ul className="mt-1 flex flex-wrap gap-2">{entries.map(([role, count]) => <li key={role} className="rounded border px-2 py-1">{formatTechnicalRole(role)}: {count}</li>)}</ul>}</div>
+}
+
+function formatTechnicalRole(value) {
+  return String(value || '').toLowerCase().replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase())
+}
+
+function formatDefenseDate(value) {
+  if (!value) return 'No registrada'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'No registrada' : date.toLocaleString('es-BO')
+}
+
+function formatAttendance(value) {
+  if (value === true) return 'Presente'
+  if (value === false) return 'Ausente'
+  return 'No registrada'
 }
 
 function DocumentsCard({ documents, page, onPage, onRetry, onSelect, canUpload, onUpload }) {

@@ -23,6 +23,23 @@ function normalizeDocuments(error, resource) {
   return { status, message: `No se pudieron cargar ${resource}. Intenta nuevamente.` }
 }
 
+function normalizeAssignments(error) {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  if (status === 401) return { status, message: 'Debes iniciar sesiÃ³n para consultar los actores.' }
+  if (status === 404) return { status, message: 'Las asignaciones de actores solicitadas no estÃ¡n disponibles.' }
+  return { status, message: 'No se pudieron cargar los actores. Comprueba tu conexiÃ³n e intenta nuevamente.' }
+}
+
+function normalizeDefenses(error, quorum = false) {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  const resource = quorum ? 'el quórum técnico' : 'las defensas'
+  if (status === 401) return { status, message: `Debes iniciar sesión para consultar ${resource}.` }
+  if (status === 404) return { status, message: quorum ? 'El evento de defensa no está disponible.' : 'Las defensas solicitadas no están disponibles.' }
+  return { status, message: `No se pudo consultar ${resource}. Comprueba tu conexión e intenta nuevamente.` }
+}
+
 function normalizeUpload(error) {
   if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
   const status = error?.response?.status
@@ -105,6 +122,33 @@ export const postulacionesService = {
       if (status === 401) throw { status, message: 'Debes iniciar sesión para consultar el historial.' }
       if (status === 404) throw { status, message: 'El historial solicitado no está disponible.' }
       throw { status, message: 'No se pudo cargar el historial. Intenta nuevamente.' }
+    }
+  },
+  async obtenerActores(postulacion, activo, page, signal) {
+    try {
+      return (await apiClient.get('/api/v1/asignaciones/', {
+        params: { postulacion, activo, page },
+        signal,
+      })).data
+    } catch (error) {
+      throw normalizeAssignments(error)
+    }
+  },
+  async obtenerDefensas(postulacion, page, signal) {
+    try {
+      return (await apiClient.get('/api/v1/eventos-defensa/', {
+        params: { postulacion, ordering: '-fecha_programada,-id', page },
+        signal,
+      })).data
+    } catch (error) {
+      throw normalizeDefenses(error)
+    }
+  },
+  async obtenerQuorumDefensa(evento, signal) {
+    try {
+      return (await apiClient.get(`/api/v1/eventos-defensa/${evento}/quorum/`, { signal })).data
+    } catch (error) {
+      throw normalizeDefenses(error, true)
     }
   },
   obtenerDocumentos(postulacion, page, signal) {

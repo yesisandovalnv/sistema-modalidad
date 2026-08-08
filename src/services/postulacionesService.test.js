@@ -96,6 +96,65 @@ describe('postulacionesService', () => {
     await expect(postulacionesService.obtenerHistorial(7, 1)).rejects.toEqual({ canceled: true })
   })
 
+  it.each([[true, 1], [false, 3]])('consulta actores por postulaciÃ³n, estado y pÃ¡gina exactos', async (activo, page) => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: { count: 21, next: 'page=2', previous: null, results: [] } })
+    await postulacionesService.obtenerActores(7, activo, page, signal)
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/asignaciones/', {
+      params: { postulacion: 7, activo, page }, signal,
+    })
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    [401, 'Debes iniciar sesiÃ³n para consultar los actores.'],
+    [404, 'Las asignaciones de actores solicitadas no estÃ¡n disponibles.'],
+    [undefined, 'No se pudieron cargar los actores. Comprueba tu conexiÃ³n e intenta nuevamente.'],
+  ])('normaliza el error %s de actores', async (status, message) => {
+    apiClient.get.mockRejectedValue({ response: status ? { status } : undefined })
+    await expect(postulacionesService.obtenerActores(7, true, 1)).rejects.toEqual({ status, message })
+  })
+
+  it('cancela la consulta de actores', async () => {
+    apiClient.get.mockRejectedValue({ code: 'ERR_CANCELED' })
+    await expect(postulacionesService.obtenerActores(7, false, 1)).rejects.toEqual({ canceled: true })
+  })
+
+  it('consulta una sola página de defensas con postulación y orden exactos', async () => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: { count: 21, next: 'page=3', previous: 'page=1', results: [] } })
+    await expect(postulacionesService.obtenerDefensas(7, 2, signal)).resolves.toMatchObject({ count: 21 })
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/eventos-defensa/', {
+      params: { postulacion: 7, ordering: '-fecha_programada,-id', page: 2 }, signal,
+    })
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('consulta el quórum únicamente para el evento indicado', async () => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: { valido: true, conteos: {}, faltantes: {}, detalle: {} } })
+    await postulacionesService.obtenerQuorumDefensa(81, signal)
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/eventos-defensa/81/quorum/', { signal })
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['obtenerDefensas', [7, 1], 401, 'Debes iniciar sesión para consultar las defensas.'],
+    ['obtenerDefensas', [7, 1], 404, 'Las defensas solicitadas no están disponibles.'],
+    ['obtenerDefensas', [7, 1], undefined, 'No se pudo consultar las defensas. Comprueba tu conexión e intenta nuevamente.'],
+    ['obtenerQuorumDefensa', [81], 401, 'Debes iniciar sesión para consultar el quórum técnico.'],
+    ['obtenerQuorumDefensa', [81], 404, 'El evento de defensa no está disponible.'],
+    ['obtenerQuorumDefensa', [81], undefined, 'No se pudo consultar el quórum técnico. Comprueba tu conexión e intenta nuevamente.'],
+  ])('normaliza errores de %s', async (method, args, status, message) => {
+    apiClient.get.mockRejectedValue({ response: status ? { status } : undefined })
+    await expect(postulacionesService[method](...args)).rejects.toEqual({ status, message })
+  })
+
+  it.each([['obtenerDefensas', [7, 1]], ['obtenerQuorumDefensa', [81]]])('cancela %s', async (method, args) => {
+    apiClient.get.mockRejectedValue({ code: 'ERR_CANCELED' })
+    await expect(postulacionesService[method](...args)).rejects.toEqual({ canceled: true })
+  })
+
   it.each([
     ['obtenerDocumentos', [7, 2], '/api/v1/documentos/documentos/', { postulacion: 7, ordering: '-fecha_subida', page: 2 }],
     ['obtenerVersiones', [31, 3], '/api/v1/documentos/versiones/', { documento: 31, ordering: 'numero_version', page: 3 }],
