@@ -40,6 +40,26 @@ function normalizeDefenses(error, quorum = false) {
   return { status, message: `No se pudo consultar ${resource}. Comprueba tu conexión e intenta nuevamente.` }
 }
 
+function normalizeDefenseAction(error) {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  const data = error?.response?.data
+  const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  if (status === 400) return { status, message: 'No se pudo completar la acción. Revisa los datos y el estado técnico de la defensa.', fields }
+  if (status === 401) return { status, message: 'Debes iniciar sesión para administrar defensas.' }
+  if (status === 403) return { status, message: 'No tienes autorización para administrar defensas.' }
+  if (status === 404) return { status, message: 'La postulación, etapa o defensa ya no está disponible.' }
+  return { status, message: 'No se pudo completar la acción sobre la defensa. Comprueba tu conexión e intenta nuevamente.' }
+}
+
+async function defenseAction(url, payload, signal) {
+  try {
+    return (await apiClient.post(url, payload, { signal })).data
+  } catch (error) {
+    throw normalizeDefenseAction(error)
+  }
+}
+
 function normalizeUpload(error) {
   if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
   const status = error?.response?.status
@@ -150,6 +170,24 @@ export const postulacionesService = {
     } catch (error) {
       throw normalizeDefenses(error, true)
     }
+  },
+  programarDefensa(postulacion, payload, signal) {
+    return defenseAction(`/api/v1/postulaciones/${postulacion}/eventos-defensa/programar/`, payload, signal)
+  },
+  iniciarDefensa(evento, signal) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/iniciar/`, {}, signal)
+  },
+  finalizarDefensa(evento, signal) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/finalizar/`, {}, signal)
+  },
+  suspenderDefensa(evento, motivo, signal) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/suspender/`, { motivo }, signal)
+  },
+  cancelarDefensa(evento, motivo, signal) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/cancelar/`, { motivo }, signal)
+  },
+  reprogramarDefensa(evento, nuevaFecha, motivo, signal) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/reprogramar/`, { nueva_fecha: nuevaFecha, motivo }, signal)
   },
   obtenerDocumentos(postulacion, page, signal) {
     return getDocumentResource('/api/v1/documentos/documentos/', { postulacion, ordering: '-fecha_subida', page }, signal, 'los documentos')

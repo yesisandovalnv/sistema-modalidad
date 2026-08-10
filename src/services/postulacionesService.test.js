@@ -156,6 +156,40 @@ describe('postulacionesService', () => {
   })
 
   it.each([
+    ['programarDefensa', [7, { seguimiento_etapa: 12, tipo_evento: 'DEFENSA_PUBLICA', fecha_programada: '2026-08-20T14:00', lugar: 'Auditorio', modalidad_evento: 'MIXTA', enlace_virtual: 'https://meet.example.test', observaciones: 'Registro técnico' }], '/api/v1/postulaciones/7/eventos-defensa/programar/', { seguimiento_etapa: 12, tipo_evento: 'DEFENSA_PUBLICA', fecha_programada: '2026-08-20T14:00', lugar: 'Auditorio', modalidad_evento: 'MIXTA', enlace_virtual: 'https://meet.example.test', observaciones: 'Registro técnico' }],
+    ['iniciarDefensa', [81], '/api/v1/eventos-defensa/81/iniciar/', {}],
+    ['finalizarDefensa', [81], '/api/v1/eventos-defensa/81/finalizar/', {}],
+    ['suspenderDefensa', [81, 'Pausa técnica'], '/api/v1/eventos-defensa/81/suspender/', { motivo: 'Pausa técnica' }],
+    ['cancelarDefensa', [81, 'Cancelación técnica'], '/api/v1/eventos-defensa/81/cancelar/', { motivo: 'Cancelación técnica' }],
+    ['reprogramarDefensa', [81, '2026-08-22T10:00', 'Nueva fecha'], '/api/v1/eventos-defensa/81/reprogramar/', { nueva_fecha: '2026-08-22T10:00', motivo: 'Nueva fecha' }],
+  ])('ejecuta %s con endpoint y payload exactos', async (method, args, url, payload) => {
+    const signal = new AbortController().signal
+    apiClient.post.mockResolvedValue({ data: { id: 81 } })
+    await postulacionesService[method](...args, signal)
+    expect(apiClient.post).toHaveBeenCalledWith(url, payload, { signal })
+    expect(apiClient.post).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    [400, 'No se pudo completar la acción. Revisa los datos y el estado técnico de la defensa.'],
+    [401, 'Debes iniciar sesión para administrar defensas.'],
+    [403, 'No tienes autorización para administrar defensas.'],
+    [404, 'La postulación, etapa o defensa ya no está disponible.'],
+    [undefined, 'No se pudo completar la acción sobre la defensa. Comprueba tu conexión e intenta nuevamente.'],
+  ])('normaliza error %s al administrar defensas', async (status, message) => {
+    const data = status === 400 ? { motivo: ['Este campo es obligatorio.'] } : undefined
+    apiClient.post.mockRejectedValue({ response: status ? { status, data } : undefined })
+    await expect(postulacionesService.suspenderDefensa(81, '')).rejects.toEqual({
+      status, message, ...(status === 400 ? { fields: data } : {}),
+    })
+  })
+
+  it('cancela una mutación de defensa sin mostrar error', async () => {
+    apiClient.post.mockRejectedValue({ code: 'ERR_CANCELED' })
+    await expect(postulacionesService.iniciarDefensa(81)).rejects.toEqual({ canceled: true })
+  })
+
+  it.each([
     ['obtenerDocumentos', [7, 2], '/api/v1/documentos/documentos/', { postulacion: 7, ordering: '-fecha_subida', page: 2 }],
     ['obtenerVersiones', [31, 3], '/api/v1/documentos/versiones/', { documento: 31, ordering: 'numero_version', page: 3 }],
     ['obtenerObservaciones', [301, 4], '/api/v1/documentos/observaciones/', { version_documento: 301, ordering: 'fecha_observacion', page: 4 }],

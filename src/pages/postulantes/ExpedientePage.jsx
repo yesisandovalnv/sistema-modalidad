@@ -62,6 +62,8 @@ export default function ExpedientePage() {
   const [selectedDefense, setSelectedDefense] = useState(null)
   const [quorum, setQuorum] = useState({ data: null, loading: false, error: '' })
   const quorumController = useRef(null)
+  const [defenseOperation, setDefenseOperation] = useState(null)
+  const defenseOperationController = useRef(null)
 
   useEffect(() => {
     uploadController.current?.abort()
@@ -72,6 +74,9 @@ export default function ExpedientePage() {
     setSelectedVersion(null)
     quorumController.current?.abort()
     quorumController.current = null
+    defenseOperationController.current?.abort()
+    defenseOperationController.current = null
+    setDefenseOperation(null)
     setSelectedDefense(null)
     setQuorum({ data: null, loading: false, error: '' })
   }, [id])
@@ -80,6 +85,7 @@ export default function ExpedientePage() {
     uploadController.current?.abort()
     reviewController.current?.abort()
     quorumController.current?.abort()
+    defenseOperationController.current?.abort()
   }, [])
 
   useEffect(() => {
@@ -216,6 +222,7 @@ export default function ExpedientePage() {
   const isStaff = ['ADM', 'ADMIN', 'ADMINISTRACION', 'ADMINISTRADOR'].includes(roleCode)
   const canUpload = auth?.hasPermission?.('puede_cargar_documentos') === true && (isOwner || isStaff)
   const canReview = auth?.hasPermission?.('puede_gestionar_documentos') === true
+  const canManageDefenses = auth?.hasPermission?.('puede_gestionar_defensas') === true
 
   const openUpload = async (document = null) => {
     uploadController.current?.abort()
@@ -291,8 +298,80 @@ export default function ExpedientePage() {
   const closeDefense = () => {
     quorumController.current?.abort()
     quorumController.current = null
+    defenseOperationController.current?.abort()
+    defenseOperationController.current = null
+    setDefenseOperation(null)
     setSelectedDefense(null)
     setQuorum({ data: null, loading: false, error: '' })
+  }
+
+  const openDefenseOperation = (action, defense = null) => {
+    defenseOperationController.current?.abort()
+    defenseOperationController.current = null
+    setDefenseOperation({ action, defense, submitting: false, fields: {}, error: '' })
+  }
+
+  const closeDefenseOperation = () => {
+    defenseOperationController.current?.abort()
+    defenseOperationController.current = null
+    setDefenseOperation(null)
+  }
+
+  const submitDefenseOperation = async (event) => {
+    event.preventDefault()
+    if (!defenseOperation || defenseOperation.submitting) return
+    const elements = event.currentTarget.elements
+    const action = defenseOperation.action
+    const fields = {}
+    const motivo = elements.motivo?.value?.trim() || ''
+    const nuevaFecha = elements.nueva_fecha?.value || ''
+    let payload
+    if (action === 'programar') {
+      const modalidad = elements.modalidad_evento.value
+      payload = {
+        seguimiento_etapa: elements.seguimiento_etapa.value ? Number(elements.seguimiento_etapa.value) : '',
+        tipo_evento: elements.tipo_evento.value,
+        fecha_programada: elements.fecha_programada.value,
+        lugar: elements.lugar?.value?.trim() || '',
+        modalidad_evento: modalidad,
+        enlace_virtual: elements.enlace_virtual?.value?.trim() || '',
+        observaciones: elements.observaciones?.value?.trim() || '',
+      }
+      if (!payload.tipo_evento) fields.tipo_evento = ['Selecciona un tipo de defensa.']
+      if (!payload.seguimiento_etapa) fields.seguimiento_etapa = ['Selecciona una etapa compatible.']
+      if (!payload.fecha_programada) fields.fecha_programada = ['La fecha y hora son obligatorias.']
+      if ((modalidad === 'PRESENCIAL' || modalidad === 'MIXTA') && !payload.lugar) fields.lugar = ['El lugar es obligatorio para esta modalidad.']
+      if ((modalidad === 'VIRTUAL' || modalidad === 'MIXTA') && !payload.enlace_virtual) fields.enlace_virtual = ['El enlace virtual es obligatorio para esta modalidad.']
+    } else {
+      if (['suspender', 'cancelar', 'reprogramar'].includes(action) && !motivo) fields.motivo = ['El motivo es obligatorio.']
+      if (action === 'reprogramar' && !nuevaFecha) fields.nueva_fecha = ['La nueva fecha y hora son obligatorias.']
+    }
+    if (Object.keys(fields).length) {
+      setDefenseOperation((current) => ({ ...current, fields, error: '' }))
+      return
+    }
+    const controller = new AbortController()
+    defenseOperationController.current?.abort()
+    defenseOperationController.current = controller
+    setDefenseOperation((current) => ({ ...current, submitting: true, fields: {}, error: '' }))
+    try {
+      let updated
+      if (action === 'programar') updated = await postulacionesService.programarDefensa(detalle.id, payload, controller.signal)
+      if (action === 'iniciar') updated = await postulacionesService.iniciarDefensa(defenseOperation.defense.id, controller.signal)
+      if (action === 'finalizar') updated = await postulacionesService.finalizarDefensa(defenseOperation.defense.id, controller.signal)
+      if (action === 'suspender') updated = await postulacionesService.suspenderDefensa(defenseOperation.defense.id, motivo, controller.signal)
+      if (action === 'cancelar') updated = await postulacionesService.cancelarDefensa(defenseOperation.defense.id, motivo, controller.signal)
+      if (action === 'reprogramar') updated = await postulacionesService.reprogramarDefensa(defenseOperation.defense.id, nuevaFecha, motivo, controller.signal)
+      defenseOperationController.current = null
+      setDefenseOperation(null)
+      if (updated && selectedDefense && String(updated.id) === String(selectedDefense.id)) {
+        setSelectedDefense(updated)
+        if (updated.estado === 'EN_CURSO') loadQuorum(updated)
+      }
+      setDefensesRevision((value) => value + 1)
+    } catch (requestError) {
+      if (!requestError.canceled) setDefenseOperation((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
+    }
   }
 
   const closeReview = () => {
@@ -412,6 +491,8 @@ export default function ExpedientePage() {
         onPage={(page) => { closeDefense(); setDefensesView({ id, page }) }}
         onRetry={() => setDefensesRevision((value) => value + 1)}
         onSelect={openDefense}
+        canManage={canManageDefenses}
+        onProgram={() => openDefenseOperation('programar')}
       />
 
       <DocumentsCard
@@ -449,7 +530,8 @@ export default function ExpedientePage() {
           onReview={openReview}
         />
       )}
-      {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} />}
+      {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
+      {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {upload && <UploadDialog upload={upload} types={documentTypes} onSubmit={submitUpload} onClose={closeUpload} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
     </section>
@@ -511,10 +593,11 @@ function formatActorDate(value, fallback = 'No registrada') {
   return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString('es-BO')
 }
 
-function DefensesCard({ defenses, page, onPage, onRetry, onSelect }) {
+function DefensesCard({ defenses, page, onPage, onRetry, onSelect, canManage, onProgram }) {
   const rows = defenses.data?.results || []
   return <Card className="overflow-hidden" aria-labelledby="defensas-title">
     <h2 id="defensas-title" className="text-xl font-bold">Defensas</h2>
+    {canManage && <Button className="mt-3" onClick={onProgram}>Programar defensa</Button>}
     <p className="mt-1 text-sm text-slate-500">Eventos técnicos registrados para esta postulación.</p>
     <aside role="note" aria-label="Alcance contractual de las defensas" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950">{DEFENSE_WARNING}</aside>
     {defenses.loading && <p role="status" className="mt-4 text-sm">Cargando defensas…</p>}
@@ -539,9 +622,11 @@ function DefensesCard({ defenses, page, onPage, onRetry, onSelect }) {
   </Card>
 }
 
-function DefenseDetail({ defense, quorum, onRetryQuorum, onClose }) {
+function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, onAction }) {
   const participants = defense.participantes || []
   const evaluations = defense.evaluaciones || []
+  const actions = { PROGRAMADA: ['iniciar', 'suspender', 'cancelar', 'reprogramar'], EN_CURSO: ['finalizar', 'suspender', 'cancelar'], SUSPENDIDA: ['reprogramar', 'cancelar'] }[defense.estado] || []
+  const actionLabels = { iniciar: 'Iniciar defensa', finalizar: 'Finalizar defensa', suspender: 'Suspender defensa', cancelar: 'Cancelar defensa', reprogramar: 'Reprogramar defensa' }
   return <Modal title="Detalle de defensa" onClose={onClose}>
     <div className="mt-4 min-w-0 space-y-6">
       <section aria-labelledby="defensa-evento-title">
@@ -575,6 +660,11 @@ function DefenseDetail({ defense, quorum, onRetryQuorum, onClose }) {
         <p className="mt-3 text-sm text-slate-500">Esta verificación técnica no certifica validez institucional.</p>
       </section>
 
+      {canManage && actions.length > 0 && <section aria-labelledby="acciones-defensa-title"><h3 id="acciones-defensa-title" className="text-lg font-bold">Administración técnica</h3><div className="mt-3 flex flex-wrap gap-2">{actions.map((action) => {
+        const finalBlocked = action === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)
+        return <Button key={action} variant={action === 'cancelar' ? 'outline' : 'secondary'} disabled={finalBlocked} title={finalBlocked ? 'La finalización requiere quórum técnico válido confirmado por el backend.' : undefined} onClick={() => onAction(action)}>{actionLabels[action]}</Button>
+      })}</div>{defense.estado === 'EN_CURSO' && quorum.data?.valido !== true && <p className="mt-3 text-sm text-slate-500">La finalización estará disponible cuando el backend confirme quórum técnico válido.</p>}</section>}
+
       <section aria-labelledby="evaluaciones-defensa-title"><h3 id="evaluaciones-defensa-title" className="text-lg font-bold">Evaluaciones registradas</h3>
         {evaluations.length === 0 ? <p className="mt-3 text-sm text-slate-500">No se registraron evaluaciones.</p> : <ul className="mt-3 space-y-3">{evaluations.map((evaluation) => <li key={evaluation.id} className="rounded-lg border p-3"><EvaluationData evaluation={evaluation} /></li>)}</ul>}
       </section>
@@ -584,6 +674,51 @@ function DefenseDetail({ defense, quorum, onRetryQuorum, onClose }) {
       </section>
       <aside role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950">{DEFENSE_WARNING}</aside>
     </div>
+  </Modal>
+}
+
+const DEFENSE_TYPES = [
+  ['DEFENSA_PERFIL', 'Defensa de perfil', 'PERFIL_PROYECTO'],
+  ['DEFENSA_PRIVADA', 'Defensa privada', 'DEFENSA_PRIVADA'],
+  ['DEFENSA_PUBLICA', 'Defensa pública', 'DEFENSA_PUBLICA'],
+]
+
+function DefenseOperationDialog({ operation, stages, quorum, onSubmit, onClose }) {
+  const [type, setType] = useState('')
+  const [mode, setMode] = useState('PRESENCIAL')
+  const titles = { programar: 'Programar defensa', iniciar: 'Iniciar defensa', finalizar: 'Finalizar defensa', suspender: 'Suspender defensa', cancelar: 'Cancelar defensa', reprogramar: 'Reprogramar defensa' }
+  const fieldMessage = (name) => {
+    const value = operation.fields?.[name]
+    return Array.isArray(value) ? value.join(' ') : value
+  }
+  const expectedStage = DEFENSE_TYPES.find(([value]) => value === type)?.[2]
+  const compatibleStages = stages.filter((stage) => stage.codigo === expectedStage && ['EN_PROCESO', 'OBSERVADA'].includes(stage.estado) && stage.activo !== false)
+  const disabled = operation.submitting
+  const error = (name) => fieldMessage(name) && <span id={`defense-${name}-error`} role="alert" className="mt-1 block text-sm text-red-600">{fieldMessage(name)}</span>
+
+  return <Modal title={titles[operation.action]} onClose={onClose}>
+    <form className="mt-4 grid gap-4" onSubmit={onSubmit} noValidate>
+      {operation.action === 'programar' ? <>
+        <p className="text-sm">La postulación se toma de este expediente. El intento será determinado por el backend.</p>
+        <label className="text-sm">Tipo de defensa<select name="tipo_evento" value={type} onChange={(event) => setType(event.target.value)} required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione un tipo</option>{DEFENSE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{error('tipo_evento')}</label>
+        <label className="text-sm">Etapa compatible<select name="seguimiento_etapa" required disabled={disabled || !type} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una etapa</option>{compatibleStages.map((stage) => <option key={stage.id} value={stage.id}>{stage.nombre} — intento {stage.numero_intento}</option>)}</select>{error('seguimiento_etapa')}</label>
+        {type && compatibleStages.length === 0 && <p role="status" className="text-sm text-amber-700">No existe una etapa compatible en proceso u observada.</p>}
+        <label className="text-sm">Fecha y hora programada<input name="fecha_programada" type="datetime-local" required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('fecha_programada')}</label>
+        <label className="text-sm">Modalidad técnica<select name="modalidad_evento" value={mode} onChange={(event) => setMode(event.target.value)} disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="PRESENCIAL">Presencial</option><option value="VIRTUAL">Virtual</option><option value="MIXTA">Mixta</option></select></label>
+        {(mode === 'PRESENCIAL' || mode === 'MIXTA') && <label className="text-sm">Lugar<input name="lugar" required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('lugar')}</label>}
+        {(mode === 'VIRTUAL' || mode === 'MIXTA') && <label className="text-sm">Enlace virtual<input name="enlace_virtual" type="url" required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('enlace_virtual')}</label>}
+        <label className="text-sm">Observaciones (opcional)<textarea name="observaciones" disabled={disabled} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>
+        <aside role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950">Virtual y mixta son modalidades técnicas y no acreditan autorización normativa. La regla de 48 horas de la defensa pública no acredita publicación de convocatoria.</aside>
+      </> : <>
+        <p className="text-sm">Confirma la acción sobre el evento técnico seleccionado.</p>
+        {operation.action === 'finalizar' && <p className="rounded-lg border p-3 text-sm">Quórum técnico confirmado por backend: <strong>{quorum.data?.valido ? 'válido' : 'no válido'}</strong>. Finalizar no registra resultado académico, acta firmada ni cierre universitario.</p>}
+        {operation.action === 'reprogramar' && <label className="text-sm">Nueva fecha y hora<input name="nueva_fecha" type="datetime-local" required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('nueva_fecha')}</label>}
+        {['suspender', 'cancelar', 'reprogramar'].includes(operation.action) && <label className="text-sm">Motivo<textarea aria-label="Motivo" name="motivo" required disabled={disabled} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('motivo')}</label>}
+      </>}
+      {error('non_field_errors')}{error('detail')}
+      {operation.error && <p role="alert" className="text-red-600">{operation.error}</p>}
+      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={disabled}>{disabled ? 'Procesando…' : operation.action === 'programar' ? 'Programar defensa' : 'Confirmar'}</Button><Button type="button" variant="secondary" disabled={disabled} onClick={onClose}>Cancelar</Button></div>
+    </form>
   </Modal>
 }
 

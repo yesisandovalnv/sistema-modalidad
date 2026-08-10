@@ -11,7 +11,8 @@ vi.mock('../../services/postulacionesService', () => ({
     obtenerExpediente: vi.fn(), obtenerHistorial: vi.fn(), obtenerActores: vi.fn(), obtenerDocumentos: vi.fn(),
     obtenerVersiones: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), cargarDocumento: vi.fn(),
     aprobarDocumento: vi.fn(), rechazarDocumento: vi.fn(), observarDocumento: vi.fn(), marcarObservacionCorregida: vi.fn(),
-    obtenerDefensas: vi.fn(), obtenerQuorumDefensa: vi.fn(),
+    obtenerDefensas: vi.fn(), obtenerQuorumDefensa: vi.fn(), programarDefensa: vi.fn(), iniciarDefensa: vi.fn(),
+    finalizarDefensa: vi.fn(), suspenderDefensa: vi.fn(), cancelarDefensa: vi.fn(), reprogramarDefensa: vi.fn(),
   },
 }))
 
@@ -94,7 +95,11 @@ const response = {
     modalidad: { id: 1, codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado' },
     etapa_actual: { codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto' },
     porcentaje_avance: 25,
-    etapas: [],
+    etapas: [
+      { id: 11, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', numero_intento: 1, activo: true },
+      { id: 12, codigo: 'DEFENSA_PRIVADA', nombre: 'Defensa Privada', estado: 'OBSERVADA', numero_intento: 2, activo: true },
+      { id: 13, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'PENDIENTE', numero_intento: 1, activo: true },
+    ],
   },
   resultado: {
     data: { nota_publica: '80.00', aporte_publica: '56.00', resultado: 'APROBADO', nota_final: null, limitacion_normativa: 'El aporte privado no puede calcularse.' },
@@ -124,6 +129,11 @@ function renderReviewerPage() {
   return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 }
 
+function renderDefenseManagerPage() {
+  const auth = { user: { id: 9 }, hasPermission: (name) => name === 'puede_gestionar_defensas' }
+  return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+}
+
 describe('ExpedientePage US-008', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -140,6 +150,12 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.marcarObservacionCorregida.mockResolvedValue({ id: 401, corregida: true })
     postulacionesService.obtenerDefensas.mockResolvedValue(defensesResponse)
     postulacionesService.obtenerQuorumDefensa.mockResolvedValue(quorumResponse)
+    postulacionesService.programarDefensa.mockResolvedValue({ ...defenseRows[1], id: 86 })
+    postulacionesService.iniciarDefensa.mockResolvedValue({ ...defenseRows[1], estado: 'EN_CURSO', estado_display: 'En curso' })
+    postulacionesService.finalizarDefensa.mockResolvedValue({ ...defenseRows[2], estado: 'FINALIZADA', estado_display: 'Finalizada' })
+    postulacionesService.suspenderDefensa.mockResolvedValue({ ...defenseRows[1], estado: 'SUSPENDIDA', estado_display: 'Suspendida' })
+    postulacionesService.cancelarDefensa.mockResolvedValue({ ...defenseRows[1], estado: 'CANCELADA', estado_display: 'Cancelada' })
+    postulacionesService.reprogramarDefensa.mockResolvedValue({ ...defenseRows[1], fecha_programada: '2026-09-01T10:00:00Z' })
   })
 
   it('renderiza el resumen, macroetapa, avance y advertencia institucional', async () => {
@@ -685,5 +701,131 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.aprobarDocumento).toHaveBeenCalledTimes(1)
     await userEvent.click(screen.getAllByRole('button', { name: 'Cerrar' }).at(-1))
     expect(signal.aborted).toBe(true)
+  })
+
+  it('muestra administración solo con puede_gestionar_defensas y programa con postulación, etapa y payload exactos', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderDefenseManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Programar defensa' }))
+    const dialog = screen.getByRole('dialog', { name: 'Programar defensa' })
+    await userEvent.selectOptions(within(dialog).getByLabelText('Tipo de defensa'), 'DEFENSA_PRIVADA')
+    expect(within(dialog).getByRole('option', { name: 'Defensa Privada — intento 2' })).toBeInTheDocument()
+    await userEvent.selectOptions(within(dialog).getByLabelText('Etapa compatible'), '12')
+    fireEvent.change(within(dialog).getByLabelText('Fecha y hora programada'), { target: { value: '2026-08-20T14:00' } })
+    await userEvent.type(within(dialog).getByLabelText('Lugar'), 'Sala técnica')
+    await userEvent.type(within(dialog).getByLabelText('Observaciones (opcional)'), 'Registro técnico')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Programar defensa' }))
+    await waitFor(() => expect(postulacionesService.programarDefensa).toHaveBeenCalledWith(7, {
+      seguimiento_etapa: 12, tipo_evento: 'DEFENSA_PRIVADA', fecha_programada: '2026-08-20T14:00', lugar: 'Sala técnica', modalidad_evento: 'PRESENCIAL', enlace_virtual: '', observaciones: 'Registro técnico',
+    }, expect.any(AbortSignal)))
+    expect(postulacionesService.obtenerDefensas).toHaveBeenCalledTimes(2)
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['VIRTUAL', false, true],
+    ['MIXTA', true, true],
+  ])('aplica campos condicionales de modalidad %s', async (mode, hasPlace, hasLink) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderDefenseManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Programar defensa' }))
+    const dialog = screen.getByRole('dialog', { name: 'Programar defensa' })
+    await userEvent.selectOptions(within(dialog).getByLabelText('Modalidad técnica'), mode)
+    expect(Boolean(within(dialog).queryByLabelText('Lugar'))).toBe(hasPlace)
+    expect(Boolean(within(dialog).queryByLabelText('Enlace virtual'))).toBe(hasLink)
+    expect(within(dialog).getByRole('note')).toHaveTextContent(/no acreditan autorización normativa/i)
+    expect(within(dialog).getByRole('note')).toHaveTextContent(/48 horas.*no acredita publicación/i)
+  })
+
+  it('valida fecha, etapa y campos presenciales sin invocar backend', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderDefenseManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Programar defensa' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Programar defensa' }))
+    expect(await screen.findByText('Selecciona un tipo de defensa.')).toBeInTheDocument()
+    expect(screen.getByText('Selecciona una etapa compatible.')).toBeInTheDocument()
+    expect(screen.getByText('La fecha y hora son obligatorias.')).toBeInTheDocument()
+    expect(screen.getByText('El lugar es obligatorio para esta modalidad.')).toBeInTheDocument()
+    expect(postulacionesService.programarDefensa).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [82, 'Iniciar defensa', 'iniciarDefensa', []],
+    [82, 'Suspender defensa', 'suspenderDefensa', ['Motivo técnico']],
+    [82, 'Cancelar defensa', 'cancelarDefensa', ['Motivo técnico']],
+    [82, 'Reprogramar defensa', 'reprogramarDefensa', ['2026-09-01T10:00', 'Motivo técnico']],
+    [83, 'Finalizar defensa', 'finalizarDefensa', []],
+  ])('ejecuta %s respetando confirmación y contrato', async (eventId, label, method, args) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderDefenseManagerPage()
+    const buttons = await screen.findAllByRole('button', { name: 'Consultar defensa' })
+    await userEvent.click(buttons[defenseRows.findIndex((row) => row.id === eventId)])
+    const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    await userEvent.click(within(detail).getByRole('button', { name: label }))
+    const confirm = screen.getAllByRole('dialog').at(-1)
+    if (label === 'Reprogramar defensa') fireEvent.change(within(confirm).getByLabelText('Nueva fecha y hora'), { target: { value: args[0] } })
+    if (args.at(-1)) await userEvent.type(within(confirm).getByLabelText('Motivo'), args.at(-1))
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Confirmar' }))
+    await waitFor(() => expect(postulacionesService[method]).toHaveBeenCalledWith(eventId, ...args, expect.any(AbortSignal)))
+    expect(postulacionesService.obtenerDefensas).toHaveBeenCalledTimes(2)
+  })
+
+  it('exige motivo, bloquea doble envío, muestra Procesando y cancela la solicitud al cerrar', async () => {
+    let signal
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.suspenderDefensa.mockImplementation((_id, _motivo, receivedSignal) => { signal = receivedSignal; return new Promise(() => {}) })
+    renderDefenseManagerPage()
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Consultar defensa' }))[1])
+    await userEvent.click(screen.getByRole('button', { name: 'Suspender defensa' }))
+    let dialog = screen.getAllByRole('dialog').at(-1)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar' }))
+    expect(await within(dialog).findByText('El motivo es obligatorio.')).toBeInTheDocument()
+    await userEvent.type(within(dialog).getByLabelText('Motivo'), 'Pausa técnica')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar' }))
+    expect(await within(dialog).findByRole('button', { name: 'Procesando…' })).toBeDisabled()
+    expect(postulacionesService.suspenderDefensa).toHaveBeenCalledTimes(1)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cerrar' }))
+    expect(signal.aborted).toBe(true)
+  })
+
+  it.each([
+    [400, 'No se pudo completar la acción. Revisa los datos y el estado técnico de la defensa.'],
+    [401, 'Debes iniciar sesión para administrar defensas.'],
+    [403, 'No tienes autorización para administrar defensas.'],
+    [404, 'La postulación, etapa o defensa ya no está disponible.'],
+    [undefined, 'No se pudo completar la acción sobre la defensa. Comprueba tu conexión e intenta nuevamente.'],
+  ])('muestra error administrativo %s sin recargar el expediente', async (status, message) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.iniciarDefensa.mockRejectedValue({ status, message, fields: status === 400 ? { non_field_errors: ['Transición inválida.'] } : {} })
+    renderDefenseManagerPage()
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Consultar defensa' }))[1])
+    await userEvent.click(screen.getByRole('button', { name: 'Iniciar defensa' }))
+    await userEvent.click(within(screen.getAllByRole('dialog').at(-1)).getByRole('button', { name: 'Confirmar' }))
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    if (status === 400) expect(screen.getByText('Transición inválida.')).toBeInTheDocument()
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+  })
+
+  it('actualiza el detalle seleccionado y vuelve a consultar quórum al iniciar', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderDefenseManagerPage()
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Consultar defensa' }))[1])
+    await userEvent.click(screen.getByRole('button', { name: 'Iniciar defensa' }))
+    await userEvent.click(within(screen.getAllByRole('dialog').at(-1)).getByRole('button', { name: 'Confirmar' }))
+    await waitFor(() => expect(postulacionesService.obtenerQuorumDefensa).toHaveBeenCalledTimes(2))
+    expect(within(screen.getByRole('dialog', { name: 'Detalle de defensa' })).getByText('En curso')).toBeInTheDocument()
+  })
+
+  it('no muestra acciones para finalizada/cancelada ni funcionalidades de historias posteriores', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderDefenseManagerPage()
+    const buttons = await screen.findAllByRole('button', { name: 'Consultar defensa' })
+    for (const index of [0, 4]) {
+      await userEvent.click(buttons[index])
+      const dialog = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+      expect(within(dialog).queryByRole('heading', { name: 'Administración técnica' })).not.toBeInTheDocument()
+      expect(within(dialog).queryByRole('button', { name: /asistencia|evaluar|consolidar|condición|entrega|cierre/i })).not.toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Cerrar' }))
+    }
   })
 })
