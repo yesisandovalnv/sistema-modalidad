@@ -138,6 +138,15 @@ describe('postulacionesService', () => {
     expect(apiClient.get).toHaveBeenCalledTimes(1)
   })
 
+  it('consulta detalle y asignaciones candidatas sin IDs manuales', async () => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: { results: [] } })
+    await postulacionesService.obtenerDefensa(81, signal)
+    expect(apiClient.get).toHaveBeenLastCalledWith('/api/v1/eventos-defensa/81/', { signal })
+    await postulacionesService.obtenerAsignacionesCandidatas(7, signal)
+    expect(apiClient.get).toHaveBeenLastCalledWith('/api/v1/asignaciones/', { params: { postulacion: 7, activo: true }, signal })
+  })
+
   it.each([
     ['obtenerDefensas', [7, 1], 401, 'Debes iniciar sesión para consultar las defensas.'],
     ['obtenerDefensas', [7, 1], 404, 'Las defensas solicitadas no están disponibles.'],
@@ -162,6 +171,9 @@ describe('postulacionesService', () => {
     ['suspenderDefensa', [81, 'Pausa técnica'], '/api/v1/eventos-defensa/81/suspender/', { motivo: 'Pausa técnica' }],
     ['cancelarDefensa', [81, 'Cancelación técnica'], '/api/v1/eventos-defensa/81/cancelar/', { motivo: 'Cancelación técnica' }],
     ['reprogramarDefensa', [81, '2026-08-22T10:00', 'Nueva fecha'], '/api/v1/eventos-defensa/81/reprogramar/', { nueva_fecha: '2026-08-22T10:00', motivo: 'Nueva fecha' }],
+    ['agregarParticipanteDefensa', [81, 14, 'TRIBUNAL'], '/api/v1/eventos-defensa/81/participantes/agregar/', { asignacion: 14, rol_evento: 'TRIBUNAL' }],
+    ['retirarParticipanteDefensa', [81, 91], '/api/v1/eventos-defensa/81/participantes/91/remover/', {}],
+    ['registrarAsistenciaDefensa', [81, 91, false, 'Ausente'], '/api/v1/eventos-defensa/81/asistencia/', { participante: 91, presente: false, observaciones: 'Ausente' }],
   ])('ejecuta %s con endpoint y payload exactos', async (method, args, url, payload) => {
     const signal = new AbortController().signal
     apiClient.post.mockResolvedValue({ data: { id: 81 } })

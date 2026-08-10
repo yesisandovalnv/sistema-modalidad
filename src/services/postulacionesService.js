@@ -164,6 +164,22 @@ export const postulacionesService = {
       throw normalizeDefenses(error)
     }
   },
+  async obtenerDefensa(evento, signal) {
+    try {
+      return (await apiClient.get(`/api/v1/eventos-defensa/${evento}/`, { signal })).data
+    } catch (error) {
+      throw normalizeDefenses(error)
+    }
+  },
+  async obtenerAsignacionesCandidatas(postulacion, signal) {
+    try {
+      return (await apiClient.get('/api/v1/asignaciones/', {
+        params: { postulacion, activo: true }, signal,
+      })).data
+    } catch (error) {
+      throw normalizeAssignments(error)
+    }
+  },
   async obtenerQuorumDefensa(evento, signal) {
     try {
       return (await apiClient.get(`/api/v1/eventos-defensa/${evento}/quorum/`, { signal })).data
@@ -188,6 +204,15 @@ export const postulacionesService = {
   },
   reprogramarDefensa(evento, nuevaFecha, motivo, signal) {
     return defenseAction(`/api/v1/eventos-defensa/${evento}/reprogramar/`, { nueva_fecha: nuevaFecha, motivo }, signal)
+  },
+  agregarParticipanteDefensa(evento, asignacion, rolEvento, signal) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/participantes/agregar/`, { asignacion, rol_evento: rolEvento }, signal)
+  },
+  retirarParticipanteDefensa(evento, participante, signal) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/participantes/${participante}/remover/`, {}, signal)
+  },
+  registrarAsistenciaDefensa(evento, participante, presente, observaciones, signal) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/asistencia/`, { participante, presente, observaciones }, signal)
   },
   obtenerDocumentos(postulacion, page, signal) {
     return getDocumentResource('/api/v1/documentos/documentos/', { postulacion, ordering: '-fecha_subida', page }, signal, 'los documentos')

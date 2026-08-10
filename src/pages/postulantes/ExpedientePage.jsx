@@ -7,6 +7,7 @@ import { Pagination } from '../../components/reports/ReportComponents'
 import { postulacionesService } from '../../services/postulacionesService'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { AuthContext } from '../../context/AuthContext'
+import DefenseParticipants from './DefenseParticipants'
 
 const EMPTY = 'No registrado'
 const DEFENSE_WARNING = 'Los datos de defensa, quórum y evaluación mostrados por el sistema son registros técnicos y no sustituyen convocatoria formal, acta firmada, legalización ni resultado académico institucional.'
@@ -295,6 +296,16 @@ export default function ExpedientePage() {
     loadQuorum(defense)
   }
 
+  const refreshSelectedDefense = async (signal) => {
+    if (!selectedDefense) return
+    const updated = await postulacionesService.obtenerDefensa(selectedDefense.id, signal)
+    if (!signal?.aborted) {
+      setSelectedDefense(updated)
+      setDefensesRevision((value) => value + 1)
+      loadQuorum(updated)
+    }
+  }
+
   const closeDefense = () => {
     quorumController.current?.abort()
     quorumController.current = null
@@ -530,7 +541,7 @@ export default function ExpedientePage() {
           onReview={openReview}
         />
       )}
-      {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
+      {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} onParticipantsChanged={refreshSelectedDefense} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {upload && <UploadDialog upload={upload} types={documentTypes} onSubmit={submitUpload} onClose={closeUpload} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
@@ -622,8 +633,7 @@ function DefensesCard({ defenses, page, onPage, onRetry, onSelect, canManage, on
   </Card>
 }
 
-function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, onAction }) {
-  const participants = defense.participantes || []
+function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, onParticipantsChanged, onAction }) {
   const evaluations = defense.evaluaciones || []
   const actions = { PROGRAMADA: ['iniciar', 'suspender', 'cancelar', 'reprogramar'], EN_CURSO: ['finalizar', 'suspender', 'cancelar'], SUSPENDIDA: ['reprogramar', 'cancelar'] }[defense.estado] || []
   const actionLabels = { iniciar: 'Iniciar defensa', finalizar: 'Finalizar defensa', suspender: 'Suspender defensa', cancelar: 'Cancelar defensa', reprogramar: 'Reprogramar defensa' }
@@ -645,19 +655,13 @@ function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, onA
         {defense.enlace_virtual && <a className="mt-4 inline-flex max-w-full break-all rounded-md border px-3 py-2 text-sm font-medium" href={defense.enlace_virtual} target="_blank" rel="noopener noreferrer">Abrir enlace virtual de la defensa</a>}
       </section>
 
-      <section aria-labelledby="participantes-defensa-title"><h3 id="participantes-defensa-title" className="text-lg font-bold">Participantes</h3>
-        {participants.length === 0 ? <p className="mt-3 text-sm text-slate-500">No se registraron participantes.</p> : <ul className="mt-3 space-y-3">{participants.map((participant) => <li key={participant.id} className="min-w-0 rounded-lg border p-3 text-sm">
-          <h4 className="break-words font-semibold">{participant.usuario_nombre || 'Usuario no disponible'}</h4>
-          <dl className="mt-3 grid gap-2 sm:grid-cols-2"><Info label="Rol" value={participant.rol_display || participant.rol_evento} /><Info label="Convocatoria" value={(participant.convocatoria ?? participant.convocado) ? 'Convocado' : 'No convocado'} /><Info label="Asistencia" value={formatAttendance(participant.presente)} /><Info label="Fecha de asistencia" value={formatDefenseDate(participant.fecha_asistencia || participant.fecha_registro_asistencia)} /></dl>
-          <p className="mt-3 break-words"><span className="text-slate-500">Observaciones: </span>{participant.observaciones?.trim() || 'Sin observaciones'}</p>
-        </li>)}</ul>}
-      </section>
+      <DefenseParticipants defense={defense} canManage={canManage} onChanged={onParticipantsChanged} />
 
       <section aria-labelledby="quorum-defensa-title"><h3 id="quorum-defensa-title" className="text-lg font-bold">Quórum técnico</h3>
         {quorum.loading && <p role="status" className="mt-3 text-sm">Consultando quórum técnico…</p>}
         {quorum.error && <SectionError message={quorum.error} label="Reintentar quórum técnico" onRetry={onRetryQuorum} />}
         {!quorum.loading && !quorum.error && quorum.data && <div className="mt-3 space-y-3 text-sm"><p className="font-semibold">{quorum.data.valido ? 'Quórum técnico válido' : 'Quórum técnico no válido'}</p><TechnicalCounts title="Conteos" values={quorum.data.conteos} empty="Sin conteos registrados." /><TechnicalCounts title="Faltantes" values={quorum.data.faltantes} empty="Sin participantes faltantes." /><TechnicalCounts title="Detalle técnico" values={quorum.data.detalle} empty="Sin detalle adicional." /></div>}
-        <p className="mt-3 text-sm text-slate-500">Esta verificación técnica no certifica validez institucional.</p>
+        <p className="mt-3 text-sm text-slate-500">El quórum mostrado es una verificación técnica del sistema y no acredita por sí mismo la conformación formal del tribunal ni la validez institucional del acto. Esta verificación técnica no certifica validez institucional.</p>
       </section>
 
       {canManage && actions.length > 0 && <section aria-labelledby="acciones-defensa-title"><h3 id="acciones-defensa-title" className="text-lg font-bold">Administración técnica</h3><div className="mt-3 flex flex-wrap gap-2">{actions.map((action) => {
@@ -739,12 +743,6 @@ function formatDefenseDate(value) {
   if (!value) return 'No registrada'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 'No registrada' : date.toLocaleString('es-BO')
-}
-
-function formatAttendance(value) {
-  if (value === true) return 'Presente'
-  if (value === false) return 'Ausente'
-  return 'No registrada'
 }
 
 function DocumentsCard({ documents, page, onPage, onRetry, onSelect, canUpload, onUpload }) {
