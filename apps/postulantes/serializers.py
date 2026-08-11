@@ -405,14 +405,32 @@ class AsignacionPostulacionSerializer(serializers.ModelSerializer):
     """Serializer de solo lectura para asignaciones de actores en postulaciones."""
 
     usuario_nombre_completo = serializers.CharField(source="usuario.nombre_completo", read_only=True)
+    usuario_nombre = serializers.SerializerMethodField()
     designado_por_nombre = serializers.CharField(source="designado_por.nombre_completo", read_only=True)
     tipo_participacion_nombre = serializers.CharField(source="get_tipo_participacion_display", read_only=True)
+    tipo_participacion_display = serializers.CharField(source="get_tipo_participacion_display", read_only=True)
+    fecha_inicio = serializers.DateTimeField(source="fecha_designacion", read_only=True)
+    fecha_fin = serializers.DateTimeField(source="fecha_finalizacion", read_only=True)
+    asignado_por = serializers.IntegerField(source="designado_por_id", read_only=True)
+    asignado_por_nombre = serializers.SerializerMethodField()
     etapa_id = serializers.IntegerField(source="seguimiento_etapa.etapa_id", read_only=True)
     etapa_codigo = serializers.CharField(source="seguimiento_etapa.etapa.codigo", read_only=True)
     etapa_nombre = serializers.CharField(source="seguimiento_etapa.etapa.nombre", read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
     activo = serializers.BooleanField(read_only=True)
+
+    @staticmethod
+    def _nombre_usuario(usuario) -> str:
+        if not usuario:
+            return "Usuario no disponible"
+        return usuario.nombre_completo or usuario.username or f"Usuario {usuario.pk}"
+
+    def get_usuario_nombre(self, obj: AsignacionPostulacion) -> str:
+        return self._nombre_usuario(obj.usuario)
+
+    def get_asignado_por_nombre(self, obj: AsignacionPostulacion) -> str | None:
+        return self._nombre_usuario(obj.designado_por) if obj.designado_por_id else None
 
     class Meta:
         model = AsignacionPostulacion
@@ -421,8 +439,10 @@ class AsignacionPostulacionSerializer(serializers.ModelSerializer):
             "postulacion",
             "usuario",
             "usuario_nombre_completo",
+            "usuario_nombre",
             "tipo_participacion",
             "tipo_participacion_nombre",
+            "tipo_participacion_display",
             "orden_cargo",
             "seguimiento_etapa",
             "etapa_id",
@@ -430,9 +450,13 @@ class AsignacionPostulacionSerializer(serializers.ModelSerializer):
             "etapa_nombre",
             "fecha_designacion",
             "fecha_finalizacion",
+            "fecha_inicio",
+            "fecha_fin",
             "activo",
             "designado_por",
             "designado_por_nombre",
+            "asignado_por",
+            "asignado_por_nombre",
             "observaciones",
             "created_at",
             "updated_at",
@@ -443,7 +467,7 @@ class AsignacionPostulacionSerializer(serializers.ModelSerializer):
 class AsignarActorSerializer(serializers.Serializer):
     """Payload para asignar un actor a una postulación."""
 
-    usuario = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all())
+    usuario = serializers.PrimaryKeyRelatedField(queryset=CustomUser.all_objects.filter(is_active=True, activo=True))
     tipo_participacion = serializers.ChoiceField(choices=AsignacionPostulacion.TipoParticipacionChoices.choices)
     orden_cargo = serializers.IntegerField(required=False, allow_null=True, min_value=1)
     seguimiento_etapa = serializers.PrimaryKeyRelatedField(
@@ -463,5 +487,5 @@ class FinalizarAsignacionSerializer(serializers.Serializer):
 class ReemplazarActorSerializer(serializers.Serializer):
     """Payload para reemplazar un actor manteniendo historial."""
 
-    nuevo_usuario = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all())
+    nuevo_usuario = serializers.PrimaryKeyRelatedField(queryset=CustomUser.all_objects.filter(is_active=True, activo=True))
     observaciones = serializers.CharField(required=False, allow_blank=True, default="")

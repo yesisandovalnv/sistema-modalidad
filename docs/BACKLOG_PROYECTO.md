@@ -37,13 +37,13 @@ Reglas de uso:
 | EP-01 | Autenticación | Iniciar/cerrar sesión, recuperar identidad y aplicar capacidades efectivas. | Must | API de usuarios, JWT | Implementada |
 | EP-02 | Panel principal | Mostrar indicadores institucionales filtrables y advertencias sin modificar datos. | Should | Autenticación, reportes, catálogos | Implementada |
 | EP-03 | Postulaciones | Consultar, registrar y actualizar postulaciones dentro del alcance autorizado, sin borrado físico. | Must | Usuarios, catálogos, permisos | Parcial |
-| EP-04 | Expediente de Proyecto de Grado | Reunir en una sola vista resumen, flujo, actores, documentos, defensas, condiciones y cierre. | Must | Postulaciones y todas las épicas operativas | Pendiente |
+| EP-04 | Expediente de Proyecto de Grado | Reunir en una sola vista resumen, flujo, actores, documentos, defensas, condiciones y cierre. | Must | Postulaciones y todas las épicas operativas | Implementada |
 | EP-05 | Documentos | Consultar, cargar, versionar, observar y revisar evidencias con trazabilidad. | Must | Postulaciones, catálogos documentales | Parcial |
 | EP-06 | Seguimiento | Representar macroetapas, intentos, estados y transiciones autorizadas. | Must | Postulaciones, política de modalidad | Parcial |
 | EP-07 | Asignaciones | Consultar y gestionar participaciones temporales sin confundirlas con designaciones formales. | Must | Postulaciones, usuarios | Backend implementado; frontend pendiente |
 | EP-08 | Defensas | Programar y administrar eventos, participantes, asistencia, quórum y reprogramación. | Must | Seguimiento, asignaciones | Backend implementado; frontend pendiente |
-| EP-09 | Evaluaciones | Registrar y consolidar perfil, privada y pública respetando la limitación normativa del 30 %. | Must | Defensas finalizadas, permisos de actor | Backend implementado; frontend pendiente |
-| EP-10 | Cierre | Consultar faltantes, aprobar revisión/cierre y concluir con advertencias normativas. | Must | Documentos, evaluaciones, condiciones, entregas | Backend implementado; frontend pendiente |
+| EP-09 | Evaluaciones | Registrar y consolidar consensos de Perfil, Privada y Pública con notas directas confirmadas. | Must | Defensas finalizadas, permisos administrativos | Implementada |
+| EP-10 | Cierre | Consultar faltantes, aprobar revisión/cierre, concluir y reabrir con advertencias normativas. | Must | Documentos, evaluaciones, condiciones, entregas | Implementada |
 | EP-11 | Reportes | Consultar y exportar información institucional según alcance y filtros. | Should | Postulaciones y módulos operativos | Implementada |
 | EP-12 | Notificaciones | Informar eventos de dominio al destinatario y gestionar lectura. | Should | Eventos de las épicas operativas | Implementada |
 | EP-13 | Catálogos | Administrar periodos, modalidades, requisitos y catálogos documentales con protección referencial. | Should | Autenticación y permisos administrativos | Parcial |
@@ -81,7 +81,7 @@ Reglas de uso:
 | ID / título | Historia, actor, prioridad, dependencias y estado | Criterios de aceptación |
 |---|---|---|
 | **US-008 — Abrir el expediente** | Como Coordinador o usuario relacionado, quiero abrir el expediente de una postulación para consultar su información desde una sola pantalla. **Actor:** personal, estudiante o actor asignado. **Prioridad:** Must. **Dependencias:** US-005. **Estado:** Pendiente. | Tiene ruta protegida y enlace desde postulación; carga solo una postulación autorizada; muestra resumen, estudiante, modalidad, periodo, estado y macroetapa; funciona en viewport normal/móvil; ofrece estados de carga, vacío, 403 y 404; no repite consultas evitables. |
-| **US-009 — Consultar secciones del expediente** | Como usuario relacionado, quiero navegar por historial, observaciones, documentos, seguimiento, asignaciones, defensas, condiciones y cierre. **Actor:** usuario relacionado. **Prioridad:** Must. **Dependencias:** US-008, US-011, US-014, US-016, US-019, US-023. **Estado:** Pendiente. | Cada sección usa datos reales; mantiene contexto de la postulación; aplica permisos por sección/acción; identifica verificaciones manuales; no confunde historial con kardex oficial ni asignación con memorando. |
+| **US-009 — Consultar secciones del expediente** | Como usuario relacionado, quiero navegar por historial, observaciones, documentos, seguimiento, asignaciones, defensas, condiciones y cierre. **Actor:** usuario relacionado. **Prioridad:** Must. **Dependencias:** US-008, US-011, US-014, US-016, US-019, US-023. **Estado:** Implementada. | `ExpedientePage` compone una única ruta con resumen, flujo, límites, historial, documentos/versiones/observaciones, actores activos e históricos, defensas/participantes/asistencia/quórum/evaluaciones, resultado final, condiciones, entregas y cierre técnico. Cada sección conserva carga, error, reintento y cancelación independientes; las acciones dependen de capacidades efectivas. |
 | **US-010 — Ver límites normativos** | Como usuario del expediente, quiero ver advertencias contractuales para no interpretar registros técnicos como cumplimiento oficial. **Actor:** todos los usuarios del expediente. **Prioridad:** Must. **Dependencias:** US-008, US-025. **Estado:** Pendiente. | Advierte sobre tema/originalidad, 30 % privado, clasificación, ejemplares y grupos cuando corresponda; presenta `nota_final=null` sin cálculo local; no declara plazos automáticos; diferencia cierre técnico de legalización. |
 
 ### EP-05 — Documentos
@@ -104,7 +104,7 @@ Reglas de uso:
 | ID / título | Historia, actor, prioridad, dependencias y estado | Criterios de aceptación |
 |---|---|---|
 | **US-016 — Consultar actores asignados** | Como usuario relacionado, quiero ver Tutor, Tribunal y demás participaciones para conocer quién interviene en la postulación. **Actor:** estudiante, asignado o personal. **Prioridad:** Must. **Dependencias:** US-005. **Estado:** Backend implementado; frontend pendiente. | Muestra activas e históricas; indica tipo, orden, fechas y etapa; oculta asignaciones ajenas; distingue participación temporal de cargo/designación formal; no afirma existencia de memorando. |
-| **US-017 — Asignar, reemplazar o finalizar actor** | Como personal autorizado, quiero gestionar participaciones temporales conservando trazabilidad. **Actor:** personal administrativo. **Prioridad:** Must. **Dependencias:** US-016, US-033. **Estado:** Backend implementado; frontend pendiente. | Usa usuarios activos y tipos soportados; valida reglas y duplicidad; reemplazo finaliza la asignación previa; exige motivo/observación cuando API lo requiera; no borra historial; actualiza defensas futuras sin alterar actos pasados. |
+| **US-017 — Asignar, reemplazar o finalizar actor** | Como personal autorizado, quiero gestionar participaciones temporales conservando trazabilidad. **Actor:** personal administrativo. **Prioridad:** Must. **Dependencias:** US-016, US-033, HT-003. **Estado:** Bloqueada por decisiones institucionales. | Usa usuarios activos y tipos soportados; valida reglas y duplicidad; reemplazo finaliza la asignación previa; exige motivo/observación cuando API lo requiera; no borra historial; actualiza defensas futuras sin alterar actos pasados. |
 
 ### EP-08 — Defensas
 
@@ -118,15 +118,15 @@ Reglas de uso:
 
 | ID / título | Historia, actor, prioridad, dependencias y estado | Criterios de aceptación |
 |---|---|---|
-| **US-021 — Registrar evaluación de defensa** | Como evaluador participante, quiero registrar mi evaluación para aportar al resultado del evento. **Actor:** Tribunal/personal. **Prioridad:** Must. **Dependencias:** US-018, US-020. **Estado:** Backend implementado; frontend pendiente. | Perfil y privada aceptan solo suficiente/insuficiente; pública acepta 1–100; evaluador no staff solo registra la propia e individual; staff puede registrar consenso; exige presencia cuando corresponde; evita duplicidad individual. |
-| **US-022 — Consolidar y consultar resultado** | Como personal autorizado o interesado, quiero consolidar el evento y consultar el resultado permitido. **Actor:** personal para consolidar; relacionado para consultar. **Prioridad:** Must. **Dependencias:** US-021. **Estado:** Backend implementado; frontend pendiente. | Solo consolida evento finalizado con evaluaciones; perfil/privada producen resultado cualitativo; pública promedia y aplica mínimo 51/aporte 70 %; no inventa aporte privado; muestra `nota_final=null` y limitación normativa. |
+| **US-021 — Registrar evaluación de defensa** | Como personal técnico autorizado, quiero registrar la evaluación consensuada del Tribunal para aportar al resultado del evento. **Actor:** personal administrativo; lectura para relacionados. **Prioridad:** Must. **Dependencias:** US-018, US-020. **Estado:** Implementada. | Exige quórum técnico y evento `EN_CURSO` o `FINALIZADA`; registra un único consenso por evento: Perfil cualitativo, Privada cualitativa más nota directa 0–30 y Pública con nota directa 0–70. Tutor, Docente de Modalidad, Presidente y Secretario no califican; evita duplicidad y audita la operación. |
+| **US-022 — Consolidar y consultar resultado** | Como personal autorizado o interesado, quiero consolidar el evento y consultar el resultado permitido. **Actor:** personal para consolidar; relacionado para consultar. **Prioridad:** Must. **Dependencias:** US-021. **Estado:** Implementada. | Consolida un evento finalizado con su consenso único. La nota final se calcula exclusivamente en backend como `nota_privada + nota_publica`, sin volver a ponderar; queda `null` si falta alguna. Aplica la escala específica: 0–50 `POSTERGADO`, 51–74 `APROBADO`, 75–89 `APROBACION_PLENA`, 90–100 `APROBACION_PLENA_CON_FELICITACION`. |
 
 ### EP-10 — Cierre
 
 | ID / título | Historia, actor, prioridad, dependencias y estado | Criterios de aceptación |
 |---|---|---|
-| **US-023 — Consultar condiciones, entregas y faltantes** | Como usuario relacionado, quiero consultar el estado de cierre para saber qué controles técnicos faltan. **Actor:** estudiante, asignado o personal. **Prioridad:** Must. **Dependencias:** US-011, US-022. **Estado:** Backend implementado; frontend pendiente. | Muestra condiciones, entregas, documentos, etapas y faltantes; identifica verificador/receptor y fechas; muestra advertencia sobre cantidad de ejemplares; no denomina el resultado “cierre legal”. |
-| **US-024 — Gestionar revisión y cierre** | Como personal autorizado, quiero verificar condiciones/entregas, aprobar revisión final y cierre, concluir o reabrir motivadamente. **Actor:** personal administrativo. **Prioridad:** Must. **Dependencias:** US-023. **Estado:** Backend implementado; frontend pendiente. | Acciones dependen de `puede_gestionar_cierre`; backend impide continuar con faltantes; reapertura exige motivo; conclusión exige etapas obligatorias; toda acción se audita; no permite eliminación física. |
+| **US-023 — Consultar condiciones, entregas y faltantes** | Como usuario relacionado, quiero consultar el estado de cierre para saber qué controles técnicos faltan. **Actor:** estudiante, asignado o personal. **Prioridad:** Must. **Dependencias:** US-011, US-022. **Estado:** Implementada. | El expediente muestra condiciones, entregas, documentos, etapas y faltantes, con verificador/receptor, fechas y observaciones. Las acciones existentes de verificación y registro son administrativas, rechazan postulaciones no editables y conservan auditoría. La cantidad de ejemplares se presenta como dato técnico/configurado, no como cantidad normativa oficial, y no se denomina el resultado “cierre legal”. |
+| **US-024 — Gestionar revisión y cierre** | Como personal autorizado, quiero verificar condiciones/entregas, aprobar revisión final y cierre, concluir o reabrir motivadamente. **Actor:** personal administrativo. **Prioridad:** Must. **Dependencias:** US-023. **Estado:** Implementada. | Las acciones existentes dependen de `puede_gestionar_cierre`; el backend exige resultado final completo y aprobatorio, impide continuar con faltantes, exige motivo para reabrir y todas las etapas obligatorias para concluir. La UI confirma, evita doble envío, conserva errores y refresca parcialmente. Toda acción se audita y se presenta exclusivamente como cierre técnico/documental. |
 
 ### EP-11 — Reportes
 
@@ -284,7 +284,7 @@ Los sprints representan secuencia recomendada, no fechas. Las funcionalidades ya
 
 **Dependencias:** Sprint 3; documentos y condiciones coherentes.
 
-**Riesgos:** inventar nota privada, ocultar `nota_final=null`, concluir con faltantes, presentar cierre técnico como legal.
+**Riesgos:** volver a ponderar las notas directas, usar cero cuando falta una evaluación, concluir con faltantes o presentar cierre técnico como legal.
 
 ### Sprint 5 — Analítica y comunicación
 
@@ -340,8 +340,8 @@ La columna “endpoint” usa exclusivamente rutas existentes. “Ninguno” sig
 | US-018 | `GET /postulaciones/{id}/eventos-defensa/`, `GET /eventos-defensa/` | `Card`, `DataState`, `Pager`, `Modal` | evento/participante/evaluación; serializers homónimos | postulación propia, participante o staff | alcance, estados, intentos, detalle |
 | US-019 | programar; evento `iniciar|finalizar|suspender|cancelar|reprogramar` | `Modal`, `Field`, `Button` | `EventoDefensa`; `ProgramarSerializer`, `MotivoPayload`, `ReprogramarPayload` | staff; `puede_gestionar_defensas` | secuencia, 48 h, lugar/enlace, motivos, carrera concurrente |
 | US-020 | `participantes/agregar`, `remover`, `asistencia`, `quorum` | tabla/lista, `Modal`, `Button` | `ParticipanteEvento`; serializers de participante/asistencia | escritura staff; lectura relacionada | rol compatible, evento en curso, quórum por tipo, finalizar |
-| US-021 | `POST /eventos-defensa/{id}/evaluaciones/perfil|privada|publica/` | `Modal`, `Field`, `Button` | `EvaluacionDefensa`; `EvaluarPayload`, `EvaluacionDefensaSerializer` | participante propio o staff; `puede_gestionar_evaluaciones` | cualitativa, rango nota, presencia, individual/consenso |
-| US-022 | `POST .../evaluaciones/consolidar/`; `GET /postulaciones/{id}/resultado-final/` | `Card`, `DataState` | evaluación; `EvaluacionDefensaSerializer`, `ResultadoFinalSerializer` | consolidar staff; consultar relacionado | finalizada, promedio, mínimo 51, 70 %, nota final nula |
+| US-021 | `POST /eventos-defensa/{id}/evaluaciones/perfil|privada|publica/` | `Card`, `Field`, `Button` | `EvaluacionDefensa`; payloads por tipo y `EvaluacionDefensaSerializer` | mutación staff/superusuario; lectura relacionada | consenso único, quórum, cualitativa y rangos directos 0–30/0–70 |
+| US-022 | `POST .../evaluaciones/consolidar/`; `GET /postulaciones/{id}/resultado-final/` | `Card`, `DataState` | evaluación; `EvaluacionDefensaSerializer`, `ResultadoFinalSerializer` | consolidar staff/superusuario; consultar relacionado | finalizada, suma directa, mínimo 51, escala específica y nota final nula si incompleta |
 | US-023 | `GET /postulaciones/{id}/cierre/`; gestión complementaria | `Card`, `DataState`, listas de estado | `CondicionPostulacion`, `EntregaFisica`; `CierreEstado`, `Condicion`, `EntregaSerializer` | relacionado o staff | faltantes, receptores, advertencias, aislamiento |
 | US-024 | condiciones `verificar|rechazar`; entregas `registrar|actualizar-cantidad`; cierre acciones | `Modal`, `Field`, `Button` | condiciones, entregas, etapas/historial; serializers de cierre | staff; `puede_gestionar_cierre` | precondiciones, conclusión, reapertura motivada, auditoría |
 | US-025 | `GET /api/v1/reportes/postulaciones/` | `ReportePostulacionesPage`, filtros, tabla, paginación | agregados; `ReportePostulacionSerializer` | `CanViewInstitutionalReports` | filtros, orden, paginación, alcance, advertencias |
@@ -382,6 +382,11 @@ Cada historia aplicable debe considerar:
 | ID | Historia técnica | Estado | Alcance |
 |---|---|---|---|
 | **HT-001** | Estabilizar la autorización por objeto del expediente | Resuelta | Unifica el alcance de lectura de detalle, flujo, resultado final y cierre: personal o superusuario, estudiante propietario y actores con asignación activa o histórica. Los usuarios autenticados no relacionados reciben `404` y los anónimos `401`. Es la política técnica vigente mientras no exista una disposición institucional explícita sobre revocación del acceso histórico. No implementa ni cierra US-010. |
+| **HT-002** | Estabilizar consulta de asignaciones activas e históricas | Resuelta | Define `GET /api/v1/asignaciones/?postulacion={id}` como contrato canónico, paginado y de solo lectura para US-016. Incluye asignaciones vigentes e históricas, conserva acceso por participación histórica, aplica alcance por postulación y devuelve etiquetas legibles. No implementa ni cierra US-016 y no habilita acciones de US-017. |
+| **HT-003** | Preparar catálogo seguro de candidatos para asignaciones | Resuelta | Define `GET /api/v1/usuarios/candidatos-asignacion/` como contrato paginado, buscable, de solo lectura y exclusivo para staff/superusuario. Expone una representación mínima de usuarios activos, con rol y no estudiantes. Estar incluido no certifica elegibilidad para una participación. Estabiliza claves de error de las acciones existentes sin implementar el frontend ni desbloquear US-017. |
+| **HT-004** | Estabilizar consulta de defensas del expediente | Resuelta | Define `GET /api/v1/eventos-defensa/?postulacion={id}` como contrato canónico, paginado y de solo lectura, con orden predeterminado `-fecha_programada,-id`, alcance uniforme para personal, propietario, actor activo o histórico y participante, serializers explícitos y quórum exclusivamente técnico. Conserva la consulta contextual no paginada por compatibilidad. No implementa ni cierra US-018 y no habilita acciones de US-019, US-020 o US-021. |
+| **HT-005** | Estabilizar administración técnica de defensas | Resuelta | Mantiene las acciones administrativas existentes reservadas a staff/superusuario y alinea `puede_gestionar_defensas` con esa autoridad. Impide acciones sobre postulaciones inactivas, inicio anticipado y suspensión repetida; reprogramar limpia metadatos del ciclo anterior y la duplicidad concurrente produce un error funcional controlado. Conserva auditoría, notificaciones y reglas de quórum vigentes. No implementa el frontend de US-019 ni historias posteriores. |
+| **HT-006** | Estabilizar gestión técnica de participantes y asistencia | Resuelta | Estabiliza altas, retiros lógicos, reactivación, asistencia y quórum técnico sobre los endpoints existentes. Permite altas y retiros en `PROGRAMADA`, `EN_CURSO` y `SUSPENDIDA`; la asistencia solo en `EN_CURSO`; rechaza mutaciones en estados terminales. Conserva historial, controla duplicados y reutiliza el registro inactivo al reactivar. No implementa el frontend ni amplía US-020. |
 
 ### 9.1 Mejoras pendientes
 
@@ -395,7 +400,7 @@ Cada historia aplicable debe considerar:
 
 ### 9.2 Limitaciones normativas
 
-- No existe cálculo reproducible del 30 % privado.
+- La nota privada 0–30 es una decisión directa del Tribunal; no existe ni debe inventarse una fórmula automática desde observaciones.
 - La tabla de clasificación final es contradictoria.
 - La cantidad oficial de ejemplares es cuatro o seis según fuentes distintas.
 - El máximo grupal es dos o tres; el sistema actual solo soporta una persona.
@@ -406,6 +411,8 @@ Cada historia aplicable debe considerar:
 ### 9.3 Decisiones institucionales necesarias
 
 Se mantienen las preguntas de `CONTRATO_FUNCIONAL_PROYECTO_GRADO.md`, en particular: jerarquía vigente, ejemplares, evaluación privada, rangos, grupos, órganos competentes, cartas de conformidad, reintentos, cómputo de plazos, cambios de tema/modalidad y validez de defensas virtuales/mixtas.
+
+Para desbloquear US-017 permanecen pendientes: roles elegibles por tipo de participación; incompatibilidades entre participaciones; cardinalidad de Presidente y Secretario; composición de Tribunal fuera de Perfil; obligatoriedad del motivo al finalizar o reemplazar; y política de notificaciones durante un reemplazo.
 
 ### 9.4 Riesgos arquitectónicos
 

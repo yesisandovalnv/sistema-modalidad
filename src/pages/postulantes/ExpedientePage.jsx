@@ -8,13 +8,16 @@ import { postulacionesService } from '../../services/postulacionesService'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { AuthContext } from '../../context/AuthContext'
 import DefenseParticipants from './DefenseParticipants'
+import DefenseEvaluation from './DefenseEvaluation'
+import ClosureRequirements from './ClosureRequirements'
+import TechnicalClosure from './TechnicalClosure'
 
 const EMPTY = 'No registrado'
 const DEFENSE_WARNING = 'Los datos de defensa, quórum y evaluación mostrados por el sistema son registros técnicos y no sustituyen convocatoria formal, acta firmada, legalización ni resultado académico institucional.'
 const CONTRACT_WARNINGS = [
   'La aprobación y originalidad del tema no están certificadas automáticamente por el sistema.',
-  'La defensa privada representa el 30 %, pero la normativa disponible no define una nota numérica reproducible para calcular ese aporte.',
-  'La clasificación final institucional permanece pendiente.',
+  'La nota privada es el aporte consensuado del Tribunal sobre 30 puntos; no se calcula automáticamente desde las observaciones.',
+  'La clasificación mostrada aplica la escala específica confirmada para Proyecto de Grado.',
   'La cantidad oficial de ejemplares permanece pendiente de validación institucional.',
   'Los proyectos grupales no están soportados actualmente.',
   'Los plazos reglamentarios no se calculan automáticamente.',
@@ -28,6 +31,7 @@ export default function ExpedientePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
+  const [closureRevision, setClosureRevision] = useState(0)
   const [history, setHistory] = useState({ data: null, loading: true, error: '' })
   const [historyRevision, setHistoryRevision] = useState(0)
   const [historyView, setHistoryView] = useState({ id: null, page: 1 })
@@ -224,6 +228,8 @@ export default function ExpedientePage() {
   const canUpload = auth?.hasPermission?.('puede_cargar_documentos') === true && (isOwner || isStaff)
   const canReview = auth?.hasPermission?.('puede_gestionar_documentos') === true
   const canManageDefenses = auth?.hasPermission?.('puede_gestionar_defensas') === true
+  const canManageEvaluations = auth?.hasPermission?.('puede_gestionar_evaluaciones') === true && canManageDefenses
+  const canManageClosure = auth?.hasPermission?.('puede_gestionar_cierre') === true
 
   const openUpload = async (document = null) => {
     uploadController.current?.abort()
@@ -456,10 +462,10 @@ export default function ExpedientePage() {
         <h2 className="text-xl font-bold">Resultado académico técnico</h2>
         {resultado.error ? <PartialState message={resultado.error} onRetry={() => setRevision((value) => value + 1)} /> : (
           <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <Info label="Nota privada" value={resultado.data?.nota_privada} />
             <Info label="Nota pública" value={resultado.data?.nota_publica} />
-            <Info label="Aporte público" value={resultado.data?.aporte_publica} />
-            <Info label="Resultado cualitativo" value={resultado.data?.resultado} />
-            <Info label="Nota final" value={resultado.data?.nota_final ?? 'Pendiente de definición institucional'} />
+            <Info label="Nota final" value={resultado.data?.nota_final ?? 'Pendiente: falta privada o pública'} />
+            <Info label="Clasificación" value={resultado.data?.clasificacion} />
           </dl>
         )}
         {resultado.data?.limitacion_normativa && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{resultado.data.limitacion_normativa}</p>}
@@ -473,10 +479,18 @@ export default function ExpedientePage() {
         </ul>
       </Card>
 
-      <Card className="overflow-hidden">
-        <h2 className="text-xl font-bold">Estado técnico de cierre</h2>
-        {cierre.error ? <PartialState message={cierre.error} onRetry={() => setRevision((value) => value + 1)} /> : <ClosureState cierre={cierre.data} />}
-      </Card>
+      <TechnicalClosure
+        key={detalle.id}
+        postulacion={detalle.id}
+        initialClosure={cierre}
+        resultado={resultado}
+        stages={flujo.etapas}
+        canManage={canManageClosure}
+        refreshToken={closureRevision}
+        onChanged={() => setHistoryRevision((value) => value + 1)}
+      />
+
+      <ClosureRequirements postulacion={detalle.id} canManage={canManageClosure} onChanged={() => setClosureRevision((value) => value + 1)} />
 
       <HistoryCard
         history={history}
@@ -541,7 +555,7 @@ export default function ExpedientePage() {
           onReview={openReview}
         />
       )}
-      {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} onParticipantsChanged={refreshSelectedDefense} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
+      {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} canEvaluate={canManageEvaluations} onParticipantsChanged={refreshSelectedDefense} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {upload && <UploadDialog upload={upload} types={documentTypes} onSubmit={submitUpload} onClose={closeUpload} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
@@ -633,7 +647,7 @@ function DefensesCard({ defenses, page, onPage, onRetry, onSelect, canManage, on
   </Card>
 }
 
-function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, onParticipantsChanged, onAction }) {
+function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, canEvaluate, onParticipantsChanged, onAction }) {
   const evaluations = defense.evaluaciones || []
   const actions = { PROGRAMADA: ['iniciar', 'suspender', 'cancelar', 'reprogramar'], EN_CURSO: ['finalizar', 'suspender', 'cancelar'], SUSPENDIDA: ['reprogramar', 'cancelar'] }[defense.estado] || []
   const actionLabels = { iniciar: 'Iniciar defensa', finalizar: 'Finalizar defensa', suspender: 'Suspender defensa', cancelar: 'Cancelar defensa', reprogramar: 'Reprogramar defensa' }
@@ -676,6 +690,7 @@ function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, onP
       <section aria-labelledby="resultado-consolidado-title"><h3 id="resultado-consolidado-title" className="text-lg font-bold">Resultado consolidado</h3>
         {defense.resultado_consolidado ? <div className="mt-3 rounded-lg border p-3"><EvaluationData evaluation={defense.resultado_consolidado} /></div> : <p className="mt-3 text-sm text-slate-500">Resultado consolidado todavía no disponible.</p>}
       </section>
+      <DefenseEvaluation defense={defense} quorum={quorum} canManage={canEvaluate} onChanged={onParticipantsChanged} />
       <aside role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950">{DEFENSE_WARNING}</aside>
     </div>
   </Modal>
@@ -930,15 +945,6 @@ function formatHistoryDate(value) {
 
 function PartialState({ message, onRetry }) {
   return <div role="status" className="mt-4 rounded-lg border border-slate-200 p-4 text-sm dark:border-slate-700"><p>{message}</p><button className="mt-3 rounded-md border px-3 py-2 font-medium" onClick={onRetry}>Reintentar</button></div>
-}
-
-function ClosureState({ cierre }) {
-  const groups = [
-    ['Condiciones faltantes', cierre?.condiciones_faltantes],
-    ['Entregas faltantes', cierre?.entregas_faltantes],
-    ['Documentos faltantes', cierre?.documentos_faltantes],
-  ].filter(([, items]) => items?.length)
-  return groups.length ? <div className="mt-4 space-y-4">{groups.map(([label, items]) => <section key={label}><h3 className="font-semibold">{label}</h3><ul className="mt-2 list-disc pl-5 text-sm">{items.map((item) => <li key={String(item)}>{String(item)}</li>)}</ul></section>)}</div> : <p className="mt-4 text-sm">No se informaron faltantes de cierre técnico.</p>
 }
 
 function Info({ label, value }) {

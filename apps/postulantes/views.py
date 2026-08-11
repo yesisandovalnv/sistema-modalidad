@@ -1,7 +1,8 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, NotFound, PermissionDenied, ValidationError as DRFValidationError
@@ -14,7 +15,6 @@ from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, Hi
 from apps.postulantes.permissions import (IsAssignmentAdminOrRelatedReadOnly,
     IsStaffOrReadOnly, IsWorkflowAdminOrReadOnlyOwner,
     postulaciones_in_scope)
-from core.permissions import is_staff_user
 from apps.postulantes.serializers import (
     AsignacionPostulacionSerializer,
     AsignarActorSerializer,
@@ -34,6 +34,14 @@ from apps.postulantes.serializers import (
 from apps.postulantes.services import PostulacionService
 from apps.postulantes.workflow import WorkflowService
 from apps.postulantes.models import SeguimientoEtapa
+from core.permissions import is_staff_user
+
+
+def _assignment_validation_error(exc):
+    """Conserva claves Django y usa non_field_errors para reglas de dominio generales."""
+    if hasattr(exc, "message_dict"):
+        return DRFValidationError(exc.message_dict)
+    return DRFValidationError({"non_field_errors": exc.messages})
 
 
 class EstadoPostulacionViewSet(viewsets.ModelViewSet):
@@ -95,7 +103,7 @@ class PostulacionViewSet(viewsets.ModelViewSet):
             return postulacion
         if postulacion.estudiante_id == user.id:
             return postulacion
-        participa = AsignacionPostulacion.objects.filter(
+        participa = AsignacionPostulacion.all_objects.filter(
             postulacion=postulacion,
             usuario=user,
         ).exists()
@@ -223,14 +231,16 @@ class PostulacionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="asignaciones")
     def asignaciones(self, request, pk=None):
         postulacion = self._get_postulacion_for_assignment_access(pk=pk)
-        queryset = AsignacionPostulacion.objects.filter(postulacion=postulacion).select_related(
+        queryset = AsignacionPostulacion.all_objects.filter(postulacion=postulacion).select_related(
             "usuario",
             "usuario__role",
             "designado_por",
             "seguimiento_etapa",
             "seguimiento_etapa__etapa",
         )
-        queryset = self._filtrar_asignaciones(queryset.order_by("tipo_participacion", "orden_cargo", "-fecha_designacion"))
+        queryset = self._filtrar_asignaciones(queryset.order_by(
+            "-activo", "tipo_participacion", "orden_cargo", "fecha_designacion", "id",
+        ))
         serializer = AsignacionPostulacionSerializer(queryset, many=True, context=self.get_serializer_context())
         return Response(serializer.data)
 
@@ -238,14 +248,16 @@ class PostulacionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="asignaciones/activas")
     def asignaciones_activas(self, request, pk=None):
         postulacion = self._get_postulacion_for_assignment_access(pk=pk)
-        queryset = AsignacionPostulacion.objects.filter(postulacion=postulacion, activo=True).select_related(
+        queryset = AsignacionPostulacion.all_objects.filter(postulacion=postulacion, activo=True).select_related(
             "usuario",
             "usuario__role",
             "designado_por",
             "seguimiento_etapa",
             "seguimiento_etapa__etapa",
         )
-        queryset = self._filtrar_asignaciones(queryset.order_by("tipo_participacion", "orden_cargo", "-fecha_designacion"))
+        queryset = self._filtrar_asignaciones(queryset.order_by(
+            "-activo", "tipo_participacion", "orden_cargo", "fecha_designacion", "id",
+        ))
         serializer = AsignacionPostulacionSerializer(queryset, many=True, context=self.get_serializer_context())
         return Response(serializer.data)
 
@@ -269,7 +281,7 @@ class PostulacionViewSet(viewsets.ModelViewSet):
                 observaciones=serializer.validated_data.get("observaciones", ""),
             )
         except DjangoValidationError as exc:
-            raise DRFValidationError(str(exc)) from exc
+            raise _assignment_validation_error(exc) from exc
 
         response_serializer = AsignacionPostulacionSerializer(asignacion, context=self.get_serializer_context())
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -419,13 +431,27 @@ class SeguimientoEtapaViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(response_serializer.data)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        description=(
+            "Contrato canónico paginado para consultar asignaciones activas e históricas. "
+            "Use postulacion para filtrar exactamente el expediente; si activo se omite, "
+            "se incluyen ambos estados."
+        ),
+        parameters=[
+            OpenApiParameter("postulacion", OpenApiTypes.INT, OpenApiParameter.QUERY, description="ID exacto de la postulación."),
+            OpenApiParameter("activo", OpenApiTypes.BOOL, OpenApiParameter.QUERY, description="true para vigentes, false para históricas; omitir para todas."),
+            OpenApiParameter("page", OpenApiTypes.INT, OpenApiParameter.QUERY, description="Página del resultado paginado."),
+        ],
+    ),
+)
 class AsignacionPostulacionViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para consultar asignaciones y ejecutar acciones explícitas de gestión."""
 
     serializer_class = AsignacionPostulacionSerializer
     permission_classes = [IsAuthenticated, IsAssignmentAdminOrRelatedReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["tipo_participacion", "activo", "seguimiento_etapa", "usuario"]
+    filterset_fields = ["postulacion", "tipo_participacion", "activo", "seguimiento_etapa", "usuario"]
     search_fields = [
         "postulacion__codigo",
         "postulacion__estudiante__username",
@@ -439,15 +465,17 @@ class AsignacionPostulacionViewSet(viewsets.ReadOnlyModelViewSet):
         "tipo_participacion",
     ]
     ordering_fields = [
+        "activo",
         "fecha_designacion",
         "fecha_finalizacion",
         "tipo_participacion",
         "orden_cargo",
         "created_at",
     ]
+    ordering = ["-activo", "tipo_participacion", "orden_cargo", "fecha_designacion", "id"]
 
     def get_queryset(self):
-        queryset = AsignacionPostulacion.objects.select_related(
+        queryset = AsignacionPostulacion.all_objects.select_related(
             "postulacion",
             "postulacion__estudiante",
             "postulacion__modalidad",
@@ -464,7 +492,12 @@ class AsignacionPostulacionViewSet(viewsets.ReadOnlyModelViewSet):
             return queryset.none()
         if is_staff_user(user):
             return queryset
-        return queryset.filter(Q(postulacion__estudiante=user) | Q(usuario=user)).distinct()
+        postulaciones_relacionadas = AsignacionPostulacion.all_objects.filter(
+            usuario=user,
+        ).values("postulacion_id")
+        return queryset.filter(
+            Q(postulacion__estudiante=user) | Q(postulacion_id__in=postulaciones_relacionadas)
+        ).distinct()
 
     @extend_schema(request=FinalizarAsignacionSerializer, responses={200: AsignacionPostulacionSerializer})
     @action(detail=True, methods=["post"], url_path="finalizar", serializer_class=FinalizarAsignacionSerializer)
@@ -479,7 +512,7 @@ class AsignacionPostulacionViewSet(viewsets.ReadOnlyModelViewSet):
                 observaciones=serializer.validated_data.get("observaciones", ""),
             )
         except DjangoValidationError as exc:
-            raise DRFValidationError(str(exc)) from exc
+            raise _assignment_validation_error(exc) from exc
         response_serializer = AsignacionPostulacionSerializer(actualizada, context=self.get_serializer_context())
         return Response(response_serializer.data)
 
@@ -497,7 +530,7 @@ class AsignacionPostulacionViewSet(viewsets.ReadOnlyModelViewSet):
                 observaciones=serializer.validated_data.get("observaciones", ""),
             )
         except DjangoValidationError as exc:
-            raise DRFValidationError(str(exc)) from exc
+            raise _assignment_validation_error(exc) from exc
         response_serializer = AsignacionPostulacionSerializer(
             nueva_asignacion,
             context=self.get_serializer_context(),

@@ -10,11 +10,16 @@ def _audit(usuario, accion, descripcion):
     AuditLog.objects.create(usuario=usuario, accion=accion, modulo="GESTION_COMPLEMENTARIA", descripcion=descripcion)
 
 
+def _validar_postulacion_editable(postulacion):
+    if not postulacion.activo or getattr(postulacion.estado_actual, "codigo", None) in {"CONCLUIDA", "RECHAZADA"}:
+        raise ValidationError("La postulación no admite modificaciones de condiciones o entregas.")
+
+
 class CondicionService:
     @staticmethod
     @transaction.atomic
     def crear(postulacion, codigo, nombre, usuario):
-        Postulacion.objects.select_for_update().get(pk=postulacion.pk)
+        postulacion=Postulacion.objects.select_for_update().get(pk=postulacion.pk); _validar_postulacion_editable(postulacion)
         obj=CondicionPostulacion(postulacion=postulacion,codigo=codigo,tipo=codigo,nombre=nombre)
         obj.save(); _audit(usuario,"CREATE_CONDITION",f"Condición {obj.codigo} creada para {postulacion.codigo}."); return obj
 
@@ -22,6 +27,7 @@ class CondicionService:
     @transaction.atomic
     def _resolver(condicion, estado, usuario, observaciones=""):
         obj=CondicionPostulacion.objects.select_for_update().get(pk=condicion.pk)
+        _validar_postulacion_editable(obj.postulacion)
         if obj.estado != obj.Estado.PENDIENTE: raise ValidationError("La condición ya fue verificada.")
         obj.estado=estado; obj.fecha_verificacion=timezone.now(); obj.verificado_por=usuario; obj.observaciones=observaciones; obj.save()
         _audit(usuario,"VERIFY_CONDITION" if estado==obj.Estado.CUMPLE else "REJECT_CONDITION",f"Condición {obj.pk}: {estado}."); return obj
@@ -36,7 +42,7 @@ class EntregaFisicaService:
     @staticmethod
     @transaction.atomic
     def crear(postulacion, codigo, nombre, usuario, cantidad=None):
-        Postulacion.objects.select_for_update().get(pk=postulacion.pk)
+        postulacion=Postulacion.objects.select_for_update().get(pk=postulacion.pk); _validar_postulacion_editable(postulacion)
         obj=EntregaFisica(postulacion=postulacion,codigo=codigo,nombre=nombre,cantidad=cantidad)
         obj.save(); _audit(usuario,"CREATE_PHYSICAL_DELIVERY",f"Entrega {obj.codigo} creada para {postulacion.codigo}."); return obj
 
@@ -44,6 +50,7 @@ class EntregaFisicaService:
     @transaction.atomic
     def registrar_entrega(entrega, cantidad_recibida, usuario, observaciones=""):
         obj=EntregaFisica.objects.select_for_update().get(pk=entrega.pk)
+        _validar_postulacion_editable(obj.postulacion)
         if cantidad_recibida <= 0: raise ValidationError("La cantidad recibida debe ser mayor que cero.")
         obj.cantidad_recibida=cantidad_recibida; obj.fecha_entrega=timezone.now(); obj.recibido_por=usuario; obj.observaciones=observaciones
         obj.estado=obj.Estado.COMPLETA if obj.cantidad is not None and cantidad_recibida>=obj.cantidad else obj.Estado.PARCIAL

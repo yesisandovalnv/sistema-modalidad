@@ -33,15 +33,22 @@ class ProyectoGradoCierrePolicy(BaseCierrePolicy):
 
     @classmethod
     def evaluar_revision_final(cls,post):
+        from apps.postulantes.defensas import EvaluacionDefensaService
+
         missing=[]; warnings=[]; detail={}
         stage=cls._stage(post,"DEFENSA_PUBLICA"); detail["defensa_publica_aprobada"]=bool(stage and stage.estado=="APROBADA")
         if not detail["defensa_publica_aprobada"]: missing.append("DEFENSA_PUBLICA_APROBADA")
         event=post.eventos_defensa.filter(tipo_evento="DEFENSA_PUBLICA",estado="FINALIZADA",activo=True).order_by("-fecha_fin_real").first()
         detail["evento_publico_finalizado"]=event.pk if event else None
         if not event: missing.append("EVENTO_DEFENSA_PUBLICA_FINALIZADO")
-        evaluation=event.evaluaciones.filter(tipo_evaluacion="RESULTADO_FINAL",es_resultado_final_evento=True,resultado_cualitativo="APROBADO",activo=True).first() if event else None
+        evaluation=event.evaluaciones.filter(tipo_evaluacion="RESULTADO_FINAL",es_resultado_final_evento=True,nota_numerica__isnull=False,activo=True).first() if event else None
         detail["evaluacion_publica_valida"]=evaluation.pk if evaluation else None
         if not evaluation: missing.append("EVALUACION_PUBLICA_CONSOLIDADA_VALIDA")
+        final_result=EvaluacionDefensaService.calcular_resultado_final(post,None,auditar=False)
+        detail["nota_final"]=final_result["nota_final"]
+        detail["clasificacion_final"]=final_result["clasificacion"]
+        if final_result["nota_final"] is None: missing.append("RESULTADO_FINAL_COMPLETO")
+        elif final_result["clasificacion"]==EvaluacionDefensa.Resultado.POSTERGADO: missing.append("RESULTADO_FINAL_APROBATORIO")
         unresolved=DocumentoPostulacion.objects.filter(postulacion=post,activo=True,requiere_correccion=True).exists()
         if unresolved: missing.append("CORRECCIONES_DOCUMENTALES_PENDIENTES")
         configured,approved,doc_missing=cls._documents(post,cls.REVIEW_DOCUMENT_CODES,event)

@@ -29,10 +29,23 @@ class AuthMeContractTests(APITestCase):
         _, teacher = self.request_as(username="contract-teacher", role=self.teacher_role)
         self.assertTrue(teacher.data["permisos"]["puede_ver_reportes"])
         self.assertFalse(teacher.data["permisos"]["puede_exportar_reportes"])
+        self.assertFalse(teacher.data["permisos"]["puede_gestionar_defensas"])
+        self.assertFalse(teacher.data["permisos"]["puede_gestionar_evaluaciones"])
         self.client.force_authenticate(user=None)
         _, student = self.request_as(username="contract-student", role=self.student_role)
         self.assertFalse(student.data["permisos"]["puede_ver_dashboard"])
         self.assertTrue(student.data["permisos"]["puede_ver_notificaciones"])
+
+    def test_defense_management_capability_matches_effective_admin_authority(self):
+        _, staff = self.request_as(username="contract-defense-staff", role=self.teacher_role, is_staff=True)
+        self.assertTrue(staff.data["permisos"]["puede_gestionar_defensas"])
+        self.client.force_authenticate(user=None)
+        _, superuser = self.request_as(
+            username="contract-defense-superuser",
+            role=self.teacher_role,
+            is_superuser=True,
+        )
+        self.assertTrue(superuser.data["permisos"]["puede_gestionar_defensas"])
 
     def test_contract_does_not_expose_sensitive_fields(self):
         _, response = self.request_as(username="contract-safe", role=self.teacher_role)

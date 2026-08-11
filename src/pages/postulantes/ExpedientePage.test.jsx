@@ -13,6 +13,11 @@ vi.mock('../../services/postulacionesService', () => ({
     aprobarDocumento: vi.fn(), rechazarDocumento: vi.fn(), observarDocumento: vi.fn(), marcarObservacionCorregida: vi.fn(),
     obtenerDefensas: vi.fn(), obtenerQuorumDefensa: vi.fn(), programarDefensa: vi.fn(), iniciarDefensa: vi.fn(),
     finalizarDefensa: vi.fn(), suspenderDefensa: vi.fn(), cancelarDefensa: vi.fn(), reprogramarDefensa: vi.fn(),
+    registrarEvaluacionDefensa: vi.fn(), consolidarEvaluacionDefensa: vi.fn(), obtenerDefensa: vi.fn(),
+    obtenerCondiciones: vi.fn(), verificarCondicion: vi.fn(), rechazarCondicion: vi.fn(),
+    obtenerEntregas: vi.fn(), registrarEntrega: vi.fn(),
+    obtenerCierre: vi.fn(), aprobarRevisionFinal: vi.fn(), aprobarCierreDocumental: vi.fn(),
+    concluirPostulacion: vi.fn(), reabrirCierre: vi.fn(),
   },
 }))
 
@@ -70,8 +75,8 @@ const defenseRows = [
     modalidad_evento: 'MIXTA', modalidad_display: 'Mixta', enlace_virtual: 'https://meet.example.test/defensa',
     etapa_codigo: 'DEFENSA_PUBLICA', etapa_nombre: 'Defensa Pública', observaciones: 'Registro técnico',
     participantes: [{ id: 91, usuario_nombre: 'María Tribunal', rol_evento: 'TRIBUNAL', rol_display: 'Tribunal', convocatoria: true, convocado: true, presente: true, fecha_asistencia: '2026-06-10T14:03:00Z', observaciones: 'Presente en sala' }],
-    evaluaciones: [{ id: 101, tipo_evaluacion: 'PUBLICA', tipo_display: 'Pública', evaluador_nombre: 'María Tribunal', modalidad_registro: 'INDIVIDUAL', modalidad_registro_display: 'Individual', resultado_cualitativo: '', nota_numerica: '80.00', ponderacion: '70.00', aporte_ponderado: '56.00' }],
-    resultado_consolidado: { id: 102, tipo_evaluacion: 'RESULTADO_FINAL', tipo_display: 'Resultado final', evaluador_nombre: null, modalidad_registro: 'CONSENSO', modalidad_registro_display: 'Consenso', resultado_cualitativo: 'APROBADO', nota_numerica: '80.00', ponderacion: '70.00', aporte_ponderado: '56.00' },
+    evaluaciones: [{ id: 101, tipo_evaluacion: 'PUBLICA', tipo_display: 'Pública', evaluador_nombre: null, modalidad_registro: 'CONSENSO', modalidad_registro_display: 'Consenso', resultado_cualitativo: '', nota_numerica: '60.00', ponderacion: '70.00', aporte_ponderado: '60.00' }],
+    resultado_consolidado: { id: 102, tipo_evaluacion: 'RESULTADO_FINAL', tipo_display: 'Resultado final', evaluador_nombre: null, modalidad_registro: 'CONSENSO', modalidad_registro_display: 'Consenso', resultado_cualitativo: '', nota_numerica: '60.00', ponderacion: '70.00', aporte_ponderado: '60.00' },
   },
   { id: 82, tipo_evento: 'DEFENSA_PRIVADA', tipo_display: 'Defensa privada', numero_intento: 1, estado: 'PROGRAMADA', estado_display: 'Programada', fecha_programada: '2026-05-01T10:00:00Z', lugar: 'Sala 2', modalidad_display: 'Presencial', etapa_nombre: 'Defensa Privada', participantes: [], evaluaciones: [], resultado_consolidado: null },
   { id: 83, tipo_evento: 'DEFENSA_PERFIL', tipo_display: 'Defensa de perfil', numero_intento: 1, estado: 'EN_CURSO', estado_display: 'En curso', fecha_programada: '2026-04-01T10:00:00Z', lugar: '', modalidad_display: 'Virtual', enlace_virtual: '', etapa_nombre: 'Perfil de Proyecto', participantes: [], evaluaciones: [], resultado_consolidado: null },
@@ -81,6 +86,13 @@ const defenseRows = [
 
 const defensesResponse = { count: 21, next: 'page=2', previous: null, results: defenseRows }
 const quorumResponse = { valido: true, conteos: { TRIBUNAL: 2, PRESIDENTE: 1 }, faltantes: {}, detalle: { TRIBUNAL: 2, PRESIDENTE: 1 } }
+const closureResponse = {
+  estado_general: 'EN_PROCESO', etapa_actual: 'REVISION_FINAL_POST_PUBLICA', defensa_publica_aprobada: true,
+  revision_final_aprobada: false, cierre_documental_aprobado: false, concluida: false,
+  condiciones_faltantes: ['ACTA'], entregas_faltantes: ['EJEMPLARES'], documentos_faltantes: ['INFORME'],
+  advertencias_normativas: ['La cantidad registrada no certifica la cantidad oficial.'],
+  puede_aprobar_revision_final: true, puede_aprobar_cierre: false, puede_concluir: false,
+}
 
 const response = {
   detalle: {
@@ -102,11 +114,11 @@ const response = {
     ],
   },
   resultado: {
-    data: { nota_publica: '80.00', aporte_publica: '56.00', resultado: 'APROBADO', nota_final: null, limitacion_normativa: 'El aporte privado no puede calcularse.' },
+    data: { nota_privada: '24.00', nota_publica: '60.00', aporte_privada: '24.00', aporte_publica: '60.00', clasificacion: 'APROBACION_PLENA', resultado: 'APROBACION_PLENA', nota_final: '84.00', limitacion_normativa: '' },
     error: '',
   },
   cierre: {
-    data: { advertencias_normativas: ['La cantidad registrada no certifica la cantidad oficial.'], condiciones_faltantes: ['ACTA'], entregas_faltantes: ['EJEMPLARES'], documentos_faltantes: ['INFORME'] },
+    data: closureResponse,
     error: '',
   },
 }
@@ -134,6 +146,11 @@ function renderDefenseManagerPage() {
   return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 }
 
+function renderClosureManagerPage() {
+  const auth = { user: { id: 9 }, hasPermission: (name) => name === 'puede_gestionar_cierre' }
+  return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+}
+
 describe('ExpedientePage US-008', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -150,6 +167,13 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.marcarObservacionCorregida.mockResolvedValue({ id: 401, corregida: true })
     postulacionesService.obtenerDefensas.mockResolvedValue(defensesResponse)
     postulacionesService.obtenerQuorumDefensa.mockResolvedValue(quorumResponse)
+    postulacionesService.obtenerCondiciones.mockResolvedValue({ count: 0, results: [] })
+    postulacionesService.obtenerEntregas.mockResolvedValue({ count: 0, results: [] })
+    postulacionesService.obtenerCierre.mockResolvedValue(closureResponse)
+    postulacionesService.aprobarRevisionFinal.mockResolvedValue({ ...closureResponse, revision_final_aprobada: true, puede_aprobar_revision_final: false, puede_aprobar_cierre: true })
+    postulacionesService.aprobarCierreDocumental.mockResolvedValue({ ...closureResponse, revision_final_aprobada: true, cierre_documental_aprobado: true, puede_aprobar_revision_final: false, puede_aprobar_cierre: false, puede_concluir: true })
+    postulacionesService.concluirPostulacion.mockResolvedValue({ ...closureResponse, revision_final_aprobada: true, cierre_documental_aprobado: true, puede_concluir: false, concluida: true, estado_general: 'CONCLUIDA' })
+    postulacionesService.reabrirCierre.mockResolvedValue({ ...closureResponse, revision_final_aprobada: true, cierre_documental_aprobado: false, puede_aprobar_cierre: true })
     postulacionesService.programarDefensa.mockResolvedValue({ ...defenseRows[1], id: 86 })
     postulacionesService.iniciarDefensa.mockResolvedValue({ ...defenseRows[1], estado: 'EN_CURSO', estado_display: 'En curso' })
     postulacionesService.finalizarDefensa.mockResolvedValue({ ...defenseRows[2], estado: 'FINALIZADA', estado_display: 'Finalizada' })
@@ -171,23 +195,23 @@ describe('ExpedientePage US-008', () => {
     expect(within(screen.getByRole('heading', { name: 'Resumen técnico' }).parentElement).getByText('Perfil de Proyecto')).toBeInTheDocument()
     expect(screen.getByRole('progressbar', { name: 'Avance del macroflujo' })).toHaveValue(25)
     expect(screen.getByRole('heading', { name: 'Resultado académico técnico' })).toBeInTheDocument()
-    expect(screen.getByText('80.00')).toBeInTheDocument()
-    expect(screen.getByText('56.00')).toBeInTheDocument()
-    expect(screen.getByText('Pendiente de definición institucional')).toBeInTheDocument()
+    expect(screen.getByText('24.00')).toBeInTheDocument()
+    expect(screen.getByText('60.00')).toBeInTheDocument()
+    expect(screen.getAllByText('84.00').length).toBeGreaterThanOrEqual(2)
     expect(screen.queryByText('0')).not.toBeInTheDocument()
     const limits = screen.getByRole('note', { name: 'Límites normativos' })
-    expect(limits).toHaveTextContent(/defensa privada representa el 30 %/i)
+    expect(limits).toHaveTextContent(/nota privada es el aporte consensuado/i)
     expect(limits).toHaveTextContent(/aprobación y originalidad del tema/i)
-    expect(limits).toHaveTextContent(/clasificación final institucional/i)
+    expect(limits).toHaveTextContent(/escala específica confirmada/i)
     expect(limits).toHaveTextContent(/cantidad oficial de ejemplares/i)
     expect(limits).toHaveTextContent(/proyectos grupales/i)
     expect(limits).toHaveTextContent(/plazos reglamentarios/i)
     expect(limits).toHaveTextContent(/no equivale a legalización/i)
     expect(limits).toHaveTextContent(/cantidad registrada no certifica/i)
-    expect(screen.getByRole('heading', { name: 'Estado técnico de cierre' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Cierre técnico' })).toBeInTheDocument()
     expect(limits).toHaveClass('overflow-hidden')
     expect(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).toHaveClass('overflow-hidden')
-    expect(screen.getByRole('heading', { name: 'Estado técnico de cierre' }).parentElement).toHaveClass('overflow-hidden')
+    expect(screen.getByRole('heading', { name: 'Cierre técnico' }).parentElement).toHaveClass('overflow-hidden')
     expect(screen.getByText('ACTA')).toBeInTheDocument()
     expect(screen.getByText('EJEMPLARES')).toBeInTheDocument()
     expect(screen.getByText('INFORME')).toBeInTheDocument()
@@ -235,7 +259,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('Estado de cierre técnico todavía no disponible')).toBeInTheDocument()
     expect(screen.getByRole('note', { name: 'Límites normativos' })).toHaveTextContent(/proyectos grupales/i)
     await userEvent.click(screen.getAllByRole('button', { name: 'Reintentar' })[0])
-    expect(await screen.findByText('80.00')).toBeInTheDocument()
+    expect((await screen.findAllByText('84.00')).length).toBeGreaterThanOrEqual(2)
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2)
   })
 
@@ -357,9 +381,8 @@ describe('ExpedientePage US-008', () => {
     expect(within(dialog).getByText('Convocado')).toBeInTheDocument()
     expect(within(dialog).getByText('Presente')).toBeInTheDocument()
     expect(within(dialog).getByText('Presente en sala')).toBeInTheDocument()
-    expect(within(dialog).getAllByText('80.00').length).toBeGreaterThan(0)
-    expect(within(dialog).getAllByText('56.00').length).toBeGreaterThan(0)
-    expect(within(dialog).getByText('APROBADO')).toBeInTheDocument()
+    expect(within(dialog).getAllByText('60.00').length).toBeGreaterThan(0)
+    expect(within(dialog).getAllByText('70.00').length).toBeGreaterThan(0)
     expect(within(dialog).getByRole('link', { name: 'Abrir enlace virtual de la defensa' })).toHaveAttribute('href', 'https://meet.example.test/defensa')
     expect(within(dialog).getByText(/no certifica validez institucional/i)).toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: /programar|reprogramar|iniciar|finalizar|suspender|cancelar|registrar|consolidar/i })).not.toBeInTheDocument()
@@ -519,7 +542,7 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.obtenerVersiones).toHaveBeenCalledWith(31, 1, expect.any(AbortSignal))
     await userEvent.click(screen.getAllByRole('button', { name: 'Ver observaciones' })[0])
     expect(await screen.findByText('Corregir portada')).toBeInTheDocument()
-    expect(screen.getByText('Pendiente')).toBeInTheDocument()
+    expect(screen.getAllByText('Pendiente').length).toBeGreaterThan(0)
     expect(screen.getByText('Corregida')).toBeInTheDocument()
     expect(postulacionesService.obtenerObservaciones).toHaveBeenCalledWith(301, 1, expect.any(AbortSignal))
     await userEvent.click(within(dialog).getAllByRole('button', { name: 'Siguiente' }).find((button) => !button.disabled))
@@ -827,5 +850,48 @@ describe('ExpedientePage US-008', () => {
       expect(within(dialog).queryByRole('button', { name: /asistencia|evaluar|consolidar|condición|entrega|cierre/i })).not.toBeInTheDocument()
       await userEvent.click(within(dialog).getByRole('button', { name: 'Cerrar' }))
     }
+  })
+
+  it('integra el cierre técnico con faltantes, resultado y advertencia legal sin acciones para lectura', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderOwnerPage()
+    const closure = await screen.findByRole('heading', { name: 'Cierre técnico' })
+    const card = closure.parentElement
+    expect(card).toHaveTextContent('ACTA')
+    expect(card).toHaveTextContent('EJEMPLARES')
+    expect(card).toHaveTextContent('INFORME')
+    expect(card).toHaveTextContent('84.00')
+    expect(card).toHaveTextContent(/no sustituye el acta oficial, firmas, legalización, titulación/i)
+    expect(within(card).queryByRole('button', { name: /aprobar|concluir|reabrir/i })).not.toBeInTheDocument()
+  })
+
+  it('aprueba revisión final con confirmación y actualización parcial', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderClosureManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Aprobar revisión final' }))
+    await userEvent.type(screen.getByLabelText('Observaciones'), 'Revisión técnica completa')
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await waitFor(() => expect(postulacionesService.aprobarRevisionFinal).toHaveBeenCalledWith(7, 'Revisión técnica completa', expect.any(AbortSignal)))
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText('Aprobada')).toBeInTheDocument()
+    confirm.mockRestore()
+  })
+
+  it('exige motivo al reabrir y conserva errores funcionales por campo', async () => {
+    const closed = { ...response, cierre: { data: { ...closureResponse, revision_final_aprobada: true, cierre_documental_aprobado: true, puede_aprobar_revision_final: false, puede_concluir: true }, error: '' } }
+    postulacionesService.obtenerExpediente.mockResolvedValue(closed)
+    postulacionesService.reabrirCierre.mockRejectedValue({ status: 409, message: 'La acción no cumple las precondiciones del cierre técnico.', fields: { motivo: ['Reapertura no permitida.'] } })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderClosureManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Reabrir cierre' }))
+    fireEvent.submit(screen.getByRole('button', { name: 'Confirmar' }).closest('form'))
+    expect(await screen.findByText('motivo: El motivo es obligatorio.')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Motivo'), 'Corrección técnica')
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    expect(await screen.findByText('motivo: Reapertura no permitida.')).toBeInTheDocument()
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+    vi.restoreAllMocks()
   })
 })

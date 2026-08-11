@@ -10,7 +10,7 @@ Este documento consolida el procedimiento institucional de Proyecto de Grado y l
 
 El sistema actual cubre la estructura técnica principal: postulación, flujo secuencial, asignaciones temporales, documentos versionados, observaciones, defensas, quórum, evaluaciones, condiciones, entregas y cierre. No acredita por sí mismo actos institucionales que todavía no están modelados, entre ellos la aprobación formal y originalidad del tema, el dictamen del Consejo Científico, los memorandos de designación, los plazos reglamentarios automáticos y las cartas de conformidad exigidas por el flujo operativo.
 
-Existen contradicciones que este contrato no resuelve: cuatro o seis ejemplares, ponderación privada del 30 % sin nota numérica, tabla final de clasificación, máximo de dos o tres estudiantes, y ciertos detalles sobre composición, designación e intentos. Hasta que la Universidad decida, deben mostrarse como pendientes y no como cumplimiento oficial.
+Existen contradicciones que este contrato no resuelve: cuatro o seis ejemplares, máximo de dos o tres estudiantes, y ciertos detalles sobre composición, designación e intentos. La evaluación técnica usa las decisiones institucionales confirmadas para Proyecto de Grado: nota privada directa 0–30, nota pública directa 0–70 y escala final específica. Los demás puntos pendientes deben mostrarse como tales y no como cumplimiento oficial.
 
 El Sprint 1 puede construir de forma segura un expediente de consulta basado en hechos ya registrados. No debe introducir actos administrativos ni conclusiones normativas inexistentes.
 
@@ -38,7 +38,7 @@ Las referencias entre corchetes identifican la fuente y, cuando es posible, el c
 
 ### 2.3 Asuntos pendientes de decisión institucional
 
-Permanecen pendientes las cantidades de ejemplares, la forma de obtener el 30 % privado, la clasificación final oficial, el máximo de integrantes, los límites generales de reintentos, las consecuencias automáticas de vencimientos y el procedimiento completo de cambio de tema o modalidad.
+Permanecen pendientes las cantidades de ejemplares, el máximo de integrantes, los límites generales de reintentos, las consecuencias automáticas de vencimientos y el procedimiento completo de cambio de tema o modalidad.
 
 ## 3. Conceptos y separación de responsabilidades
 
@@ -250,11 +250,11 @@ Clasificación: **A** confirmada por normativa; **B** confirmada por más de una
 | Cambio de tema | A/D | Aparece como consecuencia después de resultados adversos; procedimiento, conservación de evidencias y autorizaciones no definidos completamente. |
 | Cambio de modalidad | A/D | Puede solicitarse al exceder plazo; procedimiento y efectos no definidos completamente. [RE-PG, cap. IV] |
 | Evaluación del perfil | A/B/E | Exclusivamente `SUFICIENTE`/`INSUFICIENTE`; backend no admite nota ni ponderación. [RE-PG, caps. III y VII] |
-| Evaluación privada | A/C/E | Normativa la define cualitativa y le atribuye 30 %. Backend conserva resultado cualitativo y no inventa nota/aporte. [RE-PG, cap. VII; RG-MG] |
-| Evaluación pública | B/E | Numérica 1–100, ponderación 70 % y aprobación mínima 51; backend promedia evaluaciones y calcula aporte público. [RE-PG, cap. VII; RG-MG] |
-| Modalidad de evaluación | A/E | Puede ser individual o por consenso; backend soporta ambas. [RE-PG, cap. VI] |
-| Nota final | C/E | La suma 30/70 está declarada, pero falta base numérica privada. Backend devuelve `nota_final=null` y explica la limitación. |
-| Clasificación final | C | Rangos y denominaciones de RE-PG y RG-MG difieren. No se adopta tabla oficial. |
+| Evaluación privada | A/C/E | Decisión institucional confirmada: consenso único del Tribunal, resultado `SUFICIENTE`/`INSUFICIENTE` y nota directa 0–30. Las observaciones no se convierten automáticamente en puntos. |
+| Evaluación pública | B/E | Decisión institucional confirmada: consenso único del Tribunal y nota directa 0–70. Presidente y Secretario participan en el quórum, pero no califican. |
+| Modalidad de evaluación | A/E | Para Proyecto de Grado se registra un único consenso del Tribunal por evento. Tutor, Docente de Modalidad, Presidente y Secretario no emiten calificación. |
+| Nota final | C/E | Backend suma directamente `nota_privada + nota_publica` (máximo 100); no vuelve a aplicar 30 % ni 70 %. Si falta una nota, devuelve `nota_final=null`. |
+| Clasificación final | C | Decisión institucional confirmada para Proyecto de Grado: 0–50 `POSTERGADO`; 51–74 `APROBADO`; 75–89 `APROBACION_PLENA`; 90–100 `APROBACION_PLENA_CON_FELICITACION`. |
 | Correcciones finales | A/B | Las modificaciones sustantivas deben constar e incorporarse al documento final. [RE-PG, cap. VII; DF-MG] |
 | Cierre | A/B/E | Requiere acta, hoja de aprobación, documento final y entregas. Backend añade control secuencial, ausencia de correcciones y auditoría. |
 | Trabajo individual o grupal | C | RE-PG admite máximo dos; RG-MG contempla hasta tres. Backend representa un estudiante por postulación. |
@@ -266,8 +266,6 @@ Clasificación: **A** confirmada por normativa; **B** confirmada por más de una
 | Punto | Fuentes en tensión y alternativas | Impacto backend / frontend | Recomendación técnica provisional | Decisión requerida |
 |---|---|---|---|---|
 | Cuatro o seis ejemplares | RE-PG: seis; DF-MG: cuatro. Alternativas 4, 6 o cantidad configurable por periodo. | Backend debe validar cantidad; frontend mostrar requisito exacto. | Mantener `EJEMPLARES_IMPRESOS` sin mínimo automático y advertencia visible. | Cantidad vigente y desde qué gestión aplica. |
-| 30 % privado sin nota | RE-PG/RG-MG ponderan 30/70; RE-PG expresa privada cualitativa. Alternativas: rúbrica numérica, equivalencia aprobada o resultado final no sumable. | Afecta modelo de evaluación, cálculo, reportes y UI. | Conservar privada cualitativa, aporte privado y nota final nulos. | Instrumento oficial que produzca el 30 % o confirmación de que no se calcula. |
-| Clasificación final | RE-PG: 51–74, 75–89, 90–100; RG-MG usa otros cortes/nombres. | Cambia códigos, reportes, certificados y etiquetas. | Mostrar nota pública y `APROBADO/POSTERGADO`, sin clasificación honorífica oficial. | Tabla, nombres y norma vigente. |
 | Dos o tres estudiantes | RE-PG máximo 2; RG-MG máximo 3. | Requiere relación múltiple estudiante–proyecto, permisos y documentos grupales. | Mantener alcance individual del sistema y declarar no soportado. | Máximo vigente y reglas de evaluación/abandono grupal. |
 | Tribunal formal frente a quórum | RE-PG designa tres docentes, pero permite sesiones con dos más actores específicos. | Debe separar miembros designados de presentes mínimos. | Exigir composición formal cuando se modele el acto; usar política actual solo para quórum. | Composición por evento, suplencias y derecho a voz/voto. |
 | Orden de designaciones | RE-PG ubica Tutor tras aprobación de propuesta; DF-MG combina designaciones alrededor del perfil. | Afecta precondiciones y orden del expediente. | No bloquear automáticamente por orden no confirmado; registrar fechas y evidencias. | Secuencia oficial Tutor/Tribunal/Consejo/Dirección. |
@@ -289,12 +287,12 @@ Clasificación: **A** confirmada por normativa; **B** confirmada por más de una
 | Documentos/versiones | `DocumentoPostulacion`, `VersionDocumento`, `ObservacionDocumento` | `DocumentoService` | `/documentos/documentos/`; acciones aprobar/rechazar/observar | Cubierto | Tipos configurables no equivalen a contenido/formato reglamentario. | Matriz de requisitos por etapa y acto, sin duplicar archivos. |
 | Perfil | Seguimiento, documento, evento, evaluación | Workflow y servicios de defensa | `/eventos-defensa/`; evaluaciones `perfil` | Parcialmente cubierto | No controla contenido, plazo ni segundo intento máximo. | Precondiciones normativas configurables después de validación. |
 | Revisión previa | Etapa `REVISION_TRIBUNAL_PREVIA` | Workflow/documentos | `/seguimientos-etapa/`; `/documentos/` | Parcialmente cubierto | No representa sesión/acta del Consejo ni tres conformidades. | Modelar dictámenes y conformidades por emisor. |
-| Defensa privada | `EventoDefensa`, participantes, evaluación | `EventoDefensaService`, `EvaluacionDefensaService` | `/eventos-defensa/{id}/...` | Cubierto | Plazo/protocolo no controlados; 30 % irresoluble. | Mantener cualitativa y añadir plazos solo con decisión formal. |
+| Defensa privada | `EventoDefensa`, participantes, evaluación | `EventoDefensaService`, `EvaluacionDefensaService` | `/eventos-defensa/{id}/...` | Cubierto | Plazo/protocolo no controlados. | Mantener separados resultado cualitativo, nota directa 0–30 y observaciones. |
 | Defensa pública | Evento, participantes, evaluación | Política de evento/evaluación | Programar, quórum, asistencia, evaluar y consolidar | Cubierto | 48 h sí; publicación, protocolo y clasificación no. | Evidencia de convocatoria y tabla institucional futura. |
-| Resultado final | `EvaluacionDefensa` | `calcular_resultado_final` | `/postulaciones/{id}/resultado-final/` | Cubierto con decisión técnica no normativa | `nota_final=null`; evita un cálculo falso. | Implementar únicamente con instrumento privado aprobado. |
+| Resultado final | `EvaluacionDefensa` | `calcular_resultado_final` | `/postulaciones/{id}/resultado-final/` | Cubierto | Devuelve `nota_final=null` cuando falta Privada o Pública. | Mantener el cálculo exclusivamente en backend y no volver a ponderar las notas directas. |
 | Correcciones | Versiones, observaciones, seguimiento | Documento/Workflow | `/documentos/.../observar`; `/observaciones/.../marcar-corregida` | Cubierto | No hay fecha límite ni firma del revisor. | Incorporar vencimientos y conformidad cuando se definan. |
 | Entregas | `EntregaFisica` | `EntregaFisicaService` | `/gestion-complementaria/entregas-fisicas/` | Parcialmente cubierto | Cantidad oficial pendiente. | Regla versionada por periodo después de resolución. |
-| Cierre | Seguimientos, condiciones, entregas y documentos | `ProyectoGradoCierrePolicy`, `CierrePostulacionService` | `/postulaciones/{id}/cierre/` y acciones | Cubierto con decisión técnica | Comprueba configuración actual, no legalización institucional. | Mantener advertencias y añadir evidencia legal si se requiere. |
+| Cierre | Seguimientos, resultado final, condiciones, entregas y documentos | `ProyectoGradoCierrePolicy`, `CierrePostulacionService` | `/postulaciones/{id}/cierre/`; `aprobar-revision-final`, `aprobar-cierre-documental`, `concluir`, `reabrir` | Cubierto técnicamente | Exige resultado final completo y aprobatorio, comprueba configuración actual y audita transiciones; no acredita legalización institucional. | Mantener la advertencia expresa de cierre técnico y no incorporar actos legales sin contrato aprobado. |
 | Historial/auditoría | `HistorialEstado`, `AuditLog`, observaciones | Workflow y servicios | `/postulaciones/historial/`, recursos relacionados | Cubierto | No es kardex institucional firmado. | Vista unificada; denominación neutral “historial”. |
 | Reintentos | `numero_intento` en etapa/evento | Workflow/defensas | `nuevo-intento`, reprogramar | Parcialmente cubierto | Sin máximo normativo uniforme. | Política por etapa una vez validada. |
 | Cambio tema/modalidad | No existe flujo específico | Ninguno | Ninguno | No cubierto | Edición directa perdería trazabilidad contractual. | Caso de uso formal con solicitud, resolución y vínculo entre expedientes. |
@@ -330,8 +328,7 @@ La interfaz debe usar capacidades reales del backend, distinguir lectura de acci
 - emisión de memorandos, firmas o resoluciones no registradas;
 - cumplimiento automático de plazos;
 - número máximo definitivo de oportunidades;
-- cálculo final del 30 % privado;
-- clasificación normativa definitiva;
+- fórmula automática para convertir observaciones privadas en puntos;
 - cantidad oficial de ejemplares;
 - soporte de proyectos grupales;
 - validez normativa de defensas virtuales o mixtas;
@@ -344,18 +341,18 @@ La interfaz debe usar capacidades reales del backend, distinguir lectura de acci
 3. La etapa funcional se presenta como macroetapa técnica cuando corresponda.
 4. Las verificaciones manuales identifican estado, fecha y responsable.
 5. Las advertencias normativas no se ocultan.
-6. `nota_final=null` se presenta como pendiente institucional, sin cálculo local.
+6. `nota_final=null` se presenta cuando falta la nota privada o pública, sin sustitución por cero ni cálculo local.
 7. No se muestran etiquetas honoríficas como oficiales.
 8. No se confunde una asignación con memorando o designación formal.
 9. No se confunde aprobación documental con firma o legalización.
 10. No se agregan operaciones de tema, grupo, cambio o plazo sin contrato aprobado.
 
+El expediente de Proyecto de Grado está integrado de extremo a extremo dentro de este alcance técnico seguro. El cierre registrado no sustituye acta oficial, firmas, legalización, titulación ni procesamiento universitario posterior.
+
 ## 13. Preguntas para validación con la Universidad
 
 1. ¿Se ratifica que RE-PG prevalece sobre RG-MG en todos los puntos específicos de Proyecto de Grado?
 2. ¿Cuántos ejemplares impresos son obligatorios actualmente: cuatro, seis u otra cantidad?
-3. ¿Qué instrumento produce la nota correspondiente al 30 % de la defensa privada?
-4. Si la privada continúa siendo cualitativa, ¿cómo se calcula oficialmente la nota final?
 5. ¿Cuál es la tabla vigente de rangos, denominaciones y menciones?
 6. ¿El máximo vigente por Proyecto de Grado es uno, dos o tres estudiantes?
 7. ¿Qué composición formal debe designarse para perfil, privada y pública, y cuál es el quórum de cada evento?

@@ -55,7 +55,5 @@ class UserCapabilitiesService:
             values.update(
                 puede_ver_dashboard=True,
                 puede_ver_reportes=True,
-                puede_gestionar_defensas=True,
-                puede_gestionar_evaluaciones=True,
             )
         return values

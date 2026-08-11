@@ -268,4 +268,27 @@ describe('postulacionesService', () => {
     await expect(postulacionesService.rechazarDocumento(31, ''))
       .rejects.toEqual({ status, message: 'La acción no es válida para el estado actual del documento.', fields })
   })
+
+  it.each([
+    ['aprobarRevisionFinal', ['Observación'], 'aprobar-revision-final', { observaciones: 'Observación' }],
+    ['aprobarCierreDocumental', ['Cierre revisado'], 'aprobar-cierre-documental', { observaciones: 'Cierre revisado' }],
+    ['concluirPostulacion', ['Conclusión técnica'], 'concluir', { observaciones: 'Conclusión técnica' }],
+    ['reabrirCierre', ['Corrección'], 'reabrir', { motivo: 'Corrección' }],
+  ])('ejecuta %s con el endpoint real de cierre', async (method, args, action, payload) => {
+    const signal = new AbortController().signal
+    apiClient.post.mockResolvedValue({ data: { estado_general: 'EN_PROCESO' } })
+    await postulacionesService[method](7, ...args, signal)
+    expect(apiClient.post).toHaveBeenCalledWith(`/api/v1/postulaciones/7/cierre/${action}/`, payload, { signal })
+  })
+
+  it('consulta cierre y normaliza conflictos con campos funcionales', async () => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValueOnce({ data: { concluida: false } })
+    await expect(postulacionesService.obtenerCierre(7, signal)).resolves.toEqual({ concluida: false })
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/postulaciones/7/cierre/', { signal })
+    const fields = { faltantes: ['CONDICION:PLAZO_MAXIMO'] }
+    apiClient.post.mockRejectedValue({ response: { status: 409, data: fields } })
+    await expect(postulacionesService.concluirPostulacion(7, ''))
+      .rejects.toEqual({ status: 409, message: 'La acción no cumple las precondiciones del cierre técnico.', fields })
+  })
 })

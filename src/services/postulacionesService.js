@@ -52,6 +52,40 @@ function normalizeDefenseAction(error) {
   return { status, message: 'No se pudo completar la acción sobre la defensa. Comprueba tu conexión e intenta nuevamente.' }
 }
 
+function normalizeComplementary(error) {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  const data = error?.response?.data
+  const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  if (status === 400) return { status, message: 'Revisa los datos y el estado técnico de la postulación.', fields }
+  if (status === 401) return { status, message: 'Debes iniciar sesión para gestionar estos controles.' }
+  if (status === 403) return { status, message: 'No tienes autorización para gestionar estos controles.' }
+  if (status === 404) return { status, message: 'El registro ya no está disponible.' }
+  return { status, message: 'No se pudo completar la operación. Comprueba tu conexión e intenta nuevamente.' }
+}
+
+function normalizeClosure(error) {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  const data = error?.response?.data
+  const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  if (status === 400 || status === 409) return { status, message: 'La acción no cumple las precondiciones del cierre técnico.', fields }
+  if (status === 401) return { status, message: 'Debes iniciar sesión para gestionar el cierre técnico.' }
+  if (status === 403) return { status, message: 'No tienes autorización para gestionar el cierre técnico.' }
+  if (status === 404) return { status, message: 'La postulación o su cierre técnico ya no están disponibles.' }
+  return { status, message: 'No se pudo completar la acción de cierre. Comprueba tu conexión e intenta nuevamente.' }
+}
+
+async function closureRequest(method, url, payload, signal) {
+  try { return (await apiClient[method](url, ...(method === 'get' ? [{ signal }] : [payload, { signal }]))).data }
+  catch (error) { throw normalizeClosure(error) }
+}
+
+async function complementaryRequest(method, url, payload, signal) {
+  try { return (await apiClient[method](url, ...(method === 'get' ? [{ params: payload, signal }] : [payload, { signal }]))).data }
+  catch (error) { throw normalizeComplementary(error) }
+}
+
 async function defenseAction(url, payload, signal) {
   try {
     return (await apiClient.post(url, payload, { signal })).data
@@ -213,6 +247,42 @@ export const postulacionesService = {
   },
   registrarAsistenciaDefensa(evento, participante, presente, observaciones, signal) {
     return defenseAction(`/api/v1/eventos-defensa/${evento}/asistencia/`, { participante, presente, observaciones }, signal)
+  },
+  registrarEvaluacionDefensa(evento, tipo, payload, signal) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/evaluaciones/${tipo}/`, payload, signal)
+  },
+  consolidarEvaluacionDefensa(evento, signal) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/evaluaciones/consolidar/`, {}, signal)
+  },
+  obtenerCondiciones(postulacion, signal) {
+    return complementaryRequest('get', '/api/v1/gestion-complementaria/condiciones/', { postulacion }, signal)
+  },
+  verificarCondicion(id, observaciones, signal) {
+    return complementaryRequest('post', `/api/v1/gestion-complementaria/condiciones/${id}/verificar/`, { observaciones }, signal)
+  },
+  rechazarCondicion(id, observaciones, signal) {
+    return complementaryRequest('post', `/api/v1/gestion-complementaria/condiciones/${id}/rechazar/`, { observaciones }, signal)
+  },
+  obtenerEntregas(postulacion, signal) {
+    return complementaryRequest('get', '/api/v1/gestion-complementaria/entregas-fisicas/', { postulacion }, signal)
+  },
+  registrarEntrega(id, cantidadRecibida, observaciones, signal) {
+    return complementaryRequest('post', `/api/v1/gestion-complementaria/entregas-fisicas/${id}/registrar/`, { cantidad_recibida: cantidadRecibida, observaciones }, signal)
+  },
+  obtenerCierre(postulacion, signal) {
+    return closureRequest('get', `/api/v1/postulaciones/${postulacion}/cierre/`, null, signal)
+  },
+  aprobarRevisionFinal(postulacion, observaciones, signal) {
+    return closureRequest('post', `/api/v1/postulaciones/${postulacion}/cierre/aprobar-revision-final/`, { observaciones }, signal)
+  },
+  aprobarCierreDocumental(postulacion, observaciones, signal) {
+    return closureRequest('post', `/api/v1/postulaciones/${postulacion}/cierre/aprobar-cierre-documental/`, { observaciones }, signal)
+  },
+  concluirPostulacion(postulacion, observaciones, signal) {
+    return closureRequest('post', `/api/v1/postulaciones/${postulacion}/cierre/concluir/`, { observaciones }, signal)
+  },
+  reabrirCierre(postulacion, motivo, signal) {
+    return closureRequest('post', `/api/v1/postulaciones/${postulacion}/cierre/reabrir/`, { motivo }, signal)
   },
   obtenerDocumentos(postulacion, page, signal) {
     return getDocumentResource('/api/v1/documentos/documentos/', { postulacion, ordering: '-fecha_subida', page }, signal, 'los documentos')

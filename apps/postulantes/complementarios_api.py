@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -11,10 +12,16 @@ from apps.postulantes.models import CondicionPostulacion, EntregaFisica
 
 
 class CondicionSerializer(serializers.ModelSerializer):
+    estado_display=serializers.CharField(source="get_estado_display",read_only=True)
+    verificado_por_nombre=serializers.SerializerMethodField()
+    def get_verificado_por_nombre(self,obj) -> str | None: return obj.verificado_por.nombre_completo or obj.verificado_por.username if obj.verificado_por else None
     class Meta:
         model=CondicionPostulacion; fields="__all__"; read_only_fields=("estado","fecha_verificacion","verificado_por","activo","created_at","updated_at")
 
 class EntregaSerializer(serializers.ModelSerializer):
+    estado_display=serializers.CharField(source="get_estado_display",read_only=True)
+    recibido_por_nombre=serializers.SerializerMethodField()
+    def get_recibido_por_nombre(self,obj) -> str | None: return obj.recibido_por.nombre_completo or obj.recibido_por.username if obj.recibido_por else None
     class Meta:
         model=EntregaFisica; fields="__all__"; read_only_fields=("cantidad_recibida","estado","fecha_entrega","recibido_por","activo","created_at","updated_at")
 
@@ -23,6 +30,7 @@ class EntregaPayload(ObservacionPayload): cantidad_recibida=serializers.IntegerF
 
 class RelatedViewSet(viewsets.ModelViewSet):
     permission_classes=[IsAuthenticated]; http_method_names=["get","post","head","options"]
+    filter_backends=[DjangoFilterBackend]; filterset_fields=["postulacion","estado"]
     def _admin(self):
         if not (self.request.user.is_staff or self.request.user.is_superuser): raise PermissionDenied("Se requiere permiso administrativo.")
     def perform_create(self,serializer): self._admin(); serializer.save()
@@ -30,7 +38,7 @@ class RelatedViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs=super().get_queryset(); u=self.request.user
         if u.is_staff or u.is_superuser: return qs
-        return qs.filter(Q(postulacion__estudiante=u)|Q(postulacion__asignaciones__usuario=u,postulacion__asignaciones__activo=True)).distinct()
+        return qs.filter(Q(postulacion__estudiante=u)|Q(postulacion__asignaciones__usuario=u)).distinct()
     def _call(self,fn,*args):
         try: return fn(*args)
         except DjangoValidationError as exc: raise ValidationError(exc.messages) from exc

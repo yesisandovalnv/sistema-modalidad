@@ -487,6 +487,44 @@ class AsignacionApiTest(AssignmentBaseMixin, APITestCase):
         self.assertEqual(reemplazar.status_code, status.HTTP_200_OK)
         self.assertEqual(reemplazar.data["usuario"], self.docente_3.id)
 
+    def test_errores_de_acciones_conservan_claves_estables(self):
+        self.authenticate(self.admin)
+        asignar = self.client.post(
+            f"/api/v1/postulaciones/{self.postulacion.id}/asignaciones/asignar/",
+            {
+                "usuario": self.inactive_docente.id,
+                "tipo_participacion": "TIPO_INVALIDO",
+                "orden_cargo": 0,
+                "seguimiento_etapa": 999999,
+                "observaciones": [],
+            },
+            format="json",
+        )
+        self.assertEqual(asignar.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            set(asignar.data) - {"status_code"},
+            {"usuario", "tipo_participacion", "orden_cargo", "seguimiento_etapa", "observaciones"},
+        )
+
+        activa = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_1, "TUTOR", self.admin,
+        )
+        reemplazar = self.client.post(
+            f"/api/v1/asignaciones/{activa.id}/reemplazar/",
+            {"nuevo_usuario": self.inactive_docente.id, "observaciones": []},
+            format="json",
+        )
+        self.assertEqual(reemplazar.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(set(reemplazar.data) - {"status_code"}, {"nuevo_usuario", "observaciones"})
+
+        duplicada = self.client.post(
+            f"/api/v1/postulaciones/{self.postulacion.id}/asignaciones/asignar/",
+            {"usuario": self.docente_2.id, "tipo_participacion": "TUTOR"},
+            format="json",
+        )
+        self.assertEqual(duplicada.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(set(duplicada.data) - {"status_code"}, {"non_field_errors"})
+
     def test_estudiante_ve_solo_asignaciones_propias(self):
         AsignacionService.asignar_actor(
             postulacion=self.postulacion,
@@ -585,3 +623,136 @@ class AsignacionApiTest(AssignmentBaseMixin, APITestCase):
         self.assertEqual(filtrado.data[0]["id"], tribunal.id)
         self.assertEqual(activas.status_code, status.HTTP_200_OK)
         self.assertEqual(len(activas.data), 1)
+
+    def test_contrato_canonico_filtra_postulacion_e_incluye_activas_e_historicas(self):
+        activa = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_1, "TUTOR", self.admin,
+        )
+        historica = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_2, "TRIBUNAL", self.admin, orden_cargo=1,
+        )
+        AsignacionService.finalizar_asignacion(historica, self.admin, "Fin de participación")
+        AsignacionService.asignar_actor(
+            self.other_postulacion, self.docente_3, "TUTOR", self.admin,
+        )
+        self.authenticate(self.admin)
+
+        response = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual([row["id"] for row in response.data["results"]], [activa.id, historica.id])
+        self.assertEqual([row["activo"] for row in response.data["results"]], [True, False])
+        self.assertEqual({row["postulacion"] for row in response.data["results"]}, {self.postulacion.id})
+
+    def test_contrato_canonico_filtra_activo_y_expone_tipos_reales(self):
+        tipos = [choice for choice, _label in AsignacionPostulacion.TipoParticipacionChoices.choices]
+        asignaciones = []
+        docentes = [self.docente_1, self.docente_2, self.docente_3, self.docente_4]
+        extra = User.objects.create_user(username="docente_cinco", role=self.docente_role)
+        for indice, (tipo, docente) in enumerate(zip(tipos, [*docentes, extra]), start=1):
+            asignaciones.append(AsignacionService.asignar_actor(
+                self.postulacion, docente, tipo, self.admin,
+                orden_cargo=indice if tipo == "TRIBUNAL" else None,
+            ))
+        AsignacionService.finalizar_asignacion(asignaciones[-1], self.admin)
+        self.authenticate(self.admin)
+
+        activas = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}&activo=true")
+        historicas = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}&activo=false")
+
+        self.assertEqual(activas.data["count"], 4)
+        self.assertEqual(historicas.data["count"], 1)
+        self.assertEqual(historicas.data["results"][0]["tipo_participacion"], tipos[-1])
+        self.assertEqual(
+            {row["tipo_participacion"] for row in [*activas.data["results"], *historicas.data["results"]]},
+            set(tipos),
+        )
+
+    def test_nombre_legible_y_aliases_estables(self):
+        self.docente_1.nombres = "Ana"
+        self.docente_1.apellido_paterno = "Rojas"
+        self.docente_1.save(update_fields=["nombres", "apellido_paterno"])
+        con_nombre = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_1, "TUTOR", self.admin,
+        )
+        con_username = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_2, "TRIBUNAL", self.admin, orden_cargo=1,
+        )
+        self.authenticate(self.admin)
+
+        response = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}")
+        por_id = {row["id"]: row for row in response.data["results"]}
+
+        self.assertEqual(por_id[con_nombre.id]["usuario_nombre"], "Ana Rojas")
+        self.assertEqual(por_id[con_username.id]["usuario_nombre"], "docente_dos")
+        self.assertEqual(por_id[con_nombre.id]["tipo_participacion_display"], "Tutor")
+        self.assertEqual(por_id[con_nombre.id]["fecha_inicio"], por_id[con_nombre.id]["fecha_designacion"])
+        self.assertIn("fecha_fin", por_id[con_nombre.id])
+        self.assertEqual(por_id[con_nombre.id]["asignado_por"], self.admin.id)
+
+    def test_alcance_propietario_actor_activo_historico_y_ajeno(self):
+        propia = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_1, "TUTOR", self.admin,
+        )
+        otra = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_2, "TRIBUNAL", self.admin, orden_cargo=1,
+        )
+        AsignacionService.finalizar_asignacion(propia, self.admin)
+
+        for usuario in (self.student, self.docente_1, self.docente_2):
+            self.authenticate(usuario)
+            response = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual({row["id"] for row in response.data["results"]}, {propia.id, otra.id})
+
+        self.authenticate(self.other_student)
+        listado = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}")
+        detalle = self.client.get(f"/api/v1/asignaciones/{propia.id}/")
+        self.assertEqual(listado.status_code, status.HTTP_200_OK)
+        self.assertEqual(listado.data["count"], 0)
+        self.assertEqual(detalle.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_staff_superuser_anonimo_y_get_sin_efectos(self):
+        asignacion = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_1, "TUTOR", self.admin,
+        )
+        audit_count = AuditLog.objects.count()
+        original = (asignacion.activo, asignacion.fecha_finalizacion, asignacion.observaciones)
+        staff = User.objects.create_user(username="staff-consulta", is_staff=True)
+        superuser = User.objects.create_user(username="super-consulta", is_superuser=True)
+        for usuario in (staff, superuser):
+            self.authenticate(usuario)
+            response = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.data["count"], 1)
+        self.client.credentials()
+        anonimo = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}")
+        self.assertEqual(anonimo.status_code, status.HTTP_401_UNAUTHORIZED)
+        asignacion.refresh_from_db()
+        self.assertEqual((asignacion.activo, asignacion.fecha_finalizacion, asignacion.observaciones), original)
+        self.assertEqual(AuditLog.objects.count(), audit_count)
+
+    def test_orden_determinista_paginacion_y_base_solo_lectura(self):
+        usuarios = [User.objects.create_user(username=f"docente_pagina_{index}", role=self.docente_role) for index in range(21)]
+        for usuario in usuarios:
+            AsignacionPostulacion.all_objects.create(
+                postulacion=self.postulacion,
+                usuario=usuario,
+                tipo_participacion="SECRETARIO",
+                designado_por=self.admin,
+            )
+        self.authenticate(self.admin)
+
+        primera = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}")
+        segunda = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}&page=2")
+        post = self.client.post("/api/v1/asignaciones/", {}, format="json")
+        delete = self.client.delete(f"/api/v1/asignaciones/{primera.data['results'][0]['id']}/")
+
+        self.assertEqual(primera.data["count"], 21)
+        self.assertEqual(len(primera.data["results"]), 20)
+        self.assertEqual(len(segunda.data["results"]), 1)
+        ids = [row["id"] for row in [*primera.data["results"], *segunda.data["results"]]]
+        self.assertEqual(ids, sorted(ids))
+        self.assertEqual(post.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(delete.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)

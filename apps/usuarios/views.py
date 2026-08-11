@@ -6,13 +6,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 
-from apps.usuarios.serializers import LoginSerializer, LogoutSerializer, StudentOptionSerializer, UserProfileSerializer
+from apps.usuarios.serializers import AssignmentCandidateSerializer, LoginSerializer, LogoutSerializer, StudentOptionSerializer, UserProfileSerializer
 from apps.usuarios.models import CustomUser
 from apps.usuarios.services import UserCapabilitiesService
 from core.pagination import StandardResultsSetPagination
-from core.permissions import IsActiveUser
+from core.permissions import IsActiveUser, IsStaff
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -103,3 +104,49 @@ class StudentOptionViewSet(viewsets.ReadOnlyModelViewSet):
             is_active=True,
             role__codigo__in=UserCapabilitiesService.STUDENT_CODES,
         ).select_related("role")
+
+
+@extend_schema_view(
+    list=extend_schema(
+        description=(
+            "Catalogo paginado y de solo lectura para preparar asignaciones. Solo staff o superusuarios; "
+            "usuarios autenticados sin esa autoridad reciben 403 y usuarios anonimos reciben 401. "
+            "Incluye usuarios activos, con rol y no estudiantes. La presencia en este catalogo no certifica "
+            "elegibilidad institucional para Tutor, Tribunal, Docente de modalidad, Presidente o Secretario."
+        ),
+        parameters=[
+            OpenApiParameter("search", OpenApiTypes.STR, OpenApiParameter.QUERY, description="Busca por nombre, username o codigo institucional seguro."),
+            OpenApiParameter("rol", OpenApiTypes.STR, OpenApiParameter.QUERY, description="Filtra por codigo exacto de rol."),
+            OpenApiParameter("ordering", OpenApiTypes.STR, OpenApiParameter.QUERY, description="Orden permitido: username, nombres, apellidos, role__codigo o sus variantes descendentes."),
+            OpenApiParameter("page", OpenApiTypes.INT, OpenApiParameter.QUERY, description="PÃ¡gina del resultado."),
+        ],
+        responses=AssignmentCandidateSerializer(many=True),
+    ),
+    retrieve=extend_schema(
+        description=(
+            "Detalle minimo de un candidato visible para staff. No certifica elegibilidad institucional para un cargo."
+        ),
+        responses=AssignmentCandidateSerializer,
+    ),
+)
+class AssignmentCandidateViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AssignmentCandidateSerializer
+    permission_classes = (IsAuthenticated, IsActiveUser, IsStaff)
+    pagination_class = StandardResultsSetPagination
+    filter_backends = (filters.SearchFilter, filters.OrderingFilter)
+    search_fields = ("username", "nombres", "apellido_paterno", "apellido_materno", "ru")
+    ordering_fields = ("username", "nombres", "apellido_paterno", "apellido_materno", "role__codigo")
+    ordering = ("apellido_paterno", "apellido_materno", "nombres", "username", "id")
+
+    def get_queryset(self):
+        queryset = CustomUser.all_objects.filter(
+            is_active=True,
+            activo=True,
+            role__isnull=False,
+        ).exclude(
+            role__codigo__in=UserCapabilitiesService.STUDENT_CODES,
+        ).select_related("role")
+        role_code = self.request.query_params.get("rol", "").strip()
+        if role_code:
+            queryset = queryset.filter(role__codigo__iexact=role_code)
+        return queryset

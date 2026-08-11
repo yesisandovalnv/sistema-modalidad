@@ -102,3 +102,21 @@ class StudentOptionSerializer(serializers.ModelSerializer):
         model = CustomUser
         fields = ("id", "codigo", "ru", "ci", "nombre_completo")
         read_only_fields = fields
+
+
+class AssignmentCandidateSerializer(serializers.ModelSerializer):
+    """Representacion minima; pertenecer al catalogo no acredita elegibilidad para un cargo."""
+
+    nombre_completo = serializers.ReadOnlyField()
+    codigo = serializers.SerializerMethodField()
+    rol_codigo = serializers.CharField(source="role.codigo", read_only=True)
+    rol_nombre = serializers.CharField(source="role.nombre", read_only=True)
+    activo = serializers.BooleanField(read_only=True)
+
+    def get_codigo(self, obj) -> str:
+        return obj.ru or obj.username
+
+    class Meta:
+        model = CustomUser
+        fields = ("id", "username", "nombre_completo", "codigo", "rol_codigo", "rol_nombre", "activo")
+        read_only_fields = fields

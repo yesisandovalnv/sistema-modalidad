@@ -121,9 +121,9 @@ class ExpedienteAccessContractTests(TestCase):
             tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,
             modalidad_registro=EvaluacionDefensa.ModalidadRegistro.CONSENSO,
             resultado_cualitativo=EvaluacionDefensa.Resultado.APROBADO,
-            nota_numerica=Decimal("80.00"),
+            nota_numerica=Decimal("60.00"),
             ponderacion=Decimal("70.00"),
-            aporte_ponderado=Decimal("56.00"),
+            aporte_ponderado=Decimal("60.00"),
             es_resultado_final_evento=True,
             registrado_por=cls.staff,
         )
@@ -248,7 +248,7 @@ class ExpedienteAccessContractTests(TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(flow.status_code, 200)
         self.assertIsNone(result.data["nota_final"])
-        self.assertEqual(result.data["aporte_publica"], Decimal("56.00"))
+        self.assertEqual(result.data["aporte_publica"], Decimal("60.00"))
         self.assertIn("advertencias_normativas", closure.data)
         self.assertIn("condiciones_faltantes", closure.data)
         self.assertEqual(AuditLog.objects.count(), before)
