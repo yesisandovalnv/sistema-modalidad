@@ -6,17 +6,28 @@ import { Outlet } from 'react-router-dom'
 
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
-      <div className="flex min-h-screen">
-        <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((value) => !value)} />
-        <div className="flex min-h-screen flex-1 flex-col">
-          <Navbar onToggle={() => setSidebarOpen((value) => !value)} />
-          <main className="flex-1 p-4 md:p-6">
+      <div className="min-h-screen overflow-x-hidden">
+        <Sidebar
+          open={sidebarOpen}
+          collapsed={sidebarCollapsed}
+          onMobileToggle={() => setSidebarOpen((value) => !value)}
+        />
+        <div className="flex min-h-screen min-w-0 flex-col">
+          <Navbar
+            onMobileToggle={() => setSidebarOpen((value) => !value)}
+            sidebarCollapsed={sidebarCollapsed}
+            onSidebarToggle={() => setSidebarCollapsed((value) => !value)}
+          />
+          <main data-testid="main-content" data-collapsed={sidebarCollapsed} className={`layout-main flex-1 p-4 pt-[89px] md:p-6 md:pt-[97px] ${sidebarCollapsed ? 'layout-main--collapsed' : ''}`}>
             <Outlet />
           </main>
-          <Footer />
+          <div className={`layout-footer ${sidebarCollapsed ? 'layout-footer--collapsed' : ''}`}>
+            <Footer />
+          </div>
         </div>
       </div>
     </div>

@@ -1,6 +1,19 @@
 @import 'tailwindcss';
 
 :root {
+  --primary: #0ea5e9;
+  --primary-dark: #0284c7;
+  --primary-light: #38bdf8;
+  --sidebar-bg: #172033;
+  --sidebar-bg-secondary: #1e293b;
+  --sidebar-text: #b8c5d9;
+  --sidebar-text-active: #ffffff;
+  --sidebar-active: #0ea5e9;
+  --sidebar-hover: rgb(14 165 233 / 12%);
+  --sidebar-border: rgb(255 255 255 / 8%);
+  --general-bg: #f4f6f9;
+  --sidebar-expanded-width: 260px;
+  --sidebar-collapsed-width: 72px;
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -9,6 +22,70 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.sidebar {
+  width: var(--sidebar-expanded-width);
+  overflow: hidden;
+  border-color: var(--sidebar-border);
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  transition: transform 0.25s ease;
+}
+
+.layout-navbar {
+  left: 0;
+  transition: left 0.25s ease;
+}
+
+.layout-main,
+.layout-footer {
+  margin-left: 0;
+  transition: margin-left 0.25s ease;
+}
+
+.sidebar-link {
+  position: relative;
+  color: var(--sidebar-text);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-link:hover {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text-active);
+}
+
+.sidebar-link--active {
+  background: var(--sidebar-active);
+  color: var(--sidebar-text-active);
+}
+
+@media (min-width: 768px) {
+  .sidebar {
+    transition: width 0.25s ease;
+  }
+
+  .sidebar--collapsed {
+    width: var(--sidebar-collapsed-width);
+  }
+
+  .layout-navbar {
+    left: var(--sidebar-expanded-width);
+  }
+
+  .layout-navbar--collapsed {
+    left: var(--sidebar-collapsed-width);
+  }
+
+  .layout-main,
+  .layout-footer {
+    margin-left: var(--sidebar-expanded-width);
+  }
+
+  .layout-main--collapsed,
+  .layout-footer--collapsed {
+    margin-left: var(--sidebar-collapsed-width);
+  }
 }
 
 html.dark {
