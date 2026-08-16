@@ -16,7 +16,7 @@ npm ci
 npm run dev
 ```
 
-API local configurada: `http://localhost:8001/api/`; frontend: `http://localhost:5173/`; salud: `GET /api/health/`; OpenAPI: `GET /api/schema/`.
+API local configurada: `http://localhost:9001/api/`; frontend Docker: `http://localhost:5174/`; salud: `GET /api/health/`; OpenAPI: `GET /api/schema/`.
 
 ## Verificación
 

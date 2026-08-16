@@ -26,9 +26,9 @@ function normalizeDocuments(error, resource) {
 function normalizeAssignments(error) {
   if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
   const status = error?.response?.status
-  if (status === 401) return { status, message: 'Debes iniciar sesiÃ³n para consultar los actores.' }
-  if (status === 404) return { status, message: 'Las asignaciones de actores solicitadas no estÃ¡n disponibles.' }
-  return { status, message: 'No se pudieron cargar los actores. Comprueba tu conexiÃ³n e intenta nuevamente.' }
+  if (status === 401) return { status, message: 'Debes iniciar sesión para consultar los actores.' }
+  if (status === 404) return { status, message: 'Las asignaciones de actores solicitadas no están disponibles.' }
+  return { status, message: 'No se pudieron cargar los actores. Comprueba tu conexión e intenta nuevamente.' }
 }
 
 function normalizeDefenses(error, quorum = false) {

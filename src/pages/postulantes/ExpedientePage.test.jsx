@@ -33,8 +33,8 @@ const historyResponse = {
 
 const activeActorsResponse = {
   count: 5, next: null, previous: null, results: [
-    { id: 1, usuario_nombre: 'Tutor Uno', tipo_participacion_display: 'Tutor', orden_cargo: null, etapa_nombre: 'Perfil de Proyecto', fecha_inicio: '2026-01-01T10:00:00Z', activo: true, observaciones: 'AcompaÃ±amiento tÃ©cnico' },
-    { id: 2, usuario_nombre: 'Tribunal Uno', tipo_participacion_display: 'Tribunal', orden_cargo: 1, etapa_nombre: 'Defensa pÃºblica', fecha_designacion: '2026-01-02T10:00:00Z', activo: true, observaciones: '' },
+    { id: 1, usuario_nombre: 'Tutor Uno', tipo_participacion_display: 'Tutor', orden_cargo: null, etapa_nombre: 'Perfil de Proyecto', fecha_inicio: '2026-01-01T10:00:00Z', activo: true, observaciones: 'Acompañamiento técnico' },
+    { id: 2, usuario_nombre: 'Tribunal Uno', tipo_participacion_display: 'Tribunal', orden_cargo: 1, etapa_nombre: 'Defensa pública', fecha_designacion: '2026-01-02T10:00:00Z', activo: true, observaciones: '' },
     { id: 3, usuario_nombre: 'Docente Uno', tipo_participacion_display: 'Docente de modalidad', orden_cargo: null, seguimiento_etapa: null, activo: true },
     { id: 4, usuario_nombre: 'Presidente Uno', tipo_participacion_display: 'Presidente', orden_cargo: 1, activo: true },
     { id: 5, usuario_nombre: 'Secretario Uno', tipo_participacion_display: 'Secretario', orden_cargo: 2, activo: true },
@@ -42,7 +42,7 @@ const activeActorsResponse = {
 }
 const historicalActorsResponse = {
   count: 1, next: null, previous: null, results: [
-    { id: 6, usuario_nombre: 'Tutor HistÃ³rico', tipo_participacion_display: 'Tutor', fecha_inicio: '2025-01-01T10:00:00Z', fecha_fin: null, activo: false, observaciones: null },
+    { id: 6, usuario_nombre: 'Tutor Histórico', tipo_participacion_display: 'Tutor', fecha_inicio: '2025-01-01T10:00:00Z', fecha_fin: null, activo: false, observaciones: null },
   ],
 }
 
@@ -296,24 +296,24 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
   })
 
-  it('consulta y separa actores vigentes e histÃ³ricos con etiquetas y advertencias contractuales', async () => {
+  it('consulta y separa actores vigentes e históricos con etiquetas y advertencias contractuales', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
     postulacionesService.obtenerActores.mockImplementation((_id, activo) => Promise.resolve(activo ? activeActorsResponse : historicalActorsResponse))
     renderPage()
-    const card = (await screen.findByRole('heading', { name: 'Actores de la postulaciÃ³n' })).parentElement
+    const card = (await screen.findByRole('heading', { name: 'Actores de la postulación' })).parentElement
     expect(within(card).getByRole('heading', { name: 'Asignaciones vigentes' })).toBeInTheDocument()
-    expect(within(card).getByRole('heading', { name: 'Asignaciones histÃ³ricas' })).toBeInTheDocument()
+    expect(within(card).getByRole('heading', { name: 'Asignaciones históricas' })).toBeInTheDocument()
     for (const label of ['Tutor', 'Tribunal', 'Docente de modalidad', 'Presidente', 'Secretario']) expect(within(card).getAllByText(label).length).toBeGreaterThan(0)
     expect(within(card).getAllByText('Activa')).toHaveLength(5)
-    expect(within(card).getByText('HistÃ³rica')).toBeInTheDocument()
+    expect(within(card).getByText('Histórica')).toBeInTheDocument()
     expect(within(card).getByText('Tutor Uno')).toBeInTheDocument()
     expect(within(card).getByText('Perfil de Proyecto')).toBeInTheDocument()
-    expect(within(card).getByText('AcompaÃ±amiento tÃ©cnico')).toBeInTheDocument()
+    expect(within(card).getByText('Acompañamiento técnico')).toBeInTheDocument()
     expect(within(card).getAllByText('Sin etapa asociada').length).toBeGreaterThan(0)
     expect(within(card).getAllByText('Sin observaciones').length).toBeGreaterThan(0)
     expect(within(card).getAllByText('No registrada').length).toBeGreaterThan(0)
     expect(within(card).getByLabelText('Advertencias sobre las asignaciones')).toHaveTextContent(/no sustituye un memorando/i)
-    expect(within(card).getByLabelText('Advertencias sobre las asignaciones')).toHaveTextContent(/participaciÃ³n finalizada/i)
+    expect(within(card).getByLabelText('Advertencias sobre las asignaciones')).toHaveTextContent(/participación finalizada/i)
     expect(postulacionesService.obtenerActores).toHaveBeenCalledWith('7', true, 1, expect.any(AbortSignal))
     expect(postulacionesService.obtenerActores).toHaveBeenCalledWith('7', false, 1, expect.any(AbortSignal))
     expect(postulacionesService.obtenerActores).toHaveBeenCalledTimes(2)
@@ -333,14 +333,14 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.obtenerActores.mock.calls.filter(([, activo]) => activo === false)).toHaveLength(1)
   })
 
-  it('mantiene vacÃ­os separados y reintenta un error parcial de actores', async () => {
+  it('mantiene vacíos separados y reintenta un error parcial de actores', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
     postulacionesService.obtenerActores.mockImplementation((_id, activo) => activo
-      ? Promise.reject({ status: 401, message: 'Debes iniciar sesiÃ³n para consultar los actores.' })
+      ? Promise.reject({ status: 401, message: 'Debes iniciar sesión para consultar los actores.' })
       : Promise.resolve({ count: 0, next: null, previous: null, results: [] }))
     renderPage()
-    expect(await screen.findByRole('alert')).toHaveTextContent('Debes iniciar sesiÃ³n para consultar los actores.')
-    expect(screen.getByText('No hay asignaciones histÃ³ricas registradas.')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Debes iniciar sesión para consultar los actores.')
+    expect(screen.getByText('No hay asignaciones históricas registradas.')).toBeInTheDocument()
     expect(screen.getByText('EXP-007')).toBeInTheDocument()
     postulacionesService.obtenerActores.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar asignaciones vigentes' }))

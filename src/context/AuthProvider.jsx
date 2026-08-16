@@ -8,7 +8,7 @@ export function AuthProvider({ children }) {
   const loadUser = useCallback(async () => {
     if (!localStorage.getItem('auth_access_token')) { setUser(null); setLoading(false); return }
     setLoading(true)
-    try { const { data } = await authService.me(); setUser(data) } catch { setUser(null) } finally { setLoading(false) }
+    try { const { data } = await authService.me(); setUser(data) } catch (error) { if (error?.response?.status === 401) setUser(null) } finally { setLoading(false) }
   }, [])
   useEffect(() => {
     loadUser()

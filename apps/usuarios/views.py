@@ -1,7 +1,10 @@
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import BasePermission, IsAuthenticated
-from rest_framework import filters, viewsets
+from rest_framework import filters, mixins, viewsets
+from django.db.models import Count
+from django.db.models.deletion import ProtectedError
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -9,8 +12,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 
-from apps.usuarios.serializers import AssignmentCandidateSerializer, LoginSerializer, LogoutSerializer, StudentOptionSerializer, UserProfileSerializer
-from apps.usuarios.models import CustomUser
+from apps.usuarios.serializers import AssignmentCandidateSerializer, LoginSerializer, LogoutSerializer, RoleAdminSerializer, StudentOptionSerializer, UserAdminSerializer, UserProfileSerializer
+from apps.usuarios.models import CustomUser, Role
 from apps.usuarios.services import UserCapabilitiesService
 from core.pagination import StandardResultsSetPagination
 from core.permissions import IsActiveUser, IsStaff
@@ -88,6 +91,60 @@ class CanManageApplications(BasePermission):
             and request.user.is_authenticated
             and UserCapabilitiesService.resolve(request.user)["puede_gestionar_postulaciones"]
         )
+
+
+class CanManageUsers(BasePermission):
+    message = "No tiene permiso para administrar usuarios y roles."
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and UserCapabilitiesService.resolve(request.user)["puede_gestionar_usuarios"]
+        )
+
+
+class UserAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):
+    serializer_class = UserAdminSerializer
+    permission_classes = (IsAuthenticated, IsActiveUser, CanManageUsers)
+    pagination_class = StandardResultsSetPagination
+    filter_backends = (filters.SearchFilter, filters.OrderingFilter)
+    search_fields = ("username", "nombres", "apellido_paterno", "apellido_materno", "ci", "ru", "correo_institucional", "correo_personal")
+    ordering_fields = ("username", "nombres", "apellido_paterno", "apellido_materno", "is_active", "role__nombre")
+    ordering = ("apellido_paterno", "apellido_materno", "nombres", "username")
+
+    def get_queryset(self):
+        queryset = CustomUser.all_objects.select_related("role")
+        role_id = self.request.query_params.get("role")
+        active = self.request.query_params.get("is_active")
+        if role_id:
+            queryset = queryset.filter(role_id=role_id)
+        if active in {"true", "false"}:
+            queryset = queryset.filter(is_active=active == "true")
+        return queryset
+
+
+class RoleAdminViewSet(viewsets.ModelViewSet):
+    serializer_class = RoleAdminSerializer
+    permission_classes = (IsAuthenticated, IsActiveUser, CanManageUsers)
+    pagination_class = StandardResultsSetPagination
+    filter_backends = (filters.SearchFilter, filters.OrderingFilter)
+    search_fields = ("codigo", "nombre", "descripcion")
+    ordering_fields = ("codigo", "nombre", "activo")
+    ordering = ("nombre", "codigo")
+
+    def get_queryset(self):
+        queryset = Role.all_objects.annotate(usuarios_count=Count("usuarios"))
+        active = self.request.query_params.get("activo")
+        if active in {"true", "false"}:
+            queryset = queryset.filter(activo=active == "true")
+        return queryset
+
+    def perform_destroy(self, instance):
+        try:
+            instance.delete()
+        except ProtectedError as exc:
+            raise ValidationError("No se puede eliminar un rol asignado a usuarios; inactÃ­velo en su lugar.") from exc
 
 
 class StudentOptionViewSet(viewsets.ReadOnlyModelViewSet):

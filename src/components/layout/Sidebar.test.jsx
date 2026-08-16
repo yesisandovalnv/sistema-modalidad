@@ -22,7 +22,7 @@ describe('Sidebar', () => {
   it('colapsa textos solo en escritorio, mantiene iconos, badge y tooltip accesible', () => {
     renderSidebar(['puede_ver_dashboard', 'puede_ver_notificaciones'], { collapsed: true })
     expect(document.querySelector('#main-sidebar')).toHaveClass('sidebar--collapsed')
-    expect(screen.getByText('Dashboard')).toHaveClass('md:hidden')
+    expect(screen.getByText('Dashboard')).toHaveClass('sidebar-label')
     expect(screen.getByRole('link', { name: 'Dashboard' }).querySelector('svg')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('title', 'Dashboard')
     expect(screen.getByText('99+')).toBeInTheDocument()

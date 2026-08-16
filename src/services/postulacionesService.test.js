@@ -96,7 +96,7 @@ describe('postulacionesService', () => {
     await expect(postulacionesService.obtenerHistorial(7, 1)).rejects.toEqual({ canceled: true })
   })
 
-  it.each([[true, 1], [false, 3]])('consulta actores por postulaciÃ³n, estado y pÃ¡gina exactos', async (activo, page) => {
+  it.each([[true, 1], [false, 3]])('consulta actores por postulación, estado y página exactos', async (activo, page) => {
     const signal = new AbortController().signal
     apiClient.get.mockResolvedValue({ data: { count: 21, next: 'page=2', previous: null, results: [] } })
     await postulacionesService.obtenerActores(7, activo, page, signal)
@@ -107,9 +107,9 @@ describe('postulacionesService', () => {
   })
 
   it.each([
-    [401, 'Debes iniciar sesiÃ³n para consultar los actores.'],
-    [404, 'Las asignaciones de actores solicitadas no estÃ¡n disponibles.'],
-    [undefined, 'No se pudieron cargar los actores. Comprueba tu conexiÃ³n e intenta nuevamente.'],
+    [401, 'Debes iniciar sesión para consultar los actores.'],
+    [404, 'Las asignaciones de actores solicitadas no están disponibles.'],
+    [undefined, 'No se pudieron cargar los actores. Comprueba tu conexión e intenta nuevamente.'],
   ])('normaliza el error %s de actores', async (status, message) => {
     apiClient.get.mockRejectedValue({ response: status ? { status } : undefined })
     await expect(postulacionesService.obtenerActores(7, true, 1)).rejects.toEqual({ status, message })

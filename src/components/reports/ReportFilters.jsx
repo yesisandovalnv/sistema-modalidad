@@ -13,8 +13,8 @@ export function ReportFilters({ initial = empty, onApply, showSearch = false }) 
   }, [draft.modalidad])
   const set = (key) => (e) => setDraft((current) => ({ ...current, [key]: e.target.value }))
   const field = 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950'
-  return <form className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900" onSubmit={(e) => { e.preventDefault(); onApply(draft) }}>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+  return <form className="app-filter-panel rounded-xl border p-4" onSubmit={(e) => { e.preventDefault(); onApply(draft) }}>
+    <div className={`grid gap-4 sm:grid-cols-2 ${showSearch ? 'xl:grid-cols-5' : 'lg:grid-cols-4'}`}>
       <label className="grid gap-1 text-sm">Modalidad<select className={field} value={draft.modalidad} onChange={set('modalidad')}><option value="">Todas</option>{modalidades.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}</select></label>
       <label className="grid gap-1 text-sm">Gestión<input className={field} type="number" min="1900" max="2200" value={draft.gestion} onChange={set('gestion')} placeholder="2026" /></label>
       <label className="grid gap-1 text-sm">Semestre<select className={field} value={draft.semestre} onChange={set('semestre')}><option value="">Todos</option><option value="I">Primero</option><option value="II">Segundo</option></select></label>

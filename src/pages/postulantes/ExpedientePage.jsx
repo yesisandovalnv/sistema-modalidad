@@ -566,15 +566,15 @@ export default function ExpedientePage() {
 function ActorsCard({ active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical }) {
   return (
     <Card className="overflow-hidden" aria-labelledby="actores-title">
-      <h2 id="actores-title" className="text-xl font-bold">Actores de la postulaciÃ³n</h2>
-      <p className="mt-1 text-sm text-slate-500">Participaciones tÃ©cnicas registradas para este expediente.</p>
+      <h2 id="actores-title" className="text-xl font-bold">Actores de la postulación</h2>
+      <p className="mt-1 text-sm text-slate-500">Participaciones técnicas registradas para este expediente.</p>
       <aside aria-label="Advertencias sobre las asignaciones" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950">
-        <p>La asignaciÃ³n registrada en el sistema no sustituye un memorando o acto formal de designaciÃ³n institucional.</p>
-        <p className="mt-2">Una asignaciÃ³n histÃ³rica representa una participaciÃ³n finalizada y no una funciÃ³n vigente.</p>
+        <p>La asignación registrada en el sistema no sustituye un memorando o acto formal de designación institucional.</p>
+        <p className="mt-2">Una asignación histórica representa una participación finalizada y no una función vigente.</p>
       </aside>
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
         <ActorGroup title="Asignaciones vigentes" stateLabel="Activa" actors={active} page={activePage} onPage={onActivePage} onRetry={onRetryActive} empty="No hay asignaciones vigentes registradas." />
-        <ActorGroup title="Asignaciones histÃ³ricas" stateLabel="HistÃ³rica" actors={historical} page={historicalPage} onPage={onHistoricalPage} onRetry={onRetryHistorical} empty="No hay asignaciones histÃ³ricas registradas." />
+        <ActorGroup title="Asignaciones históricas" stateLabel="Histórica" actors={historical} page={historicalPage} onPage={onHistoricalPage} onRetry={onRetryHistorical} empty="No hay asignaciones históricas registradas." />
       </div>
     </Card>
   )
@@ -585,7 +585,7 @@ function ActorGroup({ title, stateLabel, actors, page, onPage, onRetry, empty })
   const slug = stateLabel === 'Activa' ? 'vigentes' : 'historicas'
   return <section aria-labelledby={`actores-${slug}`} className="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700">
     <h3 id={`actores-${slug}`} className="p-4 text-lg font-semibold">{title}</h3>
-    {actors.loading && <p role="status" className="px-4 pb-4 text-sm">Cargando {title.toLowerCase()}â€¦</p>}
+    {actors.loading && <p role="status" className="px-4 pb-4 text-sm">Cargando {title.toLowerCase()}…</p>}
     {actors.error && <div className="px-4 pb-4"><SectionError message={actors.error} label={`Reintentar ${title.toLowerCase()}`} onRetry={onRetry} /></div>}
     {!actors.loading && !actors.error && rows.length === 0 && <p className="px-4 pb-4 text-sm text-slate-500">{empty}</p>}
     {!actors.loading && !actors.error && rows.length > 0 && <>
@@ -606,7 +606,7 @@ function ActorItem({ actor, stateLabel }) {
       {order !== null && <Info label="Orden de cargo" value={String(order)} />}
       <Info label="Etapa" value={actor.etapa_nombre || 'Sin etapa asociada'} />
       <Info label="Fecha de inicio" value={formatActorDate(actor.fecha_inicio || actor.fecha_designacion)} />
-      {stateLabel === 'HistÃ³rica' && <Info label="Fecha de finalizaciÃ³n" value={formatActorDate(actor.fecha_fin || actor.fecha_finalizacion, 'No registrada')} />}
+      {stateLabel === 'Histórica' && <Info label="Fecha de finalización" value={formatActorDate(actor.fecha_fin || actor.fecha_finalizacion, 'No registrada')} />}
     </dl>
     <div className="mt-4"><p className="text-sm text-slate-500">Observaciones</p><p className="mt-1 break-words font-medium">{actor.observaciones?.trim() || 'Sin observaciones'}</p></div>
   </li>

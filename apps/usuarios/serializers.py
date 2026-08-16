@@ -1,8 +1,8 @@
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, password_validation
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 
-from apps.usuarios.models import CustomUser
+from apps.usuarios.models import CustomUser, Role
 from apps.usuarios.services import UserCapabilitiesService
 
 
@@ -120,3 +120,69 @@ class AssignmentCandidateSerializer(serializers.ModelSerializer):
         model = CustomUser
         fields = ("id", "username", "nombre_completo", "codigo", "rol_codigo", "rol_nombre", "activo")
         read_only_fields = fields
+
+
+class RoleAdminSerializer(serializers.ModelSerializer):
+    usuarios_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Role
+        fields = ("id", "codigo", "nombre", "descripcion", "activo", "usuarios_count")
+
+
+class UserRoleSerializer(AuthenticatedRoleSerializer):
+    id = serializers.IntegerField(read_only=True)
+
+
+class UserAdminSerializer(serializers.ModelSerializer):
+    nombre_completo = serializers.ReadOnlyField()
+    role = UserRoleSerializer(read_only=True)
+    role_id = serializers.PrimaryKeyRelatedField(
+        source="role", queryset=Role.all_objects.filter(activo=True), required=False, allow_null=True
+    )
+    password = serializers.CharField(write_only=True, required=False, allow_blank=False, style={"input_type": "password"})
+    permisos = serializers.SerializerMethodField()
+
+    @extend_schema_field(UserPermissionsSerializer)
+    def get_permisos(self, obj):
+        return UserCapabilitiesService.resolve(obj)
+
+    def validate_password(self, value):
+        password_validation.validate_password(value, self.instance)
+        return value
+
+    def validate(self, attrs):
+        for field in ("ci", "ru"):
+            if attrs.get(field) == "":
+                attrs[field] = None
+        return attrs
+
+    def create(self, validated_data):
+        password = validated_data.pop("password", None)
+        if not password:
+            raise serializers.ValidationError({"password": "La contraseÃ±a inicial es obligatoria."})
+        validated_data["activo"] = validated_data.get("is_active", True)
+        user = CustomUser.all_objects.create(**validated_data)
+        user.set_password(password)
+        user.save(update_fields=["password"])
+        return user
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop("password", None)
+        if "is_active" in validated_data:
+            validated_data["activo"] = validated_data["is_active"]
+        instance = super().update(instance, validated_data)
+        if password:
+            instance.set_password(password)
+            instance.save(update_fields=["password"])
+        return instance
+
+    class Meta:
+        model = CustomUser
+        fields = (
+            "id", "username", "nombres", "apellido_paterno", "apellido_materno",
+            "nombre_completo", "ci", "expedido", "fecha_nacimiento", "telefono",
+            "ru", "correo_personal", "correo_institucional", "role", "role_id",
+            "is_active", "is_staff", "password", "permisos",
+        )
+        read_only_fields = ("id", "nombre_completo", "role", "permisos")

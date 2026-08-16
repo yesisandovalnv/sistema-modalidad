@@ -27,6 +27,17 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(screen.getByText('|false|anonimo')).toBeInTheDocument())
   })
 
+  it('conserva el usuario cargado si una recarga de me falla temporalmente', async () => {
+    localStorage.setItem('auth_access_token', 'token')
+    authService.me.mockResolvedValueOnce({ data: { rol: { codigo: 'ADMIN', nombre: 'Administración' }, permisos: {} } })
+      .mockRejectedValueOnce({ response: { status: 500 } })
+    render(<AuthProvider><Probe /></AuthProvider>)
+    await screen.findByText('ADMIN|false|Administración')
+    window.dispatchEvent(new Event('auth-authenticated'))
+    await waitFor(() => expect(authService.me).toHaveBeenCalledTimes(2))
+    expect(screen.getByText('ADMIN|false|Administración')).toBeInTheDocument()
+  })
+
   it('no consulta me sin token', () => {
     render(<AuthProvider><Probe /></AuthProvider>)
     expect(screen.getByText('|false|anonimo')).toBeInTheDocument()

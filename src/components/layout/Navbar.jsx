@@ -6,7 +6,7 @@ export function Navbar({ onMobileToggle, sidebarCollapsed, onSidebarToggle }) {
   const { theme, toggleTheme } = useTheme()
 
   return (
-    <header data-collapsed={sidebarCollapsed} className={`layout-navbar fixed top-0 right-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/80 px-4 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80 md:px-6 ${sidebarCollapsed ? 'layout-navbar--collapsed' : ''}`}>
+    <header data-collapsed={sidebarCollapsed} className={`layout-navbar fixed top-0 right-0 z-30 flex items-center justify-between border-b border-[var(--navbar-border)] bg-[var(--surface)] px-4 py-4 shadow-[0_1px_3px_rgb(15_23_42_/_0.04)] md:px-6 ${sidebarCollapsed ? 'layout-navbar--collapsed' : ''}`}>
       <div className="flex items-center gap-3">
         <Button variant="ghost" className="md:hidden" onClick={onMobileToggle} aria-label="Abrir menú de navegación">
           <Menu className="h-5 w-5" />
@@ -22,7 +22,7 @@ export function Navbar({ onMobileToggle, sidebarCollapsed, onSidebarToggle }) {
           <Menu className="h-5 w-5" aria-hidden="true" />
         </Button>
         <div>
-          <p className="text-sm font-medium text-slate-500">Bienvenido</p>
+          <p className="text-sm font-medium text-[var(--text-secondary)]">Bienvenido</p>
           <h1 className="text-lg font-semibold">Sistema de modalidad</h1>
         </div>
       </div>

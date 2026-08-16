@@ -1,17 +1,57 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --primary: #0ea5e9;
   --primary-dark: #0284c7;
   --primary-light: #38bdf8;
-  --sidebar-bg: #172033;
-  --sidebar-bg-secondary: #1e293b;
-  --sidebar-text: #b8c5d9;
-  --sidebar-text-active: #ffffff;
-  --sidebar-active: #0ea5e9;
-  --sidebar-hover: rgb(14 165 233 / 12%);
-  --sidebar-border: rgb(255 255 255 / 8%);
-  --general-bg: #f4f6f9;
+  --primary-soft: #e0f2fe;
+  --blue-deep: #075985;
+  --sidebar-bg: #075985;
+  --sidebar-bg-secondary: #0369a1;
+  --sidebar-bg-tertiary: #1d4ed8;
+  --sidebar-bg-quaternary: #5b21b6;
+  --sidebar-text: #dcecf3;
+  --sidebar-icon: #d9f0f8;
+  --sidebar-text-secondary: #c8e7f2;
+  --sidebar-text-active: #f8fcff;
+  --sidebar-logout-text: #d9f0f8;
+  --sidebar-active: rgb(255 255 255 / 22%);
+  --sidebar-active-hover: rgb(255 255 255 / 30%);
+  --sidebar-title-text: #f8fcff;
+  --sidebar-hover: rgb(255 255 255 / 12%);
+  --sidebar-border: rgb(255 255 255 / 18%);
+  --general-bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface-secondary: #f8fafc;
+  --border: #e2e8f0;
+  --navbar-border: #e8ecf0;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --success: #22c55e;
+  --success-soft: #dcfce7;
+  --success-text: #166534;
+  --warning: #f59e0b;
+  --warning-soft: #fef3c7;
+  --warning-text: #92400e;
+  --danger: #ef4444;
+  --danger-soft: #fee2e2;
+  --danger-text: #991b1b;
+  --evaluation: #8b5cf6;
+  --evaluation-soft: #ede9fe;
+  --evaluation-text: #6b21a8;
+  --document: #4f46e5;
+  --document-soft: #e0e7ff;
+  --document-text: #3730a3;
+  --delivery: #14b8a6;
+  --delivery-soft: #ccfbf1;
+  --delivery-text: #115e59;
+  --neutral: #64748b;
+  --neutral-soft: #f1f5f9;
+  --neutral-text: #475569;
+  --card-shadow: 0 2px 12px rgb(0 0 0 / 7%);
   --sidebar-expanded-width: 260px;
   --sidebar-collapsed-width: 72px;
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -28,7 +68,13 @@
   width: var(--sidebar-expanded-width);
   overflow: hidden;
   border-color: var(--sidebar-border);
-  background: var(--sidebar-bg);
+  background: linear-gradient(
+    165deg,
+    var(--sidebar-bg) 0%,
+    var(--sidebar-bg-secondary) 32%,
+    var(--sidebar-bg-tertiary) 68%,
+    var(--sidebar-bg-quaternary) 100%
+  );
   color: var(--sidebar-text);
   transition: transform 0.25s ease;
 }
@@ -50,6 +96,10 @@
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
+.sidebar-link svg {
+  color: var(--sidebar-icon);
+}
+
 .sidebar-link:hover {
   background: var(--sidebar-hover);
   color: var(--sidebar-text-active);
@@ -60,13 +110,82 @@
   color: var(--sidebar-text-active);
 }
 
+.sidebar-link--active svg {
+  color: var(--sidebar-text-active);
+}
+
+.sidebar-logout {
+  color: var(--sidebar-logout-text);
+}
+
+.sidebar-link--active:hover {
+  background: var(--sidebar-active-hover);
+}
+
+.sidebar h2 {
+  color: var(--sidebar-title-text);
+}
+
 @media (min-width: 768px) {
   .sidebar {
     transition: width 0.25s ease;
   }
 
+  .sidebar-label {
+    display: block;
+    max-width: 180px;
+    overflow: hidden;
+    opacity: 1;
+    white-space: nowrap;
+    visibility: visible;
+    transition: max-width 0.25s ease, opacity 0.25s ease, visibility 0s linear;
+  }
+
+  .sidebar-brand > div,
+  .sidebar-link,
+  .sidebar-logout {
+    transition: padding-left 0.25s ease, padding-right 0.25s ease, gap 0.25s ease;
+  }
+
+  .sidebar-badge {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    transition: right 0.25s ease, top 0.25s ease, transform 0.25s ease, min-width 0.25s ease, padding 0.25s ease;
+  }
+
   .sidebar--collapsed {
     width: var(--sidebar-collapsed-width);
+  }
+
+  .sidebar--collapsed .sidebar-label {
+    max-width: 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: max-width 0.25s ease, opacity 0.25s ease, visibility 0s linear 0.25s;
+  }
+
+  .sidebar--collapsed .sidebar-brand > div {
+    padding-left: 0.4375rem;
+    padding-right: 0;
+    gap: 0;
+  }
+
+  .sidebar--collapsed .sidebar-link,
+  .sidebar--collapsed .sidebar-logout {
+    padding-left: 0.875rem;
+    padding-right: 0.875rem;
+    gap: 0;
+  }
+
+  .sidebar--collapsed .sidebar-badge {
+    right: 0.25rem;
+    top: 0;
+    transform: translateY(0);
+    min-width: 1rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
   }
 
   .layout-navbar {
@@ -90,20 +209,135 @@
 
 html.dark {
   color-scheme: dark;
+  --general-bg: #020617;
+  --surface: #0f172a;
+  --surface-secondary: #1e293b;
+  --border: #334155;
+  --navbar-border: #1e293b;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --primary-soft: rgb(14 165 233 / 18%);
+  --success-soft: rgb(34 197 94 / 18%);
+  --success-text: #86efac;
+  --warning-soft: rgb(245 158 11 / 18%);
+  --warning-text: #fcd34d;
+  --danger-soft: rgb(239 68 68 / 18%);
+  --danger-text: #fca5a5;
+  --evaluation-soft: rgb(168 85 247 / 18%);
+  --evaluation-text: #d8b4fe;
+  --document-soft: rgb(99 102 241 / 18%);
+  --document-text: #a5b4fc;
+  --delivery-soft: rgb(20 184 166 / 18%);
+  --delivery-text: #5eead4;
+  --neutral-soft: #1e293b;
+  --neutral-text: #cbd5e1;
+  --card-shadow: 0 2px 12px rgb(0 0 0 / 20%);
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--general-bg);
+  color: var(--text-primary);
 }
 
 html.dark body {
-  background: #020617;
-  color: #f8fafc;
+  background: var(--general-bg);
+  color: var(--text-primary);
 }
+
+.app-shell {
+  background: var(--general-bg);
+  color: var(--text-primary);
+}
+
+.auth-brand-panel {
+  background: linear-gradient(
+    165deg,
+    var(--sidebar-bg) 0%,
+    var(--sidebar-bg-secondary) 32%,
+    var(--sidebar-bg-tertiary) 68%,
+    var(--sidebar-bg-quaternary) 100%
+  );
+}
+
+.app-filter-panel {
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: inset 0 3px 0 var(--primary-light), var(--card-shadow);
+  color: var(--text-primary);
+}
+
+.app-filter-panel :where(input, select, textarea) {
+  border-color: #cbd5e1;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.app-filter-panel :where(input, textarea)::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.app-filter-panel :where(input, select, textarea):focus {
+  border-color: var(--primary);
+  outline: 2px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  outline-offset: 1px;
+}
+
+.app-button--primary {
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgb(3 105 161 / 18%);
+}
+
+.app-button--primary:hover { background: var(--primary-dark); }
+
+.app-button--secondary {
+  background: var(--primary-soft);
+  color: var(--blue-deep);
+}
+
+.app-button--secondary:hover {
+  background: color-mix(in srgb, var(--primary-light) 24%, var(--surface));
+}
+
+.app-button--outline {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: var(--surface);
+  color: var(--primary-dark);
+}
+
+.app-button--outline:hover { background: var(--primary-soft); }
+
+.app-button--ghost { color: var(--primary-dark); }
+.app-button--ghost:hover { background: var(--primary-soft); }
+
+html.dark .app-filter-panel :where(input, select, textarea) {
+  border-color: #475569;
+}
+
+html.dark .app-button--secondary,
+html.dark .app-button--outline,
+html.dark .app-button--ghost {
+  color: var(--text-primary);
+}
+
+.semantic-status {
+  border-radius: 9999px;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.semantic-status--success { background: var(--success-soft); color: var(--success-text); }
+.semantic-status--warning { background: var(--warning-soft); color: var(--warning-text); }
+.semantic-status--danger { background: var(--danger-soft); color: var(--danger-text); }
+.semantic-status--evaluation { background: var(--evaluation-soft); color: var(--evaluation-text); }
+.semantic-status--document { background: var(--document-soft); color: var(--document-text); }
+.semantic-status--delivery { background: var(--delivery-soft); color: var(--delivery-text); }
+.semantic-status--neutral { background: var(--neutral-soft); color: var(--neutral-text); }
 
 #root {
   min-height: 100vh;

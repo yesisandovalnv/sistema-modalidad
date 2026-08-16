@@ -37,4 +37,5 @@ export const endpoints = {
   postulaciones: '/api/v1/postulaciones/', modalidades: '/api/v1/academico/modalidades/', periodos: '/api/v1/academico/periodos/', requisitos: '/api/v1/academico/requisitos/',
   documentos: '/api/v1/documentos/documentos/', tiposDocumento: '/api/v1/documentos/tipos-documento/', estadosDocumento: '/api/v1/documentos/estados-documento/', seguimiento: '/api/v1/seguimientos-etapa/',
   estudiantes: '/api/v1/usuarios/estudiantes/',
+  usuarios: '/api/v1/usuarios/administracion/', roles: '/api/v1/usuarios/roles/',
 }
