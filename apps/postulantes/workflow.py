@@ -133,6 +133,9 @@ class WorkflowService:
             ):
                 raise ValidationError("Solo se pueden aprobar etapas en proceso u observadas.")
 
+            policy = ModalidadPolicyRegistry.get(seguimiento.postulacion)
+            policy.validar_aprobacion_etapa(seguimiento)
+
             seguimiento.estado = SeguimientoEtapa.EstadoChoices.APROBADA
             seguimiento.fecha_fin = timezone.now()
             seguimiento.cerrada_por = usuario
@@ -147,7 +150,6 @@ class WorkflowService:
             publish_domain_event(EventTypes.ETAPA_APROBADA, seguimiento, usuario, seguimiento.postulacion,
                 {"etapa": seguimiento.etapa.nombre}, f"ETAPA_APROBADA:{seguimiento.pk}:{seguimiento.updated_at.isoformat()}")
 
-            policy = ModalidadPolicyRegistry.get(seguimiento.postulacion)
             final_codes = {x.codigo for x in policy.get_etapas_finales()}
             if actualizar_estado_general and seguimiento.etapa.codigo in final_codes and policy.get_cierre_policy():
                 WorkflowService._actualizar_estado_general(

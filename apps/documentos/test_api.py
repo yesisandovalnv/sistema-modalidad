@@ -128,6 +128,80 @@ class DocumentoAPITestCase(APITestCase):
         )
 
 
+class TestVersionDocumentoDownload(DocumentoAPITestCase):
+    def _create_version(self, content=b"%PDF-1.4 contenido protegido") -> VersionDocumento:
+        response = self.upload_document(
+            self.student_user,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            self.create_pdf_file(name="documento-final.pdf", content=content),
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return VersionDocumento.objects.get(pk=response.data["id"])
+
+    def _download(self, version: VersionDocumento, user: User):
+        self.authenticate_user(user)
+        return self.client.get(f"/api/v1/documentos/versiones/{version.pk}/descargar/")
+
+    def test_staff_descarga_archivo_con_nombre_y_contenido_correctos(self) -> None:
+        content = b"%PDF-1.4 contenido exacto"
+        version = self._create_version(content)
+
+        response = self._download(version, self.admin_user)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Disposition"], 'attachment; filename="documento-final.pdf"')
+        self.assertEqual(b"".join(response.streaming_content), content)
+        self.assertNotIn(str(self._tmp_media), response["Content-Disposition"])
+
+    def test_estudiante_propietario_descarga(self) -> None:
+        version = self._create_version()
+        response = self._download(version, self.student_user)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_actor_asignado_descarga_dentro_de_su_alcance(self) -> None:
+        version = self._create_version()
+        actor = User.objects.create_user(username="actor-descarga")
+        AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion,
+            usuario=actor,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
+            designado_por=self.admin_user,
+        )
+
+        response = self._download(version, actor)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_usuario_ajeno_no_descarga(self) -> None:
+        version = self._create_version()
+        response = self._download(version, self.other_student)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_requiere_autenticacion(self) -> None:
+        version = self._create_version()
+        self.client.credentials()
+        response = self.client.get(f"/api/v1/documentos/versiones/{version.pk}/descargar/")
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_version_inexistente_o_inactiva_no_descarga(self) -> None:
+        version = self._create_version()
+        self.authenticate_user(self.admin_user)
+        missing = self.client.get("/api/v1/documentos/versiones/999999/descargar/")
+        self.assertEqual(missing.status_code, status.HTTP_404_NOT_FOUND)
+
+        version.activo = False
+        version.save(update_fields=["activo"])
+        inactive = self.client.get(f"/api/v1/documentos/versiones/{version.pk}/descargar/")
+        self.assertEqual(inactive.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_archivo_fisico_faltante_responde_404(self) -> None:
+        version = self._create_version()
+        version.archivo.storage.delete(version.archivo.name)
+        response = self._download(version, self.admin_user)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
 class TestDocumentoUpload(DocumentoAPITestCase):
     """Pruebas de carga de documentos y validaciones de subida."""
 

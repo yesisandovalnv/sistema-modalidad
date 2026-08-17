@@ -16,7 +16,20 @@ npm ci
 npm run dev
 ```
 
-API local configurada: `http://localhost:9001/api/`; frontend Docker: `http://localhost:5174/`; salud: `GET /api/health/`; OpenAPI: `GET /api/schema/`.
+Para iniciar normalmente con Docker:
+
+```powershell
+docker compose up -d
+```
+
+URLs predeterminadas: frontend `http://localhost:15174/` y backend `http://localhost:19001/`. La administraciÃ³n de Django estÃ¡ disponible en `http://localhost:19001/admin/`; salud: `GET /api/health/`; OpenAPI: `GET /api/schema/`.
+
+Si otra PC tiene un conflicto de puertos, ajuste solamente su archivo `.env` local, sin modificar `docker-compose.yml` ni el cÃ³digo:
+
+```dotenv
+FRONTEND_PORT=15174
+BACKEND_PORT=19001
+```
 
 ## Verificación
 

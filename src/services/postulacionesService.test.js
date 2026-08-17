@@ -7,6 +7,26 @@ vi.mock('./api', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 describe('postulacionesService', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('consulta las capacidades académicas de una modalidad', async () => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: { soportada: true, configuracion_valida: true } })
+
+    await expect(postulacionesService.obtenerCapacidadesModalidad(3, signal)).resolves.toEqual({
+      soportada: true,
+      configuracion_valida: true,
+    })
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/modalidades/3/capacidades/', { signal })
+  })
+
+  it('inicializa el flujo mediante la acción existente', async () => {
+    const signal = new AbortController().signal
+    apiClient.post.mockResolvedValue({ data: { etapa_actual: { codigo: 'INSCRIPCION' }, porcentaje_avance: 0 } })
+
+    await postulacionesService.inicializarFlujo(7, signal)
+
+    expect(apiClient.post).toHaveBeenCalledWith('/api/v1/postulaciones/7/flujo/inicializar/', {}, { signal })
+  })
+
   it('obtiene el detalle básico con AbortSignal', async () => {
     const signal = new AbortController().signal
     apiClient.get.mockResolvedValue({ data: { id: 5, codigo: 'BASIC-005' } })
@@ -226,6 +246,26 @@ describe('postulacionesService', () => {
     await expect(postulacionesService[method](1, 1)).rejects.toEqual({ status: undefined, message: `No se pudieron cargar ${resource}. Intenta nuevamente.` })
     apiClient.get.mockRejectedValueOnce({ code: 'ERR_CANCELED' })
     await expect(postulacionesService[method](1, 1)).rejects.toEqual({ canceled: true })
+  })
+
+  it('descarga una versión como blob usando el endpoint protegido y conserva el nombre', async () => {
+    const signal = new AbortController().signal
+    const blob = new Blob(['contenido'])
+    apiClient.get.mockResolvedValue({ data: blob, headers: { 'content-disposition': 'attachment; filename="informe-final.pdf"' } })
+
+    await expect(postulacionesService.descargarVersion(302, 'respaldo.pdf', signal)).resolves.toEqual({
+      blob,
+      filename: 'informe-final.pdf',
+    })
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/documentos/versiones/302/descargar/', { signal, responseType: 'blob' })
+  })
+
+  it('normaliza limpiamente los errores de descarga', async () => {
+    apiClient.get.mockRejectedValue({ response: { status: 404 } })
+    await expect(postulacionesService.descargarVersion(999, 'archivo.pdf')).rejects.toEqual({
+      status: 404,
+      message: 'El archivo solicitado no está disponible.',
+    })
   })
 
   it('carga con FormData exacto, URL fija, señal y sin Content-Type manual', async () => {

@@ -116,6 +116,23 @@ function normalizeReview(error) {
   return { status, message: 'No se pudo completar la revisión. Comprueba tu conexión e intenta nuevamente.' }
 }
 
+function normalizeDownload(error) {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  if (status === 401) return { status, message: 'Debes iniciar sesión para descargar documentos.' }
+  if (status === 403) return { status, message: 'No tienes autorización para descargar este archivo.' }
+  if (status === 404) return { status, message: 'El archivo solicitado no está disponible.' }
+  return { status, message: 'No se pudo descargar el archivo. Comprueba tu conexión e intenta nuevamente.' }
+}
+
+function downloadFilename(contentDisposition, fallback) {
+  const encoded = contentDisposition?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  if (encoded) {
+    try { return decodeURIComponent(encoded) } catch { return fallback }
+  }
+  return contentDisposition?.match(/filename="?([^";]+)"?/i)?.[1] || fallback
+}
+
 async function reviewAction(url, payload, signal) {
   try {
     return (await apiClient.post(url, payload, { signal })).data
@@ -133,6 +150,26 @@ async function getDocumentResource(url, params, signal, resource) {
 }
 
 export const postulacionesService = {
+  async obtenerCapacidadesModalidad(id, signal) {
+    try {
+      return (await apiClient.get(`/api/v1/modalidades/${id}/capacidades/`, { signal })).data
+    } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') throw { canceled: true }
+      throw { status: error?.response?.status, message: 'No se pudo verificar el soporte académico de la modalidad.' }
+    }
+  },
+  async inicializarFlujo(id, signal) {
+    try {
+      return (await apiClient.post(`/api/v1/postulaciones/${id}/flujo/inicializar/`, {}, { signal })).data
+    } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') throw { canceled: true }
+      const status = error?.response?.status
+      if (status === 401) throw { status, message: 'Debes iniciar sesión para inicializar el flujo académico.' }
+      if (status === 403) throw { status, message: 'No tienes autorización para inicializar el flujo académico.' }
+      if (status === 404) throw { status, message: 'La postulación ya no está disponible.' }
+      throw { status, message: 'No se pudo inicializar el flujo académico. Intenta nuevamente.' }
+    }
+  },
   async obtenerDetalle(id, signal) {
     try {
       return (await apiClient.get(`/api/v1/postulaciones/${id}/`, { signal })).data
@@ -289,6 +326,17 @@ export const postulacionesService = {
   },
   obtenerVersiones(documento, page, signal) {
     return getDocumentResource('/api/v1/documentos/versiones/', { documento, ordering: 'numero_version', page }, signal, 'las versiones')
+  },
+  async descargarVersion(versionId, nombreOriginal, signal) {
+    try {
+      const response = await apiClient.get(`/api/v1/documentos/versiones/${versionId}/descargar/`, { signal, responseType: 'blob' })
+      return {
+        blob: response.data,
+        filename: downloadFilename(response.headers?.['content-disposition'], nombreOriginal || `documento-${versionId}`),
+      }
+    } catch (error) {
+      throw normalizeDownload(error)
+    }
   },
   obtenerObservaciones(versionDocumento, page, signal) {
     return getDocumentResource('/api/v1/documentos/observaciones/', { version_documento: versionDocumento, ordering: 'fecha_observacion', page }, signal, 'las observaciones')

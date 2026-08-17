@@ -8,8 +8,8 @@ import { AuthContext } from '../../context/AuthContext'
 
 vi.mock('../../services/postulacionesService', () => ({
   postulacionesService: {
-    obtenerExpediente: vi.fn(), obtenerHistorial: vi.fn(), obtenerActores: vi.fn(), obtenerDocumentos: vi.fn(),
-    obtenerVersiones: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), cargarDocumento: vi.fn(),
+    obtenerExpediente: vi.fn(), obtenerCapacidadesModalidad: vi.fn(), inicializarFlujo: vi.fn(), obtenerHistorial: vi.fn(), obtenerActores: vi.fn(), obtenerDocumentos: vi.fn(),
+    obtenerVersiones: vi.fn(), descargarVersion: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), cargarDocumento: vi.fn(),
     aprobarDocumento: vi.fn(), rechazarDocumento: vi.fn(), observarDocumento: vi.fn(), marcarObservacionCorregida: vi.fn(),
     obtenerDefensas: vi.fn(), obtenerQuorumDefensa: vi.fn(), programarDefensa: vi.fn(), iniciarDefensa: vi.fn(),
     finalizarDefensa: vi.fn(), suspenderDefensa: vi.fn(), cancelarDefensa: vi.fn(), reprogramarDefensa: vi.fn(),
@@ -98,10 +98,12 @@ const response = {
   detalle: {
     id: 7,
     codigo: 'EXP-007',
+    modalidad: 1,
     estudiante_detalle: { id: 3, ru: 'RU-300', nombre_completo: 'Ana Pérez' },
     modalidad_detalle: { id: 1, codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado' },
     periodo_detalle: { id: 2, gestion: 2026, semestre: 'II', nombre: '2026-II' },
     estado_actual_detalle: { id: 4, codigo: 'EN_PROCESO', nombre: 'En proceso' },
+    activo: true,
   },
   flujo: {
     modalidad: { id: 1, codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado' },
@@ -151,13 +153,21 @@ function renderClosureManagerPage() {
   return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 }
 
+function renderApplicationManagerPage() {
+  const auth = { user: { id: 9 }, hasPermission: (name) => name === 'puede_gestionar_postulaciones' }
+  return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+}
+
 describe('ExpedientePage US-008', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue({ soportada: true, configuracion_valida: true })
+    postulacionesService.inicializarFlujo.mockResolvedValue({})
     postulacionesService.obtenerHistorial.mockResolvedValue(historyResponse)
     postulacionesService.obtenerActores.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
     postulacionesService.obtenerDocumentos.mockResolvedValue(documentsResponse)
     postulacionesService.obtenerVersiones.mockResolvedValue(versionsResponse)
+    postulacionesService.descargarVersion.mockResolvedValue({ blob: new Blob(['archivo']), filename: 'informe-final.pdf' })
     postulacionesService.obtenerObservaciones.mockResolvedValue(observationsResponse)
     postulacionesService.obtenerTiposDocumento.mockResolvedValue({ results: [{ id: 4, nombre: 'Informe final', activo: true }] })
     postulacionesService.cargarDocumento.mockResolvedValue({ id: 303, numero_version: 3, es_version_actual: true })
@@ -217,6 +227,100 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('INFORME')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Volver a postulaciones' })).toHaveAttribute('href', '/postulantes')
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+  })
+
+  it('muestra inicialización administrativa solo cuando el flujo soportado está vacío', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, estado_actual_detalle: { id: 1, codigo: 'REGISTRADA', nombre: 'Registrada' } },
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [] },
+    })
+
+    renderApplicationManagerPage()
+
+    expect(await screen.findByRole('button', { name: 'Inicializar flujo académico' })).toBeInTheDocument()
+  })
+
+  it('oculta inicialización si el flujo existe o el usuario no tiene permiso', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    const initialized = renderApplicationManagerPage()
+    await screen.findByRole('heading', { name: 'Resumen técnico' })
+    expect(screen.queryByRole('button', { name: 'Inicializar flujo académico' })).not.toBeInTheDocument()
+    initialized.unmount()
+
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [] },
+    })
+    renderOwnerPage()
+    await screen.findByRole('heading', { name: 'Resumen técnico' })
+    expect(screen.queryByRole('button', { name: 'Inicializar flujo académico' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['modalidad no soportada', { soportada: false, configuracion_valida: false }, true],
+    ['postulación inactiva', { soportada: true, configuracion_valida: true }, false],
+  ])('oculta inicialización para %s', async (_case, capabilities, active) => {
+    postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue(capabilities)
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, activo: active },
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [] },
+    })
+
+    renderApplicationManagerPage()
+
+    await screen.findByRole('heading', { name: 'Resumen técnico' })
+    expect(screen.queryByRole('button', { name: 'Inicializar flujo académico' })).not.toBeInTheDocument()
+  })
+
+  it('confirma, llama la acción y recarga sin iniciar Inscripción', async () => {
+    const emptyFlow = {
+      ...response,
+      detalle: { ...response.detalle, estado_actual_detalle: { id: 1, codigo: 'REGISTRADA', nombre: 'Registrada' } },
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [] },
+    }
+    const initializedFlow = {
+      ...emptyFlow,
+      flujo: {
+        ...emptyFlow.flujo,
+        etapa_actual: { id: 21, codigo: 'INSCRIPCION', nombre: 'Inscripción', estado: 'PENDIENTE' },
+        etapas: [{ id: 21, codigo: 'INSCRIPCION', nombre: 'Inscripción', estado: 'PENDIENTE', numero_intento: 1, activo: true }],
+      },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValueOnce(emptyFlow).mockResolvedValueOnce(initializedFlow)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderApplicationManagerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Inicializar flujo académico' }))
+
+    expect(confirm).toHaveBeenCalledWith('Se crearán las etapas iniciales del flujo académico para esta postulación.\nEsta acción no inicia ni aprueba ninguna etapa.')
+    await waitFor(() => expect(postulacionesService.inicializarFlujo).toHaveBeenCalledWith(7, expect.any(AbortSignal)))
+    await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
+    expect((await screen.findAllByText('Inscripción')).length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('Registrada')).toBeInTheDocument()
+    const stagesCard = screen.getByRole('heading', { name: 'Etapas del flujo académico' }).parentElement
+    expect(within(stagesCard).getByText('PENDIENTE')).toBeInTheDocument()
+    expect(within(stagesCard).queryByText('EN_PROCESO')).not.toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Avance del macroflujo' })).toHaveAttribute('value', '0')
+    confirm.mockRestore()
+  })
+
+  it('mantiene el expediente y muestra un error limpio si falla la inicialización', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [] },
+    })
+    postulacionesService.inicializarFlujo.mockRejectedValue({ message: 'No se pudo inicializar el flujo académico. Intenta nuevamente.' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderApplicationManagerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Inicializar flujo académico' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo inicializar el flujo académico. Intenta nuevamente.')
+    expect(screen.getByRole('heading', { name: 'Resumen técnico' })).toBeInTheDocument()
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+    confirm.mockRestore()
   })
 
   it.each([
@@ -538,7 +642,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('Versión actual')).toBeInTheDocument()
     expect(screen.getByText('informe-largo.pdf')).toBeInTheDocument()
     expect(screen.getByText('2.0 KB')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Abrir archivo autorizado de la versión 1' })).toHaveAttribute('href', '/media/documentos/versiones/informe-v1.pdf')
+    expect(screen.getAllByRole('button', { name: 'Descargar' })).toHaveLength(2)
     expect(postulacionesService.obtenerVersiones).toHaveBeenCalledWith(31, 1, expect.any(AbortSignal))
     await userEvent.click(screen.getAllByRole('button', { name: 'Ver observaciones' })[0])
     expect(await screen.findByText('Corregir portada')).toBeInTheDocument()
@@ -549,6 +653,35 @@ describe('ExpedientePage US-008', () => {
     await waitFor(() => expect(postulacionesService.obtenerVersiones).toHaveBeenLastCalledWith(31, 2, expect.any(AbortSignal)))
     await userEvent.click(screen.getAllByRole('button', { name: 'Cerrar' }).at(-1))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('descarga una versión mediante el endpoint protegido', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    const createObjectURL = vi.fn(() => 'blob:documento')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Descargar' }))[1])
+
+    await waitFor(() => expect(postulacionesService.descargarVersion).toHaveBeenCalledWith(302, 'informe-final.pdf'))
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:documento')
+  })
+
+  it('muestra un error limpio cuando falla la descarga', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.descargarVersion.mockRejectedValue({ status: 404, message: 'El archivo solicitado no está disponible.' })
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Descargar' }))[0])
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('El archivo solicitado no está disponible.')
   })
 
   it('muestra documentos y observaciones vacíos con lenguaje neutral', async () => {

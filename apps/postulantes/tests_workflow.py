@@ -1,11 +1,13 @@
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.urls import Resolver404, resolve
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
+from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
 from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Postulacion, SeguimientoEtapa
 from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.workflow import WorkflowService
@@ -300,12 +302,222 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
         self.assertEqual(serializer.data["porcentaje_avance"], 66.67)
 
 
+class DocumentoFinalApprovalPreconditionTest(WorkflowBaseMixin, TestCase):
+    ERROR = (
+        "No se puede aprobar la etapa DOCUMENTO_FINAL: se requiere un Documento Final activo, "
+        "aprobado, sin correcciones pendientes y con una versión actual activa."
+    )
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.etapa_documento_final = EtapaModalidad.objects.create(
+            modalidad=self.modalidad,
+            codigo="DOCUMENTO_FINAL",
+            nombre="Documento Final",
+            orden=5,
+            origen_normativo="Proyecto de Grado",
+        )
+        self.seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=self.etapa_documento_final,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+            numero_intento=1,
+        )
+        self.tipo_documento_final = TipoDocumento.objects.create(
+            codigo="DOCUMENTO_FINAL",
+            nombre="Documento Final",
+            permite_multiple_version=True,
+        )
+        self.estado_env = EstadoDocumento.objects.create(codigo="ENV", nombre="Enviado")
+        self.estado_apr = EstadoDocumento.objects.create(codigo="APR", nombre="Aprobado")
+
+    def _documento(self, *, estado=None, requiere_correccion=False, activo=True):
+        documento = DocumentoPostulacion.objects.create(
+            postulacion=self.postulacion,
+            tipo_documento=self.tipo_documento_final,
+            estado=estado or self.estado_apr,
+            requiere_correccion=requiere_correccion,
+        )
+        if not activo:
+            documento.activo = False
+            documento.save(update_fields=["activo"])
+        return documento
+
+    def _version(self, documento, *, es_version_actual=True, activo=True):
+        version = VersionDocumento.objects.create(
+            documento=documento,
+            subido_por=self.admin,
+            numero_version=1,
+            archivo="documentos/versiones/documento-final.pdf",
+            nombre_original="documento-final.pdf",
+            tamano_bytes=10,
+            hash_sha256="a" * 64,
+            es_version_actual=es_version_actual,
+        )
+        if not activo:
+            version.activo = False
+            version.save(update_fields=["activo"])
+        return version
+
+    def _assert_rejected(self):
+        with self.assertRaisesMessage(ValidationError, self.ERROR):
+            WorkflowService.aprobar_etapa(self.seguimiento, self.admin)
+        self.seguimiento.refresh_from_db()
+        self.assertEqual(self.seguimiento.estado, SeguimientoEtapa.EstadoChoices.EN_PROCESO)
+        self.assertIsNone(self.seguimiento.fecha_fin)
+        self.assertIsNone(self.seguimiento.cerrada_por_id)
+
+    def test_rechaza_si_no_existe_documento_final_activo(self):
+        self._documento(activo=False)
+        self._assert_rejected()
+
+    def test_rechaza_si_documento_final_no_esta_aprobado(self):
+        documento = self._documento(estado=self.estado_env)
+        self._version(documento)
+        self._assert_rejected()
+
+    def test_rechaza_si_documento_final_requiere_correccion(self):
+        documento = self._documento(requiere_correccion=True)
+        self._version(documento)
+        self._assert_rejected()
+
+    def test_rechaza_si_no_existe_version_actual(self):
+        self._documento()
+        self._assert_rejected()
+
+    def test_rechaza_si_version_actual_no_esta_activa(self):
+        documento = self._documento()
+        self._version(documento, activo=False)
+        self._assert_rejected()
+
+    def test_rechaza_si_version_activa_no_es_actual(self):
+        documento = self._documento()
+        self._version(documento, es_version_actual=False)
+        self._assert_rejected()
+
+    def test_aprueba_etapa_si_documento_cumple_todas_las_precondiciones(self):
+        documento = self._documento()
+        version = self._version(documento)
+
+        actualizado = WorkflowService.aprobar_etapa(self.seguimiento, self.admin)
+
+        self.assertEqual(actualizado.estado, SeguimientoEtapa.EstadoChoices.APROBADA)
+        self.assertIsNotNone(actualizado.fecha_fin)
+        self.assertEqual(actualizado.cerrada_por, self.admin)
+        documento.refresh_from_db()
+        version.refresh_from_db()
+        self.assertEqual(documento.estado.codigo, "APR")
+        self.assertTrue(version.es_version_actual)
+        self.assertTrue(version.activo)
+
+
 class WorkflowApiTest(WorkflowBaseMixin, APITestCase):
     """Pruebas API para endpoints del flujo académico."""
 
     def authenticate(self, user) -> None:
         token = RefreshToken.for_user(user).access_token
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def test_rutas_de_acciones_resuelven_al_viewset_de_seguimiento(self):
+        for action in ("aprobar", "rechazar", "omitir"):
+            with self.subTest(action=action):
+                match = resolve(f"/api/v1/seguimientos-etapa/1/{action}/")
+                self.assertEqual(match.view_name, f"seguimientos-etapa-{action}")
+                self.assertEqual(match.func.actions, {"post": action})
+
+    def test_rutas_de_asignacion_conservan_sus_acciones_propias(self):
+        for action in ("finalizar", "reemplazar"):
+            with self.subTest(action=action):
+                match = resolve(f"/api/v1/asignaciones/1/{action}/")
+                self.assertEqual(match.view_name, f"asignaciones-{action}")
+        for action in ("aprobar", "rechazar", "omitir"):
+            with self.subTest(action=action), self.assertRaises(Resolver404):
+                resolve(f"/api/v1/asignaciones/1/{action}/")
+
+    def test_admin_aprueba_etapa_en_proceso_por_api(self):
+        seguimiento = WorkflowService.iniciar_etapa(
+            WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0],
+            self.admin,
+        )
+        self.authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/seguimientos-etapa/{seguimiento.id}/aprobar/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        seguimiento.refresh_from_db()
+        self.assertEqual(seguimiento.estado, SeguimientoEtapa.EstadoChoices.APROBADA)
+
+    def test_admin_rechaza_etapa_en_proceso_por_api(self):
+        seguimiento = WorkflowService.iniciar_etapa(
+            WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0],
+            self.admin,
+        )
+        self.authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/seguimientos-etapa/{seguimiento.id}/rechazar/",
+            {"observaciones": "No cumple"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        seguimiento.refresh_from_db()
+        self.assertEqual(seguimiento.estado, SeguimientoEtapa.EstadoChoices.RECHAZADA)
+
+    def test_admin_observa_y_luego_aprueba_etapa_por_api(self):
+        seguimiento = WorkflowService.iniciar_etapa(
+            WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0],
+            self.admin,
+        )
+        self.authenticate(self.admin)
+
+        observar = self.client.post(
+            f"/api/v1/seguimientos-etapa/{seguimiento.id}/observar/",
+            {"observaciones": "Subsanar observación"},
+            format="json",
+        )
+        aprobar = self.client.post(
+            f"/api/v1/seguimientos-etapa/{seguimiento.id}/aprobar/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(observar.status_code, status.HTTP_200_OK)
+        self.assertEqual(observar.data["estado"], SeguimientoEtapa.EstadoChoices.OBSERVADA)
+        self.assertEqual(aprobar.status_code, status.HTTP_200_OK)
+        self.assertEqual(aprobar.data["estado"], SeguimientoEtapa.EstadoChoices.APROBADA)
+
+    def test_omitir_etapa_obligatoria_por_api_conserva_regla_de_negocio(self):
+        seguimiento = WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0]
+        self.authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/seguimientos-etapa/{seguimiento.id}/omitir/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("No se pueden omitir etapas obligatorias.", str(response.data))
+        seguimiento.refresh_from_db()
+        self.assertEqual(seguimiento.estado, SeguimientoEtapa.EstadoChoices.PENDIENTE)
+
+    def test_usuario_no_staff_recibe_403_en_acciones_de_seguimiento(self):
+        seguimiento = WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0]
+        self.authenticate(self.student)
+
+        for action in ("aprobar", "rechazar", "omitir"):
+            with self.subTest(action=action):
+                response = self.client.post(
+                    f"/api/v1/seguimientos-etapa/{seguimiento.id}/{action}/",
+                    {},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_estudiante_puede_ver_su_flujo(self):
         WorkflowService.inicializar_flujo(self.postulacion, self.admin)

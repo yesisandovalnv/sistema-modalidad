@@ -112,6 +112,7 @@ class BaseModalidadPolicy(ABC):
     def get_entregas_requeridas(self, fase=None): return tuple(self.requisitos_policy.get_entregas_requeridas(fase)) if self.requisitos_policy else ()
     def get_documentos_requeridos(self, fase=None): return tuple(self.requisitos_policy.get_documentos_requeridos(fase)) if self.requisitos_policy else ()
     def get_cierre_policy(self): return None
+    def validar_aprobacion_etapa(self, seguimiento): return None
 
     def validate_configuration(self):
         errors = []
@@ -179,4 +180,3 @@ class ModalidadPolicyRegistry:
 def unsupported_capabilities(modalidad):
     return ModalidadCapabilities(codigo=modalidad.codigo, nombre=modalidad.nombre, soportada=False,
         advertencias=["Normativa específica no configurada"], configuracion_valida=False)
-

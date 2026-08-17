@@ -48,6 +48,7 @@ OFFICIAL_MODALIDADES = [
 
 OFFICIAL_ESTADOS_POSTULACION = [
     {"codigo": "REGISTRADA", "nombre": "Registrada", "descripcion": "Postulacion registrada y pendiente de revision."},
+    {"codigo": "EN_PROCESO", "nombre": "En proceso", "descripcion": "Postulacion con flujo academico en proceso."},
     {"codigo": "EN_REVISION", "nombre": "En revision", "descripcion": "Postulacion en revision academica o administrativa."},
     {"codigo": "OBSERVADA", "nombre": "Observada", "descripcion": "Postulacion observada a la espera de subsanacion."},
     {"codigo": "SUBSANADA", "nombre": "Subsanada", "descripcion": "Postulacion subsanada y reenviada para revision."},
@@ -62,6 +63,54 @@ OFFICIAL_ESTADOS_DOCUMENTO = [
     {"codigo": "OBS", "nombre": "Observado", "descripcion": "Documento observado para correccion."},
     {"codigo": "APR", "nombre": "Aprobado", "descripcion": "Documento aprobado."},
     {"codigo": "REC", "nombre": "Rechazado", "descripcion": "Documento rechazado."},
+]
+
+OFFICIAL_TIPOS_DOCUMENTO = [
+    {
+        "codigo": "DOCUMENTO_FINAL",
+        "nombre": "Documento Final",
+        "descripcion": "Documento académico final de la modalidad Proyecto de Grado, presentado para revisión y aprobación.",
+        "obligatorio": True,
+        "permite_multiple_version": True,
+        "tamano_maximo_mb": 10,
+        "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "ACTA_DEFENSA",
+        "nombre": "Acta de Defensa",
+        "descripcion": "Acta que registra el resultado de una defensa vinculada a la postulación de Proyecto de Grado.",
+        "obligatorio": True,
+        "permite_multiple_version": False,
+        "tamano_maximo_mb": 10,
+        "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "HOJA_APROBACION",
+        "nombre": "Hoja de Aprobación",
+        "descripcion": "Hoja académico-legal que acredita la aprobación posterior a la defensa de Proyecto de Grado.",
+        "obligatorio": True,
+        "permite_multiple_version": False,
+        "tamano_maximo_mb": 10,
+        "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "INFORME_FINAL_TUTOR",
+        "nombre": "Informe Final del Tutor",
+        "descripcion": "Informe final del tutor que respalda la presentación y revisión del Proyecto de Grado.",
+        "obligatorio": True,
+        "permite_multiple_version": True,
+        "tamano_maximo_mb": 10,
+        "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "REVISION_FINAL_POST_PUBLICA",
+        "nombre": "Revisión Final Post Pública",
+        "descripcion": "Informe o constancia de la revisión final y correcciones posteriores a la defensa pública.",
+        "obligatorio": True,
+        "permite_multiple_version": True,
+        "tamano_maximo_mb": 10,
+        "extensiones_permitidas": "pdf,doc,docx",
+    },
 ]
 
 OFFICIAL_ETAPAS_MODALIDAD = {
@@ -157,6 +206,7 @@ class Command(BaseCommand):
                 self._seed_modalidades()
                 self._seed_estados_postulacion()
                 self._seed_estados_documento()
+                self._seed_tipos_documento()
                 self._seed_etapas_modalidad()
                 self._seed_official_matrix_catalogs()
         except Exception as exc:
@@ -187,6 +237,21 @@ class Command(BaseCommand):
             model=EstadoDocumento,
             records=OFFICIAL_ESTADOS_DOCUMENTO,
             defaults_fields=("nombre", "descripcion", "activo"),
+        )
+
+    def _seed_tipos_documento(self) -> None:
+        self._upsert_records(
+            model=TipoDocumento,
+            records=OFFICIAL_TIPOS_DOCUMENTO,
+            defaults_fields=(
+                "nombre",
+                "descripcion",
+                "obligatorio",
+                "permite_multiple_version",
+                "tamano_maximo_mb",
+                "extensiones_permitidas",
+                "activo",
+            ),
         )
 
     def _seed_etapas_modalidad(self) -> None:

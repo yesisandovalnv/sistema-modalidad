@@ -5,7 +5,8 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.academico.models import Modalidad, Periodo
+from apps.academico.models import EtapaModalidad, Modalidad, Periodo
+from apps.modalidades.policies import ModalidadPolicyRegistry
 from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Observacion, Postulacion
 from apps.usuarios.models import AuditLog
 
@@ -36,9 +37,18 @@ class TestCrearPostulacion(APITestCase):
             fecha_fin="2025-06-30",
         )
         self.modalidad = Modalidad.objects.create(
-            codigo="MGR",
-            nombre="Modalidad de graduación",
+            codigo="PROYECTO_GRADO",
+            nombre="Proyecto de Grado",
         )
+        for etapa in ModalidadPolicyRegistry.get(self.modalidad).get_etapas_configuradas():
+            EtapaModalidad.objects.create(
+                modalidad=self.modalidad,
+                codigo=etapa.codigo,
+                nombre=etapa.nombre,
+                orden=etapa.orden,
+                obligatoria=etapa.obligatoria,
+                origen_normativo="Policy de Proyecto de Grado",
+            )
         self.estado_registrada = EstadoPostulacion.objects.create(
             codigo="REGISTRADA",
             nombre="Registrada",
@@ -117,6 +127,94 @@ class TestCrearPostulacion(APITestCase):
                 accion="crear_postulacion", modulo="postulaciones"
             ).exists()
         )
+
+    def test_rechaza_modalidad_sin_soporte_sin_afectar_catalogo(self) -> None:
+        modalidad_no_soportada = Modalidad.objects.create(
+            codigo="EXAMEN_GRADO",
+            nombre="Examen de Grado",
+        )
+
+        response = self.client.post(
+            "/api/v1/postulaciones/",
+            {
+                "codigo": "POST-NO-SOPORTADA",
+                "estudiante": self.estudiante.id,
+                "modalidad": modalidad_no_soportada.id,
+                "periodo": self.periodo.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("modalidad", response.data)
+        self.assertFalse(Postulacion.objects.filter(codigo="POST-NO-SOPORTADA").exists())
+        self.assertTrue(Modalidad.objects.filter(pk=modalidad_no_soportada.pk).exists())
+
+
+class TestBusquedaPostulacion(APITestCase):
+    """Pruebas de los campos visibles usados para buscar postulaciones."""
+
+    def setUp(self) -> None:
+        self.estudiante = User.objects.create_user(
+            username="ana.quispe",
+            password="segura123",
+            nombres="Ana Maria",
+            apellido_paterno="Quispe",
+            apellido_materno="Mamani",
+            ci="9900001",
+            ru="20260001",
+        )
+        self.admin = User.objects.create_user(
+            username="admin_busqueda",
+            password="segura123",
+            is_staff=True,
+        )
+        periodo = Periodo.objects.create(
+            nombre="2026-II",
+            gestion=2026,
+            semestre="II",
+            fecha_inicio="2026-07-01",
+            fecha_fin="2026-12-31",
+        )
+        modalidad = Modalidad.objects.create(
+            codigo="EXAMEN_GRADO",
+            nombre="Examen de Grado",
+        )
+        estado_registrada = EstadoPostulacion.objects.create(
+            codigo="REGISTRADA",
+            nombre="Registrada",
+        )
+        self.postulacion = Postulacion.objects.create(
+            codigo="POST-2026-001",
+            estudiante=self.estudiante,
+            modalidad=modalidad,
+            periodo=periodo,
+            estado_actual=estado_registrada,
+        )
+        token = RefreshToken.for_user(self.admin).access_token
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def test_busca_por_datos_visibles_del_estudiante_y_codigo(self) -> None:
+        consultas = (
+            "POST-2026-001",
+            "ana.quispe",
+            "20260001",
+            "9900001",
+            "Ana",
+            "Quispe",
+            "Mamani",
+        )
+
+        for consulta in consultas:
+            with self.subTest(consulta=consulta):
+                response = self.client.get(
+                    "/api/v1/postulaciones/", {"search": consulta}
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual(response.data["count"], 1)
+                self.assertEqual(
+                    response.data["results"][0]["id"], self.postulacion.id
+                )
 
 
 class TestCambioEstado(APITestCase):

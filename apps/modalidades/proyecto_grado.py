@@ -57,6 +57,42 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
     evaluacion_policy = ProyectoGradoEvaluacionPolicy()
     requisitos_policy = ProyectoGradoRequisitosPolicy()
     def get_reglas_asignacion(self): return self.evento_policy.ASSIGNMENTS
+    def validar_aprobacion_etapa(self, seguimiento):
+        if seguimiento.etapa.codigo != "DOCUMENTO_FINAL":
+            return None
+
+        from apps.documentos.models import DocumentoPostulacion, VersionDocumento
+
+        documento = (
+            DocumentoPostulacion.objects.select_for_update()
+            .select_related("estado")
+            .filter(
+                postulacion=seguimiento.postulacion,
+                tipo_documento__codigo="DOCUMENTO_FINAL",
+                activo=True,
+            )
+            .first()
+        )
+        version_actual_activa = bool(
+            documento
+            and VersionDocumento.objects.select_for_update().filter(
+                documento=documento,
+                es_version_actual=True,
+                activo=True,
+            ).exists()
+        )
+        if not (
+            documento
+            and documento.estado.codigo == "APR"
+            and not documento.requiere_correccion
+            and version_actual_activa
+        ):
+            raise ValidationError(
+                "No se puede aprobar la etapa DOCUMENTO_FINAL: se requiere un Documento Final activo, "
+                "aprobado, sin correcciones pendientes y con una versión actual activa."
+            )
+        return None
+
     def get_cierre_policy(self):
         from apps.postulantes.cierre import ProyectoGradoCierrePolicy
         return ProyectoGradoCierrePolicy

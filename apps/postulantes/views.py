@@ -10,6 +10,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.academico.models import EtapaModalidad
+from apps.modalidades.policies import ModalidadPolicyRegistry
+from apps.modalidades.validators import ModalidadConfigurationValidator
 from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, HistorialEstado, Observacion, Postulacion
 from apps.postulantes.permissions import (IsAssignmentAdminOrRelatedReadOnly,
@@ -65,7 +67,15 @@ class PostulacionViewSet(viewsets.ModelViewSet):
     serializer_class = PostulacionSerializer
     permission_classes = [IsAuthenticated, IsStaffOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["codigo", "estudiante__username"]
+    search_fields = [
+        "codigo",
+        "estudiante__username",
+        "estudiante__ru",
+        "estudiante__ci",
+        "estudiante__nombres",
+        "estudiante__apellido_paterno",
+        "estudiante__apellido_materno",
+    ]
     ordering_fields = ["codigo", "fecha_postulacion", "created_at"]
 
     def get_permissions(self):
@@ -135,6 +145,15 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         """Crea una postulación usando la lógica de negocio del servicio."""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
+        modalidad = serializer.validated_data["modalidad"]
+        configuracion = ModalidadConfigurationValidator.validate_modalidad(modalidad)
+        if not ModalidadPolicyRegistry.has_policy(modalidad) or not configuracion.valida:
+            raise DRFValidationError({
+                "modalidad": [
+                    "La modalidad seleccionada todavía no tiene soporte académico completo configurado."
+                ]
+            })
 
         try:
             postulacion = PostulacionService.crear_postulacion(
@@ -430,6 +449,57 @@ class SeguimientoEtapaViewSet(viewsets.ReadOnlyModelViewSet):
         response_serializer = SeguimientoEtapaSerializer(actualizado, context=self.get_serializer_context())
         return Response(response_serializer.data)
 
+    @extend_schema(request=AprobarSeguimientoEtapaSerializer, responses={200: SeguimientoEtapaSerializer})
+    @action(detail=True, methods=["post"], url_path="aprobar", serializer_class=AprobarSeguimientoEtapaSerializer)
+    def aprobar(self, request, pk=None):
+        seguimiento = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            actualizado = WorkflowService.aprobar_etapa(
+                seguimiento,
+                request.user,
+                serializer.validated_data.get("observaciones", ""),
+            )
+        except DjangoValidationError as exc:
+            raise DRFValidationError(str(exc)) from exc
+        response_serializer = SeguimientoEtapaSerializer(actualizado, context=self.get_serializer_context())
+        return Response(response_serializer.data)
+
+    @extend_schema(request=RechazarSeguimientoEtapaSerializer, responses={200: SeguimientoEtapaSerializer})
+    @action(detail=True, methods=["post"], url_path="rechazar", serializer_class=RechazarSeguimientoEtapaSerializer)
+    def rechazar(self, request, pk=None):
+        seguimiento = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            actualizado = WorkflowService.rechazar_etapa(
+                seguimiento,
+                request.user,
+                serializer.validated_data.get("observaciones", ""),
+            )
+        except DjangoValidationError as exc:
+            raise DRFValidationError(str(exc)) from exc
+        response_serializer = SeguimientoEtapaSerializer(actualizado, context=self.get_serializer_context())
+        return Response(response_serializer.data)
+
+    @extend_schema(request=OmitirSeguimientoEtapaSerializer, responses={200: SeguimientoEtapaSerializer})
+    @action(detail=True, methods=["post"], url_path="omitir", serializer_class=OmitirSeguimientoEtapaSerializer)
+    def omitir(self, request, pk=None):
+        seguimiento = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            actualizado = WorkflowService.omitir_etapa(
+                seguimiento,
+                request.user,
+                serializer.validated_data.get("observaciones", ""),
+            )
+        except DjangoValidationError as exc:
+            raise DRFValidationError(str(exc)) from exc
+        response_serializer = SeguimientoEtapaSerializer(actualizado, context=self.get_serializer_context())
+        return Response(response_serializer.data)
+
 
 @extend_schema_view(
     list=extend_schema(
@@ -535,55 +605,4 @@ class AsignacionPostulacionViewSet(viewsets.ReadOnlyModelViewSet):
             nueva_asignacion,
             context=self.get_serializer_context(),
         )
-        return Response(response_serializer.data)
-
-    @extend_schema(request=AprobarSeguimientoEtapaSerializer, responses={200: SeguimientoEtapaSerializer})
-    @action(detail=True, methods=["post"], url_path="aprobar", serializer_class=AprobarSeguimientoEtapaSerializer)
-    def aprobar(self, request, pk=None):
-        seguimiento = self.get_object()
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            actualizado = WorkflowService.aprobar_etapa(
-                seguimiento,
-                request.user,
-                serializer.validated_data.get("observaciones", ""),
-            )
-        except DjangoValidationError as exc:
-            raise DRFValidationError(str(exc)) from exc
-        response_serializer = SeguimientoEtapaSerializer(actualizado, context=self.get_serializer_context())
-        return Response(response_serializer.data)
-
-    @extend_schema(request=RechazarSeguimientoEtapaSerializer, responses={200: SeguimientoEtapaSerializer})
-    @action(detail=True, methods=["post"], url_path="rechazar", serializer_class=RechazarSeguimientoEtapaSerializer)
-    def rechazar(self, request, pk=None):
-        seguimiento = self.get_object()
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            actualizado = WorkflowService.rechazar_etapa(
-                seguimiento,
-                request.user,
-                serializer.validated_data.get("observaciones", ""),
-            )
-        except DjangoValidationError as exc:
-            raise DRFValidationError(str(exc)) from exc
-        response_serializer = SeguimientoEtapaSerializer(actualizado, context=self.get_serializer_context())
-        return Response(response_serializer.data)
-
-    @extend_schema(request=OmitirSeguimientoEtapaSerializer, responses={200: SeguimientoEtapaSerializer})
-    @action(detail=True, methods=["post"], url_path="omitir", serializer_class=OmitirSeguimientoEtapaSerializer)
-    def omitir(self, request, pk=None):
-        seguimiento = self.get_object()
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        try:
-            actualizado = WorkflowService.omitir_etapa(
-                seguimiento,
-                request.user,
-                serializer.validated_data.get("observaciones", ""),
-            )
-        except DjangoValidationError as exc:
-            raise DRFValidationError(str(exc)) from exc
-        response_serializer = SeguimientoEtapaSerializer(actualizado, context=self.get_serializer_context())
         return Response(response_serializer.data)

@@ -16,7 +16,7 @@ export default function PostulantesPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [data, setData] = useState({ results: [] })
-  const [catalogs, setCatalogs] = useState({ modalidades: [], periodos: [], estudiantes: [] })
+  const [catalogs, setCatalogs] = useState({ modalidades: [], periodos: [], estudiantes: [], capacidades: {} })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [catalogError, setCatalogError] = useState('')
@@ -57,7 +57,13 @@ export default function PostulantesPage() {
           listAll(endpoints.periodos, { activo: true, ordering: '-gestion,-semestre' }, signal),
           listAll(endpoints.estudiantes, { ordering: 'apellido_paterno' }, signal),
         ])
-        setCatalogs({ modalidades, periodos, estudiantes })
+        const capacidadesList = await Promise.all(
+          modalidades.map((modalidad) => postulacionesService.obtenerCapacidadesModalidad(modalidad.id, signal)),
+        )
+        const capacidades = Object.fromEntries(
+          modalidades.map((modalidad, index) => [modalidad.id, capacidadesList[index]]),
+        )
+        setCatalogs({ modalidades, periodos, estudiantes, capacidades })
       } catch (requestError) {
         if (!requestError.canceled) {
           setCatalogError(requestError.status === 403
@@ -108,7 +114,11 @@ export default function PostulantesPage() {
     const value = studentQuery.trim().toLocaleLowerCase('es')
     if (!value) return catalogs.estudiantes
     return catalogs.estudiantes.filter((item) => (
-      formatStudentLabel(item).toLocaleLowerCase('es').includes(value)
+      [item.codigo, item.ru, item.ci, item.nombre_completo]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase('es')
+        .includes(value)
     ))
   }, [catalogs.estudiantes, studentQuery])
 
@@ -156,6 +166,11 @@ export default function PostulantesPage() {
     try {
       if (editing) await crudService.update(endpoints.postulaciones, selected.id, payload)
       else await crudService.create(endpoints.postulaciones, payload)
+      if (!editing) {
+        setQuery('')
+        setSearch('')
+        setPage(1)
+      }
       setSelected(null)
       setForm(null)
       setRevision((value) => value + 1)
@@ -313,7 +328,16 @@ export default function PostulantesPage() {
               label="Modalidad"
               value={form.modalidad}
               items={catalogs.modalidades}
-              format={(item) => item.nombre}
+              format={(item) => {
+                const capability = catalogs.capacidades[item.id]
+                return capability?.soportada && capability?.configuracion_valida
+                  ? item.nombre
+                  : `${item.nombre} — Próximamente / No configurada`
+              }}
+              isDisabled={(item) => {
+                const capability = catalogs.capacidades[item.id]
+                return !capability?.soportada || !capability?.configuracion_valida
+              }}
               onChange={(value) => change('modalidad', value)}
               error={fieldErrors.modalidad}
             />}
@@ -365,7 +389,7 @@ function FormField({ error, children }) {
   return <div>{children}<FieldError value={error} /></div>
 }
 
-function Select({ label, value, items, format, onChange, error }) {
+function Select({ label, value, items, format, isDisabled = () => false, onChange, error }) {
   return (
     <label className="text-sm">
       {label}
@@ -376,7 +400,7 @@ function Select({ label, value, items, format, onChange, error }) {
         className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"
       >
         <option value="">Seleccione</option>
-        {items.map((item) => <option key={item.id} value={item.id}>{format(item)}</option>)}
+        {items.map((item) => <option key={item.id} value={item.id} disabled={isDisabled(item)}>{format(item)}</option>)}
       </select>
       <FieldError value={error} />
     </label>

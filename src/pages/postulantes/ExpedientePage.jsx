@@ -69,6 +69,8 @@ export default function ExpedientePage() {
   const quorumController = useRef(null)
   const [defenseOperation, setDefenseOperation] = useState(null)
   const defenseOperationController = useRef(null)
+  const [flowInitialization, setFlowInitialization] = useState({ submitting: false, error: '' })
+  const flowInitializationController = useRef(null)
 
   useEffect(() => {
     uploadController.current?.abort()
@@ -84,6 +86,9 @@ export default function ExpedientePage() {
     setDefenseOperation(null)
     setSelectedDefense(null)
     setQuorum({ data: null, loading: false, error: '' })
+    flowInitializationController.current?.abort()
+    flowInitializationController.current = null
+    setFlowInitialization({ submitting: false, error: '' })
   }, [id])
 
   useEffect(() => () => {
@@ -91,6 +96,7 @@ export default function ExpedientePage() {
     reviewController.current?.abort()
     quorumController.current?.abort()
     defenseOperationController.current?.abort()
+    flowInitializationController.current?.abort()
   }, [])
 
   useEffect(() => {
@@ -104,7 +110,14 @@ export default function ExpedientePage() {
     setLoading(true)
     setError('')
     try {
-      setData(await postulacionesService.obtenerExpediente(id, signal))
+      const expediente = await postulacionesService.obtenerExpediente(id, signal)
+      let capacidades = null
+      try {
+        capacidades = await postulacionesService.obtenerCapacidadesModalidad(expediente.detalle.modalidad, signal)
+      } catch (capabilityError) {
+        if (capabilityError.canceled) throw capabilityError
+      }
+      setData({ ...expediente, capacidades })
     } catch (requestError) {
       if (!requestError.canceled) setError(requestError.message)
     } finally {
@@ -230,6 +243,35 @@ export default function ExpedientePage() {
   const canManageDefenses = auth?.hasPermission?.('puede_gestionar_defensas') === true
   const canManageEvaluations = auth?.hasPermission?.('puede_gestionar_evaluaciones') === true && canManageDefenses
   const canManageClosure = auth?.hasPermission?.('puede_gestionar_cierre') === true
+  const canManageApplications = auth?.hasPermission?.('puede_gestionar_postulaciones') === true
+  const canInitializeFlow = canManageApplications
+    && detalle.activo !== false
+    && data.capacidades?.soportada === true
+    && data.capacidades?.configuracion_valida === true
+    && (flujo.etapas || []).length === 0
+
+  const initializeFlow = async () => {
+    if (flowInitialization.submitting) return
+    const confirmed = window.confirm(
+      'Se crearán las etapas iniciales del flujo académico para esta postulación.\nEsta acción no inicia ni aprueba ninguna etapa.',
+    )
+    if (!confirmed) return
+    flowInitializationController.current?.abort()
+    const controller = new AbortController()
+    flowInitializationController.current = controller
+    setFlowInitialization({ submitting: true, error: '' })
+    try {
+      await postulacionesService.inicializarFlujo(detalle.id, controller.signal)
+      if (!controller.signal.aborted) {
+        setFlowInitialization({ submitting: false, error: '' })
+        setRevision((value) => value + 1)
+      }
+    } catch (requestError) {
+      if (!requestError.canceled && !controller.signal.aborted) {
+        setFlowInitialization({ submitting: false, error: requestError.message })
+      }
+    }
+  }
 
   const openUpload = async (document = null) => {
     uploadController.current?.abort()
@@ -455,7 +497,35 @@ export default function ExpedientePage() {
               {safeProgress}%
             </progress>
           )}
+          {canInitializeFlow && (
+            <div className="mt-5">
+              <Button disabled={flowInitialization.submitting} onClick={initializeFlow}>
+                {flowInitialization.submitting ? 'Inicializando…' : 'Inicializar flujo académico'}
+              </Button>
+              <p className="mt-2 text-sm text-slate-500">Crea las etapas pendientes configuradas por el backend; no inicia ni aprueba ninguna etapa.</p>
+            </div>
+          )}
+          {flowInitialization.error && <p role="alert" className="mt-3 text-sm text-red-600">{flowInitialization.error}</p>}
         </div>
+      </Card>
+
+      <Card className="overflow-hidden" aria-labelledby="etapas-flujo-title">
+        <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
+        {(flujo.etapas || []).length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">El flujo académico todavía no fue inicializado.</p>
+        ) : (
+          <ol className="mt-4 space-y-3">
+            {flujo.etapas.map((stage) => (
+              <li key={stage.id} className="rounded-lg border p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <strong>{stage.nombre || stage.codigo}</strong>
+                  <span className="rounded-full border px-2 py-1 text-xs font-semibold">{stage.estado_display || stage.estado}</span>
+                </div>
+                <p className="mt-2 text-slate-500">Intento {stage.numero_intento ?? 1}</p>
+              </li>
+            ))}
+          </ol>
+        )}
       </Card>
 
       <Card className="overflow-hidden">
@@ -815,7 +885,7 @@ function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVe
             <li key={version.id} className="min-w-0 rounded-lg border p-3">
               <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold">Versión {version.numero_version}</h4>{version.es_version_actual && <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">Versión actual</span>}</div>
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><Info label="Fecha" value={formatDocumentDate(version.fecha_subida)} /><Info label="Autor" value={version.subido_por_nombre || 'No registrado'} /><Info label="Archivo" value={version.nombre_original || 'No registrado'} /><Info label="Tamaño" value={formatBytes(version.tamano_bytes)} /></dl>
-              <div className="mt-3 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => onSelectVersion(version)}>Ver observaciones</Button>{version.archivo && <a aria-label={`Abrir archivo autorizado de la versión ${version.numero_version}`} className="rounded-md border px-3 py-2 text-sm font-medium" href={version.archivo} target="_blank" rel="noreferrer">Abrir archivo autorizado</a>}</div>
+              <div className="mt-3 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => onSelectVersion(version)}>Ver observaciones</Button><DownloadVersionButton version={version} /></div>
             </li>
           ))}</ol><Pagination count={versions.data.count} page={versionsPage} hasNext={Boolean(versions.data.next)} hasPrevious={Boolean(versions.data.previous)} onPage={onVersionsPage} /></>}
         </section>
@@ -841,6 +911,34 @@ function ReviewDialog({ review, onSubmit, onClose }) {
       <div className="flex flex-wrap gap-3"><Button type="submit" disabled={review.submitting}>{review.submitting ? 'Procesando…' : 'Confirmar'}</Button><Button type="button" variant="secondary" disabled={review.submitting} onClick={onClose}>Cancelar</Button></div>
     </form>
   </Modal>
+}
+
+function DownloadVersionButton({ version }) {
+  const [downloading, setDownloading] = useState(false)
+  const [error, setError] = useState('')
+
+  const download = async () => {
+    if (downloading) return
+    setDownloading(true)
+    setError('')
+    try {
+      const { blob, filename } = await postulacionesService.descargarVersion(version.id, version.nombre_original)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (downloadError) {
+      if (!downloadError.canceled) setError(downloadError.message)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return <div><Button variant="outline" disabled={downloading} onClick={download}>{downloading ? 'Descargando…' : 'Descargar'}</Button>{error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}</div>
 }
 
 function UploadDialog({ upload, types, onSubmit, onClose }) {

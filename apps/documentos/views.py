@@ -1,4 +1,7 @@
+import os
+
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import FileResponse, Http404
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
@@ -240,6 +243,24 @@ class VersionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             Q(documento__postulacion__estudiante=user)
             | Q(documento__postulacion__asignaciones__usuario=user)
         ).distinct()
+
+    @action(detail=True, methods=["get"], url_path="descargar")
+    def descargar(self, request, pk=None):
+        version = self.get_object()
+        archivo = version.archivo
+        if not archivo or not archivo.name or not archivo.storage.exists(archivo.name):
+            raise Http404("El archivo de esta versión no está disponible.")
+
+        try:
+            contenido = archivo.storage.open(archivo.name, "rb")
+        except (FileNotFoundError, OSError) as exc:
+            raise Http404("El archivo de esta versión no está disponible.") from exc
+
+        nombre_original = (version.nombre_original or archivo.name).replace("\\", "/")
+        nombre_descarga = os.path.basename(nombre_original).replace("\r", "").replace("\n", "").strip()
+        if not nombre_descarga:
+            nombre_descarga = f"documento-version-{version.pk}"
+        return FileResponse(contenido, as_attachment=True, filename=nombre_descarga)
 
 
 class ObservacionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
