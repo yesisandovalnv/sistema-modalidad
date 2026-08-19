@@ -678,3 +678,68 @@ class EvaluacionDefensa(BaseModel):
         if self.tipo_evaluacion == self.Tipo.RESULTADO_FINAL and not self.es_resultado_final_evento: errors["es_resultado_final_evento"]="El resultado final debe provenir de la consolidación."
         if errors: raise ValidationError(errors)
     def save(self,*args,**kwargs): self.full_clean(); return super().save(*args,**kwargs)
+
+
+class InformeRevisionTribunalPrevia(BaseModel):
+    """Consenso documentado del tribunal sobre una versión del Documento Final."""
+
+    class Resultado(models.TextChoices):
+        SUFICIENTE = "SUFICIENTE", "Suficiente"
+        INSUFICIENTE = "INSUFICIENTE", "Insuficiente"
+
+    seguimiento_etapa = models.ForeignKey(
+        SeguimientoEtapa,
+        models.PROTECT,
+        related_name="informes_revision_tribunal",
+    )
+    version_documento_revisada = models.ForeignKey(
+        "documentos.VersionDocumento",
+        models.PROTECT,
+        related_name="informes_revision_tribunal",
+    )
+    resultado = models.CharField(max_length=20, choices=Resultado.choices)
+    observaciones = models.TextField(blank=True)
+    evidencia_version = models.ForeignKey(
+        "documentos.VersionDocumento",
+        models.PROTECT,
+        related_name="evidencias_revision_tribunal",
+    )
+    fecha_registro = models.DateTimeField(auto_now_add=True)
+    registrado_por = models.ForeignKey(
+        CustomUser,
+        models.PROTECT,
+        related_name="informes_revision_tribunal_registrados",
+    )
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["-fecha_registro", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["seguimiento_etapa", "version_documento_revisada"],
+                condition=models.Q(activo=True),
+                name="unique_informe_revision_activo_version",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        self.observaciones = (self.observaciones or "").strip()
+        errors = {}
+        if self.seguimiento_etapa_id and self.seguimiento_etapa.etapa.codigo != "REVISION_TRIBUNAL_PREVIA":
+            errors["seguimiento_etapa"] = "El seguimiento debe corresponder a REVISION_TRIBUNAL_PREVIA."
+        if self.resultado == self.Resultado.INSUFICIENTE and not self.observaciones:
+            errors["observaciones"] = "Las observaciones son obligatorias para un resultado INSUFICIENTE."
+        if self.registrado_por_id and not self.registrado_por.is_active:
+            errors["registrado_por"] = "El usuario que registra debe estar activo."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.seguimiento_etapa} - {self.resultado}"

@@ -31,6 +31,18 @@ function normalizeAssignments(error) {
   return { status, message: 'No se pudieron cargar los actores. Comprueba tu conexión e intenta nuevamente.' }
 }
 
+function normalizeAssignmentManagement(error, resource = 'la asignación') {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  const data = error?.response?.data
+  const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  if (status === 400) return { status, message: 'Revisa los datos de la asignación.', fields }
+  if (status === 401) return { status, message: `Debes iniciar sesión para gestionar ${resource}.` }
+  if (status === 403) return { status, message: `No tienes autorización para gestionar ${resource}.` }
+  if (status === 404) return { status, message: 'La postulación, el candidato o la etapa ya no está disponible.' }
+  return { status, message: `No se pudo gestionar ${resource}. Comprueba tu conexión e intenta nuevamente.` }
+}
+
 function normalizeDefenses(error, quorum = false) {
   if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
   const status = error?.response?.status
@@ -123,6 +135,20 @@ function normalizeDownload(error) {
   if (status === 403) return { status, message: 'No tienes autorización para descargar este archivo.' }
   if (status === 404) return { status, message: 'El archivo solicitado no está disponible.' }
   return { status, message: 'No se pudo descargar el archivo. Comprueba tu conexión e intenta nuevamente.' }
+}
+
+function normalizeTribunalReport(error, action = false) {
+  if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
+  const status = error?.response?.status
+  const data = error?.response?.data
+  const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  const detail = fields.detail || fields.non_field_errors
+  const backendMessage = Array.isArray(detail) ? detail.join(' ') : detail
+  if (status === 400) return { status, message: backendMessage || 'Revisa los datos del informe del tribunal.', fields }
+  if (status === 401) return { status, message: 'Debes iniciar sesión para consultar los informes del tribunal.' }
+  if (status === 403) return { status, message: 'No tienes autorización para gestionar los informes del tribunal.', fields }
+  if (status === 404) return { status, message: 'El seguimiento o informe solicitado ya no está disponible.', fields }
+  return { status, message: action ? 'No se pudo registrar el informe del tribunal. Intenta nuevamente.' : 'No se pudieron cargar los informes del tribunal. Intenta nuevamente.', fields }
 }
 
 function downloadFilename(contentDisposition, fallback) {
@@ -225,6 +251,22 @@ export const postulacionesService = {
       throw normalizeAssignments(error)
     }
   },
+  async obtenerCandidatosAsignacion({ search = '', rol = '', ordering = 'apellido_paterno', page = 1 } = {}, signal) {
+    try {
+      return (await apiClient.get('/api/v1/usuarios/candidatos-asignacion/', {
+        params: { search, rol, ordering, page }, signal,
+      })).data
+    } catch (error) {
+      throw normalizeAssignmentManagement(error, 'los candidatos de asignación')
+    }
+  },
+  async asignarActor(postulacion, payload, signal) {
+    try {
+      return (await apiClient.post(`/api/v1/postulaciones/${postulacion}/asignaciones/asignar/`, payload, { signal })).data
+    } catch (error) {
+      throw normalizeAssignmentManagement(error)
+    }
+  },
   async obtenerDefensas(postulacion, page, signal) {
     try {
       return (await apiClient.get('/api/v1/eventos-defensa/', {
@@ -324,6 +366,20 @@ export const postulacionesService = {
   obtenerDocumentos(postulacion, page, signal) {
     return getDocumentResource('/api/v1/documentos/documentos/', { postulacion, ordering: '-fecha_subida', page }, signal, 'los documentos')
   },
+  async obtenerInformesRevisionTribunal(seguimientoId, signal) {
+    try {
+      return (await apiClient.get(`/api/v1/seguimientos-etapa/${seguimientoId}/informes-revision-tribunal/`, { signal })).data
+    } catch (error) {
+      throw normalizeTribunalReport(error)
+    }
+  },
+  async registrarInformeRevisionTribunal(seguimientoId, payload, signal) {
+    try {
+      return (await apiClient.post(`/api/v1/seguimientos-etapa/${seguimientoId}/informes-revision-tribunal/`, payload, { signal })).data
+    } catch (error) {
+      throw normalizeTribunalReport(error, true)
+    }
+  },
   obtenerVersiones(documento, page, signal) {
     return getDocumentResource('/api/v1/documentos/versiones/', { documento, ordering: 'numero_version', page }, signal, 'las versiones')
   },
@@ -348,11 +404,12 @@ export const postulacionesService = {
       throw normalizeDocuments(error, 'los tipos documentales')
     }
   },
-  async cargarDocumento({ postulacionId, tipoDocumentoId, archivo }, signal) {
+  async cargarDocumento({ postulacionId, tipoDocumentoId, archivo, eventoDefensaId }, signal) {
     const body = new FormData()
     body.append('postulacion_id', String(postulacionId))
     body.append('tipo_documento_id', String(tipoDocumentoId))
     body.append('archivo', archivo)
+    if (eventoDefensaId) body.append('evento_defensa_id', String(eventoDefensaId))
     try {
       return (await apiClient.post('/api/v1/documentos/documentos/subir/', body, { signal })).data
     } catch (error) {

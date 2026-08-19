@@ -14,17 +14,32 @@ from apps.notificaciones.events import EventTypes, publish_domain_event
 class ProyectoGradoCierrePolicy(BaseCierrePolicy):
     CONDITION_CODES=tuple(x for x,_ in CondicionPostulacion.Tipo.choices)
     DELIVERY_CODES=(EntregaFisica.Tipo.CD_RESPALDO,EntregaFisica.Tipo.EJEMPLARES_IMPRESOS,EntregaFisica.Tipo.TIMBRE_UNIVERSITARIO)
-    FINAL_DOCUMENT_CODES=("DOCUMENTO_FINAL","ACTA_DEFENSA","HOJA_APROBACION","INFORME_FINAL_TUTOR","REVISION_FINAL_POST_PUBLICA")
-    REVIEW_DOCUMENT_CODES=("REVISION_FINAL_POST_PUBLICA","HOJA_APROBACION")
+    FINAL_DOCUMENT_CODES=("DOCUMENTO_FINAL","ACTA_DEFENSA","HOJA_APROBACION","INFORME_FINAL_TUTOR")
+    REVIEW_DOCUMENT_CODES=("DOCUMENTO_FINAL","HOJA_APROBACION")
+
+    @classmethod
+    def inicializar_requisitos(cls, post):
+        """Crea controles pendientes sin presuponer cantidades institucionales."""
+        condition_names = dict(CondicionPostulacion.Tipo.choices)
+        delivery_names = dict(EntregaFisica.Tipo.choices)
+        for code in cls.CONDITION_CODES:
+            CondicionPostulacion.objects.get_or_create(postulacion=post, codigo=code,
+                defaults={"tipo": code, "nombre": condition_names[code]})
+        for code in cls.DELIVERY_CODES:
+            EntregaFisica.objects.get_or_create(postulacion=post, codigo=code,
+                defaults={"nombre": delivery_names[code]})
 
     @staticmethod
     def _stage(post,code):
         return post.seguimientos_etapa.filter(etapa__codigo=code,activo=True).order_by("-numero_intento").first()
 
     @staticmethod
-    def _documents(post,codes,event=None):
+    def _documents(post,codes,event=None,require_configured=False):
         configured=set(TipoDocumento.objects.filter(codigo__in=codes,activo=True).values_list("codigo",flat=True)); approved=[]; missing=[]
-        for code in configured:
+        for code in codes if require_configured else configured:
+            if code not in configured:
+                missing.append(code)
+                continue
             doc=DocumentoPostulacion.objects.filter(postulacion=post,tipo_documento__codigo=code,activo=True).select_related("estado","evento_defensa").first()
             valid=bool(doc and doc.estado.codigo=="APR" and not doc.requiere_correccion and doc.versiones.filter(es_version_actual=True,activo=True).exists())
             if valid and code=="ACTA_DEFENSA" and event is not None: valid=doc.evento_defensa_id==event.pk
@@ -51,9 +66,8 @@ class ProyectoGradoCierrePolicy(BaseCierrePolicy):
         elif final_result["clasificacion"]==EvaluacionDefensa.Resultado.POSTERGADO: missing.append("RESULTADO_FINAL_APROBATORIO")
         unresolved=DocumentoPostulacion.objects.filter(postulacion=post,activo=True,requiere_correccion=True).exists()
         if unresolved: missing.append("CORRECCIONES_DOCUMENTALES_PENDIENTES")
-        configured,approved,doc_missing=cls._documents(post,cls.REVIEW_DOCUMENT_CODES,event)
-        if configured: missing.extend(f"DOCUMENTO:{x}" for x in doc_missing)
-        else: warnings.append("No existe un tipo documental inequívoco para evidencia de revisión final u hoja de aprobación.")
+        configured,approved,doc_missing=cls._documents(post,cls.REVIEW_DOCUMENT_CODES,event,require_configured=True)
+        missing.extend(f"DOCUMENTO:{x}" for x in doc_missing)
         detail.update(documentos_configurados=sorted(configured),documentos_aprobados=approved)
         return {"cumple":not missing,"faltantes":missing,"advertencias":warnings,"detalle":detail}
 
@@ -70,7 +84,8 @@ class ProyectoGradoCierrePolicy(BaseCierrePolicy):
         missing.extend(f"ENTREGA:{x}" for x in delivery_missing)
         warnings.append("La cantidad normativa de EJEMPLARES_IMPRESOS permanece pendiente; no se calcula automáticamente.")
         event=post.eventos_defensa.filter(tipo_evento="DEFENSA_PUBLICA",estado="FINALIZADA",activo=True).order_by("-fecha_fin_real").first()
-        configured,approved,doc_missing=cls._documents(post,cls.FINAL_DOCUMENT_CODES,event)
+        if not event: missing.append("EVENTO_DEFENSA_PUBLICA_FINALIZADO")
+        configured,approved,doc_missing=cls._documents(post,cls.FINAL_DOCUMENT_CODES,event,require_configured=True)
         missing.extend(f"DOCUMENTO:{x}" for x in doc_missing)
         if "ACTA_DEFENSA" not in configured: warnings.append("ACTA_DEFENSA no está configurada como TipoDocumento inequívoco.")
         if "HOJA_APROBACION" not in configured: warnings.append("HOJA_APROBACION no está configurada como TipoDocumento inequívoco.")
@@ -89,6 +104,7 @@ class CierrePostulacionService:
         policy = ModalidadPolicyRegistry.get(postulacion)
         cierre = policy.get_cierre_policy()
         if not cierre: raise ValidationError("La modalidad no tiene política de cierre configurada.")
+        cierre.inicializar_requisitos(postulacion)
         return cierre
     @staticmethod
     def _audit(user,action,post,before,after,stage,detail=""):

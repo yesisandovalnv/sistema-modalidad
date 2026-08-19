@@ -399,7 +399,7 @@ class OfficialProyectoGradoDocumentTypesSeedTest(TestCase):
         "ACTA_DEFENSA",
         "HOJA_APROBACION",
         "INFORME_FINAL_TUTOR",
-        "REVISION_FINAL_POST_PUBLICA",
+        "INFORME_REVISION_TRIBUNAL_PREVIA",
     }
 
     def run_official_seed(self) -> str:
@@ -417,6 +417,7 @@ class OfficialProyectoGradoDocumentTypesSeedTest(TestCase):
 
         tipos = TipoDocumento.objects.filter(codigo__in=self.EXPECTED_CODES)
         self.assertEqual(tipos.count(), 5)
+        self.assertFalse(TipoDocumento.objects.filter(codigo="REVISION_FINAL_POST_PUBLICA").exists())
         self.assertFalse(tipos.filter(activo=False).exists())
         self.assertFalse(tipos.exclude(tamano_maximo_mb=10).exists())
         self.assertFalse(tipos.exclude(extensiones_permitidas="pdf,doc,docx").exists())

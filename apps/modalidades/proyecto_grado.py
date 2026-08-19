@@ -44,7 +44,7 @@ class ProyectoGradoEvaluacionPolicy(BaseEvaluacionPolicy):
 class ProyectoGradoRequisitosPolicy(BaseRequisitosPolicy):
     CONDITIONS = ("PLAN_ESTUDIOS", "ADMISION_COMPLETA", "SOLVENCIA_UNIVERSITARIA", "SOLVENCIA_BIBLIOTECA", "MATRICULA_VIGENTE", "PLAZO_MAXIMO")
     DELIVERIES = ("CD_RESPALDO", "EJEMPLARES_IMPRESOS", "TIMBRE_UNIVERSITARIO")
-    DOCUMENTS = ("DOCUMENTO_FINAL", "ACTA_DEFENSA", "HOJA_APROBACION", "INFORME_FINAL_TUTOR", "REVISION_FINAL_POST_PUBLICA")
+    DOCUMENTS = ("DOCUMENTO_FINAL", "ACTA_DEFENSA", "HOJA_APROBACION", "INFORME_FINAL_TUTOR")
     def get_condiciones_requeridas(self, fase=None): return self.CONDITIONS
     def get_entregas_requeridas(self, fase=None): return self.DELIVERIES
     def get_documentos_requeridos(self, fase=None): return self.DOCUMENTS
@@ -58,6 +58,57 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
     requisitos_policy = ProyectoGradoRequisitosPolicy()
     def get_reglas_asignacion(self): return self.evento_policy.ASSIGNMENTS
     def validar_aprobacion_etapa(self, seguimiento):
+        if seguimiento.etapa.codigo == "CIERRE_DOCUMENTAL":
+            from apps.postulantes.cierre import ProyectoGradoCierrePolicy
+            resultado = ProyectoGradoCierrePolicy.evaluar_cierre_documental(seguimiento.postulacion)
+            if not resultado["cumple"]:
+                raise ValidationError({"faltantes": resultado["faltantes"], "advertencias": resultado["advertencias"]})
+            return None
+        if seguimiento.etapa.codigo == "REVISION_FINAL_POST_PUBLICA":
+            from apps.postulantes.cierre import ProyectoGradoCierrePolicy
+
+            resultado = ProyectoGradoCierrePolicy.evaluar_revision_final(
+                seguimiento.postulacion,
+            )
+            if not resultado["cumple"]:
+                raise ValidationError(
+                    {"faltantes": resultado["faltantes"], "advertencias": resultado["advertencias"]}
+                )
+            return None
+        if seguimiento.etapa.codigo == "DEFENSA_PUBLICA":
+            from apps.postulantes.defensas import EvaluacionDefensaService
+            from apps.postulantes.models import EvaluacionDefensa
+
+            evento = seguimiento.eventos_defensa.filter(
+                tipo_evento="DEFENSA_PUBLICA", estado="FINALIZADA", activo=True,
+            ).order_by("-fecha_fin_real", "-pk").first()
+            if not evento:
+                raise ValidationError(
+                    "No se puede aprobar DEFENSA_PUBLICA sin un evento público finalizado."
+                )
+            consolidada = evento.evaluaciones.filter(
+                tipo_evaluacion="RESULTADO_FINAL",
+                es_resultado_final_evento=True,
+                nota_numerica__isnull=False,
+                activo=True,
+            ).exists()
+            if not consolidada:
+                raise ValidationError(
+                    "No se puede aprobar DEFENSA_PUBLICA sin un resultado público consolidado válido."
+                )
+            resultado = EvaluacionDefensaService.calcular_resultado_final(
+                seguimiento.postulacion, None, auditar=False,
+            )
+            if resultado["nota_final"] is None or resultado["clasificacion"] == EvaluacionDefensa.Resultado.POSTERGADO:
+                raise ValidationError(
+                    "No se puede aprobar DEFENSA_PUBLICA sin un resultado final completo y aprobatorio."
+                )
+            return None
+        if seguimiento.etapa.codigo == "REVISION_TRIBUNAL_PREVIA":
+            from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
+
+            RevisionTribunalPreviaService.validar_aprobacion(seguimiento)
+            return None
         if seguimiento.etapa.codigo != "DOCUMENTO_FINAL":
             return None
 

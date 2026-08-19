@@ -13,7 +13,14 @@ from apps.academico.models import EtapaModalidad
 from apps.modalidades.policies import ModalidadPolicyRegistry
 from apps.modalidades.validators import ModalidadConfigurationValidator
 from apps.postulantes.asignaciones import AsignacionService
-from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, HistorialEstado, Observacion, Postulacion
+from apps.postulantes.models import (
+    AsignacionPostulacion,
+    EstadoPostulacion,
+    HistorialEstado,
+    InformeRevisionTribunalPrevia,
+    Observacion,
+    Postulacion,
+)
 from apps.postulantes.permissions import (IsAssignmentAdminOrRelatedReadOnly,
     IsStaffOrReadOnly, IsWorkflowAdminOrReadOnlyOwner,
     postulaciones_in_scope)
@@ -25,15 +32,18 @@ from apps.postulantes.serializers import (
     FinalizarAsignacionSerializer,
     FlujoPostulacionSerializer,
     HistorialEstadoSerializer,
+    InformeRevisionTribunalSerializer,
     ObservaSeguimientoEtapaSerializer,
     ObservacionSerializer,
     OmitirSeguimientoEtapaSerializer,
     PostulacionSerializer,
+    RegistrarInformeRevisionTribunalSerializer,
     RechazarSeguimientoEtapaSerializer,
     ReemplazarActorSerializer,
     SeguimientoEtapaSerializer,
 )
 from apps.postulantes.services import PostulacionService
+from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
 from apps.postulantes.workflow import WorkflowService
 from apps.postulantes.models import SeguimientoEtapa
 from core.permissions import is_staff_user
@@ -420,6 +430,51 @@ class SeguimientoEtapaViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset.filter(
             Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user)
         ).distinct()
+
+    @extend_schema(
+        request=RegistrarInformeRevisionTribunalSerializer,
+        responses={200: InformeRevisionTribunalSerializer(many=True), 201: InformeRevisionTribunalSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="informes-revision-tribunal",
+        serializer_class=RegistrarInformeRevisionTribunalSerializer,
+    )
+    def informes_revision_tribunal(self, request, pk=None):
+        seguimiento = self.get_object()
+        if request.method == "GET":
+            informes = InformeRevisionTribunalPrevia.objects.filter(
+                seguimiento_etapa=seguimiento,
+            ).select_related(
+                "version_documento_revisada",
+                "evidencia_version",
+                "registrado_por",
+            )
+            serializer = InformeRevisionTribunalSerializer(
+                informes,
+                many=True,
+                context=self.get_serializer_context(),
+            )
+            return Response(serializer.data)
+
+        if not is_staff_user(request.user):
+            raise PermissionDenied("Solo un usuario administrativo puede registrar el informe.")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            informe = RevisionTribunalPreviaService.registrar_informe(
+                seguimiento=seguimiento,
+                usuario=request.user,
+                **serializer.validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise _assignment_validation_error(exc) from exc
+        response_serializer = InformeRevisionTribunalSerializer(
+            informe,
+            context=self.get_serializer_context(),
+        )
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=None, responses={200: SeguimientoEtapaSerializer})
     @action(detail=True, methods=["post"], url_path="iniciar")

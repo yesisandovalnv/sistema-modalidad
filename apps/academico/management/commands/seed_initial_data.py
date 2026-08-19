@@ -67,6 +67,15 @@ OFFICIAL_ESTADOS_DOCUMENTO = [
 
 OFFICIAL_TIPOS_DOCUMENTO = [
     {
+        "codigo": "INFORME_REVISION_TRIBUNAL_PREVIA",
+        "nombre": "Informe de Evaluación del Tribunal",
+        "descripcion": "Evidencia del resultado suficiente o insuficiente emitido en la revisión previa del tribunal.",
+        "obligatorio": True,
+        "permite_multiple_version": True,
+        "tamano_maximo_mb": 10,
+        "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
         "codigo": "DOCUMENTO_FINAL",
         "nombre": "Documento Final",
         "descripcion": "Documento académico final de la modalidad Proyecto de Grado, presentado para revisión y aprobación.",
@@ -97,15 +106,6 @@ OFFICIAL_TIPOS_DOCUMENTO = [
         "codigo": "INFORME_FINAL_TUTOR",
         "nombre": "Informe Final del Tutor",
         "descripcion": "Informe final del tutor que respalda la presentación y revisión del Proyecto de Grado.",
-        "obligatorio": True,
-        "permite_multiple_version": True,
-        "tamano_maximo_mb": 10,
-        "extensiones_permitidas": "pdf,doc,docx",
-    },
-    {
-        "codigo": "REVISION_FINAL_POST_PUBLICA",
-        "nombre": "Revisión Final Post Pública",
-        "descripcion": "Informe o constancia de la revisión final y correcciones posteriores a la defensa pública.",
         "obligatorio": True,
         "permite_multiple_version": True,
         "tamano_maximo_mb": 10,

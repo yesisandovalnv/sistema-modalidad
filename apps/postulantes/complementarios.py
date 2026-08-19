@@ -53,7 +53,9 @@ class EntregaFisicaService:
         _validar_postulacion_editable(obj.postulacion)
         if cantidad_recibida <= 0: raise ValidationError("La cantidad recibida debe ser mayor que cero.")
         obj.cantidad_recibida=cantidad_recibida; obj.fecha_entrega=timezone.now(); obj.recibido_por=usuario; obj.observaciones=observaciones
-        obj.estado=obj.Estado.COMPLETA if obj.cantidad is not None and cantidad_recibida>=obj.cantidad else obj.Estado.PARCIAL
+        # Sin cantidad institucional definida, el registro administrativo explícito
+        # completa la entrega; no infiere una cantidad normativa.
+        obj.estado=obj.Estado.COMPLETA if obj.cantidad is None or cantidad_recibida>=obj.cantidad else obj.Estado.PARCIAL
         obj.save(); _audit(usuario,"REGISTER_PHYSICAL_DELIVERY",f"Entrega {obj.pk}: {cantidad_recibida} recibidos."); return obj
 
     @staticmethod

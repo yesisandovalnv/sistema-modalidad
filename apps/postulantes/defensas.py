@@ -229,7 +229,12 @@ class EvaluacionDefensaService:
             e=EvaluacionDefensa(evento=evento,tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,modalidad_registro=EvaluacionDefensa.ModalidadRegistro.CONSENSO,resultado_cualitativo=resultado,es_resultado_final_evento=True,registrado_por=usuario)
         e.save(); _audit(usuario,"CONSOLIDATE",f"Evento {evento.pk} consolidado.")
         publish_domain_event(EventTypes.EVALUACION_CONSOLIDADA,e,usuario,evento.postulacion,{},f"EVALUACION_CONSOLIDADA:{evento.pk}:{e.pk}")
-        if evento.tipo_evento!=EventoDefensa.Tipo.DEFENSA_PUBLICA and resultado==EvaluacionDefensa.Resultado.SUFICIENTE: WorkflowService.aprobar_etapa(evento.seguimiento_etapa,usuario,"Aprobada por evaluación de defensa.")
+        if evento.tipo_evento==EventoDefensa.Tipo.DEFENSA_PUBLICA:
+            final=EvaluacionDefensaService.calcular_resultado_final(evento.postulacion,None,auditar=False)
+            if final["nota_final"] is not None and final["clasificacion"]!=EvaluacionDefensa.Resultado.POSTERGADO:
+                WorkflowService.aprobar_etapa(evento.seguimiento_etapa,usuario,"Aprobada automáticamente por consolidación pública válida.")
+        elif resultado==EvaluacionDefensa.Resultado.SUFICIENTE:
+            WorkflowService.aprobar_etapa(evento.seguimiento_etapa,usuario,"Aprobada por evaluación de defensa.")
         return e
 
     @staticmethod

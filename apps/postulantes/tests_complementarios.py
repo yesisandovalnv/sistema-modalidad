@@ -36,7 +36,7 @@ class ModelServiceTests(Base,TestCase):
     def test_entrega_no_asume_cantidad_y_registra_parcial(self):
         obj=EntregaFisicaService.crear(self.post,"EJEMPLARES_IMPRESOS","Ejemplares",self.admin)
         obj=EntregaFisicaService.registrar_entrega(obj,2,self.admin)
-        self.assertIsNone(obj.cantidad); self.assertEqual(obj.cantidad_recibida,2); self.assertEqual(obj.estado,"PARCIAL")
+        self.assertIsNone(obj.cantidad); self.assertEqual(obj.cantidad_recibida,2); self.assertEqual(obj.estado,"COMPLETA")
 
     def test_entrega_completa_y_listados(self):
         obj=EntregaFisicaService.crear(self.post,"CD_RESPALDO","CD",self.admin,cantidad=1)

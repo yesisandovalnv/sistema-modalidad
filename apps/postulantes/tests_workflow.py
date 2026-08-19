@@ -215,7 +215,7 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
         with self.assertRaisesMessage(ValidationError, "Las observaciones son obligatorias."):
             WorkflowService.observar_etapa(seguimiento, self.admin, "   ")
 
-    def test_aprobar_cierre_documental_marca_postulacion_concluida(self):
+    def test_aprobar_cierre_documental_bloquea_requisitos_pendientes(self):
         WorkflowService.inicializar_flujo(self.postulacion, self.admin)
         for etapa in (self.etapa_inscripcion, self.etapa_perfil, self.etapa_opcional, self.etapa_cierre):
             seguimiento = SeguimientoEtapa.objects.get(
@@ -224,18 +224,21 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
                 numero_intento=1,
             )
             seguimiento = WorkflowService.iniciar_etapa(seguimiento, self.admin)
-            WorkflowService.aprobar_etapa(seguimiento, self.admin)
+            if etapa == self.etapa_cierre:
+                with self.assertRaises(ValidationError) as error:
+                    WorkflowService.aprobar_etapa(seguimiento, self.admin)
+                self.assertIn("REVISION_FINAL_POST_PUBLICA_APROBADA", str(error.exception))
+                self.assertIn("CONDICION:PLAN_ESTUDIOS", str(error.exception))
+                self.assertIn("ENTREGA:CD_RESPALDO", str(error.exception))
+                self.assertIn("DOCUMENTO:DOCUMENTO_FINAL", str(error.exception))
+            else:
+                WorkflowService.aprobar_etapa(seguimiento, self.admin)
 
         self.postulacion.refresh_from_db()
         cierre = SeguimientoEtapa.objects.get(postulacion=self.postulacion, etapa=self.etapa_cierre, numero_intento=1)
-        self.assertEqual(cierre.estado, SeguimientoEtapa.EstadoChoices.APROBADA)
-        self.assertEqual(self.postulacion.estado_actual.codigo, "CONCLUIDA")
-        self.assertTrue(
-            HistorialEstado.objects.filter(
-                postulacion=self.postulacion,
-                estado_nuevo__codigo="CONCLUIDA",
-            ).exists()
-        )
+        self.assertEqual(cierre.estado, SeguimientoEtapa.EstadoChoices.EN_PROCESO)
+        self.assertNotEqual(self.postulacion.estado_actual.codigo, "CONCLUIDA")
+        self.assertFalse(HistorialEstado.objects.filter(postulacion=self.postulacion, estado_nuevo__codigo="CONCLUIDA").exists())
 
     def test_no_permite_omitir_etapa_obligatoria(self):
         seguimiento = WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0]

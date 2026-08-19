@@ -24,7 +24,7 @@ from apps.documentos.serializers import (
     EstadoDocumentoSerializer,
 )
 from apps.documentos.services import DocumentoService
-from apps.postulantes.models import Postulacion
+from apps.postulantes.models import EventoDefensa, Postulacion
 from core.permissions import IsStaffOrReadOnly
 
 
@@ -114,6 +114,11 @@ class DocumentoPostulacionViewSet(viewsets.ModelViewSet):
         tipo_documento = TipoDocumento.objects.filter(pk=serializer.validated_data["tipo_documento_id"]).first()
         if not tipo_documento:
             raise DRFValidationError({"tipo_documento_id": "El tipo de documento no existe."})
+        evento_defensa = None
+        if serializer.validated_data.get("evento_defensa_id") is not None:
+            evento_defensa = EventoDefensa.objects.filter(pk=serializer.validated_data["evento_defensa_id"]).first()
+            if not evento_defensa:
+                raise DRFValidationError({"evento_defensa_id": "El evento de defensa no existe."})
 
         try:
             version = DocumentoService().subir_documento(
@@ -122,6 +127,7 @@ class DocumentoPostulacionViewSet(viewsets.ModelViewSet):
                 archivo=serializer.validated_data["archivo"],
                 usuario=request.user,
                 request=request,
+                evento_defensa=evento_defensa,
             )
         except DjangoValidationError as exc:
             raise DRFValidationError(str(exc)) from exc

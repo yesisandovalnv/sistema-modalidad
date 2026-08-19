@@ -5,10 +5,12 @@ from apps.postulantes.models import (
     AsignacionPostulacion,
     EstadoPostulacion,
     HistorialEstado,
+    InformeRevisionTribunalPrevia,
     Observacion,
     Postulacion,
     SeguimientoEtapa,
 )
+from apps.documentos.models import VersionDocumento
 from apps.usuarios.models import CustomUser
 
 
@@ -399,6 +401,55 @@ class OmitirSeguimientoEtapaSerializer(serializers.Serializer):
     """Payload para omitir una etapa."""
 
     observaciones = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class RegistrarInformeRevisionTribunalSerializer(serializers.Serializer):
+    version_documento_revisada = serializers.PrimaryKeyRelatedField(
+        queryset=VersionDocumento.all_objects.all(),
+    )
+    resultado = serializers.ChoiceField(choices=InformeRevisionTribunalPrevia.Resultado.choices)
+    observaciones = serializers.CharField(required=False, allow_blank=True, default="")
+    evidencia_version = serializers.PrimaryKeyRelatedField(
+        queryset=VersionDocumento.all_objects.all(),
+    )
+
+    def validate(self, attrs):
+        if (
+            attrs.get("resultado") == InformeRevisionTribunalPrevia.Resultado.INSUFICIENTE
+            and not attrs.get("observaciones", "").strip()
+        ):
+            raise serializers.ValidationError(
+                {"observaciones": "Las observaciones son obligatorias para un resultado INSUFICIENTE."}
+            )
+        return attrs
+
+
+class InformeRevisionTribunalSerializer(serializers.ModelSerializer):
+    resultado_display = serializers.CharField(source="get_resultado_display", read_only=True)
+    numero_version_revisada = serializers.IntegerField(
+        source="version_documento_revisada.numero_version", read_only=True,
+    )
+    documento_final_nombre = serializers.CharField(
+        source="version_documento_revisada.nombre_original", read_only=True,
+    )
+    evidencia_nombre_original = serializers.CharField(
+        source="evidencia_version.nombre_original", read_only=True,
+    )
+    registrado_por_nombre = serializers.SerializerMethodField()
+
+    def get_registrado_por_nombre(self, obj):
+        return obj.registrado_por.nombre_completo or obj.registrado_por.username
+
+    class Meta:
+        model = InformeRevisionTribunalPrevia
+        fields = (
+            "id", "seguimiento_etapa", "version_documento_revisada",
+            "numero_version_revisada", "documento_final_nombre", "resultado",
+            "resultado_display", "observaciones", "evidencia_version",
+            "evidencia_nombre_original", "fecha_registro", "registrado_por",
+            "registrado_por_nombre", "activo", "created_at", "updated_at",
+        )
+        read_only_fields = fields
 
 
 class AsignacionPostulacionSerializer(serializers.ModelSerializer):

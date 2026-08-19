@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -18,6 +18,8 @@ vi.mock('../../services/postulacionesService', () => ({
     obtenerEntregas: vi.fn(), registrarEntrega: vi.fn(),
     obtenerCierre: vi.fn(), aprobarRevisionFinal: vi.fn(), aprobarCierreDocumental: vi.fn(),
     concluirPostulacion: vi.fn(), reabrirCierre: vi.fn(),
+    obtenerCandidatosAsignacion: vi.fn(), asignarActor: vi.fn(),
+    obtenerInformesRevisionTribunal: vi.fn(), registrarInformeRevisionTribunal: vi.fn(),
   },
 }))
 
@@ -125,6 +127,19 @@ const response = {
   },
 }
 
+const tribunalStage = { id: 4, codigo: 'REVISION_TRIBUNAL_PREVIA', nombre: 'Revisión de Tribunal Previa', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+const tribunalResponse = { ...response, flujo: { ...response.flujo, etapa_actual: tribunalStage, etapas: [...response.flujo.etapas, tribunalStage] } }
+const tribunalDocuments = {
+  count: 2, next: null, previous: null, results: [
+    { id: 41, tipo_documento_nombre: 'Documento Final', activo: true, versiones: [{ id: 601, numero_version: 1, nombre_original: 'documento-final.doc', es_version_actual: true, activo: true }] },
+    { id: 42, tipo_documento_nombre: 'Informe de Evaluación del Tribunal', activo: true, versiones: [{ id: 602, numero_version: 1, nombre_original: 'informe-tribunal.pdf', es_version_actual: true, activo: true }] },
+  ],
+}
+const tribunalHistory = [
+  { id: 702, resultado: 'SUFICIENTE', resultado_display: 'Suficiente', numero_version_revisada: 2, evidencia_version: 602, evidencia_nombre_original: 'informe-v2.pdf', fecha_registro: '2026-08-16T12:00:00Z', registrado_por_nombre: 'Administradora', observaciones: 'Versión conforme', activo: true },
+  { id: 701, resultado: 'INSUFICIENTE', resultado_display: 'Insuficiente', numero_version_revisada: 1, evidencia_version: 603, evidencia_nombre_original: 'informe-v1.pdf', fecha_registro: '2026-08-10T12:00:00Z', registrado_por_nombre: 'Administradora', observaciones: 'Requiere correcciones', activo: true },
+]
+
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/postulaciones/7']}>
@@ -158,6 +173,16 @@ function renderApplicationManagerPage() {
   return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 }
 
+function renderAssignmentManagerPage() {
+  const auth = { user: { id: 9 }, hasPermission: (name) => name === 'puede_gestionar_asignaciones' }
+  return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+}
+
+function renderWorkflowManagerPage() {
+  const auth = { user: { id: 9 }, hasPermission: (name) => name === 'puede_gestionar_seguimiento' }
+  return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+}
+
 describe('ExpedientePage US-008', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -165,11 +190,21 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.inicializarFlujo.mockResolvedValue({})
     postulacionesService.obtenerHistorial.mockResolvedValue(historyResponse)
     postulacionesService.obtenerActores.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+    postulacionesService.obtenerCandidatosAsignacion.mockResolvedValue({ count: 2, next: null, previous: null, results: [
+      { id: 40, username: 'Admin', nombre_completo: 'Yesenia Sandoval', codigo: 'Admin', rol_codigo: 'ADMINISTRADOR', rol_nombre: 'Administrador', activo: true },
+      { id: 41, username: 'Johnny', nombre_completo: 'Johnny Rosas', codigo: 'Johnny', rol_codigo: 'DOCENTE', rol_nombre: 'Docente', activo: true },
+    ] })
+    postulacionesService.asignarActor.mockResolvedValue({ id: 90 })
+    postulacionesService.obtenerInformesRevisionTribunal.mockResolvedValue([])
+    postulacionesService.registrarInformeRevisionTribunal.mockResolvedValue({ id: 501, resultado: 'SUFICIENTE' })
     postulacionesService.obtenerDocumentos.mockResolvedValue(documentsResponse)
     postulacionesService.obtenerVersiones.mockResolvedValue(versionsResponse)
     postulacionesService.descargarVersion.mockResolvedValue({ blob: new Blob(['archivo']), filename: 'informe-final.pdf' })
     postulacionesService.obtenerObservaciones.mockResolvedValue(observationsResponse)
-    postulacionesService.obtenerTiposDocumento.mockResolvedValue({ results: [{ id: 4, nombre: 'Informe final', activo: true }] })
+    postulacionesService.obtenerTiposDocumento.mockResolvedValue({ results: [
+      { id: 4, nombre: 'Informe final', activo: true },
+      { id: 5, codigo: 'ACTA_DEFENSA', nombre: 'Acta de Defensa', activo: true },
+    ] })
     postulacionesService.cargarDocumento.mockResolvedValue({ id: 303, numero_version: 3, es_version_actual: true })
     postulacionesService.aprobarDocumento.mockResolvedValue({ id: 31, estado_codigo: 'APR' })
     postulacionesService.rechazarDocumento.mockResolvedValue({ id: 31, estado_codigo: 'REC' })
@@ -422,6 +457,78 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.obtenerActores).toHaveBeenCalledWith('7', false, 1, expect.any(AbortSignal))
     expect(postulacionesService.obtenerActores).toHaveBeenCalledTimes(2)
     expect(within(card).queryByRole('button', { name: /asignar|reemplazar|finalizar|designar/i })).not.toBeInTheDocument()
+  })
+
+  it('muestra Asignar actor solo con su permiso y reutiliza candidatos y etapas del expediente', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderAssignmentManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Asignar actor' }))
+    const dialog = screen.getByRole('dialog', { name: 'Asignar actor' })
+    expect(await within(dialog).findByRole('option', { name: /Johnny Rosas.*Docente.*Johnny/ })).toBeInTheDocument()
+    expect(postulacionesService.obtenerCandidatosAsignacion).toHaveBeenCalledWith(
+      { search: '', rol: '', ordering: 'apellido_paterno', page: 1 }, expect.any(AbortSignal),
+    )
+    for (const type of ['Tutor', 'Tribunal', 'Docente de modalidad', 'Presidente', 'Secretario']) {
+      expect(within(dialog).getByRole('option', { name: type })).toBeInTheDocument()
+    }
+    expect(within(dialog).getByRole('option', { name: /Defensa Privada.*intento 2.*OBSERVADA/ })).toHaveValue('12')
+    await userEvent.type(within(dialog).getByLabelText('Buscar candidato'), 'Rosas')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Buscar' }))
+    await waitFor(() => expect(postulacionesService.obtenerCandidatosAsignacion).toHaveBeenLastCalledWith(
+      { search: 'Rosas', rol: '', ordering: 'apellido_paterno', page: 1 }, expect.any(AbortSignal),
+    ))
+  })
+
+  it('representa Tribunal 1 a 3, deshabilita órdenes ocupados e impide un cuarto', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerActores.mockImplementation((_id, activo) => Promise.resolve(activo ? {
+      count: 3, next: null, previous: null, results: [1, 2, 3].map((order) => ({ id: order, usuario_nombre: `Tribunal ${order}`, tipo_participacion: 'TRIBUNAL', tipo_participacion_display: 'Tribunal', orden_cargo: order, seguimiento_etapa: 12, activo: true })),
+    } : historicalActorsResponse))
+    renderAssignmentManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Asignar actor' }))
+    const dialog = screen.getByRole('dialog', { name: 'Asignar actor' })
+    await userEvent.selectOptions(within(dialog).getByLabelText('Tipo de participación'), 'TRIBUNAL')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Etapa asociada (opcional)'), '12')
+    expect(within(dialog).getByText(/Tribunales designados:/)).toHaveTextContent('3 de 3')
+    for (const order of [1, 2, 3]) expect(within(dialog).getByRole('option', { name: `Tribunal ${order} — ocupado` })).toBeDisabled()
+    expect(within(dialog).getByRole('button', { name: 'Confirmar asignación' })).toBeDisabled()
+    expect(within(dialog).getByText(/esto no representa quórum/i)).toBeInTheDocument()
+  })
+
+  it('envía etapa opcional, observaciones y orden de tribunal y recarga solo actores vigentes', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderAssignmentManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Asignar actor' }))
+    const dialog = screen.getByRole('dialog', { name: 'Asignar actor' })
+    await within(dialog).findByRole('option', { name: /Johnny Rosas/ })
+    await userEvent.selectOptions(within(dialog).getByLabelText('Candidato'), '41')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Tipo de participación'), 'TRIBUNAL')
+    expect(within(dialog).getByText(/Tribunales designados:/)).toHaveTextContent('0 de 3')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Etapa asociada (opcional)'), '12')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Orden del tribunal'), '2')
+    await userEvent.type(within(dialog).getByLabelText('Observaciones (opcional)'), '  Revisión previa  ')
+    await userEvent.dblClick(within(dialog).getByRole('button', { name: 'Confirmar asignación' }))
+    await waitFor(() => expect(postulacionesService.asignarActor).toHaveBeenCalledWith(7, {
+      usuario: 41, tipo_participacion: 'TRIBUNAL', orden_cargo: 2, seguimiento_etapa: 12, observaciones: 'Revisión previa',
+    }, expect.any(AbortSignal)))
+    expect(postulacionesService.asignarActor).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(postulacionesService.obtenerActores.mock.calls.filter(([, activo]) => activo === true)).toHaveLength(2))
+    expect(postulacionesService.obtenerActores.mock.calls.filter(([, activo]) => activo === false)).toHaveLength(1)
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+  })
+
+  it('permite asignar sin etapa y muestra errores de validación del backend', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.asignarActor.mockRejectedValue({ status: 400, message: 'Revisa los datos de la asignación.', fields: { usuario: ['El candidato ya está asignado.'] } })
+    renderAssignmentManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Asignar actor' }))
+    const dialog = screen.getByRole('dialog', { name: 'Asignar actor' })
+    await within(dialog).findByRole('option', { name: /Johnny Rosas/ })
+    await userEvent.selectOptions(within(dialog).getByLabelText('Candidato'), '41')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Tipo de participación'), 'TUTOR')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar asignación' }))
+    expect(postulacionesService.asignarActor).toHaveBeenCalledWith(7, { usuario: 41, tipo_participacion: 'TUTOR', observaciones: '' }, expect.any(AbortSignal))
+    expect(await within(dialog).findByText('El candidato ya está asignado.')).toBeInTheDocument()
   })
 
   it('pagina solo el bloque vigente sin recargar el expediente', async () => {
@@ -757,6 +864,7 @@ describe('ExpedientePage US-008', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
     expect(await screen.findByRole('option', { name: 'Informe final' })).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText('Tipo documental'), '4')
+    expect(screen.queryByLabelText('Defensa Pública finalizada')).not.toBeInTheDocument()
     const file = new File(['%PDF-1.4'], 'informe.pdf', { type: 'application/pdf' })
     await userEvent.upload(screen.getByLabelText('Archivo'), file)
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cargar documento' }))
@@ -767,6 +875,27 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.obtenerDocumentos).toHaveBeenCalledTimes(2)
   })
 
+  it('carga un ACTA_DEFENSA vinculada a una Defensa Pública finalizada', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockResolvedValue({
+      ...defensesResponse,
+      results: [defenseRows[0], { ...defenseRows[1], id: 86, tipo_evento: 'DEFENSA_PUBLICA', estado: 'PROGRAMADA' }],
+    })
+    renderOwnerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+    await userEvent.selectOptions(screen.getByLabelText('Tipo documental'), '5')
+    const defenseSelect = screen.getByLabelText('Defensa Pública finalizada')
+    expect(defenseSelect).toBeRequired()
+    expect([...defenseSelect.options].map((option) => option.value)).toEqual(['', '81'])
+    const file = new File(['%PDF-1.4'], 'acta.pdf', { type: 'application/pdf' })
+    await userEvent.upload(screen.getByLabelText('Archivo'), file)
+    await userEvent.selectOptions(defenseSelect, '81')
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cargar documento' }))
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledWith(
+      { postulacionId: 7, tipoDocumentoId: '5', archivo: file, eventoDefensaId: '81' }, expect.any(AbortSignal),
+    ))
+  })
+
   it('carga una nueva versión derivando postulación y tipo del detalle', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
     renderOwnerPage()
@@ -775,7 +904,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
     const file = new File(['%PDF-1.4'], 'informe-v3.pdf', { type: 'application/pdf' })
     await userEvent.upload(screen.getByLabelText('Archivo'), file)
-    await userEvent.click(within(screen.getAllByRole('dialog').at(-1)).getByRole('button', { name: 'Cargar nueva versión' }))
+    fireEvent.submit(screen.getByLabelText('Archivo').closest('form'))
     await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledWith(
       { postulacionId: 7, tipoDocumentoId: 4, archivo: file }, expect.any(AbortSignal),
     ))
@@ -996,6 +1125,97 @@ describe('ExpedientePage US-008', () => {
     expect(card).toHaveTextContent('84.00')
     expect(card).toHaveTextContent(/no sustituye el acta oficial, firmas, legalización, titulación/i)
     expect(within(card).queryByRole('button', { name: /aprobar|concluir|reabrir/i })).not.toBeInTheDocument()
+  })
+
+  it('carga la ausencia de informes y muestra el registro solo con capacidad administrativa', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(tribunalResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue(tribunalDocuments)
+    const managed = renderWorkflowManagerPage()
+    expect(await screen.findByText('No existen informes registrados para esta etapa.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Registrar informe del tribunal' })).toBeInTheDocument()
+    expect(postulacionesService.obtenerInformesRevisionTribunal).toHaveBeenCalledWith(4, expect.any(AbortSignal))
+    managed.unmount()
+
+    renderOwnerPage()
+    await screen.findByRole('heading', { name: 'Revisión de Tribunal Previa' })
+    expect(screen.queryByRole('button', { name: 'Registrar informe del tribunal' })).not.toBeInTheDocument()
+  })
+
+  it('registra SUFICIENTE con la versión y evidencia correctas y recarga únicamente informes', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(tribunalResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue(tribunalDocuments)
+    renderWorkflowManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Registrar informe del tribunal' }))
+    const dialog = screen.getByRole('dialog', { name: 'Registrar informe del tribunal' })
+    expect(within(dialog).getByText('Documento Final — Versión 1')).toBeInTheDocument()
+    await userEvent.selectOptions(within(dialog).getByLabelText('Resultado'), 'SUFICIENTE')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Evidencia'), '602')
+    await userEvent.type(within(dialog).getByLabelText(/Observaciones/), 'Consenso suficiente')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Registrar informe' }))
+
+    await waitFor(() => expect(postulacionesService.registrarInformeRevisionTribunal).toHaveBeenCalledWith(4, {
+      version_documento_revisada: 601, resultado: 'SUFICIENTE', observaciones: 'Consenso suficiente', evidencia_version: 602,
+    }, expect.any(AbortSignal)))
+    await waitFor(() => expect(postulacionesService.obtenerInformesRevisionTribunal).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole('dialog', { name: 'Registrar informe del tribunal' })).not.toBeInTheDocument()
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.obtenerDocumentos).toHaveBeenCalledTimes(1)
+  })
+
+  it('exige observaciones para INSUFICIENTE y evita el doble envío', async () => {
+    let resolveRequest
+    postulacionesService.registrarInformeRevisionTribunal.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve }))
+    postulacionesService.obtenerExpediente.mockResolvedValue(tribunalResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue(tribunalDocuments)
+    renderWorkflowManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Registrar informe del tribunal' }))
+    const dialog = screen.getByRole('dialog', { name: 'Registrar informe del tribunal' })
+    await userEvent.selectOptions(within(dialog).getByLabelText('Resultado'), 'INSUFICIENTE')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Evidencia'), '602')
+    const form = within(dialog).getByRole('button', { name: 'Registrar informe' }).closest('form')
+    fireEvent.submit(form)
+    expect(await within(dialog).findByText(/observaciones son obligatorias/i)).toBeInTheDocument()
+    expect(postulacionesService.registrarInformeRevisionTribunal).not.toHaveBeenCalled()
+    await userEvent.type(within(dialog).getByLabelText(/Observaciones/), 'Corregir resultados')
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect(postulacionesService.registrarInformeRevisionTribunal).toHaveBeenCalledTimes(1)
+    await act(async () => resolveRequest({ id: 9 }))
+  })
+
+  it('muestra historial ordenado y descarga la evidencia protegida', async () => {
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:tribunal') })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    postulacionesService.obtenerExpediente.mockResolvedValue(tribunalResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue(tribunalDocuments)
+    postulacionesService.obtenerInformesRevisionTribunal.mockResolvedValue(tribunalHistory)
+    renderWorkflowManagerPage()
+    const sufficient = await screen.findByRole('heading', { name: 'Suficiente' })
+    const insufficient = screen.getByRole('heading', { name: 'Insuficiente' })
+    expect(sufficient.compareDocumentPosition(insufficient) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText('Versión conforme')).toBeInTheDocument()
+    await userEvent.click(screen.getAllByRole('button', { name: 'Descargar evidencia' })[0])
+    await waitFor(() => expect(postulacionesService.descargarVersion).toHaveBeenCalledWith(602, 'informe-tribunal.pdf'))
+    vi.restoreAllMocks()
+  })
+
+  it.each([
+    [400, 'Revisa el resultado.', { resultado: ['Resultado inválido.'] }, 'Resultado inválido.'],
+    [403, 'No tienes autorización para gestionar los informes del tribunal.', {}, null],
+    [404, 'El seguimiento o informe solicitado ya no está disponible.', {}, null],
+  ])('presenta errores %s del backend completos y por campo', async (status, message, fields, fieldText) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(tribunalResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue(tribunalDocuments)
+    postulacionesService.registrarInformeRevisionTribunal.mockRejectedValue({ status, message, fields })
+    renderWorkflowManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Registrar informe del tribunal' }))
+    const dialog = screen.getByRole('dialog', { name: 'Registrar informe del tribunal' })
+    await userEvent.selectOptions(within(dialog).getByLabelText('Resultado'), 'SUFICIENTE')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Evidencia'), '602')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Registrar informe' }))
+    expect(await within(dialog).findByText(message)).toBeInTheDocument()
+    if (fieldText) expect(within(dialog).getByText(fieldText)).toBeInTheDocument()
   })
 
   it('aprueba revisión final con confirmación y actualización parcial', async () => {

@@ -140,6 +140,47 @@ describe('postulacionesService', () => {
     await expect(postulacionesService.obtenerActores(7, false, 1)).rejects.toEqual({ canceled: true })
   })
 
+  it('consulta candidatos de asignación con búsqueda y paginación exactas', async () => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: { count: 2, next: null, previous: null, results: [] } })
+    await postulacionesService.obtenerCandidatosAsignacion({ search: 'Rosas', rol: 'DOCENTE', ordering: 'apellido_paterno', page: 2 }, signal)
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/usuarios/candidatos-asignacion/', {
+      params: { search: 'Rosas', rol: 'DOCENTE', ordering: 'apellido_paterno', page: 2 }, signal,
+    })
+  })
+
+  it('crea una asignación con el payload intacto', async () => {
+    const signal = new AbortController().signal
+    const payload = { usuario: 41, tipo_participacion: 'TRIBUNAL', orden_cargo: 2, seguimiento_etapa: 4, observaciones: 'Revisión previa' }
+    apiClient.post.mockResolvedValue({ data: { id: 90, ...payload } })
+    await expect(postulacionesService.asignarActor(2, payload, signal)).resolves.toMatchObject({ id: 90 })
+    expect(apiClient.post).toHaveBeenCalledWith('/api/v1/postulaciones/2/asignaciones/asignar/', payload, { signal })
+  })
+
+  it('conserva los errores por campo al rechazar una asignación', async () => {
+    apiClient.post.mockRejectedValue({ response: { status: 400, data: { orden_cargo: ['Orden ocupado.'] } } })
+    await expect(postulacionesService.asignarActor(2, {})).rejects.toEqual({
+      status: 400, message: 'Revisa los datos de la asignación.', fields: { orden_cargo: ['Orden ocupado.'] },
+    })
+  })
+
+  it.each([
+    ['obtenerCandidatosAsignacion', [{ page: 1 }], 403, 'No tienes autorización para gestionar los candidatos de asignación.'],
+    ['asignarActor', [2, {}], 404, 'La postulación, el candidato o la etapa ya no está disponible.'],
+  ])('normaliza errores de gestión en %s', async (method, args, status, message) => {
+    const clientMethod = method === 'asignarActor' ? apiClient.post : apiClient.get
+    clientMethod.mockRejectedValue({ response: { status } })
+    await expect(postulacionesService[method](...args)).rejects.toMatchObject({ status, message })
+  })
+
+  it.each([
+    ['obtenerCandidatosAsignacion', [{}], 'get'],
+    ['asignarActor', [2, {}], 'post'],
+  ])('cancela %s', async (method, args, clientMethod) => {
+    apiClient[clientMethod].mockRejectedValue({ code: 'ERR_CANCELED' })
+    await expect(postulacionesService[method](...args)).rejects.toEqual({ canceled: true })
+  })
+
   it('consulta una sola página de defensas con postulación y orden exactos', async () => {
     const signal = new AbortController().signal
     apiClient.get.mockResolvedValue({ data: { count: 21, next: 'page=3', previous: 'page=1', results: [] } })
@@ -148,6 +189,40 @@ describe('postulacionesService', () => {
       params: { postulacion: 7, ordering: '-fecha_programada,-id', page: 2 }, signal,
     })
     expect(apiClient.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('consulta los informes de revisión del seguimiento exacto', async () => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: [{ id: 1, resultado: 'SUFICIENTE' }] })
+    await expect(postulacionesService.obtenerInformesRevisionTribunal(4, signal)).resolves.toHaveLength(1)
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/seguimientos-etapa/4/informes-revision-tribunal/', { signal })
+  })
+
+  it('registra el informe de revisión con el payload intacto', async () => {
+    const signal = new AbortController().signal
+    const payload = { version_documento_revisada: 1, resultado: 'SUFICIENTE', observaciones: 'Conforme', evidencia_version: 2 }
+    apiClient.post.mockResolvedValue({ data: { id: 8, ...payload } })
+    await expect(postulacionesService.registrarInformeRevisionTribunal(4, payload, signal)).resolves.toMatchObject({ id: 8 })
+    expect(apiClient.post).toHaveBeenCalledWith('/api/v1/seguimientos-etapa/4/informes-revision-tribunal/', payload, { signal })
+  })
+
+  it.each([
+    ['obtenerInformesRevisionTribunal', [4], 403, 'No tienes autorización para gestionar los informes del tribunal.'],
+    ['obtenerInformesRevisionTribunal', [4], 404, 'El seguimiento o informe solicitado ya no está disponible.'],
+    ['registrarInformeRevisionTribunal', [4, {}], 400, 'La versión no corresponde al Documento Final.'],
+  ])('normaliza el error %s de informes del tribunal', async (method, args, status, message) => {
+    const clientMethod = method === 'registrarInformeRevisionTribunal' ? apiClient.post : apiClient.get
+    const data = status === 400 ? { version_documento_revisada: ['Versión inválida.'], non_field_errors: ['La versión no corresponde al Documento Final.'] } : undefined
+    clientMethod.mockRejectedValue({ response: { status, data } })
+    await expect(postulacionesService[method](...args)).rejects.toMatchObject({ status, message, ...(data ? { fields: data } : {}) })
+  })
+
+  it.each([
+    ['obtenerInformesRevisionTribunal', [4], 'get'],
+    ['registrarInformeRevisionTribunal', [4, {}], 'post'],
+  ])('cancela %s sin presentar error', async (method, args, clientMethod) => {
+    apiClient[clientMethod].mockRejectedValue({ code: 'ERR_CANCELED' })
+    await expect(postulacionesService[method](...args)).rejects.toEqual({ canceled: true })
   })
 
   it('consulta el quórum únicamente para el evento indicado', async () => {

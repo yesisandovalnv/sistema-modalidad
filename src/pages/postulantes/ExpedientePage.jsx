@@ -41,6 +41,9 @@ export default function ExpedientePage() {
   const [actorsView, setActorsView] = useState({ id: null, activePage: 1, historicalPage: 1 })
   const [activeActorsRevision, setActiveActorsRevision] = useState(0)
   const [historicalActorsRevision, setHistoricalActorsRevision] = useState(0)
+  const [assignment, setAssignment] = useState(null)
+  const assignmentController = useRef(null)
+  const assignmentSubmitting = useRef(false)
   const activeActorsPage = String(actorsView.id) === String(id) ? actorsView.activePage : 1
   const historicalActorsPage = String(actorsView.id) === String(id) ? actorsView.historicalPage : 1
   const [documents, setDocuments] = useState({ data: null, loading: true, error: '' })
@@ -71,6 +74,11 @@ export default function ExpedientePage() {
   const defenseOperationController = useRef(null)
   const [flowInitialization, setFlowInitialization] = useState({ submitting: false, error: '' })
   const flowInitializationController = useRef(null)
+  const [tribunalReports, setTribunalReports] = useState({ data: null, loading: false, error: '' })
+  const [tribunalReportsRevision, setTribunalReportsRevision] = useState(0)
+  const [tribunalReportDialog, setTribunalReportDialog] = useState(null)
+  const tribunalReportController = useRef(null)
+  const tribunalReportSubmitting = useRef(false)
 
   useEffect(() => {
     uploadController.current?.abort()
@@ -89,6 +97,15 @@ export default function ExpedientePage() {
     flowInitializationController.current?.abort()
     flowInitializationController.current = null
     setFlowInitialization({ submitting: false, error: '' })
+    assignmentController.current?.abort()
+    assignmentController.current = null
+    assignmentSubmitting.current = false
+    setAssignment(null)
+    tribunalReportController.current?.abort()
+    tribunalReportController.current = null
+    tribunalReportSubmitting.current = false
+    setTribunalReportDialog(null)
+    setTribunalReports({ data: null, loading: false, error: '' })
   }, [id])
 
   useEffect(() => () => {
@@ -97,6 +114,8 @@ export default function ExpedientePage() {
     quorumController.current?.abort()
     defenseOperationController.current?.abort()
     flowInitializationController.current?.abort()
+    assignmentController.current?.abort()
+    tribunalReportController.current?.abort()
   }, [])
 
   useEffect(() => {
@@ -215,6 +234,24 @@ export default function ExpedientePage() {
     return () => controller.abort()
   }, [selectedVersion, observationsPage, observationsRevision])
 
+  useEffect(() => {
+    const stage = data?.flujo?.etapas?.find((item) => item.codigo === 'REVISION_TRIBUNAL_PREVIA')
+    if (!stage) {
+      setTribunalReports({ data: null, loading: false, error: '' })
+      return undefined
+    }
+    const controller = new AbortController()
+    setTribunalReports({ data: null, loading: true, error: '' })
+    postulacionesService.obtenerInformesRevisionTribunal(stage.id, controller.signal)
+      .then((reports) => {
+        if (!controller.signal.aborted) setTribunalReports({ data: reports, loading: false, error: '' })
+      })
+      .catch((requestError) => {
+        if (!requestError.canceled && !controller.signal.aborted) setTribunalReports({ data: null, loading: false, error: requestError.message })
+      })
+    return () => controller.abort()
+  }, [data, tribunalReportsRevision])
+
   if (loading || error || !data) {
     return (
       <section className="mx-auto max-w-5xl space-y-5">
@@ -244,6 +281,15 @@ export default function ExpedientePage() {
   const canManageEvaluations = auth?.hasPermission?.('puede_gestionar_evaluaciones') === true && canManageDefenses
   const canManageClosure = auth?.hasPermission?.('puede_gestionar_cierre') === true
   const canManageApplications = auth?.hasPermission?.('puede_gestionar_postulaciones') === true
+  const canManageAssignments = auth?.hasPermission?.('puede_gestionar_asignaciones') === true
+  const canManageTribunalReports = auth?.hasPermission?.('puede_gestionar_seguimiento') === true
+  const tribunalReviewStage = (flujo.etapas || []).find((stage) => stage.codigo === 'REVISION_TRIBUNAL_PREVIA')
+  const documentRows = documents.data?.results || []
+  const finalDocument = documentRows.find((document) => document.tipo_documento_nombre === 'Documento Final' && document.activo !== false)
+  const currentFinalVersion = finalDocument?.versiones?.find((version) => version.es_version_actual && version.activo !== false)
+  const evidenceDocuments = documentRows.filter((document) => document.tipo_documento_nombre === 'Informe de Evaluación del Tribunal' && document.activo !== false)
+  const currentEvidenceVersions = evidenceDocuments.flatMap((document) => document.versiones || []).filter((version) => version.es_version_actual && version.activo !== false)
+  const allDocumentVersions = documentRows.flatMap((document) => document.versiones || [])
   const canInitializeFlow = canManageApplications
     && detalle.activo !== false
     && data.capacidades?.soportada === true
@@ -269,6 +315,34 @@ export default function ExpedientePage() {
     } catch (requestError) {
       if (!requestError.canceled && !controller.signal.aborted) {
         setFlowInitialization({ submitting: false, error: requestError.message })
+      }
+    }
+  }
+
+  const closeAssignment = () => {
+    assignmentController.current?.abort()
+    assignmentController.current = null
+    assignmentSubmitting.current = false
+    setAssignment(null)
+  }
+
+  const submitAssignment = async (payload) => {
+    if (assignmentSubmitting.current) return
+    assignmentSubmitting.current = true
+    assignmentController.current?.abort()
+    const controller = new AbortController()
+    assignmentController.current = controller
+    setAssignment((current) => ({ ...current, submitting: true, fields: {}, error: '' }))
+    try {
+      await postulacionesService.asignarActor(detalle.id, payload, controller.signal)
+      if (!controller.signal.aborted) {
+        closeAssignment()
+        setActiveActorsRevision((value) => value + 1)
+      }
+    } catch (requestError) {
+      if (!requestError.canceled && !controller.signal.aborted) {
+        assignmentSubmitting.current = false
+        setAssignment((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
       }
     }
   }
@@ -301,6 +375,10 @@ export default function ExpedientePage() {
     const form = event.currentTarget.elements
     const file = form.archivo?.files?.[0]
     const typeId = upload.document?.tipo_documento || form.tipo_documento_id?.value
+    const selectedType = upload.document || documentTypes.data.find((type) => String(type.id) === String(typeId))
+    const isDefenseRecord = selectedType?.codigo === 'ACTA_DEFENSA' || selectedType?.tipo_documento_codigo === 'ACTA_DEFENSA'
+    const eventoDefensaId = form.evento_defensa_id?.value
+    const publicDefenses = (defenses.data?.results || defenses.data || []).filter((item) => item.tipo_evento === 'DEFENSA_PUBLICA' && item.estado === 'FINALIZADA' && item.activo !== false)
     if (!file || typeof file.size !== 'number' || file.size === 0 || !file.name) {
       setUpload((current) => ({ ...current, fields: { archivo: ['Selecciona un archivo no vacío.'] }, error: '' }))
       return
@@ -310,7 +388,13 @@ export default function ExpedientePage() {
     uploadController.current = controller
     setUpload((current) => ({ ...current, submitting: true, fields: {}, error: '' }))
     try {
-      await postulacionesService.cargarDocumento({ postulacionId: detalle.id, tipoDocumentoId: typeId, archivo: file }, controller.signal)
+      if (isDefenseRecord && publicDefenses.length && !eventoDefensaId) {
+        setUpload((current) => ({ ...current, fields: { evento_defensa_id: ['Selecciona la Defensa Pública finalizada.'] }, error: '' }))
+        return
+      }
+      const uploadPayload = { postulacionId: detalle.id, tipoDocumentoId: typeId, archivo: file }
+      if (eventoDefensaId) uploadPayload.eventoDefensaId = eventoDefensaId
+      await postulacionesService.cargarDocumento(uploadPayload, controller.signal)
       setUpload((current) => ({ ...current, submitting: false, success: current.document ? 'Nueva versión cargada' : 'Documento cargado' }))
       setDocumentsRevision((value) => value + 1)
       if (upload.document) setVersionsRevision((value) => value + 1)
@@ -468,6 +552,54 @@ export default function ExpedientePage() {
     }
   }
 
+  const closeTribunalReport = () => {
+    tribunalReportController.current?.abort()
+    tribunalReportController.current = null
+    tribunalReportSubmitting.current = false
+    setTribunalReportDialog(null)
+  }
+
+  const submitTribunalReport = async (event) => {
+    event.preventDefault()
+    if (!tribunalReportDialog || tribunalReportSubmitting.current || !tribunalReviewStage) return
+    const elements = event.currentTarget.elements
+    const resultado = elements.resultado.value
+    const observaciones = elements.observaciones.value.trim()
+    const evidenciaVersion = Number(elements.evidencia_version.value) || null
+    const fields = {}
+    if (!resultado) fields.resultado = ['Selecciona un resultado.']
+    if (!evidenciaVersion) fields.evidencia_version = ['Selecciona la evidencia del informe.']
+    if (resultado === 'INSUFICIENTE' && !observaciones) fields.observaciones = ['Las observaciones son obligatorias para un resultado insuficiente.']
+    if (!currentFinalVersion) fields.version_documento_revisada = ['No existe una versión actual activa del Documento Final en el expediente.']
+    if (Object.keys(fields).length) {
+      setTribunalReportDialog((current) => ({ ...current, fields, error: '' }))
+      return
+    }
+    const payload = {
+      version_documento_revisada: currentFinalVersion.id,
+      resultado,
+      observaciones,
+      evidencia_version: evidenciaVersion,
+    }
+    const controller = new AbortController()
+    tribunalReportController.current?.abort()
+    tribunalReportController.current = controller
+    tribunalReportSubmitting.current = true
+    setTribunalReportDialog((current) => ({ ...current, submitting: true, fields: {}, error: '' }))
+    try {
+      await postulacionesService.registrarInformeRevisionTribunal(tribunalReviewStage.id, payload, controller.signal)
+      tribunalReportController.current = null
+      tribunalReportSubmitting.current = false
+      setTribunalReportDialog(null)
+      setTribunalReportsRevision((value) => value + 1)
+    } catch (requestError) {
+      if (!requestError.canceled && !controller.signal.aborted) {
+        tribunalReportSubmitting.current = false
+        setTribunalReportDialog((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
+      }
+    }
+  }
+
   return (
     <section className="mx-auto max-w-5xl space-y-5">
       <PageHeader
@@ -528,6 +660,18 @@ export default function ExpedientePage() {
         )}
       </Card>
 
+      {tribunalReviewStage && <TribunalReviewReports
+        stage={tribunalReviewStage}
+        reports={tribunalReports}
+        canManage={canManageTribunalReports}
+        versions={allDocumentVersions}
+        onRetry={() => setTribunalReportsRevision((value) => value + 1)}
+        onRegister={() => {
+          tribunalReportSubmitting.current = false
+          setTribunalReportDialog({ submitting: false, fields: {}, error: '' })
+        }}
+      />}
+
       <Card className="overflow-hidden">
         <h2 className="text-xl font-bold">Resultado académico técnico</h2>
         {resultado.error ? <PartialState message={resultado.error} onRetry={() => setRevision((value) => value + 1)} /> : (
@@ -578,6 +722,8 @@ export default function ExpedientePage() {
         onHistoricalPage={(page) => setActorsView((current) => ({ id, activePage: String(current.id) === String(id) ? current.activePage : 1, historicalPage: page }))}
         onRetryActive={() => setActiveActorsRevision((value) => value + 1)}
         onRetryHistorical={() => setHistoricalActorsRevision((value) => value + 1)}
+        canManage={canManageAssignments}
+        onAssign={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '' }) }}
       />
 
       <DefensesCard
@@ -605,6 +751,8 @@ export default function ExpedientePage() {
         }}
       />
 
+      {upload && <UploadDialog upload={upload} types={documentTypes} defenses={defenses} onSubmit={submitUpload} onClose={closeUpload} />}
+
       {selectedDocument && (
         <DocumentDetail
           document={selectedDocument}
@@ -627,16 +775,74 @@ export default function ExpedientePage() {
       )}
       {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} canEvaluate={canManageEvaluations} onParticipantsChanged={refreshSelectedDefense} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
-      {upload && <UploadDialog upload={upload} types={documentTypes} onSubmit={submitUpload} onClose={closeUpload} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
+      {assignment && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} onSubmit={submitAssignment} onClose={closeAssignment} />}
+      {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
     </section>
   )
 }
 
-function ActorsCard({ active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical }) {
+function TribunalReviewReports({ stage, reports, canManage, versions, onRetry, onRegister }) {
+  const rows = Array.isArray(reports.data) ? reports.data : reports.data?.results || []
+  const canRegister = canManage && ['EN_PROCESO', 'OBSERVADA'].includes(stage.estado)
+  const versionById = new Map(versions.map((version) => [String(version.id), version]))
+  return <Card className="overflow-hidden" aria-labelledby="revision-tribunal-title">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><h2 id="revision-tribunal-title" className="text-xl font-bold">Revisión de Tribunal Previa</h2><p className="mt-1 text-sm text-slate-500">Informes del tribunal vinculados a versiones exactas del Documento Final.</p></div>
+      {canRegister && <Button onClick={onRegister}>Registrar informe del tribunal</Button>}
+    </div>
+    {reports.loading && <p role="status" className="mt-4 text-sm">Cargando informes del tribunal…</p>}
+    {reports.error && <SectionError message={reports.error} label="Reintentar informes" onRetry={onRetry} />}
+    {!reports.loading && !reports.error && rows.length === 0 && <p className="mt-4 text-sm text-slate-500">No existen informes registrados para esta etapa.</p>}
+    {!reports.loading && !reports.error && rows.length > 0 && <ol className="mt-5 space-y-4">{rows.map((report) => {
+      const evidence = versionById.get(String(report.evidencia_version)) || { id: report.evidencia_version, nombre_original: report.evidencia_nombre_original }
+      return <li key={report.id} className="rounded-lg border p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{report.resultado_display || formatReportResult(report.resultado)}</h3><span className="rounded-full border px-2 py-1 text-xs font-semibold">{report.activo ? 'Activo' : 'Histórico'}</span></div>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+          <Info label="Documento Final revisado" value={`Versión ${report.numero_version_revisada ?? 'no registrada'}`} />
+          <Info label="Evidencia" value={`${report.evidencia_nombre_original || evidence.nombre_original || 'No registrada'}${evidence.numero_version ? ` — Versión ${evidence.numero_version}` : ''}`} />
+          <Info label="Fecha" value={formatDocumentDate(report.fecha_registro)} />
+          <Info label="Registrado por" value={report.registrado_por_nombre || 'No registrado'} />
+        </dl>
+        <p className="mt-3 break-words text-sm"><span className="font-semibold">Observaciones:</span> {report.observaciones?.trim() || 'Sin observaciones'}</p>
+        {evidence.id && <div className="mt-3"><DownloadVersionButton version={evidence} label="Descargar evidencia" /></div>}
+      </li>
+    })}</ol>}
+  </Card>
+}
+
+function TribunalReportDialog({ report, finalVersion, evidenceVersions, onSubmit, onClose }) {
+  const [result, setResult] = useState('')
+  const fieldMessage = (name) => {
+    const value = report.fields?.[name]
+    return Array.isArray(value) ? value.join(' ') : value
+  }
+  const fieldError = (name) => fieldMessage(name) && <span role="alert" className="mt-1 block text-sm text-red-600">{fieldMessage(name)}</span>
+  return <Modal title="Registrar informe del tribunal" onClose={onClose}>
+    <form className="mt-4 grid gap-4" onSubmit={onSubmit} noValidate>
+      <div><p className="text-sm text-slate-500">Versión del Documento Final revisada</p><p className="font-medium">{finalVersion ? `Documento Final — Versión ${finalVersion.numero_version}` : 'No existe una versión actual disponible'}</p>{fieldError('version_documento_revisada')}</div>
+      <label className="text-sm">Resultado<select name="resultado" value={result} onChange={(event) => setResult(event.target.value)} required disabled={report.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione un resultado</option><option value="SUFICIENTE">Suficiente</option><option value="INSUFICIENTE">Insuficiente</option></select>{fieldError('resultado')}</label>
+      <label className="text-sm">Evidencia<select name="evidencia_version" required disabled={report.submitting || evidenceVersions.length === 0} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una evidencia</option>{evidenceVersions.map((version) => <option key={version.id} value={version.id}>{version.nombre_original || 'Archivo sin nombre'} — Versión {version.numero_version}</option>)}</select>{fieldError('evidencia_version')}</label>
+      {evidenceVersions.length === 0 && <p role="status" className="text-sm text-amber-700">No existe una evidencia actual activa del tipo Informe de Evaluación del Tribunal.</p>}
+      <label className="text-sm">Observaciones {result === 'INSUFICIENTE' ? '(obligatorias)' : '(opcionales)'}<textarea name="observaciones" required={result === 'INSUFICIENTE'} disabled={report.submitting} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" />{fieldError('observaciones')}</label>
+      {fieldError('non_field_errors')}{fieldError('detail')}
+      {report.error && <p role="alert" className="text-red-600">{report.error}</p>}
+      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={report.submitting || !finalVersion || evidenceVersions.length === 0}>{report.submitting ? 'Registrando…' : 'Registrar informe'}</Button><Button type="button" variant="secondary" disabled={report.submitting} onClick={onClose}>Cancelar</Button></div>
+    </form>
+  </Modal>
+}
+
+function formatReportResult(value) {
+  if (value === 'SUFICIENTE') return 'Suficiente'
+  if (value === 'INSUFICIENTE') return 'Insuficiente'
+  return value || 'No registrado'
+}
+
+function ActorsCard({ active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical, canManage, onAssign }) {
   return (
     <Card className="overflow-hidden" aria-labelledby="actores-title">
       <h2 id="actores-title" className="text-xl font-bold">Actores de la postulación</h2>
+      {canManage && <Button className="mt-3" onClick={onAssign}>Asignar actor</Button>}
       <p className="mt-1 text-sm text-slate-500">Participaciones técnicas registradas para este expediente.</p>
       <aside aria-label="Advertencias sobre las asignaciones" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950">
         <p>La asignación registrada en el sistema no sustituye un memorando o acto formal de designación institucional.</p>
@@ -680,6 +886,99 @@ function ActorItem({ actor, stateLabel }) {
     </dl>
     <div className="mt-4"><p className="text-sm text-slate-500">Observaciones</p><p className="mt-1 break-words font-medium">{actor.observaciones?.trim() || 'Sin observaciones'}</p></div>
   </li>
+}
+
+const ASSIGNMENT_TYPES = [
+  ['TUTOR', 'Tutor'],
+  ['TRIBUNAL', 'Tribunal'],
+  ['DOCENTE_MODALIDAD', 'Docente de modalidad'],
+  ['PRESIDENTE', 'Presidente'],
+  ['SECRETARIO', 'Secretario'],
+]
+
+function AssignmentDialog({ assignment, stages, activeActors, isProjectGrade, onSubmit, onClose }) {
+  const [candidateQuery, setCandidateQuery] = useState('')
+  const [candidateSearch, setCandidateSearch] = useState('')
+  const [candidatePage, setCandidatePage] = useState(1)
+  const [candidateRevision, setCandidateRevision] = useState(0)
+  const [candidates, setCandidates] = useState({ data: null, loading: true, error: '' })
+  const [type, setType] = useState('')
+  const [stageId, setStageId] = useState('')
+  const [localFields, setLocalFields] = useState({})
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setCandidates({ data: null, loading: true, error: '' })
+    postulacionesService.obtenerCandidatosAsignacion({ search: candidateSearch, rol: '', ordering: 'apellido_paterno', page: candidatePage }, controller.signal)
+      .then((data) => setCandidates({ data, loading: false, error: '' }))
+      .catch((error) => {
+        if (!error.canceled) setCandidates({ data: null, loading: false, error: error.message })
+      })
+    return () => controller.abort()
+  }, [candidateSearch, candidatePage, candidateRevision])
+
+  const contextActors = activeActors.filter((actor) => String(actor.seguimiento_etapa || '') === String(stageId))
+  const tribunals = contextActors.filter((actor) => actor.tipo_participacion === 'TRIBUNAL')
+  const occupiedOrders = new Set(tribunals.map((actor) => Number(actor.orden_cargo)).filter((order) => order >= 1 && order <= 3))
+  const tribunalComplete = isProjectGrade && tribunals.length >= 3
+  const fieldMessage = (name) => {
+    const value = localFields[name] || assignment.fields?.[name]
+    return Array.isArray(value) ? value.join(' ') : value
+  }
+  const error = (name) => fieldMessage(name) && <span role="alert" className="mt-1 block text-sm text-red-600">{fieldMessage(name)}</span>
+
+  const submit = (event) => {
+    event.preventDefault()
+    if (assignment.submitting) return
+    const elements = event.currentTarget.elements
+    const fields = {}
+    const candidate = elements.usuario.value
+    const order = elements.orden_cargo?.value || ''
+    if (!candidate) fields.usuario = ['Selecciona un candidato.']
+    if (!type) fields.tipo_participacion = ['Selecciona un tipo de participación.']
+    if (type === 'TRIBUNAL' && !order) fields.orden_cargo = ['Selecciona Tribunal 1, Tribunal 2 o Tribunal 3.']
+    if (type === 'TRIBUNAL' && tribunalComplete) fields.orden_cargo = ['Ya existen tres tribunales designados en este contexto.']
+    if (order && occupiedOrders.has(Number(order))) fields.orden_cargo = ['Ese orden de tribunal ya está ocupado en este contexto.']
+    setLocalFields(fields)
+    if (Object.keys(fields).length) return
+    const payload = {
+      usuario: Number(candidate),
+      tipo_participacion: type,
+      observaciones: elements.observaciones.value.trim(),
+    }
+    if (type === 'TRIBUNAL') payload.orden_cargo = Number(order)
+    if (stageId) payload.seguimiento_etapa = Number(stageId)
+    onSubmit(payload)
+  }
+
+  const rows = candidates.data?.results || []
+  const activeStages = stages.filter((stage) => stage.activo !== false)
+  return <Modal title="Asignar actor" onClose={onClose}>
+    <form className="mt-4 grid gap-4" onSubmit={submit} noValidate>
+      <div>
+        <label className="text-sm">Buscar candidato<input value={candidateQuery} onChange={(event) => setCandidateQuery(event.target.value)} disabled={assignment.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>
+        <Button type="button" variant="secondary" className="mt-2" disabled={assignment.submitting} onClick={() => { setCandidateSearch(candidateQuery.trim()); setCandidatePage(1) }}>Buscar</Button>
+      </div>
+      {candidates.loading && <p role="status">Cargando candidatos…</p>}
+      {candidates.error && <div><p role="alert" className="text-red-600">{candidates.error}</p><Button type="button" variant="secondary" className="mt-2" onClick={() => setCandidateRevision((value) => value + 1)}>Reintentar candidatos</Button></div>}
+      {!candidates.loading && !candidates.error && <>
+        <label className="text-sm">Candidato<select name="usuario" required disabled={assignment.submitting || rows.length === 0} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una persona</option>{rows.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.nombre_completo || candidate.username} — {candidate.rol_nombre || candidate.rol_codigo} — {candidate.codigo || candidate.username}</option>)}</select>{error('usuario')}</label>
+        {rows.length === 0 && <p role="status" className="text-sm text-slate-500">No se encontraron candidatos.</p>}
+        <Pagination count={candidates.data?.count || 0} page={candidatePage} hasNext={Boolean(candidates.data?.next)} hasPrevious={Boolean(candidates.data?.previous)} onPage={setCandidatePage} />
+      </>}
+      <label className="text-sm">Tipo de participación<select name="tipo_participacion" value={type} onChange={(event) => { setType(event.target.value); setLocalFields({}) }} required disabled={assignment.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione un tipo</option>{ASSIGNMENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{error('tipo_participacion')}</label>
+      <label className="text-sm">Etapa asociada (opcional)<select name="seguimiento_etapa" value={stageId} onChange={(event) => { setStageId(event.target.value); setLocalFields({}) }} disabled={assignment.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Sin etapa asociada</option>{activeStages.map((stage) => <option key={stage.id} value={stage.id}>{stage.nombre || stage.codigo} — intento {stage.numero_intento ?? 1} — {stage.estado_display || stage.estado}</option>)}</select>{error('seguimiento_etapa')}</label>
+      {type === 'TRIBUNAL' && <>
+        {isProjectGrade && <p role="status" className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm dark:bg-sky-950">Tribunales designados: <strong>{Math.min(tribunals.length, 3)} de 3</strong>. La designación completa requiere Tribunal 1, Tribunal 2 y Tribunal 3; esto no representa quórum.</p>}
+        <label className="text-sm">Orden del tribunal<select name="orden_cargo" required disabled={assignment.submitting || tribunalComplete} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione un orden</option>{[1, 2, 3].map((order) => <option key={order} value={order} disabled={occupiedOrders.has(order)}>Tribunal {order}{occupiedOrders.has(order) ? ' — ocupado' : ''}</option>)}</select>{error('orden_cargo')}</label>
+        {tribunalComplete && <p role="alert" className="text-sm text-amber-700">Ya están designados los tres tribunales para el contexto seleccionado.</p>}
+      </>}
+      <label className="text-sm">Observaciones (opcional)<textarea name="observaciones" disabled={assignment.submitting} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>
+      {error('non_field_errors')}{error('detail')}
+      {assignment.error && <p role="alert" className="text-red-600">{assignment.error}</p>}
+      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={assignment.submitting || candidates.loading || Boolean(candidates.error) || (type === 'TRIBUNAL' && tribunalComplete)}>{assignment.submitting ? 'Procesando…' : 'Confirmar asignación'}</Button><Button type="button" variant="secondary" disabled={assignment.submitting} onClick={onClose}>Cancelar</Button></div>
+    </form>
+  </Modal>
 }
 
 function formatActorDate(value, fallback = 'No registrada') {
@@ -913,7 +1212,7 @@ function ReviewDialog({ review, onSubmit, onClose }) {
   </Modal>
 }
 
-function DownloadVersionButton({ version }) {
+function DownloadVersionButton({ version, label = 'Descargar' }) {
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState('')
 
@@ -938,11 +1237,15 @@ function DownloadVersionButton({ version }) {
     }
   }
 
-  return <div><Button variant="outline" disabled={downloading} onClick={download}>{downloading ? 'Descargando…' : 'Descargar'}</Button>{error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}</div>
+  return <div><Button variant="outline" disabled={downloading} onClick={download}>{downloading ? 'Descargando…' : label}</Button>{error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}</div>
 }
 
-function UploadDialog({ upload, types, onSubmit, onClose }) {
+function UploadDialog({ upload, types, defenses, onSubmit, onClose }) {
   const fixedType = upload.document
+  const [selectedTypeId, setSelectedTypeId] = useState('')
+  const selectedType = fixedType || types.data.find((type) => String(type.id) === String(selectedTypeId))
+  const isDefenseRecord = selectedType?.codigo === 'ACTA_DEFENSA' || selectedType?.tipo_documento_codigo === 'ACTA_DEFENSA'
+  const publicDefenses = (defenses.data?.results || defenses.data || []).filter((item) => item.tipo_evento === 'DEFENSA_PUBLICA' && item.estado === 'FINALIZADA' && item.activo !== false)
   const fieldMessage = (name) => {
     const value = upload.fields?.[name]
     return Array.isArray(value) ? value.join(' ') : value
@@ -950,13 +1253,18 @@ function UploadDialog({ upload, types, onSubmit, onClose }) {
   return <Modal title={fixedType ? 'Cargar nueva versión' : 'Cargar documento'} onClose={onClose}>
     {upload.success ? <div className="mt-4"><p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-800">{upload.success}</p><Button className="mt-4" onClick={onClose}>Cerrar</Button></div> : <form className="mt-4 grid gap-4" onSubmit={onSubmit} noValidate>
       {fixedType ? <div><p className="text-sm text-slate-500">Tipo documental</p><p className="break-words font-medium">{fixedType.tipo_documento_nombre}</p></div> : <label className="text-sm">Tipo documental
-        <select name="tipo_documento_id" required disabled={types.loading || upload.submitting} aria-describedby={fieldMessage('tipo_documento_id') ? 'tipo-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
+        <select name="tipo_documento_id" required disabled={types.loading || upload.submitting} onChange={(event) => setSelectedTypeId(event.target.value)} aria-describedby={fieldMessage('tipo_documento_id') ? 'tipo-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
           <option value="">Seleccione un tipo documental</option>{types.data.map((type) => <option key={type.id} value={type.id}>{type.nombre}</option>)}
         </select>{fieldMessage('tipo_documento_id') && <span id="tipo-error" className="mt-1 block text-red-600">{fieldMessage('tipo_documento_id')}</span>}
       </label>}
       {types.loading && <p role="status">Cargando tipos documentales…</p>}
       {types.error && <p role="alert" className="text-red-600">{types.error}</p>}
       {!fixedType && !types.loading && !types.error && types.data.length === 0 && <p role="status">No hay tipos documentales activos disponibles.</p>}
+      {isDefenseRecord && publicDefenses.length > 0 && <label className="text-sm">Defensa Pública finalizada
+        <select name="evento_defensa_id" required disabled={upload.submitting} aria-describedby={fieldMessage('evento_defensa_id') ? 'defensa-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
+          <option value="">Seleccione la Defensa Pública</option>{publicDefenses.map((defense) => <option key={defense.id} value={defense.id}>{formatDefenseDate(defense.fecha_fin_real || defense.fecha_programada)} — {defense.lugar || 'Sin lugar'}</option>)}
+        </select>{fieldMessage('evento_defensa_id') && <span id="defensa-error" className="mt-1 block text-red-600">{fieldMessage('evento_defensa_id')}</span>}
+      </label>}
       <label className="text-sm">Archivo
         <input name="archivo" type="file" required disabled={upload.submitting} aria-describedby={fieldMessage('archivo') ? 'archivo-error' : undefined} className="mt-1 block w-full rounded-lg border p-2" />
         {fieldMessage('archivo') && <span id="archivo-error" className="mt-1 block text-red-600">{fieldMessage('archivo')}</span>}

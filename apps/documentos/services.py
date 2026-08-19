@@ -28,6 +28,7 @@ class DocumentoService:
         tipo_documento: TipoDocumento,
         archivo: Any,
         usuario: Any,
+        evento_defensa=None,
         request: Optional[Any] = None,
     ) -> VersionDocumento:
         """Sube un archivo como nueva versión de un documento de postulación.
@@ -68,15 +69,23 @@ class DocumentoService:
                 postulacion=postulacion,
                 tipo_documento=tipo_documento,
             ).first()
+            if tipo_documento.codigo == "ACTA_DEFENSA":
+                self._validar_evento_acta(postulacion, evento_defensa)
+            elif evento_defensa is not None:
+                raise ValidationError("Solo ACTA_DEFENSA puede vincularse a una defensa.")
             if documento is None:
                 documento = DocumentoPostulacion.objects.create(
                     postulacion=postulacion,
                     tipo_documento=tipo_documento,
                     estado=estado_env,
                     requiere_correccion=False,
+                    evento_defensa=evento_defensa,
                 )
             else:
                 self._validar_documento_activo(documento)
+                if evento_defensa is not None and documento.evento_defensa_id != evento_defensa.pk:
+                    documento.evento_defensa = evento_defensa
+                    documento.save(update_fields=["evento_defensa", "updated_at"])
 
             return self.crear_nueva_version(
                 documento=documento,
@@ -84,6 +93,14 @@ class DocumentoService:
                 usuario=usuario,
                 request=request,
             )
+
+    @staticmethod
+    def _validar_evento_acta(postulacion: Postulacion, evento) -> None:
+        if not evento:
+            raise ValidationError("ACTA_DEFENSA debe vincularse a una Defensa Pública finalizada.")
+        if (evento.postulacion_id != postulacion.pk or evento.tipo_evento != "DEFENSA_PUBLICA"
+                or evento.estado != "FINALIZADA" or not evento.activo):
+            raise ValidationError("ACTA_DEFENSA debe vincularse a una Defensa Pública activa y finalizada de la misma postulación.")
 
     def crear_nueva_version(
         self,

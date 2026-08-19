@@ -5,10 +5,12 @@ from django.test import TestCase
 from rest_framework.test import APITestCase
 
 from apps.academico.models import EtapaModalidad,Modalidad,Periodo
+from apps.documentos.models import DocumentoPostulacion,EstadoDocumento,TipoDocumento,VersionDocumento
 from apps.postulantes.cierre import CierrePostulacionService,ProyectoGradoCierrePolicy
 from apps.postulantes.models import (AsignacionPostulacion,CondicionPostulacion,EntregaFisica,
     EstadoPostulacion,EvaluacionDefensa,EventoDefensa,HistorialEstado,Postulacion,SeguimientoEtapa)
 from apps.usuarios.models import AuditLog,Role
+from apps.postulantes.workflow import WorkflowService
 
 User=get_user_model()
 
@@ -31,11 +33,20 @@ class Base:
         private_event=EventoDefensa.objects.create(postulacion=self.post,seguimiento_etapa=self.stages["DEFENSA_PRIVADA"],tipo_evento="DEFENSA_PRIVADA",estado="FINALIZADA",fecha_programada="2026-05-01T10:00:00Z",lugar="Sala",programado_por=self.admin)
         EvaluacionDefensa.objects.create(evento=private_event,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",resultado_cualitativo="SUFICIENTE",nota_numerica=Decimal("24"),ponderacion=Decimal("30"),aporte_ponderado=Decimal("24"),es_resultado_final_evento=True,registrado_por=self.admin)
         self.assignment=AsignacionPostulacion.objects.create(postulacion=self.post,usuario=self.doc,tipo_participacion="TUTOR",designado_por=self.admin)
+        self.approved_document=EstadoDocumento.objects.create(codigo="APR",nombre="Aprobado cierre")
+        self.sent_document=EstadoDocumento.objects.create(codigo="ENV",nombre="Enviado cierre")
+        self.documents={}
+        for code,name in (("DOCUMENTO_FINAL","Documento Final cierre"),("ACTA_DEFENSA","Acta de Defensa cierre"),("HOJA_APROBACION","Hoja de Aprobación cierre"),("INFORME_FINAL_TUTOR","Informe Final Tutor cierre")):
+            tipo=TipoDocumento.objects.create(codigo=code,nombre=name,obligatorio=True)
+            document=DocumentoPostulacion.objects.create(postulacion=self.post,tipo_documento=tipo,estado=self.approved_document,evento_defensa=self.event if code=="ACTA_DEFENSA" else None)
+            VersionDocumento.objects.create(documento=document,subido_por=self.student,numero_version=1,archivo=f"tests/{code}.pdf",nombre_original=f"{code}.pdf",tamano_bytes=1,hash_sha256=code.lower().ljust(64,"0"),es_version_actual=True)
+            self.documents[code]=document
 
     def requirements(self):
-        for code,label in CondicionPostulacion.Tipo.choices: CondicionPostulacion.objects.create(postulacion=self.post,codigo=code,tipo=code,nombre=label,estado="CUMPLE",fecha_verificacion="2026-06-01T10:00:00Z",verificado_por=self.admin)
+        for code,label in CondicionPostulacion.Tipo.choices:
+            CondicionPostulacion.objects.update_or_create(postulacion=self.post,codigo=code,defaults={"tipo":code,"nombre":label,"estado":"CUMPLE","fecha_verificacion":"2026-06-01T10:00:00Z","verificado_por":self.admin})
         for code,label in EntregaFisica.Tipo.choices:
-            if code!="FOLDER_AMARILLO": EntregaFisica.objects.create(postulacion=self.post,codigo=code,nombre=label,estado="COMPLETA",cantidad_recibida=1,fecha_entrega="2026-06-01T10:00:00Z",recibido_por=self.admin)
+            if code!="FOLDER_AMARILLO": EntregaFisica.objects.update_or_create(postulacion=self.post,codigo=code,defaults={"nombre":label,"estado":"COMPLETA","cantidad_recibida":1,"fecha_entrega":"2026-06-01T10:00:00Z","recibido_por":self.admin})
 
 class PolicyServiceTests(Base,TestCase):
     def test_revision_exige_defensa_evento_y_evaluacion(self):
@@ -56,6 +67,55 @@ class PolicyServiceTests(Base,TestCase):
         EvaluacionDefensa.objects.create(evento=private,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",resultado_cualitativo="INSUFICIENTE",nota_numerica=Decimal("0"),ponderacion=Decimal("30"),aporte_ponderado=Decimal("0"),es_resultado_final_evento=True,registrado_por=self.admin)
         self.evaluation.nota_numerica=Decimal("50"); self.evaluation.aporte_ponderado=Decimal("50"); self.evaluation.save()
         self.assertIn("RESULTADO_FINAL_APROBATORIO",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
+
+    def test_aprobacion_generica_prematura_esta_bloqueada(self):
+        stage=self.stages["REVISION_FINAL_POST_PUBLICA"]
+        stage.estado="EN_PROCESO"; stage.save(update_fields=["estado","updated_at"])
+        self.documents["HOJA_APROBACION"].delete()
+        with self.assertRaises(ValidationError) as error:
+            WorkflowService.aprobar_etapa(stage,self.admin)
+        self.assertIn("DOCUMENTO:HOJA_APROBACION",str(error.exception))
+
+    def test_documento_final_es_obligatorio_y_valido(self):
+        document=self.documents["DOCUMENTO_FINAL"]
+        document.delete()
+        self.assertIn("DOCUMENTO:DOCUMENTO_FINAL",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
+
+        tipo=TipoDocumento.objects.get(codigo="DOCUMENTO_FINAL")
+        document=DocumentoPostulacion.objects.create(postulacion=self.post,tipo_documento=tipo,estado=self.sent_document)
+        self.assertIn("DOCUMENTO:DOCUMENTO_FINAL",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
+        document.estado=self.approved_document; document.requiere_correccion=True; document.save()
+        self.assertIn("CORRECCIONES_DOCUMENTALES_PENDIENTES",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
+        document.requiere_correccion=False; document.save()
+        self.assertIn("DOCUMENTO:DOCUMENTO_FINAL",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
+
+    def test_hoja_aprobacion_es_obligatoria_y_valida(self):
+        document=self.documents["HOJA_APROBACION"]
+        document.delete()
+        self.assertIn("DOCUMENTO:HOJA_APROBACION",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
+
+        tipo=TipoDocumento.objects.get(codigo="HOJA_APROBACION")
+        document=DocumentoPostulacion.objects.create(postulacion=self.post,tipo_documento=tipo,estado=self.sent_document)
+        self.assertIn("DOCUMENTO:HOJA_APROBACION",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
+        document.estado=self.approved_document; document.requiere_correccion=True; document.save()
+        self.assertIn("CORRECCIONES_DOCUMENTALES_PENDIENTES",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
+        document.requiere_correccion=False; document.save()
+        self.assertIn("DOCUMENTO:HOJA_APROBACION",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
+
+    def test_tipo_hoja_aprobacion_ausente_o_inactivo_bloquea(self):
+        self.documents["HOJA_APROBACION"].delete()
+        tipo=TipoDocumento.objects.get(codigo="HOJA_APROBACION")
+        tipo.activo=False; tipo.save(update_fields=["activo","updated_at"])
+        result=ProyectoGradoCierrePolicy.evaluar_revision_final(self.post)
+        self.assertFalse(result["cumple"])
+        self.assertIn("DOCUMENTO:HOJA_APROBACION",result["faltantes"])
+
+    def test_caso_completo_aprueba_revision_e_inicia_cierre_documental(self):
+        CierrePostulacionService.aprobar_revision_final(self.post,self.admin)
+        self.stages["REVISION_FINAL_POST_PUBLICA"].refresh_from_db()
+        self.assertEqual(self.stages["REVISION_FINAL_POST_PUBLICA"].estado,"APROBADA")
+        cierre=WorkflowService.iniciar_etapa(self.stages["CIERRE_DOCUMENTAL"],self.admin)
+        self.assertEqual(cierre.estado,"EN_PROCESO")
 
     def test_cierre_detecta_condiciones_y_entregas(self):
         self.stages["REVISION_FINAL_POST_PUBLICA"].estado="APROBADA"; self.stages["REVISION_FINAL_POST_PUBLICA"].save()

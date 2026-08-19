@@ -32,7 +32,7 @@ class WorkflowService:
             etapas = list(WorkflowService._obtener_etapas_activas(postulacion))
             if not etapas:
                 raise ValidationError("La modalidad no tiene etapas activas configuradas.")
-            ModalidadPolicyRegistry.get(postulacion)
+            policy = ModalidadPolicyRegistry.get(postulacion)
 
             seguimientos: list[SeguimientoEtapa] = []
             for etapa in etapas:
@@ -43,6 +43,10 @@ class WorkflowService:
                     defaults={"estado": SeguimientoEtapa.EstadoChoices.PENDIENTE},
                 )
                 seguimientos.append(seguimiento)
+
+            cierre_policy = policy.get_cierre_policy()
+            if cierre_policy:
+                cierre_policy.inicializar_requisitos(postulacion)
 
             return sorted(
                 seguimientos,
@@ -151,7 +155,9 @@ class WorkflowService:
                 {"etapa": seguimiento.etapa.nombre}, f"ETAPA_APROBADA:{seguimiento.pk}:{seguimiento.updated_at.isoformat()}")
 
             final_codes = {x.codigo for x in policy.get_etapas_finales()}
-            if actualizar_estado_general and seguimiento.etapa.codigo in final_codes and policy.get_cierre_policy():
+            if (actualizar_estado_general and seguimiento.etapa.codigo in final_codes
+                    and seguimiento.etapa.codigo != WorkflowService.CLOSING_STAGE_CODE
+                    and policy.get_cierre_policy()):
                 WorkflowService._actualizar_estado_general(
                     postulacion=seguimiento.postulacion,
                     codigo_estado="CONCLUIDA",

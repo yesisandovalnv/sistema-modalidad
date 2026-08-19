@@ -134,6 +134,7 @@ class DocumentoPostulacionSerializer(serializers.ModelSerializer):
 
     versiones = VersionDocumentoSerializer(many=True, read_only=True)
     tipo_documento_nombre = serializers.CharField(source="tipo_documento.nombre", read_only=True)
+    tipo_documento_codigo = serializers.CharField(source="tipo_documento.codigo", read_only=True)
     estado_codigo = serializers.CharField(source="estado.codigo", read_only=True)
     estado_nombre = serializers.CharField(source="estado.nombre", read_only=True)
     tiene_observaciones_pendientes = serializers.SerializerMethodField()
@@ -151,8 +152,10 @@ class DocumentoPostulacionSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "postulacion",
+            "evento_defensa",
             "tipo_documento",
             "tipo_documento_nombre",
+            "tipo_documento_codigo",
             "estado",
             "estado_codigo",
             "estado_nombre",
@@ -168,6 +171,7 @@ class DocumentoPostulacionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "evento_defensa",
             "versiones",
             "activo",
             "created_at",
@@ -181,6 +185,7 @@ class SubirDocumentoSerializer(serializers.Serializer):
     postulacion_id = serializers.IntegerField(min_value=1)
     tipo_documento_id = serializers.IntegerField(min_value=1)
     archivo = serializers.FileField()
+    evento_defensa_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate_archivo(self, value):
         if value is None:

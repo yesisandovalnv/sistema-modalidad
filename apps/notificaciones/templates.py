@@ -6,7 +6,7 @@ from apps.notificaciones.events import EventTypes
 class NotificationTemplate:
     titulo: str; mensaje: str; nivel: str="INFO"
     def render(self,payload):
-        safe={k:str(v) for k,v in payload.items() if k in {"etapa","documento","tipo_evento","fecha","actor_tipo","estado"}}
+        safe={k:str(v) for k,v in payload.items() if k in {"etapa","documento","tipo_evento","fecha","actor_tipo","estado","resultado"}}
         try: message=self.mensaje.format_map(_Safe(safe))
         except (KeyError,ValueError): message=self.mensaje
         return self.titulo,message
@@ -34,6 +34,7 @@ class NotificationTemplateRegistry:
       EventTypes.DEFENSA_CANCELADA:NotificationTemplate("Defensa cancelada","La defensa fue cancelada.","ERROR"),
       EventTypes.DEFENSA_FINALIZADA:NotificationTemplate("Defensa finalizada","La defensa finalizó."),
       EventTypes.EVALUACION_CONSOLIDADA:NotificationTemplate("Evaluación consolidada","Se consolidó el resultado de la evaluación.","SUCCESS"),
+      EventTypes.INFORME_REVISION_TRIBUNAL_REGISTRADO:NotificationTemplate("Informe del tribunal registrado","El informe de revisión previa declaró el trabajo {resultado}."),
       EventTypes.REVISION_FINAL_APROBADA:NotificationTemplate("Revisión final aprobada","La revisión final fue aprobada.","SUCCESS"),
       EventTypes.CIERRE_DOCUMENTAL_APROBADO:NotificationTemplate("Cierre documental aprobado","El cierre documental fue aprobado.","SUCCESS"),
       EventTypes.POSTULACION_CONCLUIDA:NotificationTemplate("Postulación concluida","La postulación fue concluida.","SUCCESS"),
@@ -41,4 +42,3 @@ class NotificationTemplateRegistry:
     }
     @classmethod
     def get(cls,event_type): return cls._templates.get(event_type,NotificationTemplate("Actualización académica","Se registró una actualización académica."))
-

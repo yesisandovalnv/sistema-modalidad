@@ -1,3 +1,4 @@
+import gc
 import shutil
 from pathlib import Path
 from unittest.mock import patch
@@ -100,6 +101,7 @@ class DocumentoAPITestCase(APITestCase):
         )
 
     def tearDown(self) -> None:
+        gc.collect()
         for version in VersionDocumento.all_objects.all():
             if version.archivo.name:
                 version.archivo.close()
@@ -158,6 +160,7 @@ class TestVersionDocumentoDownload(DocumentoAPITestCase):
         version = self._create_version()
         response = self._download(version, self.student_user)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        del response
 
     def test_actor_asignado_descarga_dentro_de_su_alcance(self) -> None:
         version = self._create_version()
@@ -172,6 +175,7 @@ class TestVersionDocumentoDownload(DocumentoAPITestCase):
         response = self._download(version, actor)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        del response
 
     def test_usuario_ajeno_no_descarga(self) -> None:
         version = self._create_version()

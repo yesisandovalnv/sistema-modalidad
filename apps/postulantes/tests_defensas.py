@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.postulantes.defensas import EventoDefensaService, EvaluacionDefensaService
+from apps.postulantes.workflow import WorkflowService
 from apps.postulantes.models import (AsignacionPostulacion, EstadoPostulacion,
     EvaluacionDefensa, EventoDefensa, ParticipanteEvento, Postulacion, SeguimientoEtapa)
 from apps.notificaciones.models import Notificacion
@@ -33,9 +34,10 @@ class DefensaMixin:
         self.post=Postulacion.objects.create(codigo="P-DEF",estudiante=self.student,modalidad=self.mod,periodo=self.period,estado_actual=state)
         self.other_post=Postulacion.objects.create(codigo="P-OTRA-DEF",estudiante=self.other,modalidad=self.mod,periodo=self.period,estado_actual=state)
         self.follow={}
-        for order,code in enumerate(("PERFIL_PROYECTO","DEFENSA_PRIVADA","DEFENSA_PUBLICA"),1):
+        for order,code in enumerate(("PERFIL_PROYECTO","DEFENSA_PRIVADA","DEFENSA_PUBLICA","REVISION_FINAL_POST_PUBLICA"),1):
             stage=EtapaModalidad.objects.create(modalidad=self.mod,codigo=code,nombre=code,orden=order,origen_normativo="Reglamento")
-            self.follow[code]=SeguimientoEtapa.objects.create(postulacion=self.post,etapa=stage,estado="EN_PROCESO")
+            estado="PENDIENTE" if code=="REVISION_FINAL_POST_PUBLICA" else "EN_PROCESO"
+            self.follow[code]=SeguimientoEtapa.objects.create(postulacion=self.post,etapa=stage,estado=estado)
         self.assign={}
         for doc,role in zip(self.docs,("TRIBUNAL","TRIBUNAL","DOCENTE_MODALIDAD","PRESIDENTE","SECRETARIO")):
             self.assign.setdefault(role,[]).append(AsignacionPostulacion.objects.create(postulacion=self.post,usuario=doc,tipo_participacion=role,designado_por=self.admin))
@@ -50,6 +52,19 @@ class DefensaMixin:
             idx=used.get(role,0); used[role]=idx+1
             result.append(ParticipanteEvento.objects.create(evento=event,asignacion=self.assign[role][idx],rol_evento=role,presente=present if event.estado=="EN_CURSO" else None))
         return result
+
+    def public_event_with_quorum(self, state="EN_CURSO"):
+        event=self.event("DEFENSA_PUBLICA",state)
+        self.add(event,["TRIBUNAL","TRIBUNAL","PRESIDENTE","SECRETARIO"])
+        return event
+
+    def add_private_consolidated_result(self, note=Decimal("25")):
+        event=self.event("DEFENSA_PRIVADA","FINALIZADA")
+        return EvaluacionDefensa.objects.create(
+            evento=event,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",nota_numerica=note,ponderacion=Decimal("30"),
+            aporte_ponderado=note,es_resultado_final_evento=True,registrado_por=self.admin,
+        )
 
 
 class ModelosDefensaTests(DefensaMixin,TestCase):
@@ -267,6 +282,69 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
             ev=self.event(kind,"EN_CURSO"); parts=self.add(ev,roles); self.assertTrue(EventoDefensaService.validar_quorum(ev)["valido"])
             parts[-1].presente=False; parts[-1].save(); self.assertFalse(EventoDefensaService.validar_quorum(ev)["valido"])
 
+    def test_evaluacion_publica_exige_quorum_y_acepta_limites(self):
+        for note in (Decimal("0"),Decimal("70")):
+            ev=self.public_event_with_quorum()
+            evaluation=EvaluacionDefensaService.registrar_evaluacion_publica(ev,self.admin,note)
+            self.assertEqual(evaluation.nota_numerica,note)
+            ev.activo=False; ev.save(update_fields=["activo"])
+        ev=self.event("DEFENSA_PUBLICA","EN_CURSO")
+        with self.assertRaisesMessage(ValidationError,"quórum técnico válido"):
+            EvaluacionDefensaService.registrar_evaluacion_publica(ev,self.admin,Decimal("50"))
+
+    def test_finalizacion_publica_exige_y_acepta_quorum_publico(self):
+        ev=self.event("DEFENSA_PUBLICA","EN_CURSO")
+        with self.assertRaisesMessage(ValidationError,"quórum"):
+            EventoDefensaService.finalizar_evento(ev,self.admin)
+        self.add(ev,["TRIBUNAL","TRIBUNAL","PRESIDENTE","SECRETARIO"])
+        self.assertEqual(EventoDefensaService.finalizar_evento(ev,self.admin).estado,"FINALIZADA")
+
+    def test_consolidacion_publica_aprueba_etapa_y_habilita_revision_final(self):
+        self.add_private_consolidated_result()
+        ev=self.public_event_with_quorum()
+        EvaluacionDefensaService.registrar_evaluacion_publica(ev,self.admin,Decimal("60"))
+        EventoDefensaService.finalizar_evento(ev,self.admin)
+        result=EvaluacionDefensaService.consolidar_evaluacion_evento(ev,self.admin)
+        self.assertEqual(result.tipo_evaluacion,"RESULTADO_FINAL")
+        self.assertEqual(result.nota_numerica,Decimal("60"))
+        self.assertEqual(result.ponderacion,Decimal("70"))
+        self.assertTrue(result.es_resultado_final_evento)
+        self.follow["DEFENSA_PUBLICA"].refresh_from_db()
+        self.assertEqual(self.follow["DEFENSA_PUBLICA"].estado,"APROBADA")
+        SeguimientoEtapa.objects.filter(pk__in=[self.follow["PERFIL_PROYECTO"].pk,self.follow["DEFENSA_PRIVADA"].pk]).update(estado="APROBADA")
+        revision=WorkflowService.iniciar_etapa(self.follow["REVISION_FINAL_POST_PUBLICA"],self.admin)
+        self.assertEqual(revision.estado,"EN_PROCESO")
+
+    def test_consolidacion_publica_rechaza_evento_no_finalizado_y_duplicado(self):
+        self.add_private_consolidated_result()
+        ev=self.public_event_with_quorum()
+        EvaluacionDefensaService.registrar_evaluacion_publica(ev,self.admin,Decimal("60"))
+        with self.assertRaisesMessage(ValidationError,"evento finalizado"):
+            EvaluacionDefensaService.consolidar_evaluacion_evento(ev,self.admin)
+        EventoDefensaService.finalizar_evento(ev,self.admin)
+        EvaluacionDefensaService.consolidar_evaluacion_evento(ev,self.admin)
+        with self.assertRaisesMessage(ValidationError,"ya tiene una evaluación consolidada"):
+            EvaluacionDefensaService.consolidar_evaluacion_evento(ev,self.admin)
+
+    def test_consolidacion_publica_postergada_no_aprueba_etapa(self):
+        self.add_private_consolidated_result(Decimal("25"))
+        ev=self.public_event_with_quorum()
+        EvaluacionDefensaService.registrar_evaluacion_publica(ev,self.admin,Decimal("25"))
+        EventoDefensaService.finalizar_evento(ev,self.admin)
+        EvaluacionDefensaService.consolidar_evaluacion_evento(ev,self.admin)
+        self.follow["DEFENSA_PUBLICA"].refresh_from_db()
+        self.assertEqual(self.follow["DEFENSA_PUBLICA"].estado,"EN_PROCESO")
+        with self.assertRaisesMessage(ValidationError,"resultado final completo y aprobatorio"):
+            WorkflowService.aprobar_etapa(self.follow["DEFENSA_PUBLICA"],self.admin)
+
+    def test_aprobacion_manual_publica_rechaza_precondiciones_prematuras(self):
+        ev=self.event("DEFENSA_PUBLICA","EN_CURSO")
+        with self.assertRaisesMessage(ValidationError,"evento público finalizado"):
+            WorkflowService.aprobar_etapa(self.follow["DEFENSA_PUBLICA"],self.admin)
+        ev.estado="FINALIZADA"; ev.fecha_fin_real=timezone.now(); ev.save()
+        with self.assertRaisesMessage(ValidationError,"resultado público consolidado válido"):
+            WorkflowService.aprobar_etapa(self.follow["DEFENSA_PUBLICA"],self.admin)
+
     def test_finalizacion_exige_quorum(self):
         ev=self.event(state="EN_CURSO")
         with self.assertRaises(ValidationError): EventoDefensaService.finalizar_evento(ev,self.admin)
@@ -381,6 +459,22 @@ class ApiDefensaTests(DefensaMixin,APITestCase):
         self.assertEqual(self.client.post(url,{"resultado":"SUFICIENTE"}).status_code,201)
         self.assertEqual(self.client.post(url,{"resultado":"SUFICIENTE"}).status_code,400)
         self.assertEqual(EvaluacionDefensa.objects.get().modalidad_registro,"CONSENSO")
+
+    def test_api_evaluacion_y_consolidacion_publica(self):
+        self.add_private_consolidated_result()
+        ev=self.public_event_with_quorum()
+        self.client.force_authenticate(self.admin)
+        evaluate=f"/api/v1/eventos-defensa/{ev.pk}/evaluaciones/publica/"
+        self.assertEqual(self.client.post(evaluate,{"nota_publica":"71"},format="json").status_code,400)
+        response=self.client.post(evaluate,{"nota_publica":"60"},format="json")
+        self.assertEqual(response.status_code,201)
+        self.assertEqual(response.data["nota_numerica"],"60.00")
+        self.assertEqual(self.client.post(f"/api/v1/eventos-defensa/{ev.pk}/finalizar/",{},format="json").status_code,200)
+        consolidated=self.client.post(f"/api/v1/eventos-defensa/{ev.pk}/evaluaciones/consolidar/",{},format="json")
+        self.assertEqual(consolidated.status_code,200)
+        self.assertTrue(consolidated.data["es_resultado_final_evento"])
+        self.follow["DEFENSA_PUBLICA"].refresh_from_db()
+        self.assertEqual(self.follow["DEFENSA_PUBLICA"].estado,"APROBADA")
 
     def test_resultado_final_no_admite_put(self):
         self.client.force_authenticate(self.admin)

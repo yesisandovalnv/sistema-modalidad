@@ -113,12 +113,11 @@ class ConsultaDefensasContractTests(APITestCase):
         )
         EvaluacionDefensa.objects.create(
             evento=self.event,
-            evaluador=self.participant,
             tipo_evaluacion="PUBLICA",
-            modalidad_registro="INDIVIDUAL",
-            nota_numerica=Decimal("80.00"),
+            modalidad_registro="CONSENSO",
+            nota_numerica=Decimal("60.00"),
             ponderacion=Decimal("70.00"),
-            aporte_ponderado=Decimal("56.00"),
+            aporte_ponderado=Decimal("60.00"),
             registrado_por=self.participant_user,
         )
         EvaluacionDefensa.objects.create(
@@ -126,9 +125,9 @@ class ConsultaDefensasContractTests(APITestCase):
             tipo_evaluacion="RESULTADO_FINAL",
             modalidad_registro="CONSENSO",
             resultado_cualitativo="APROBADO",
-            nota_numerica=Decimal("80.00"),
+            nota_numerica=Decimal("60.00"),
             ponderacion=Decimal("70.00"),
-            aporte_ponderado=Decimal("56.00"),
+            aporte_ponderado=Decimal("60.00"),
             es_resultado_final_evento=True,
             registrado_por=self.staff,
         )
@@ -202,7 +201,7 @@ class ConsultaDefensasContractTests(APITestCase):
         self.assertTrue(participant["presente"])
         self.assertIsNotNone(participant["fecha_asistencia"])
         self.assertEqual(len(detail.data["evaluaciones"]), 2)
-        self.assertEqual(detail.data["evaluaciones"][0]["evaluador_nombre"], "María Tribunal")
+        self.assertIsNone(detail.data["evaluaciones"][0]["evaluador_nombre"])
         self.assertEqual(detail.data["resultado_consolidado"]["resultado_cualitativo"], "APROBADO")
         without_result = self.client.get(f"/api/v1/eventos-defensa/{self.events[0].pk}/")
         self.assertEqual(without_result.data["evaluaciones"], [])

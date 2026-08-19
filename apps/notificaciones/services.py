@@ -11,6 +11,7 @@ from apps.usuarios.models import AuditLog, CustomUser
 class NotificationRecipientResolver:
     DEFENSE_EVENTS={EventTypes.DEFENSA_PROGRAMADA,EventTypes.DEFENSA_REPROGRAMADA,EventTypes.DEFENSA_SUSPENDIDA,EventTypes.DEFENSA_CANCELADA,EventTypes.DEFENSA_FINALIZADA,EventTypes.EVALUACION_CONSOLIDADA}
     ASSIGNMENT_EVENTS={EventTypes.ACTOR_ASIGNADO,EventTypes.ACTOR_REEMPLAZADO,EventTypes.ASIGNACION_FINALIZADA}
+    REVIEW_EVENTS={EventTypes.INFORME_REVISION_TRIBUNAL_REGISTRADO}
     @classmethod
     def resolve(cls,event):
         ids=set(); post=None
@@ -22,6 +23,7 @@ class NotificationRecipientResolver:
         if post:
             roles={"TUTOR"}
             if event.event_type in cls.DEFENSE_EVENTS: roles.update({"TRIBUNAL","DOCENTE_MODALIDAD","PRESIDENTE","SECRETARIO"})
+            if event.event_type in cls.REVIEW_EVENTS: roles.add("TRIBUNAL")
             ids.update(post.asignaciones.filter(activo=True,usuario__is_active=True,tipo_participacion__in=roles).values_list("usuario_id",flat=True))
         if event.actor_id in ids and not post: ids.discard(event.actor_id)
         return list(CustomUser.objects.filter(pk__in=ids,is_active=True))
@@ -88,5 +90,4 @@ class NotificationService:
             post=Postulacion.objects.filter(pk=event.postulacion_id).first()
         return cls.crear_para_usuarios(users,tipo=event.event_type,titulo=title,mensaje=message,nivel=template.nivel,event_id=event.event_id,
           deduplication_key=event.deduplication_key,actor=actor,postulacion=post,aggregate_type=event.aggregate_type,aggregate_id=event.aggregate_id,
-          metadata={k:v for k,v in event.payload.items() if k in {"etapa","documento","tipo_evento","fecha","actor_tipo","estado"}})
-
+          metadata={k:v for k,v in event.payload.items() if k in {"etapa","documento","tipo_evento","fecha","actor_tipo","estado","resultado"}})
