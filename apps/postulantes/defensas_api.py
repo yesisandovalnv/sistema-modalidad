@@ -78,6 +78,7 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
     modalidad_display = serializers.CharField(source="get_modalidad_evento_display", read_only=True)
     postulacion_codigo = serializers.CharField(source="postulacion.codigo", read_only=True)
+    postulacion_modalidad_codigo = serializers.CharField(source="postulacion.modalidad.codigo", read_only=True)
     etapa_codigo = serializers.CharField(source="seguimiento_etapa.etapa.codigo", read_only=True)
     etapa_nombre = serializers.CharField(source="seguimiento_etapa.etapa.nombre", read_only=True)
 
@@ -92,7 +93,7 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
     class Meta:
         model = EventoDefensa
         fields = (
-            "id", "postulacion", "postulacion_codigo", "seguimiento_etapa", "etapa_codigo",
+            "id", "postulacion", "postulacion_codigo", "postulacion_modalidad_codigo", "seguimiento_etapa", "etapa_codigo",
             "etapa_nombre", "tipo_evento", "tipo_display", "numero_intento", "estado",
             "estado_display", "fecha_programada", "fecha_inicio_real", "fecha_fin_real", "lugar",
             "modalidad_evento", "modalidad_display", "enlace_virtual", "observaciones", "activo",
@@ -124,7 +125,11 @@ class ReprogramarPayload(MotivoPayload): nueva_fecha=serializers.DateTimeField()
 class EvaluarPayload(serializers.Serializer):
     resultado=serializers.ChoiceField(choices=("SUFICIENTE","INSUFICIENTE"),required=False)
     nota_privada=serializers.DecimalField(max_digits=5,decimal_places=2,min_value=0,max_value=30,required=False)
-    nota_publica=serializers.DecimalField(max_digits=5,decimal_places=2,min_value=0,max_value=70,required=False)
+    nota=serializers.DecimalField(max_digits=5,decimal_places=2,required=False)
+    # La policy de la modalidad determina el rango: Proyecto 0--70, Tesis 1--100.
+    nota_publica=serializers.DecimalField(max_digits=5,decimal_places=2,required=False)
+    evaluador=serializers.PrimaryKeyRelatedField(queryset=ParticipanteEvento.objects.all(), required=False, allow_null=True)
+    modalidad_registro=serializers.ChoiceField(choices=EvaluacionDefensa.ModalidadRegistro.choices, required=False)
     observaciones=serializers.CharField(required=False,allow_blank=True,default="")
 class ResultadoFinalSerializer(serializers.Serializer):
     nota_privada=serializers.DecimalField(max_digits=5,decimal_places=2,allow_null=True)
@@ -163,7 +168,7 @@ class EventoDefensaViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs=EventoDefensa.objects.select_related(
-            "postulacion__estudiante", "seguimiento_etapa__etapa"
+            "postulacion__estudiante", "postulacion__modalidad", "seguimiento_etapa__etapa"
         ).prefetch_related(
             "participantes__asignacion__usuario",
             "evaluaciones__evaluador__asignacion__usuario",
@@ -226,14 +231,14 @@ class EventoDefensaViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True,methods=["post"])
     def reprogramar(self,r,pk=None):
         self._admin(); s=ReprogramarPayload(data=r.data); s.is_valid(raise_exception=True); e=self._call(EventoDefensaService.reprogramar_evento,self.get_object(),s.validated_data["nueva_fecha"],r.user,s.validated_data["motivo"]); return Response(self.get_serializer(e).data)
-    @action(detail=True,methods=["post"],url_path="evaluaciones/(?P<tipo>perfil|privada|publica)")
+    @action(detail=True,methods=["post"],url_path="evaluaciones/(?P<tipo>tematica|perfil|privada|publica)")
     def evaluar(self,r,pk=None,tipo=None):
         self._admin(); evento=self.get_object(); s=EvaluarPayload(data=r.data); s.is_valid(raise_exception=True)
-        fn={"perfil":EvaluacionDefensaService.registrar_evaluacion_perfil,"privada":EvaluacionDefensaService.registrar_evaluacion_privada,"publica":EvaluacionDefensaService.registrar_evaluacion_publica}[tipo]
-        kwargs=dict(evento=evento,usuario=r.user,modalidad_registro="CONSENSO",observaciones=s.validated_data["observaciones"])
-        if tipo in ("perfil","privada"): kwargs["resultado"]=s.validated_data.get("resultado")
-        if tipo=="privada": kwargs["nota"]=s.validated_data.get("nota_privada")
-        if tipo=="publica": kwargs["nota"]=s.validated_data.get("nota_publica")
+        fn={"tematica":EvaluacionDefensaService.registrar_evaluacion_tematica,"perfil":EvaluacionDefensaService.registrar_evaluacion_perfil,"privada":EvaluacionDefensaService.registrar_evaluacion_privada,"publica":EvaluacionDefensaService.registrar_evaluacion_publica}[tipo]
+        kwargs=dict(evento=evento,usuario=r.user,observaciones=s.validated_data["observaciones"], evaluador=s.validated_data.get("evaluador"), modalidad_registro=s.validated_data.get("modalidad_registro"))
+        if tipo in ("tematica","perfil","privada"): kwargs["resultado"]=s.validated_data.get("resultado")
+        if tipo=="privada": kwargs["nota"]=s.validated_data.get("nota", s.validated_data.get("nota_privada"))
+        if tipo=="publica": kwargs["nota"]=s.validated_data.get("nota", s.validated_data.get("nota_publica"))
         return Response(EvaluacionDefensaSerializer(self._call(fn,**kwargs)).data,status=201)
     @action(detail=True,methods=["post"],url_path="evaluaciones/consolidar")
     def consolidar(self,r,pk=None): self._admin(); return Response(EvaluacionDefensaSerializer(self._call(EvaluacionDefensaService.consolidar_evaluacion_evento,self.get_object(),r.user)).data)

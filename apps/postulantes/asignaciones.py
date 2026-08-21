@@ -287,18 +287,13 @@ class AsignacionService:
         if tipo_participacion in AsignacionService.SINGLE_ACTIVE_TYPES and queryset_tipo.exists():
             raise ValidationError(f"La postulación ya tiene un {tipo_participacion} activo.")
 
-        if (
-            tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL
-            and postulacion.modalidad.codigo == AsignacionService.PROJECT_GRADE_CODE
-            and seguimiento_etapa is not None
-            and seguimiento_etapa.etapa.codigo == AsignacionService.PROFILE_STAGE_CODE
-        ):
-            if queryset_contexto.count() >= 3:
-                raise ValidationError(
-                    "Proyecto de Grado admite como máximo tres miembros activos de tribunal en el perfil."
-                )
-            if orden_cargo is not None and queryset_contexto.filter(orden_cargo=orden_cargo).exists():
-                raise ValidationError("Ya existe un miembro activo del tribunal con ese orden de cargo.")
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+        ModalidadPolicyRegistry.get(postulacion).validar_asignacion(
+            queryset_tipo=queryset_tipo, queryset_contexto=queryset_contexto,
+            postulacion=postulacion,
+            tipo_participacion=tipo_participacion, seguimiento_etapa=seguimiento_etapa,
+            orden_cargo=orden_cargo,
+        )
 
     @staticmethod
     def _validar_duplicado_activo(

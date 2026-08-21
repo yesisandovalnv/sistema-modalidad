@@ -10,6 +10,7 @@ from rest_framework.test import APITestCase
 from unittest.mock import patch
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
+from apps.modalidades.policies import ModalidadPolicyRegistry
 from apps.postulantes.defensas import EventoDefensaService, EvaluacionDefensaService
 from apps.postulantes.workflow import WorkflowService
 from apps.postulantes.models import (AsignacionPostulacion, EstadoPostulacion,
@@ -386,7 +387,10 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         }
         for nota, esperado in casos.items():
             with self.subTest(nota=nota):
-                self.assertEqual(EvaluacionDefensaService.clasificar_nota_final(Decimal(nota)), esperado)
+                self.assertEqual(
+                    ModalidadPolicyRegistry.get(self.post).evaluacion_policy.clasificar_nota_final(Decimal(nota)),
+                    esperado,
+                )
 
 
 class ApiDefensaTests(DefensaMixin,APITestCase):

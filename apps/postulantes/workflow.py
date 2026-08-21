@@ -72,6 +72,7 @@ class WorkflowService:
                 raise ValidationError("La postulacion ya tiene una etapa en proceso.")
 
             WorkflowService._validar_etapas_anteriores_aprobadas(seguimiento)
+            ModalidadPolicyRegistry.get(seguimiento.postulacion).validar_inicio_etapa(seguimiento)
 
             seguimiento.estado = SeguimientoEtapa.EstadoChoices.EN_PROCESO
             seguimiento.fecha_inicio = seguimiento.fecha_inicio or timezone.now()
@@ -260,6 +261,12 @@ class WorkflowService:
             ultimo = seguimientos[-1]
             if ultimo.estado != SeguimientoEtapa.EstadoChoices.RECHAZADA:
                 raise ValidationError("Solo se puede crear un nuevo intento a partir de una etapa rechazada.")
+
+            ModalidadPolicyRegistry.get(postulacion).validar_nuevo_intento(
+                postulacion=postulacion,
+                etapa=etapa,
+                ultimo_seguimiento=ultimo,
+            )
 
             nuevo_numero = ultimo.numero_intento + 1
             if SeguimientoEtapa.objects.filter(

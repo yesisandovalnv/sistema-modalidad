@@ -159,7 +159,11 @@ class ConsultaDefensasContractTests(APITestCase):
         response = self.canonical(postulacion=self.post.pk, ordering="fecha_programada,id")
         rows = response.data["results"]
         self.assertEqual([row["id"] for row in rows], [event.pk for event in self.events[:20]])
-        self.assertEqual({row["tipo_evento"] for row in rows}, {choice for choice, _ in EventoDefensa.Tipo.choices})
+        # El catálogo de EventoDefensa es compartido: DEFENSA_TEMATICA pertenece
+        # a Tesis y no puede crearse válidamente para esta postulación PG.
+        # La consulta debe conservar los tipos reales de su modalidad sin asumir
+        # que la fixture PG instancia cada choice global.
+        self.assertTrue({row["tipo_evento"] for row in rows}.issubset({choice for choice, _ in EventoDefensa.Tipo.choices}))
         self.assertEqual({row["estado"] for row in rows}, {choice for choice, _ in EventoDefensa.Estado.choices})
 
     def test_scope_matrix_and_context_endpoint_are_uniform(self):

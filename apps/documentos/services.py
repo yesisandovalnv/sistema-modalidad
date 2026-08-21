@@ -69,10 +69,19 @@ class DocumentoService:
                 postulacion=postulacion,
                 tipo_documento=tipo_documento,
             ).first()
-            if tipo_documento.codigo == "ACTA_DEFENSA":
-                self._validar_evento_acta(postulacion, evento_defensa)
+            from apps.modalidades.policies import ModalidadPolicyRegistry
+            if ModalidadPolicyRegistry.has_policy(postulacion):
+                policy = ModalidadPolicyRegistry.get(postulacion)
+                if policy.evento_policy and (
+                    evento_defensa is not None
+                    or policy.evento_policy.requiere_vinculo_evento_documento(tipo_documento)
+                ):
+                    policy.evento_policy.validar_vinculo_documento(
+                        postulacion=postulacion, tipo_documento=tipo_documento,
+                        evento_defensa=evento_defensa,
+                    )
             elif evento_defensa is not None:
-                raise ValidationError("Solo ACTA_DEFENSA puede vincularse a una defensa.")
+                raise ValidationError("La modalidad no admite vincular documentos a eventos.")
             if documento is None:
                 documento = DocumentoPostulacion.objects.create(
                     postulacion=postulacion,
@@ -93,14 +102,6 @@ class DocumentoService:
                 usuario=usuario,
                 request=request,
             )
-
-    @staticmethod
-    def _validar_evento_acta(postulacion: Postulacion, evento) -> None:
-        if not evento:
-            raise ValidationError("ACTA_DEFENSA debe vincularse a una Defensa Pública finalizada.")
-        if (evento.postulacion_id != postulacion.pk or evento.tipo_evento != "DEFENSA_PUBLICA"
-                or evento.estado != "FINALIZADA" or not evento.activo):
-            raise ValidationError("ACTA_DEFENSA debe vincularse a una Defensa Pública activa y finalizada de la misma postulación.")
 
     def crear_nueva_version(
         self,

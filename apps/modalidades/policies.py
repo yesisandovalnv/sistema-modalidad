@@ -62,6 +62,12 @@ class BaseEventoPolicy(ABC):
     def validar_finalizacion(self, evento): return None
     def get_reglas_reprogramacion(self, evento): return {}
     def get_etapa_asociada(self, tipo_evento): return None
+    def validar_correspondencia_evento_etapa(self, evento): return None
+    def validar_reprogramacion(self, evento, nueva_fecha): return None
+    def requiere_vinculo_evento_documento(self, tipo_documento): return False
+    def validar_vinculo_documento(self, *, postulacion, tipo_documento, evento_defensa):
+        if evento_defensa is not None:
+            raise ValidationError("Este tipo documental no admite vincularse a un evento.")
 
 
 class BaseEvaluacionPolicy(ABC):
@@ -71,6 +77,24 @@ class BaseEvaluacionPolicy(ABC):
     def calcular_resultado(self, **kwargs): raise NotImplementedError
     def afecta_workflow(self, **kwargs): return False
     def get_etapa_aprobada(self, **kwargs): return None
+    def validar_registro(self, evaluacion): return None
+    def validar_solicitud_registro(self, **kwargs): return None
+    def construir_consolidado(self, evaluacion, usuario): raise NotImplementedError
+    def calcular_resultado_final(self, postulacion): raise NotImplementedError
+    def get_modalidad_registro_por_defecto(self, *, evento, tipo):
+        raise ModalidadNoSoportadaError(evento.postulacion.modalidad.codigo)
+    def get_valores_registro(self, *, evento, tipo, nota):
+        return {"ponderacion": None, "aporte_ponderado": nota}
+    def obtener_evaluacion_para_consolidar(self, *, evento, evaluaciones): raise NotImplementedError
+    def obtener_aprobacion_por_consolidacion(self, *, evento, evaluacion, resultado_final): return None
+    def obtener_rechazo_por_consolidacion(self, *, evento, evaluacion, resultado_final): return None
+
+
+class BaseRevisionTribunalPreviaPolicy(ABC):
+    def validar_seguimiento(self, seguimiento): raise NotImplementedError
+    def validar_tribunales(self, seguimiento): raise NotImplementedError
+    def get_documento_final_codigo(self): raise NotImplementedError
+    def get_tipo_evidencia_codigo(self): raise NotImplementedError
 
 
 class BaseRequisitosPolicy(ABC):
@@ -112,6 +136,12 @@ class BaseModalidadPolicy(ABC):
     def get_entregas_requeridas(self, fase=None): return tuple(self.requisitos_policy.get_entregas_requeridas(fase)) if self.requisitos_policy else ()
     def get_documentos_requeridos(self, fase=None): return tuple(self.requisitos_policy.get_documentos_requeridos(fase)) if self.requisitos_policy else ()
     def get_cierre_policy(self): return None
+    def get_revision_tribunal_previa_policy(self): return None
+    def validar_dictamen_revision(self, **kwargs):
+        raise ModalidadNoSoportadaError(self.codigo)
+    def validar_asignacion(self, **kwargs): return None
+    def validar_nuevo_intento(self, *, postulacion, etapa, ultimo_seguimiento): return None
+    def validar_inicio_etapa(self, seguimiento): return None
     def validar_aprobacion_etapa(self, seguimiento): return None
 
     def validate_configuration(self):

@@ -4,7 +4,8 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from apps.modalidades.policies import (BaseEvaluacionPolicy, BaseEventoPolicy,
-    BaseModalidadPolicy, BaseRequisitosPolicy, EtapaDefinition)
+    BaseModalidadPolicy, BaseRequisitosPolicy, BaseRevisionTribunalPreviaPolicy,
+    EtapaDefinition)
 
 
 STAGE_DATA = (
@@ -35,10 +36,104 @@ class ProyectoGradoEventoPolicy(BaseEventoPolicy):
         req = self.ASSIGNMENTS[evento.tipo_evento]
         missing = {r:n-counts.get(r,0) for r,n in req.items() if counts.get(r,0)<n}
         return {"valido": not missing, "faltantes": missing, "detalle": counts}
+    def validar_vinculo_documento(self, *, postulacion, tipo_documento, evento_defensa):
+        if tipo_documento.codigo != "ACTA_DEFENSA":
+            if evento_defensa is not None:
+                raise ValidationError("Solo ACTA_DEFENSA puede vincularse a una defensa.")
+            return
+        if not evento_defensa:
+            raise ValidationError("ACTA_DEFENSA debe vincularse a una Defensa Pública finalizada.")
+        if (evento_defensa.postulacion_id != postulacion.pk or evento_defensa.tipo_evento != "DEFENSA_PUBLICA"
+                or evento_defensa.estado != "FINALIZADA" or not evento_defensa.activo):
+            raise ValidationError("ACTA_DEFENSA debe vincularse a una Defensa Pública activa y finalizada de la misma postulación.")
+    def requiere_vinculo_evento_documento(self, tipo_documento): return tipo_documento.codigo == "ACTA_DEFENSA"
+    def validar_correspondencia_evento_etapa(self, evento):
+        if self.get_etapa_asociada(evento.tipo_evento) != evento.seguimiento_etapa.etapa.codigo:
+            raise ValidationError("El tipo de evento no corresponde a la etapa.")
+    def validar_reprogramacion(self, evento, nueva_fecha):
+        if evento.tipo_evento == "DEFENSA_PUBLICA" and nueva_fecha < timezone.now() + timedelta(hours=48):
+            raise ValidationError("La defensa p\u00fablica requiere 48 horas de anticipaci\u00f3n.")
 
 
 class ProyectoGradoEvaluacionPolicy(BaseEvaluacionPolicy):
     def get_tipos_evaluacion(self): return ("PERFIL", "PRIVADA", "PUBLICA", "RESULTADO_FINAL")
+    def clasificar_nota_final(self, nota_final):
+        if nota_final <= 50: return "POSTERGADO"
+        if nota_final <= 74: return "APROBADO"
+        if nota_final <= 89: return "APROBACION_PLENA"
+        return "APROBACION_PLENA_CON_FELICITACION"
+    def validar_registro(self, evaluacion):
+        from decimal import Decimal
+        from apps.postulantes.models import EvaluacionDefensa, EventoDefensa
+        cual = {EvaluacionDefensa.Resultado.SUFICIENTE, EvaluacionDefensa.Resultado.INSUFICIENTE}
+        if evaluacion.tipo_evaluacion in ("PERFIL", "PRIVADA", "PUBLICA") and evaluacion.modalidad_registro != "CONSENSO":
+            raise ValidationError({"modalidad_registro": "La evaluaci\u00f3n de Proyecto de Grado debe registrarse por consenso."})
+        if evaluacion.tipo_evaluacion in ("PERFIL", "PRIVADA", "PUBLICA") and evaluacion.evaluador_id:
+            raise ValidationError({"evaluador": "La evaluaci\u00f3n consensuada no se atribuye a un evaluador individual."})
+        if evaluacion.tipo_evaluacion == "PERFIL" and (evaluacion.resultado_cualitativo not in cual or evaluacion.nota_numerica is not None or evaluacion.ponderacion is not None):
+            raise ValidationError({"tipo_evaluacion": "El perfil es cualitativo y sin ponderaci\u00f3n."})
+        if evaluacion.tipo_evaluacion == "PRIVADA":
+            if evaluacion.resultado_cualitativo not in cual: raise ValidationError({"resultado_cualitativo": "La privada requiere SUFICIENTE o INSUFICIENTE."})
+            if evaluacion.nota_numerica is None or not 0 <= evaluacion.nota_numerica <= 30: raise ValidationError({"nota_numerica": "La nota privada debe estar entre 0 y 30."})
+            if evaluacion.ponderacion not in (None, Decimal("30.00")): raise ValidationError({"ponderacion": "La referencia normativa privada es 30 puntos."})
+            if evaluacion.aporte_ponderado != evaluacion.nota_numerica: raise ValidationError({"aporte_ponderado": "El aporte privado debe coincidir con la nota privada."})
+        if evaluacion.tipo_evaluacion == "PUBLICA":
+            if evaluacion.nota_numerica is None or not 0 <= evaluacion.nota_numerica <= 70: raise ValidationError({"nota_numerica": "La nota p\u00fablica debe estar entre 0 y 70."})
+            if evaluacion.aporte_ponderado != evaluacion.nota_numerica: raise ValidationError({"aporte_ponderado": "El aporte p\u00fablico debe coincidir con la nota p\u00fablica."})
+        expected = {EventoDefensa.Tipo.DEFENSA_PERFIL: "PERFIL", EventoDefensa.Tipo.DEFENSA_PRIVADA: "PRIVADA", EventoDefensa.Tipo.DEFENSA_PUBLICA: "PUBLICA"}
+        if evaluacion.tipo_evaluacion != "RESULTADO_FINAL" and expected.get(evaluacion.evento.tipo_evento) != evaluacion.tipo_evaluacion:
+            raise ValidationError({"tipo_evaluacion": "La evaluaci\u00f3n no corresponde al tipo de evento."})
+    def validar_solicitud_registro(self, *, modalidad_registro, evaluador, **kwargs):
+        if modalidad_registro != "CONSENSO" or evaluador is not None:
+            raise ValidationError("La evaluaci\u00f3n debe ser un consenso \u00fanico del Tribunal.")
+    def get_modalidad_registro_por_defecto(self, *, evento, tipo): return "CONSENSO"
+    def get_valores_registro(self, *, evento, tipo, nota):
+        from decimal import Decimal, ROUND_HALF_UP
+        ponderacion = Decimal("70.00") if tipo == "PUBLICA" else (Decimal("30.00") if tipo == "PRIVADA" else None)
+        aporte = Decimal(nota).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) if nota is not None else None
+        return {"ponderacion": ponderacion, "aporte_ponderado": aporte}
+    def obtener_evaluacion_para_consolidar(self, *, evento, evaluaciones):
+        if evaluaciones.count() != 1:
+            raise ValidationError("Debe existir una única evaluación consensuada para consolidar.")
+        return evaluaciones.first()
+    def obtener_aprobacion_por_consolidacion(self, *, evento, evaluacion, resultado_final):
+        if evento.tipo_evento == "DEFENSA_PUBLICA":
+            if resultado_final["nota_final"] is not None and resultado_final["clasificacion"] != "POSTERGADO":
+                return "Aprobada automáticamente por consolidación pública válida."
+        elif evaluacion.resultado_cualitativo == "SUFICIENTE":
+            return "Aprobada por evaluación de defensa."
+        return None
+    def construir_consolidado(self, evaluacion, usuario):
+        from decimal import Decimal
+        from apps.postulantes.models import EvaluacionDefensa
+        data = {"evento": evaluacion.evento, "tipo_evaluacion": "RESULTADO_FINAL", "modalidad_registro": "CONSENSO", "es_resultado_final_evento": True, "registrado_por": usuario}
+        if evaluacion.tipo_evaluacion == "PUBLICA": data.update(nota_numerica=evaluacion.nota_numerica, ponderacion=Decimal("70.00"), aporte_ponderado=evaluacion.nota_numerica)
+        elif evaluacion.tipo_evaluacion == "PRIVADA": data.update(resultado_cualitativo=evaluacion.resultado_cualitativo, nota_numerica=evaluacion.nota_numerica, ponderacion=Decimal("30.00"), aporte_ponderado=evaluacion.nota_numerica)
+        else: data.update(resultado_cualitativo=evaluacion.resultado_cualitativo)
+        return EvaluacionDefensa(**data)
+    def calcular_resultado_final(self, postulacion):
+        from decimal import Decimal
+        from apps.postulantes.models import EvaluacionDefensa
+        resultados = EvaluacionDefensa.objects.filter(evento__postulacion=postulacion, tipo_evaluacion="RESULTADO_FINAL", es_resultado_final_evento=True)
+        privada = resultados.filter(evento__tipo_evento="DEFENSA_PRIVADA").order_by("-created_at").first()
+        publica = resultados.filter(evento__tipo_evento="DEFENSA_PUBLICA").order_by("-created_at").first()
+        privada_nota, publica_nota = (privada.nota_numerica if privada else None), (publica.nota_numerica if publica else None)
+        nota = (privada_nota + publica_nota).quantize(Decimal("0.01")) if privada_nota is not None and publica_nota is not None else None
+        clasificacion = None if nota is None else self.clasificar_nota_final(nota)
+        return {"nota_privada": privada_nota, "nota_publica": publica_nota, "aporte_privada": privada_nota, "aporte_publica": publica_nota, "nota_final": nota, "clasificacion": clasificacion, "resultado": clasificacion, "limitacion_normativa": "" if nota is not None else "La nota final requiere resultados consolidados de defensa privada y p\u00fablica."}
+
+
+class ProyectoGradoRevisionTribunalPreviaPolicy(BaseRevisionTribunalPreviaPolicy):
+    ETAPA, DOCUMENTO_FINAL, TIPO_EVIDENCIA, ORDENES_TRIBUNAL = "REVISION_TRIBUNAL_PREVIA", "DOCUMENTO_FINAL", "INFORME_REVISION_TRIBUNAL_PREVIA", {1, 2, 3}
+    def validar_seguimiento(self, seguimiento):
+        if seguimiento.etapa.codigo != self.ETAPA: raise ValidationError("El seguimiento debe corresponder a REVISION_TRIBUNAL_PREVIA.")
+    def validar_tribunales(self, seguimiento):
+        from apps.postulantes.models import AsignacionPostulacion
+        tribunales = list(AsignacionPostulacion.objects.select_for_update().select_related("usuario").filter(postulacion=seguimiento.postulacion, seguimiento_etapa=seguimiento, tipo_participacion="TRIBUNAL", activo=True, usuario__is_active=True, usuario__activo=True))
+        if len(tribunales) != 3 or {x.orden_cargo for x in tribunales} != self.ORDENES_TRIBUNAL or len({x.usuario_id for x in tribunales}) != 3: raise ValidationError("REVISION_TRIBUNAL_PREVIA requiere tres tribunales activos distintos con \u00f3rdenes 1, 2 y 3.")
+        return tribunales
+    def get_documento_final_codigo(self): return self.DOCUMENTO_FINAL
+    def get_tipo_evidencia_codigo(self): return self.TIPO_EVIDENCIA
 
 
 class ProyectoGradoRequisitosPolicy(BaseRequisitosPolicy):
@@ -57,6 +152,11 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
     evaluacion_policy = ProyectoGradoEvaluacionPolicy()
     requisitos_policy = ProyectoGradoRequisitosPolicy()
     def get_reglas_asignacion(self): return self.evento_policy.ASSIGNMENTS
+    def get_revision_tribunal_previa_policy(self): return ProyectoGradoRevisionTribunalPreviaPolicy()
+    def validar_asignacion(self, *, queryset_contexto, tipo_participacion, seguimiento_etapa, orden_cargo, **kwargs):
+        if tipo_participacion == "TRIBUNAL" and seguimiento_etapa and seguimiento_etapa.etapa.codigo == "PERFIL_PROYECTO":
+            if queryset_contexto.count() >= 3: raise ValidationError("Proyecto de Grado admite como m\u00e1ximo tres miembros activos de tribunal en el perfil.")
+            if orden_cargo is not None and queryset_contexto.filter(orden_cargo=orden_cargo).exists(): raise ValidationError("Ya existe un miembro activo del tribunal con ese orden de cargo.")
     def validar_aprobacion_etapa(self, seguimiento):
         if seguimiento.etapa.codigo == "CIERRE_DOCUMENTAL":
             from apps.postulantes.cierre import ProyectoGradoCierrePolicy

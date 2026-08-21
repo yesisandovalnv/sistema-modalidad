@@ -380,6 +380,12 @@ export const postulacionesService = {
       throw normalizeTribunalReport(error, true)
     }
   },
+  async obtenerDictamenesRevision(seguimientoId, signal) {
+    return (await apiClient.get(`/api/v1/seguimientos-etapa/${seguimientoId}/dictamenes-revision/`, { signal })).data
+  },
+  async registrarDictamenRevision(seguimientoId, payload, signal) {
+    return (await apiClient.post(`/api/v1/seguimientos-etapa/${seguimientoId}/dictamenes-revision/`, payload, { signal })).data
+  },
   obtenerVersiones(documento, page, signal) {
     return getDocumentResource('/api/v1/documentos/versiones/', { documento, ordering: 'numero_version', page }, signal, 'las versiones')
   },

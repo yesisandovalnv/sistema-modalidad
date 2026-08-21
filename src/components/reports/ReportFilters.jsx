@@ -12,7 +12,7 @@ export function ReportFilters({ initial = empty, onApply, showSearch = false }) 
     const controller = new AbortController(); setLoadingStages(true); reportesService.obtenerCapacidades(draft.modalidad, controller.signal).then((data) => { setEtapas((data.etapas || []).filter((stage) => stage.id != null)); if (data.configuracion_valida === false) setConfigurationWarning((data.advertencias || [])[0] || 'La modalidad tiene etapas sin configurar.') }).catch((error) => { if (!error.canceled) setStageError('No se pudieron cargar las etapas.') }).finally(() => { if (!controller.signal.aborted) setLoadingStages(false) }); return () => controller.abort()
   }, [draft.modalidad])
   const set = (key) => (e) => setDraft((current) => ({ ...current, [key]: e.target.value }))
-  const field = 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950'
+  const field = 'h-10 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950'
   return <form className="app-filter-panel rounded-xl border p-4" onSubmit={(e) => { e.preventDefault(); onApply(draft) }}>
     <div className={`grid gap-4 sm:grid-cols-2 ${showSearch ? 'xl:grid-cols-5' : 'lg:grid-cols-4'}`}>
       <label className="grid gap-1 text-sm">Modalidad<select className={field} value={draft.modalidad} onChange={set('modalidad')}><option value="">Todas</option>{modalidades.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}</select></label>

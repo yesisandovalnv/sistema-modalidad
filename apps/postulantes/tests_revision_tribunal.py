@@ -1,5 +1,3 @@
-import shutil
-import tempfile
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -30,11 +28,11 @@ User = get_user_model()
 class RevisionTribunalFixtureMixin:
     def setUp(self):
         super().setUp()
-        self.media_root = tempfile.mkdtemp()
-        self.override_media = override_settings(MEDIA_ROOT=self.media_root)
+        self.override_media = override_settings(
+            STORAGES={"default": {"BACKEND": "django.core.files.storage.InMemoryStorage"}},
+        )
         self.override_media.enable()
         self.addCleanup(self.override_media.disable)
-        self.addCleanup(shutil.rmtree, self.media_root, True)
 
         self.admin = User.objects.create_user(
             username="admin_revision", password="segura123", ci="7100001", ru="7100001",

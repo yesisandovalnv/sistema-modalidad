@@ -56,11 +56,11 @@ class SeedInitialDataCommandTest(TestCase):
         self.assertEqual(Modalidad.objects.count(), 6)
         self.assertEqual(EstadoPostulacion.objects.count(), 8)
         self.assertEqual(EstadoDocumento.objects.count(), 5)
-        self.assertEqual(EtapaModalidad.objects.count(), 8)
+        self.assertEqual(EtapaModalidad.objects.count(), 16)
         self.assertEqual(TipoDocumento.objects.count(), 5)
         self.assertEqual(Requisito.objects.count(), 0)
         self.assertEqual(ModalidadRequisito.objects.count(), 0)
-        self.assertIn("Creados: 32", stdout)
+        self.assertIn("Creados: 40", stdout)
         self.assertIn("No existen requisitos oficiales validados para cargar.", stdout)
 
     def test_json_mal_formado_produce_command_error(self) -> None:
@@ -226,7 +226,7 @@ class SeedInitialDataCommandTest(TestCase):
         self.assertEqual(Modalidad.objects.count(), 6)
         self.assertEqual(EstadoPostulacion.objects.count(), 8)
         self.assertEqual(EstadoDocumento.objects.count(), 5)
-        self.assertEqual(EtapaModalidad.objects.count(), 8)
+        self.assertEqual(EtapaModalidad.objects.count(), 16)
         self.assertEqual(TipoDocumento.objects.count(), 7)
         self.assertEqual(Requisito.objects.count(), 2)
         self.assertEqual(ModalidadRequisito.objects.count(), 2)
@@ -239,7 +239,7 @@ class SeedInitialDataCommandTest(TestCase):
                 orden=1,
             ).exists()
         )
-        self.assertIn("Creados: 38", stdout)
+        self.assertIn("Creados: 46", stdout)
 
     def test_segunda_ejecucion_con_datos_validos_no_duplica(self) -> None:
         self.write_json(
@@ -276,7 +276,7 @@ class SeedInitialDataCommandTest(TestCase):
         self.assertEqual(ModalidadRequisito.objects.count(), 1)
         self.assertEqual(EstadoPostulacion.objects.filter(codigo="EN_PROCESO").count(), 1)
         self.assertIn("Creados: 0", stdout)
-        self.assertIn("Existentes: 35", stdout)
+        self.assertIn("Existentes: 43", stdout)
 
     def test_mantiene_intactas_modalidades_y_estados_existentes(self) -> None:
         self.write_json(
@@ -310,13 +310,13 @@ class SeedInitialDataCommandTest(TestCase):
         self.assertEqual(Modalidad.objects.count(), 6)
         self.assertEqual(EstadoPostulacion.objects.count(), 8)
         self.assertEqual(EstadoDocumento.objects.count(), 5)
-        self.assertEqual(EtapaModalidad.objects.count(), 8)
+        self.assertEqual(EtapaModalidad.objects.count(), 16)
         self.assertTrue(Modalidad.objects.filter(codigo="TRABAJO_DIRIGIDO").exists())
         self.assertTrue(EstadoPostulacion.objects.filter(codigo="REGISTRADA").exists())
         self.assertTrue(EstadoPostulacion.objects.filter(codigo="EN_PROCESO", activo=True).exists())
         self.assertTrue(EstadoDocumento.objects.filter(codigo="APR").exists())
 
-    def test_seed_crea_etapas_oficiales_solo_para_proyecto_grado(self) -> None:
+    def test_seed_crea_etapas_oficiales_por_modalidad(self) -> None:
         self.run_seed_command()
 
         etapas = list(
@@ -343,9 +343,12 @@ class SeedInitialDataCommandTest(TestCase):
                 codigo="PERFIL_PROYECTO",
             ).permite_repeticion
         )
-        self.assertFalse(
-            EtapaModalidad.objects.exclude(modalidad__codigo="PROYECTO_GRADO").exists()
-        )
+        tesis = list(EtapaModalidad.objects.filter(modalidad__codigo="TESIS_GRADO").order_by("orden"))
+        self.assertEqual([etapa.codigo for etapa in tesis], [
+            "INSCRIPCION", "TEMATICA_TESIS", "PERFIL_TESIS", "DOCUMENTO_FINAL",
+            "REVISION_TUTOR", "REVISION_TRIBUNAL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA",
+        ])
+        self.assertTrue(EtapaModalidad.objects.get(modalidad__codigo="TESIS_GRADO", codigo="PERFIL_TESIS").permite_repeticion)
 
     def test_command_updates_existing_records_and_reactivates_them(self) -> None:
         Modalidad.all_objects.create(
@@ -421,10 +424,38 @@ class OfficialProyectoGradoDocumentTypesSeedTest(TestCase):
         self.assertFalse(tipos.filter(activo=False).exists())
         self.assertFalse(tipos.exclude(tamano_maximo_mb=10).exists())
         self.assertFalse(tipos.exclude(extensiones_permitidas="pdf,doc,docx").exists())
-        self.assertIn("Creados: 32", first_stdout)
+        self.assertIn("Creados: 58", first_stdout)
 
         second_stdout = self.run_official_seed()
 
         self.assertEqual(TipoDocumento.objects.filter(codigo__in=self.EXPECTED_CODES).count(), 5)
         self.assertIn("Creados: 0", second_stdout)
-        self.assertIn("Existentes: 32", second_stdout)
+        self.assertIn("Existentes: 58", second_stdout)
+
+
+class OfficialTesisGradoSeedTest(TestCase):
+    REQUIRED_CODES = {
+        "CARTA_SOLICITUD",
+        "MATRICULA_VIGENTE",
+        "HISTORIAL_PRERREQ",
+        "PERFIL_TESIS",
+        "INFORME_TUTOR_TESIS",
+        "INFORME_TRIB_TESIS",
+    }
+
+    def test_official_seed_configura_requisitos_tesis_idempotentemente(self) -> None:
+        official_path = Path(settings.BASE_DIR) / "apps" / "academico" / "data" / "requisitos_oficiales.json"
+        with patch("apps.academico.management.commands.seed_initial_data.REQUIREMENTS_JSON_PATH", official_path):
+            call_command("seed_initial_data")
+            call_command("seed_initial_data")
+        self.assertEqual(TipoDocumento.objects.filter(codigo__in=self.REQUIRED_CODES).count(), 6)
+        self.assertEqual(Requisito.objects.filter(codigo__in=self.REQUIRED_CODES).count(), 6)
+        self.assertEqual(ModalidadRequisito.objects.filter(modalidad__codigo="TESIS_GRADO", requisito__codigo__in=self.REQUIRED_CODES).count(), 6)
+
+    def test_documento_final_compartido_tiene_descripcion_neutral(self) -> None:
+        official_path = Path(settings.BASE_DIR) / "apps" / "academico" / "data" / "requisitos_oficiales.json"
+        with patch("apps.academico.management.commands.seed_initial_data.REQUIREMENTS_JSON_PATH", official_path):
+            call_command("seed_initial_data")
+        descripcion = TipoDocumento.objects.get(codigo="DOCUMENTO_FINAL").descripcion
+        self.assertNotIn("Proyecto de Grado", descripcion)
+        self.assertIn("modalidad de graduación", descripcion)

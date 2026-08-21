@@ -16,6 +16,7 @@ from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.models import (
     AsignacionPostulacion,
     EstadoPostulacion,
+    DictamenRevisionDocumento,
     HistorialEstado,
     InformeRevisionTribunalPrevia,
     Observacion,
@@ -33,6 +34,8 @@ from apps.postulantes.serializers import (
     FlujoPostulacionSerializer,
     HistorialEstadoSerializer,
     InformeRevisionTribunalSerializer,
+    DictamenRevisionSerializer,
+    RegistrarDictamenRevisionSerializer,
     ObservaSeguimientoEtapaSerializer,
     ObservacionSerializer,
     OmitirSeguimientoEtapaSerializer,
@@ -44,6 +47,7 @@ from apps.postulantes.serializers import (
 )
 from apps.postulantes.services import PostulacionService
 from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
+from apps.postulantes.dictamenes_revision import DictamenRevisionDocumentoService
 from apps.postulantes.workflow import WorkflowService
 from apps.postulantes.models import SeguimientoEtapa
 from core.permissions import is_staff_user
@@ -430,6 +434,30 @@ class SeguimientoEtapaViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset.filter(
             Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user)
         ).distinct()
+
+    @extend_schema(
+        request=RegistrarDictamenRevisionSerializer,
+        responses={200: DictamenRevisionSerializer(many=True), 201: DictamenRevisionSerializer},
+    )
+    @action(detail=True, methods=["get", "post"], url_path="dictamenes-revision", serializer_class=RegistrarDictamenRevisionSerializer)
+    def dictamenes_revision(self, request, pk=None):
+        seguimiento = self.get_object()
+        if request.method == "GET":
+            queryset = DictamenRevisionDocumento.all_objects.filter(seguimiento_etapa=seguimiento).select_related(
+                "version_documento_revisada", "evidencia_version", "asignacion_emisora", "registrado_por",
+            )
+            return Response(DictamenRevisionSerializer(queryset, many=True, context=self.get_serializer_context()).data)
+        if not is_staff_user(request.user):
+            raise PermissionDenied("Solo un usuario administrativo puede registrar el dictamen.")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            dictamen = DictamenRevisionDocumentoService.registrar(
+                seguimiento=seguimiento, usuario=request.user, **serializer.validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise _assignment_validation_error(exc) from exc
+        return Response(DictamenRevisionSerializer(dictamen, context=self.get_serializer_context()).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
         request=RegistrarInformeRevisionTribunalSerializer,

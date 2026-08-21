@@ -568,6 +568,7 @@ class EventoDefensa(BaseModel):
     """Evento académico genérico; sus estados son técnicos del sistema."""
 
     class Tipo(models.TextChoices):
+        DEFENSA_TEMATICA = "DEFENSA_TEMATICA", "Defensa de temática"
         DEFENSA_PERFIL = "DEFENSA_PERFIL", "Defensa de perfil"
         DEFENSA_PRIVADA = "DEFENSA_PRIVADA", "Defensa privada"
         DEFENSA_PUBLICA = "DEFENSA_PUBLICA", "Defensa pública"
@@ -608,14 +609,14 @@ class EventoDefensa(BaseModel):
         super().clean(); errors = {}
         if self.seguimiento_etapa_id and self.postulacion_id and self.seguimiento_etapa.postulacion_id != self.postulacion_id:
             errors["seguimiento_etapa"] = "El seguimiento debe pertenecer a la postulación."
-        expected = {self.Tipo.DEFENSA_PERFIL: "PERFIL_PROYECTO", self.Tipo.DEFENSA_PRIVADA: "DEFENSA_PRIVADA", self.Tipo.DEFENSA_PUBLICA: "DEFENSA_PUBLICA"}
-        if self.seguimiento_etapa_id and expected.get(self.tipo_evento) != self.seguimiento_etapa.etapa.codigo:
-            errors["tipo_evento"] = "El tipo de evento no corresponde a la etapa."
         if self.numero_intento < 1: errors["numero_intento"] = "El intento debe ser mayor o igual a 1."
         if self.fecha_inicio_real and self.fecha_fin_real and self.fecha_fin_real < self.fecha_inicio_real: errors["fecha_fin_real"] = "La fecha final no puede ser anterior al inicio."
         if self.modalidad_evento in (self.ModalidadEvento.VIRTUAL, self.ModalidadEvento.MIXTA) and not self.enlace_virtual: errors["enlace_virtual"] = "El enlace virtual es obligatorio."
         if self.modalidad_evento == self.ModalidadEvento.PRESENCIAL and not self.lugar.strip(): errors["lugar"] = "El lugar es obligatorio."
         if errors: raise ValidationError(errors)
+        if self.seguimiento_etapa_id:
+            from apps.modalidades.policies import ModalidadPolicyRegistry
+            ModalidadPolicyRegistry.get(self.postulacion).evento_policy.validar_correspondencia_evento_etapa(self)
 
     def save(self, *args, **kwargs): self.full_clean(); return super().save(*args, **kwargs)
 
@@ -644,7 +645,7 @@ class ParticipanteEvento(BaseModel):
 
 
 class EvaluacionDefensa(BaseModel):
-    class Tipo(models.TextChoices): PERFIL="PERFIL","Perfil"; PRIVADA="PRIVADA","Privada"; PUBLICA="PUBLICA","Pública"; RESULTADO_FINAL="RESULTADO_FINAL","Resultado final"
+    class Tipo(models.TextChoices): TEMATICA="TEMATICA","Temática"; PERFIL="PERFIL","Perfil"; PRIVADA="PRIVADA","Privada"; PUBLICA="PUBLICA","Pública"; RESULTADO_FINAL="RESULTADO_FINAL","Resultado final"
     class ModalidadRegistro(models.TextChoices): INDIVIDUAL="INDIVIDUAL","Individual"; CONSENSO="CONSENSO","Consenso"
     class Resultado(models.TextChoices): SUFICIENTE="SUFICIENTE","Suficiente"; INSUFICIENTE="INSUFICIENTE","Insuficiente"; POSTERGADO="POSTERGADO","Postergado"; APROBADO="APROBADO","Aprobado"; APROBACION_PLENA="APROBACION_PLENA","Aprobación plena"; APROBACION_PLENA_CON_FELICITACION="APROBACION_PLENA_CON_FELICITACION","Aprobación plena con felicitación"
     evento=models.ForeignKey(EventoDefensa,models.CASCADE,related_name="evaluaciones")
@@ -664,20 +665,79 @@ class EvaluacionDefensa(BaseModel):
         super().clean(); errors={}; cual={self.Resultado.SUFICIENTE,self.Resultado.INSUFICIENTE}
         if self.evaluador_id and self.evaluador.evento_id != self.evento_id: errors["evaluador"]="El evaluador no pertenece al evento."
         if self.modalidad_registro==self.ModalidadRegistro.INDIVIDUAL and not self.evaluador_id: errors["evaluador"]="La evaluación individual requiere evaluador."
-        if self.tipo_evaluacion in (self.Tipo.PERFIL,self.Tipo.PRIVADA,self.Tipo.PUBLICA) and self.modalidad_registro!=self.ModalidadRegistro.CONSENSO: errors["modalidad_registro"]="La evaluación de Proyecto de Grado debe registrarse por consenso."
-        if self.tipo_evaluacion in (self.Tipo.PERFIL,self.Tipo.PRIVADA,self.Tipo.PUBLICA) and self.evaluador_id: errors["evaluador"]="La evaluación consensuada no se atribuye a un evaluador individual."
-        if self.tipo_evaluacion==self.Tipo.PERFIL and (self.resultado_cualitativo not in cual or self.nota_numerica is not None or self.ponderacion is not None): errors["tipo_evaluacion"]="El perfil es cualitativo y sin ponderación."
-        if self.tipo_evaluacion==self.Tipo.PRIVADA and self.resultado_cualitativo not in cual: errors["resultado_cualitativo"]="La privada requiere SUFICIENTE o INSUFICIENTE."
-        if self.tipo_evaluacion==self.Tipo.PRIVADA and (self.nota_numerica is None or not 0 <= self.nota_numerica <= 30): errors["nota_numerica"]="La nota privada debe estar entre 0 y 30."
-        if self.tipo_evaluacion==self.Tipo.PRIVADA and self.ponderacion not in (None, Decimal("30.00")): errors["ponderacion"]="La referencia normativa privada es 30 puntos."
-        if self.tipo_evaluacion==self.Tipo.PRIVADA and self.aporte_ponderado != self.nota_numerica: errors["aporte_ponderado"]="El aporte privado debe coincidir con la nota privada."
-        if self.tipo_evaluacion==self.Tipo.PUBLICA and (self.nota_numerica is None or not 0 <= self.nota_numerica <= 70): errors["nota_numerica"]="La nota pública debe estar entre 0 y 70."
-        if self.tipo_evaluacion==self.Tipo.PUBLICA and self.aporte_ponderado != self.nota_numerica: errors["aporte_ponderado"]="El aporte público debe coincidir con la nota pública."
-        expected = {EventoDefensa.Tipo.DEFENSA_PERFIL:self.Tipo.PERFIL, EventoDefensa.Tipo.DEFENSA_PRIVADA:self.Tipo.PRIVADA, EventoDefensa.Tipo.DEFENSA_PUBLICA:self.Tipo.PUBLICA}
-        if self.tipo_evaluacion != self.Tipo.RESULTADO_FINAL and self.evento_id and expected.get(self.evento.tipo_evento) != self.tipo_evaluacion: errors["tipo_evaluacion"]="La evaluación no corresponde al tipo de evento."
         if self.tipo_evaluacion == self.Tipo.RESULTADO_FINAL and not self.es_resultado_final_evento: errors["es_resultado_final_evento"]="El resultado final debe provenir de la consolidación."
         if errors: raise ValidationError(errors)
+        if self.evento_id:
+            from apps.modalidades.policies import ModalidadPolicyRegistry
+            ModalidadPolicyRegistry.get(self.evento.postulacion).evaluacion_policy.validar_registro(self)
     def save(self,*args,**kwargs): self.full_clean(); return super().save(*args,**kwargs)
+
+
+class DictamenRevisionDocumento(BaseModel):
+    """Dictamen formal, reusable y trazable sobre una versión documental."""
+
+    class TipoRevision(models.TextChoices):
+        TUTOR = "TUTOR", "Tutor"
+        TRIBUNAL = "TRIBUNAL", "Tribunal"
+
+    class Resultado(models.TextChoices):
+        SUFICIENTE = "SUFICIENTE", "Suficiente"
+        INSUFICIENTE = "INSUFICIENTE", "Insuficiente"
+
+    seguimiento_etapa = models.ForeignKey(
+        SeguimientoEtapa, models.PROTECT, related_name="dictamenes_revision",
+    )
+    version_documento_revisada = models.ForeignKey(
+        "documentos.VersionDocumento", models.PROTECT, related_name="dictamenes_recibidos",
+    )
+    tipo_revision = models.CharField(max_length=20, choices=TipoRevision.choices)
+    resultado = models.CharField(max_length=20, choices=Resultado.choices)
+    evidencia_version = models.ForeignKey(
+        "documentos.VersionDocumento", models.PROTECT, related_name="evidencias_dictamen_revision",
+    )
+    asignacion_emisora = models.ForeignKey(
+        AsignacionPostulacion, models.PROTECT, null=True, blank=True,
+        related_name="dictamenes_emitidos",
+    )
+    observaciones = models.TextField(blank=True)
+    registrado_por = models.ForeignKey(
+        CustomUser, models.SET_NULL, null=True, blank=True,
+        related_name="dictamenes_revision_registrados",
+    )
+    fecha_registro = models.DateTimeField(auto_now_add=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["-fecha_registro", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["seguimiento_etapa", "version_documento_revisada", "tipo_revision"],
+                condition=models.Q(activo=True),
+                name="unique_dictamen_revision_activo_version_tipo",
+            ),
+        ]
+        indexes = [models.Index(fields=["seguimiento_etapa", "tipo_revision", "activo"])]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.seguimiento_etapa_id and self.version_documento_revisada_id:
+            if self.version_documento_revisada.documento.postulacion_id != self.seguimiento_etapa.postulacion_id:
+                errors["version_documento_revisada"] = "La versión revisada debe pertenecer a la misma postulación de la etapa."
+        if self.seguimiento_etapa_id and self.evidencia_version_id:
+            if self.evidencia_version.documento.postulacion_id != self.seguimiento_etapa.postulacion_id:
+                errors["evidencia_version"] = "La evidencia debe pertenecer a la misma postulación de la etapa."
+        if self.asignacion_emisora_id and self.seguimiento_etapa_id:
+            if self.asignacion_emisora.postulacion_id != self.seguimiento_etapa.postulacion_id:
+                errors["asignacion_emisora"] = "La asignación emisora debe pertenecer a la misma postulación."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class InformeRevisionTribunalPrevia(BaseModel):
@@ -728,8 +788,16 @@ class InformeRevisionTribunalPrevia(BaseModel):
         super().clean()
         self.observaciones = (self.observaciones or "").strip()
         errors = {}
-        if self.seguimiento_etapa_id and self.seguimiento_etapa.etapa.codigo != "REVISION_TRIBUNAL_PREVIA":
-            errors["seguimiento_etapa"] = "El seguimiento debe corresponder a REVISION_TRIBUNAL_PREVIA."
+        if self.seguimiento_etapa_id:
+            from apps.modalidades.policies import ModalidadPolicyRegistry
+            try:
+                policy = ModalidadPolicyRegistry.get(self.seguimiento_etapa.postulacion).get_revision_tribunal_previa_policy()
+                if not policy:
+                    errors["seguimiento_etapa"] = "La modalidad no tiene revisión previa de tribunal configurada."
+                else:
+                    policy.validar_seguimiento(self.seguimiento_etapa)
+            except ValidationError as exc:
+                errors["seguimiento_etapa"] = exc.messages
         if self.resultado == self.Resultado.INSUFICIENTE and not self.observaciones:
             errors["observaciones"] = "Las observaciones son obligatorias para un resultado INSUFICIENTE."
         if self.registrado_por_id and not self.registrado_por.is_active:

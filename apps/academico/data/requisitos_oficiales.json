@@ -1,7 +1,19 @@
 {
   "version": "1.0",
-  "fuente": "",
-  "fecha_validacion": null,
-  "validado_por": "",
-  "modalidades": []
+  "fuente": "Reglamento de Tesis de Grado CIS, Jornadas Académicas 2013, Capítulo II",
+  "fecha_validacion": "2013-10-01",
+  "validado_por": "Reglamento oficial de la Carrera de Ingeniería de Sistemas",
+  "modalidades": [
+    {
+      "codigo_modalidad": "TESIS_GRADO",
+      "tipos_documento": [
+        {"codigo": "CARTA_SOLICITUD", "nombre": "Carta de Solicitud para Tesis", "descripcion": "Carta dirigida a la Dirección de Carrera que establece la modalidad y el tema o términos de referencia.", "obligatorio": true, "orden": 1, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": true},
+        {"codigo": "MATRICULA_VIGENTE", "nombre": "Comprobante de Matrícula Vigente", "descripcion": "Fotocopia del recibo de pago de matrícula del período académico vigente.", "obligatorio": true, "orden": 2, "extensiones_permitidas": ["pdf", "jpg", "jpeg", "png"], "tamano_maximo_mb": 10, "permite_multiple_version": true},
+        {"codigo": "HISTORIAL_PRERREQ", "nombre": "Historial Académico de Prerrequisitos", "descripcion": "Historial que evidencia haber vencido los prerrequisitos de Metodología de la Investigación II.", "obligatorio": true, "orden": 3, "extensiones_permitidas": ["pdf"], "tamano_maximo_mb": 10, "permite_multiple_version": true},
+        {"codigo": "PERFIL_TESIS", "nombre": "Perfil de Tesis", "descripcion": "Perfil de Tesis presentado y defendido conforme al Capítulo III.", "obligatorio": true, "orden": 4, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": true},
+        {"codigo": "INFORME_TUTOR_TESIS", "nombre": "Informe del Tutor de Tesis", "descripcion": "Informe del Tutor sobre el Perfil o Documento Final de Tesis.", "obligatorio": true, "orden": 5, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": true},
+        {"codigo": "INFORME_TRIB_TESIS", "nombre": "Informe del Tribunal de Tesis", "descripcion": "Informe del Tribunal sobre una versión del Documento Final de Tesis.", "obligatorio": true, "orden": 6, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": true}
+      ]
+    }
+  ]
 }

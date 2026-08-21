@@ -78,7 +78,7 @@ OFFICIAL_TIPOS_DOCUMENTO = [
     {
         "codigo": "DOCUMENTO_FINAL",
         "nombre": "Documento Final",
-        "descripcion": "Documento académico final de la modalidad Proyecto de Grado, presentado para revisión y aprobación.",
+        "descripcion": "Documento académico final de la modalidad de graduación, presentado para revisión y aprobación.",
         "obligatorio": True,
         "permite_multiple_version": True,
         "tamano_maximo_mb": 10,
@@ -179,6 +179,24 @@ OFFICIAL_ETAPAS_MODALIDAD = {
             "permite_repeticion": False,
             "origen_normativo": "Reglamento específico, acta y hoja de aprobación, más cierre del diagrama.",
         },
+    ],
+    "TESIS_GRADO": [
+        {"codigo": "INSCRIPCION", "nombre": "Inscripción", "orden": 1, "obligatoria": True, "permite_repeticion": False,
+         "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulo II."},
+        {"codigo": "TEMATICA_TESIS", "nombre": "Temática de Tesis", "orden": 2, "obligatoria": True, "permite_repeticion": False,
+         "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulo III: temática ante tribunal de tres docentes."},
+        {"codigo": "PERFIL_TESIS", "nombre": "Perfil de Tesis", "orden": 3, "obligatoria": True, "permite_repeticion": True,
+         "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulo III: suficiente/insuficiente y segunda defensa."},
+        {"codigo": "DOCUMENTO_FINAL", "nombre": "Documento Final", "orden": 4, "obligatoria": True, "permite_repeticion": False,
+         "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulo IV."},
+        {"codigo": "REVISION_TUTOR", "nombre": "Revisión de Tutor", "orden": 5, "obligatoria": True, "permite_repeticion": False,
+         "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulo V."},
+        {"codigo": "REVISION_TRIBUNAL", "nombre": "Revisión de Tribunal", "orden": 6, "obligatoria": True, "permite_repeticion": False,
+         "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulo V."},
+        {"codigo": "DEFENSA_PRIVADA", "nombre": "Defensa Privada", "orden": 7, "obligatoria": True, "permite_repeticion": True,
+         "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulos VI y VII; implementación posterior."},
+        {"codigo": "DEFENSA_PUBLICA", "nombre": "Defensa Pública", "orden": 8, "obligatoria": True, "permite_repeticion": False,
+         "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulos VI y VII; implementación posterior."},
     ],
 }
 

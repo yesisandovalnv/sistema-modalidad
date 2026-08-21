@@ -4,6 +4,7 @@ from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.postulantes.models import (
     AsignacionPostulacion,
     EstadoPostulacion,
+    DictamenRevisionDocumento,
     HistorialEstado,
     InformeRevisionTribunalPrevia,
     Observacion,
@@ -401,6 +402,25 @@ class OmitirSeguimientoEtapaSerializer(serializers.Serializer):
     """Payload para omitir una etapa."""
 
     observaciones = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class RegistrarDictamenRevisionSerializer(serializers.Serializer):
+    version_documento_revisada = serializers.PrimaryKeyRelatedField(queryset=VersionDocumento.objects.all())
+    tipo_revision = serializers.ChoiceField(choices=DictamenRevisionDocumento.TipoRevision.choices)
+    resultado = serializers.ChoiceField(choices=DictamenRevisionDocumento.Resultado.choices)
+    evidencia_version = serializers.PrimaryKeyRelatedField(queryset=VersionDocumento.objects.all())
+    asignacion_emisora = serializers.PrimaryKeyRelatedField(queryset=AsignacionPostulacion.objects.all(), required=False, allow_null=True)
+    observaciones = serializers.CharField(required=False, allow_blank=True)
+
+
+class DictamenRevisionSerializer(serializers.ModelSerializer):
+    evidencia_version_nombre = serializers.CharField(source="evidencia_version.nombre_original", read_only=True)
+    version_documento_revisada_numero = serializers.IntegerField(source="version_documento_revisada.numero_version", read_only=True)
+
+    class Meta:
+        model = DictamenRevisionDocumento
+        fields = ("id", "seguimiento_etapa", "version_documento_revisada", "version_documento_revisada_numero", "tipo_revision", "resultado", "evidencia_version", "evidencia_version_nombre", "asignacion_emisora", "observaciones", "registrado_por", "fecha_registro", "activo")
+        read_only_fields = ("id", "seguimiento_etapa", "registrado_por", "fecha_registro", "activo")
 
 
 class RegistrarInformeRevisionTribunalSerializer(serializers.Serializer):

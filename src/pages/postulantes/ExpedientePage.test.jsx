@@ -385,6 +385,20 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   })
 
+  it('no presenta controles de cierre de Proyecto en un expediente de Tesis', async () => {
+    postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue({ soportada: true, configuracion_valida: true, cierre_soportado: false })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+      flujo: { ...response.flujo, modalidad: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+    })
+    renderPage()
+    await screen.findByText('EXP-007')
+    expect(screen.queryByRole('heading', { name: 'Cierre técnico' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Condiciones y entregas técnicas' })).not.toBeInTheDocument()
+    expect(screen.getByRole('note', { name: 'Límites normativos' })).toHaveTextContent(/defensa pública permanece bloqueada/i)
+  })
+
   it('mantiene expediente y advertencias ante errores parciales y permite reintentar', async () => {
     const partial = {
       ...response,
@@ -993,6 +1007,7 @@ describe('ExpedientePage US-008', () => {
     renderDefenseManagerPage()
     await userEvent.click(await screen.findByRole('button', { name: 'Programar defensa' }))
     const dialog = screen.getByRole('dialog', { name: 'Programar defensa' })
+    expect(within(dialog).getByText(/regla de 48 horas/i)).toBeInTheDocument()
     await userEvent.selectOptions(within(dialog).getByLabelText('Tipo de defensa'), 'DEFENSA_PRIVADA')
     expect(within(dialog).getByRole('option', { name: 'Defensa Privada — intento 2' })).toBeInTheDocument()
     await userEvent.selectOptions(within(dialog).getByLabelText('Etapa compatible'), '12')
@@ -1053,6 +1068,17 @@ describe('ExpedientePage US-008', () => {
     await userEvent.click(within(confirm).getByRole('button', { name: 'Confirmar' }))
     await waitFor(() => expect(postulacionesService[method]).toHaveBeenCalledWith(eventId, ...args, expect.any(AbortSignal)))
     expect(postulacionesService.obtenerDefensas).toHaveBeenCalledTimes(2)
+  })
+
+  it('no muestra la advertencia de 48 horas para Tesis', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+      flujo: { ...response.flujo, modalidad: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+    })
+    renderDefenseManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Programar defensa' }))
+    expect(screen.queryByText(/regla de 48 horas/i)).not.toBeInTheDocument()
   })
 
   it('exige motivo, bloquea doble envío, muestra Procesando y cancela la solicitud al cerrar', async () => {

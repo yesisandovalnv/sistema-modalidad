@@ -46,6 +46,11 @@ class ReportListPermissionTests(ReportBase):
         r=self.client.get("/api/v1/reportes/postulaciones/"); self.assertEqual(r.status_code,200); self.assertEqual(r.data["count"],2); self.assertIn("porcentaje_etapas_aprobadas",r.data["results"][0])
     def test_tutor_y_etapa_sin_n1_funcional(self):
         row=next(x for x in self.client.get("/api/v1/reportes/postulaciones/").data["results"] if x["postulacion_id"]==self.p.pk); self.assertEqual(row["tutor_activo"],self.doc.username); self.assertEqual(row["etapa_actual"],"INSCRIPCION")
+    def test_tesis_no_hereda_semantica_de_cierre_de_proyecto(self):
+        tesis=Modalidad.objects.create(codigo="TESIS_GRADO",nombre="Tesis R")
+        post=Postulacion.objects.create(codigo="REP-TESIS",estudiante=self.student,modalidad=tesis,periodo=self.period,estado_actual=self.reg)
+        row=next(x for x in self.client.get("/api/v1/reportes/postulaciones/").data["results"] if x["postulacion_id"]==post.pk)
+        self.assertFalse(row["cierre_aplicable"])
     def test_busqueda(self): self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/?buscar=Ana").data["count"],1)
     def test_ordering_invalido(self): self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/?ordering=password").status_code,400)
     def test_estudiante_prohibido(self): self.client.force_authenticate(self.student); self.assertEqual(self.client.get("/api/v1/reportes/dashboard/").status_code,403); self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/").status_code,403)

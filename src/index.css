@@ -269,6 +269,10 @@ html.dark body {
   color: var(--text-primary);
 }
 
+.app-filter-panel label {
+  min-width: 0;
+}
+
 .app-filter-panel :where(input, select, textarea) {
   border-color: #cbd5e1;
   background: var(--surface);

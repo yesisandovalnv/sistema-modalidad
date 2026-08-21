@@ -10,4 +10,6 @@ class ModalidadesConfig(AppConfig):
     def ready(self):
         from apps.modalidades.policies import ModalidadPolicyRegistry
         from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
+        from apps.modalidades.tesis_grado import TesisGradoPolicy
         ModalidadPolicyRegistry.register("PROYECTO_GRADO", ProyectoGradoPolicy)
+        ModalidadPolicyRegistry.register("TESIS_GRADO", TesisGradoPolicy)

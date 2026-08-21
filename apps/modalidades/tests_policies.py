@@ -6,6 +6,7 @@ from apps.academico.models import EtapaModalidad, Modalidad
 from apps.modalidades.policies import (BaseModalidadPolicy, EtapaDefinition,
     ModalidadNoSoportadaError, ModalidadPolicyRegistry)
 from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
+from apps.modalidades.tesis_grado import TesisGradoPolicy
 from apps.modalidades.validators import ModalidadConfigurationValidator
 from apps.postulantes.models import EstadoPostulacion, Postulacion
 from apps.postulantes.workflow import WorkflowService
@@ -16,14 +17,17 @@ from apps.usuarios.models import CustomUser
 class RegistryTests(TestCase):
     def setUp(self):
         self.pg = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto de Grado policies")
-        self.other = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis policies")
+        self.other = Modalidad.objects.create(codigo="TRABAJO_DIRIGIDO", nombre="Trabajo dirigido policies")
+        self.tesis = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis policies")
 
     def test_registry_resuelve_codigo_y_modalidad(self):
         self.assertIsInstance(ModalidadPolicyRegistry.get("PROYECTO_GRADO"), ProyectoGradoPolicy)
         self.assertIsInstance(ModalidadPolicyRegistry.get(self.pg), ProyectoGradoPolicy)
+        self.assertIsInstance(ModalidadPolicyRegistry.get(self.tesis), TesisGradoPolicy)
 
     def test_registry_lista_soportadas_sin_fallback(self):
         self.assertIn("PROYECTO_GRADO", ModalidadPolicyRegistry.list_supported())
+        self.assertIn("TESIS_GRADO", ModalidadPolicyRegistry.list_supported())
         with self.assertRaises(ModalidadNoSoportadaError): ModalidadPolicyRegistry.get(self.other)
 
     def test_registro_incompatible_es_rechazado(self):
@@ -49,6 +53,8 @@ class RegistryTests(TestCase):
         self.assertEqual(ProyectoGradoPolicy().validate_configuration(), [])
         self.assertEqual(ProyectoGradoPolicy().get_etapa_inicial().codigo, "INSCRIPCION")
         self.assertEqual(ProyectoGradoPolicy().get_etapas_finales()[0].codigo, "CIERRE_DOCUMENTAL")
+        self.assertEqual(TesisGradoPolicy().validate_configuration(), [])
+        self.assertEqual(TesisGradoPolicy().get_etapa_inicial().codigo, "INSCRIPCION")
 
 
 class CapabilitiesApiTests(TestCase):

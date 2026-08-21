@@ -1,6 +1,3 @@
-from datetime import timedelta
-from decimal import Decimal, ROUND_HALF_UP
-
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -15,24 +12,6 @@ from apps.notificaciones.events import EventTypes, publish_domain_event
 
 def _audit(user, action, description):
     AuditLog.objects.create(usuario=user, accion=action, modulo="DEFENSAS", descripcion=description)
-
-
-class ProyectoGradoDefensaPolicy:
-    """Reglas recuperables del reglamento específico de Proyecto de Grado."""
-    @staticmethod
-    def validar_quorum(evento):
-        presentes = evento.participantes.filter(presente=True, activo=True)
-        counts = {rol: presentes.filter(rol_evento=rol).count() for rol, _ in ParticipanteEvento.Rol.choices}
-        req = {}
-        if evento.tipo_evento == EventoDefensa.Tipo.DEFENSA_PERFIL:
-            # La fuente exige considerar el tribunal designado; no inventa cargos operativos.
-            req = {ParticipanteEvento.Rol.TRIBUNAL: 2}
-        elif evento.tipo_evento == EventoDefensa.Tipo.DEFENSA_PRIVADA:
-            req = {ParticipanteEvento.Rol.TRIBUNAL: 2, ParticipanteEvento.Rol.DOCENTE_MODALIDAD: 1}
-        elif evento.tipo_evento == EventoDefensa.Tipo.DEFENSA_PUBLICA:
-            req = {ParticipanteEvento.Rol.TRIBUNAL: 2, ParticipanteEvento.Rol.PRESIDENTE: 1, ParticipanteEvento.Rol.SECRETARIO: 1}
-        faltantes = {rol: minimo-counts.get(rol, 0) for rol, minimo in req.items() if counts.get(rol, 0) < minimo}
-        return {"valido": not faltantes, "faltantes": faltantes, "detalle": counts}
 
 
 class EventoDefensaService:
@@ -53,17 +32,8 @@ class EventoDefensaService:
             raise ValidationError("El seguimiento no está habilitado para programar una defensa.")
         anteriores = SeguimientoEtapa.objects.filter(postulacion=postulacion, etapa__orden__lt=seguimiento.etapa.orden, etapa__obligatoria=True).exclude(estado=SeguimientoEtapa.EstadoChoices.APROBADA)
         if anteriores.exists(): raise ValidationError("Las etapas obligatorias anteriores deben estar aprobadas.")
-        requeridos = {
-            EventoDefensa.Tipo.DEFENSA_PERFIL: {"TRIBUNAL": 2},
-            EventoDefensa.Tipo.DEFENSA_PRIVADA: {"TRIBUNAL": 2, "DOCENTE_MODALIDAD": 1},
-            EventoDefensa.Tipo.DEFENSA_PUBLICA: {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1},
-        }.get(tipo_evento, {})
         asignaciones = AsignacionPostulacion.objects.filter(postulacion=postulacion, activo=True)
         policy.evento_policy.validar_programacion(tipo_evento=tipo_evento, seguimiento=seguimiento, fecha_programada=fecha_programada, asignaciones=asignaciones)
-        faltan = {rol: cantidad-asignaciones.filter(tipo_participacion=rol).count() for rol, cantidad in requeridos.items() if asignaciones.filter(tipo_participacion=rol).count() < cantidad}
-        if faltan: raise ValidationError(f"No existen asignaciones mínimas activas: {faltan}.")
-        if tipo_evento == EventoDefensa.Tipo.DEFENSA_PUBLICA and fecha_programada < timezone.now()+timedelta(hours=48):
-            raise ValidationError("La defensa pública debe programarse con al menos 48 horas de anticipación (diagrama oficial).")
         duplicate = EventoDefensa.objects.filter(
             postulacion=postulacion,
             tipo_evento=tipo_evento,
@@ -93,6 +63,9 @@ class EventoDefensaService:
         if not asignacion.usuario.is_active: raise ValidationError("El usuario asignado debe estar activo.")
         if asignacion.postulacion_id != evento.postulacion_id: raise ValidationError("La asignación no pertenece a la postulación.")
         if asignacion.tipo_participacion != rol_evento: raise ValidationError("El rol no es compatible con la asignación.")
+        policy = ModalidadPolicyRegistry.get(evento.postulacion)
+        if policy.evento_policy:
+            policy.evento_policy.validar_participante(evento=evento, asignacion=asignacion, rol_evento=rol_evento)
         existente=ParticipanteEvento._base_manager.select_for_update().filter(evento=evento,asignacion=asignacion).first()
         if existente and existente.activo:
             raise ValidationError({"non_field_errors": ["La asignación ya participa activamente en el evento."]})
@@ -128,6 +101,7 @@ class EventoDefensaService:
         EventoDefensaService._validar_postulacion_editable(evento.postulacion)
         if evento.estado != evento.Estado.PROGRAMADA: raise ValidationError("Solo se inicia un evento programado.")
         if timezone.now() < evento.fecha_programada: raise ValidationError("No puede iniciar antes de la fecha programada.")
+        ModalidadPolicyRegistry.get(evento.postulacion).evento_policy.validar_inicio(evento)
         evento.estado=evento.Estado.EN_CURSO; evento.fecha_inicio_real=timezone.now(); evento.iniciado_por=usuario; evento.save(); _audit(usuario,"START",f"Evento {evento.pk} iniciado."); return evento
 
     @staticmethod
@@ -156,6 +130,7 @@ class EventoDefensaService:
         evento=EventoDefensa.objects.select_for_update().get(pk=evento.pk)
         EventoDefensaService._validar_postulacion_editable(evento.postulacion)
         if evento.estado != evento.Estado.EN_CURSO: raise ValidationError("El evento no está en curso.")
+        ModalidadPolicyRegistry.get(evento.postulacion).evento_policy.validar_finalizacion(evento)
         if not EventoDefensaService.validar_quorum(evento,usuario)["valido"]: raise ValidationError("No se puede finalizar sin quórum.")
         evento.estado=evento.Estado.FINALIZADA; evento.fecha_fin_real=timezone.now(); evento.cerrado_por=usuario; evento.save(); _audit(usuario,"FINISH",f"Evento {evento.pk} finalizado.")
         publish_domain_event(EventTypes.DEFENSA_FINALIZADA,evento,usuario,evento.postulacion,{},f"DEFENSA_FINALIZADA:{evento.pk}:{evento.fecha_fin_real.isoformat()}"); return evento
@@ -181,7 +156,7 @@ class EventoDefensaService:
         EventoDefensaService._validar_postulacion_editable(evento.postulacion)
         if evento.estado not in (evento.Estado.PROGRAMADA,evento.Estado.SUSPENDIDA): raise ValidationError("El evento no admite reprogramación.")
         if not motivo.strip(): raise ValidationError("El motivo es obligatorio.")
-        if evento.tipo_evento==evento.Tipo.DEFENSA_PUBLICA and nueva_fecha < timezone.now()+timedelta(hours=48): raise ValidationError("La defensa pública requiere 48 horas de anticipación.")
+        ModalidadPolicyRegistry.get(evento.postulacion).evento_policy.validar_reprogramacion(evento, nueva_fecha)
         evento.fecha_programada=nueva_fecha; evento.estado=evento.Estado.PROGRAMADA
         evento.fecha_inicio_real=None; evento.fecha_fin_real=None; evento.iniciado_por=None; evento.cerrado_por=None
         evento.observaciones=(evento.observaciones+"\nReprogramación: "+motivo).strip(); evento.save(); _audit(usuario,"RESCHEDULE",f"Evento {evento.pk} reprogramado: {motivo}")
@@ -191,21 +166,23 @@ class EventoDefensaService:
 class EvaluacionDefensaService:
     @staticmethod
     @transaction.atomic
-    def _registrar(evento,usuario,tipo,resultado="",nota=None,evaluador=None,modalidad_registro="CONSENSO",observaciones=""):
+    def _registrar(evento,usuario,tipo,resultado="",nota=None,evaluador=None,modalidad_registro=None,observaciones=""):
         evento=EventoDefensa.objects.select_for_update().select_related("postulacion").get(pk=evento.pk)
         EventoDefensaService._validar_postulacion_editable(evento.postulacion)
         policy=ModalidadPolicyRegistry.get(evento.postulacion)
         if tipo not in policy.get_tipos_evaluacion(): raise ValidationError("La modalidad no soporta este tipo de evaluación.")
         if evento.estado not in (EventoDefensa.Estado.EN_CURSO,EventoDefensa.Estado.FINALIZADA): raise ValidationError("El evento no puede evaluarse.")
         if not EventoDefensaService.validar_quorum(evento)["valido"]: raise ValidationError("No se puede registrar la evaluación sin quórum técnico válido.")
-        if modalidad_registro!=EvaluacionDefensa.ModalidadRegistro.CONSENSO or evaluador is not None: raise ValidationError("La evaluación debe ser un consenso único del Tribunal.")
-        if evento.evaluaciones.filter(tipo_evaluacion=tipo).exists(): raise ValidationError("El evento ya tiene una evaluación consensuada de este tipo.")
-        ponderacion = Decimal("70.00") if tipo==EvaluacionDefensa.Tipo.PUBLICA else (Decimal("30.00") if tipo==EvaluacionDefensa.Tipo.PRIVADA else None)
-        aporte=Decimal(nota).quantize(Decimal("0.01"),rounding=ROUND_HALF_UP) if nota is not None else None
-        e=EvaluacionDefensa(evento=evento,evaluador=evaluador,tipo_evaluacion=tipo,modalidad_registro=modalidad_registro,resultado_cualitativo=resultado,nota_numerica=nota,ponderacion=ponderacion,aporte_ponderado=aporte,observaciones=observaciones,registrado_por=usuario); e.save(); _audit(usuario,"EVALUATE",f"Evaluación {tipo} registrada en evento {evento.pk}."); return e
-    registrar_evaluacion_perfil=staticmethod(lambda evento,usuario,resultado,evaluador=None,modalidad_registro="CONSENSO",observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PERFIL,resultado,None,evaluador,modalidad_registro,observaciones))
-    registrar_evaluacion_privada=staticmethod(lambda evento,usuario,resultado,nota,evaluador=None,modalidad_registro="CONSENSO",observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PRIVADA,resultado,nota,evaluador,modalidad_registro,observaciones))
-    registrar_evaluacion_publica=staticmethod(lambda evento,usuario,nota,evaluador=None,modalidad_registro="CONSENSO",observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PUBLICA,"",nota,evaluador,modalidad_registro,observaciones))
+        modalidad_registro = modalidad_registro or policy.evaluacion_policy.get_modalidad_registro_por_defecto(evento=evento, tipo=tipo)
+        policy.evaluacion_policy.validar_solicitud_registro(modalidad_registro=modalidad_registro, evaluador=evaluador, evento=evento, tipo=tipo)
+        existentes = evento.evaluaciones.filter(tipo_evaluacion=tipo)
+        if existentes.exists() and not (modalidad_registro == EvaluacionDefensa.ModalidadRegistro.INDIVIDUAL and not existentes.exclude(modalidad_registro=EvaluacionDefensa.ModalidadRegistro.INDIVIDUAL).exists()): raise ValidationError("El evento ya tiene una evaluación registrada de este tipo.")
+        valores = policy.evaluacion_policy.get_valores_registro(evento=evento, tipo=tipo, nota=nota)
+        e=EvaluacionDefensa(evento=evento,evaluador=evaluador,tipo_evaluacion=tipo,modalidad_registro=modalidad_registro,resultado_cualitativo=resultado,nota_numerica=nota,ponderacion=valores["ponderacion"],aporte_ponderado=valores["aporte_ponderado"],observaciones=observaciones,registrado_por=usuario); e.save(); _audit(usuario,"EVALUATE",f"Evaluación {tipo} registrada en evento {evento.pk}."); return e
+    registrar_evaluacion_perfil=staticmethod(lambda evento,usuario,resultado,evaluador=None,modalidad_registro=None,observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PERFIL,resultado,None,evaluador,modalidad_registro,observaciones))
+    registrar_evaluacion_tematica=staticmethod(lambda evento,usuario,resultado,evaluador=None,modalidad_registro=None,observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.TEMATICA,resultado,None,evaluador,modalidad_registro,observaciones))
+    registrar_evaluacion_privada=staticmethod(lambda evento,usuario,resultado,nota=None,evaluador=None,modalidad_registro=None,observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PRIVADA,resultado,nota,evaluador,modalidad_registro,observaciones))
+    registrar_evaluacion_publica=staticmethod(lambda evento,usuario,nota,evaluador=None,modalidad_registro=None,observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PUBLICA,"",nota,evaluador,modalidad_registro,observaciones))
 
     @staticmethod
     @transaction.atomic
@@ -216,46 +193,25 @@ class EvaluacionDefensaService:
         if evento.estado != EventoDefensa.Estado.FINALIZADA: raise ValidationError("Sólo puede consolidarse un evento finalizado.")
         if evento.evaluaciones.filter(tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL).exists(): raise ValidationError("El evento ya tiene una evaluación consolidada.")
         qs=evento.evaluaciones.exclude(tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL)
-        if qs.count()!=1: raise ValidationError("Debe existir una única evaluación consensuada para consolidar.")
-        evaluacion=qs.first()
-        if evento.tipo_evento==EventoDefensa.Tipo.DEFENSA_PUBLICA:
-            nota=evaluacion.nota_numerica
-            e=EvaluacionDefensa(evento=evento,tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,modalidad_registro=EvaluacionDefensa.ModalidadRegistro.CONSENSO,nota_numerica=nota,ponderacion=Decimal("70.00"),aporte_ponderado=nota,es_resultado_final_evento=True,registrado_por=usuario)
-        elif evento.tipo_evento==EventoDefensa.Tipo.DEFENSA_PRIVADA:
-            resultado=evaluacion.resultado_cualitativo; nota=evaluacion.nota_numerica
-            e=EvaluacionDefensa(evento=evento,tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,modalidad_registro=EvaluacionDefensa.ModalidadRegistro.CONSENSO,resultado_cualitativo=resultado,nota_numerica=nota,ponderacion=Decimal("30.00"),aporte_ponderado=nota,es_resultado_final_evento=True,registrado_por=usuario)
-        else:
-            resultado=evaluacion.resultado_cualitativo
-            e=EvaluacionDefensa(evento=evento,tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,modalidad_registro=EvaluacionDefensa.ModalidadRegistro.CONSENSO,resultado_cualitativo=resultado,es_resultado_final_evento=True,registrado_por=usuario)
+        evaluacion=policy.evaluacion_policy.obtener_evaluacion_para_consolidar(evento=evento, evaluaciones=qs)
+        e=policy.evaluacion_policy.construir_consolidado(evaluacion, usuario)
         e.save(); _audit(usuario,"CONSOLIDATE",f"Evento {evento.pk} consolidado.")
         publish_domain_event(EventTypes.EVALUACION_CONSOLIDADA,e,usuario,evento.postulacion,{},f"EVALUACION_CONSOLIDADA:{evento.pk}:{e.pk}")
-        if evento.tipo_evento==EventoDefensa.Tipo.DEFENSA_PUBLICA:
-            final=EvaluacionDefensaService.calcular_resultado_final(evento.postulacion,None,auditar=False)
-            if final["nota_final"] is not None and final["clasificacion"]!=EvaluacionDefensa.Resultado.POSTERGADO:
-                WorkflowService.aprobar_etapa(evento.seguimiento_etapa,usuario,"Aprobada automáticamente por consolidación pública válida.")
-        elif resultado==EvaluacionDefensa.Resultado.SUFICIENTE:
-            WorkflowService.aprobar_etapa(evento.seguimiento_etapa,usuario,"Aprobada por evaluación de defensa.")
+        final=EvaluacionDefensaService.calcular_resultado_final(evento.postulacion,None,auditar=False)
+        observacion = policy.evaluacion_policy.obtener_aprobacion_por_consolidacion(evento=evento, evaluacion=evaluacion, resultado_final=final)
+        if observacion:
+            WorkflowService.aprobar_etapa(evento.seguimiento_etapa,usuario,observacion)
+        rechazo = policy.evaluacion_policy.obtener_rechazo_por_consolidacion(evento=evento, evaluacion=evaluacion, resultado_final=final)
+        if rechazo:
+            WorkflowService.rechazar_etapa(evento.seguimiento_etapa, usuario, rechazo)
+            if evento.seguimiento_etapa.numero_intento == 1:
+                WorkflowService.crear_nuevo_intento(evento.postulacion, evento.seguimiento_etapa.etapa, usuario)
         return e
-
-    @staticmethod
-    def clasificar_nota_final(nota_final):
-        if nota_final <= 50:
-            return EvaluacionDefensa.Resultado.POSTERGADO
-        if nota_final <= 74:
-            return EvaluacionDefensa.Resultado.APROBADO
-        if nota_final <= 89:
-            return EvaluacionDefensa.Resultado.APROBACION_PLENA
-        return EvaluacionDefensa.Resultado.APROBACION_PLENA_CON_FELICITACION
 
     @staticmethod
     def calcular_resultado_final(postulacion,usuario,auditar=True):
         policy=ModalidadPolicyRegistry.get(postulacion)
         if not policy.permite_evaluaciones(): raise ValidationError("La modalidad no soporta evaluaciones.")
-        resultados=EvaluacionDefensa.objects.filter(evento__postulacion=postulacion,tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,es_resultado_final_evento=True)
-        privada=resultados.filter(evento__tipo_evento=EventoDefensa.Tipo.DEFENSA_PRIVADA).order_by("-created_at").first()
-        publica=resultados.filter(evento__tipo_evento=EventoDefensa.Tipo.DEFENSA_PUBLICA).order_by("-created_at").first()
-        nota_privada=privada.nota_numerica if privada else None; nota_publica=publica.nota_numerica if publica else None
-        nota_final=(nota_privada+nota_publica).quantize(Decimal("0.01")) if nota_privada is not None and nota_publica is not None else None
-        clasificacion=EvaluacionDefensaService.clasificar_nota_final(nota_final) if nota_final is not None else None
+        resultado=policy.evaluacion_policy.calcular_resultado_final(postulacion)
         if auditar: _audit(usuario,"CALCULATE_FINAL_RESULT",f"Resultado final consultado para {postulacion.codigo}.")
-        return {"nota_privada":nota_privada,"nota_publica":nota_publica,"aporte_privada":nota_privada,"aporte_publica":nota_publica,"nota_final":nota_final,"clasificacion":clasificacion,"resultado":clasificacion,"limitacion_normativa":"" if nota_final is not None else "La nota final requiere resultados consolidados de defensa privada y pública."}
+        return resultado

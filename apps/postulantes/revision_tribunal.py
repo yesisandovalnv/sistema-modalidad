@@ -9,21 +9,21 @@ from apps.postulantes.models import (
     SeguimientoEtapa,
 )
 from apps.usuarios.models import AuditLog
+from apps.modalidades.policies import ModalidadPolicyRegistry
 
 
 class RevisionTribunalPreviaService:
-    MODALIDAD = "PROYECTO_GRADO"
-    ETAPA = "REVISION_TRIBUNAL_PREVIA"
-    DOCUMENTO_FINAL = "DOCUMENTO_FINAL"
-    TIPO_EVIDENCIA = "INFORME_REVISION_TRIBUNAL_PREVIA"
-    ORDENES_TRIBUNAL = {1, 2, 3}
+    @staticmethod
+    def _policy(seguimiento):
+        policy = ModalidadPolicyRegistry.get(seguimiento.postulacion).get_revision_tribunal_previa_policy()
+        if not policy:
+            raise ValidationError("La modalidad no tiene revisión previa de tribunal configurada.")
+        return policy
 
     @classmethod
     def _validar_seguimiento(cls, seguimiento):
-        if seguimiento.postulacion.modalidad.codigo != cls.MODALIDAD:
-            raise ValidationError("El informe de revisión previa solo corresponde a PROYECTO_GRADO.")
-        if seguimiento.etapa.codigo != cls.ETAPA:
-            raise ValidationError("El seguimiento debe corresponder a REVISION_TRIBUNAL_PREVIA.")
+        policy = cls._policy(seguimiento)
+        policy.validar_seguimiento(seguimiento)
         if not seguimiento.activo:
             raise ValidationError("El seguimiento de revisión previa no está activo.")
         if seguimiento.estado not in (
@@ -34,25 +34,7 @@ class RevisionTribunalPreviaService:
 
     @classmethod
     def _validar_tribunales(cls, seguimiento):
-        tribunales = list(
-            AsignacionPostulacion.objects.select_for_update()
-            .select_related("usuario")
-            .filter(
-                postulacion=seguimiento.postulacion,
-                seguimiento_etapa=seguimiento,
-                tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
-                activo=True,
-                usuario__is_active=True,
-                usuario__activo=True,
-            )
-        )
-        ordenes = {item.orden_cargo for item in tribunales}
-        usuarios = {item.usuario_id for item in tribunales}
-        if len(tribunales) != 3 or ordenes != cls.ORDENES_TRIBUNAL or len(usuarios) != 3:
-            raise ValidationError(
-                "REVISION_TRIBUNAL_PREVIA requiere tres tribunales activos distintos con órdenes 1, 2 y 3."
-            )
-        return tribunales
+        return cls._policy(seguimiento).validar_tribunales(seguimiento)
 
     @classmethod
     def _documento_final_actual(cls, seguimiento):
@@ -61,7 +43,7 @@ class RevisionTribunalPreviaService:
             .select_related("estado", "tipo_documento")
             .filter(
                 postulacion=seguimiento.postulacion,
-                tipo_documento__codigo=cls.DOCUMENTO_FINAL,
+                tipo_documento__codigo=cls._policy(seguimiento).get_documento_final_codigo(),
                 activo=True,
             )
             .first()
@@ -86,7 +68,7 @@ class RevisionTribunalPreviaService:
             or version_revisada.pk != actual.pk
             or not version_revisada.es_version_actual
             or version_revisada.documento.postulacion_id != seguimiento.postulacion_id
-            or version_revisada.documento.tipo_documento.codigo != cls.DOCUMENTO_FINAL
+            or version_revisada.documento.tipo_documento.codigo != cls._policy(seguimiento).get_documento_final_codigo()
         ):
             raise ValidationError(
                 {"version_documento_revisada": ["La versión revisada debe ser la versión actual activa del Documento Final."]}
@@ -100,7 +82,7 @@ class RevisionTribunalPreviaService:
             and evidencia.es_version_actual
             and evidencia.documento.activo
             and evidencia.documento.postulacion_id == seguimiento.postulacion_id
-            and evidencia.documento.tipo_documento.codigo == cls.TIPO_EVIDENCIA
+            and evidencia.documento.tipo_documento.codigo == cls._policy(seguimiento).get_tipo_evidencia_codigo()
             and archivo
             and archivo.name
         )
@@ -186,7 +168,7 @@ class RevisionTribunalPreviaService:
             accion="REGISTER_PRE_REVIEW_REPORT",
             modulo="REVISION_TRIBUNAL",
             descripcion=(
-                f"Postulación {seguimiento.postulacion.codigo}; etapa {cls.ETAPA}; "
+                f"Postulación {seguimiento.postulacion.codigo}; etapa {seguimiento.etapa.codigo}; "
                 f"Documento Final v{version_documento_revisada.numero_version}; resultado {resultado}; "
                 f"evidencia versión {evidencia_version.pk}."
             ),

@@ -11,6 +11,7 @@ import DefenseParticipants from './DefenseParticipants'
 import DefenseEvaluation from './DefenseEvaluation'
 import ClosureRequirements from './ClosureRequirements'
 import TechnicalClosure from './TechnicalClosure'
+import DocumentReviewDictamens from './DocumentReviewDictamens'
 
 const EMPTY = 'No registrado'
 const DEFENSE_WARNING = 'Los datos de defensa, quórum y evaluación mostrados por el sistema son registros técnicos y no sustituyen convocatoria formal, acta firmada, legalización ni resultado académico institucional.'
@@ -22,6 +23,11 @@ const CONTRACT_WARNINGS = [
   'Los proyectos grupales no están soportados actualmente.',
   'Los plazos reglamentarios no se calculan automáticamente.',
   'El cierre técnico o documental no equivale a legalización o cierre universitario oficial.',
+]
+const TESIS_WARNINGS = [
+  'Los plazos reglamentarios y los pendientes de validación institucional no se calculan automáticamente.',
+  'La Defensa Pública permanece bloqueada hasta contar con evidencia normada de correcciones de forma y quórum confirmado.',
+  'Los proyectos grupales no están soportados actualmente.',
 ]
 
 export default function ExpedientePage() {
@@ -263,6 +269,7 @@ export default function ExpedientePage() {
   }
 
   const { detalle, flujo, resultado, cierre } = data
+  const cierreSoportado = data.capacidades?.cierre_soportado ?? detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO'
   const student = detalle.estudiante_detalle
   const period = detalle.periodo_detalle
   const currentStage = flujo.etapa_actual
@@ -603,7 +610,7 @@ export default function ExpedientePage() {
   return (
     <section className="mx-auto max-w-5xl space-y-5">
       <PageHeader
-        title="Expediente de Proyecto de Grado"
+        title={`Expediente de ${detalle.modalidad_detalle?.nombre || flujo.modalidad?.nombre || 'postulación'}`}
         description={`Postulación ${detalle.codigo || EMPTY}`}
         action={<BackLink />}
       />
@@ -671,6 +678,7 @@ export default function ExpedientePage() {
           setTribunalReportDialog({ submitting: false, fields: {}, error: '' })
         }}
       />}
+      {(flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo)).map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
 
       <Card className="overflow-hidden">
         <h2 className="text-xl font-bold">Resultado académico técnico</h2>
@@ -688,12 +696,12 @@ export default function ExpedientePage() {
       <Card role="note" aria-labelledby="limites-normativos" className="overflow-hidden border-amber-300 bg-amber-50 dark:bg-amber-950">
         <h2 id="limites-normativos" className="text-xl font-bold">Límites normativos</h2>
         <ul className="mt-4 list-disc space-y-2 pl-5 text-sm">
-          {CONTRACT_WARNINGS.map((warning) => <li key={warning}>{warning}</li>)}
-          {(cierre.data?.advertencias_normativas || []).map((warning) => <li key={`backend-${warning}`}>{warning}</li>)}
+          {(cierreSoportado ? CONTRACT_WARNINGS : TESIS_WARNINGS).map((warning) => <li key={warning}>{warning}</li>)}
+          {cierreSoportado && (cierre.data?.advertencias_normativas || []).map((warning) => <li key={`backend-${warning}`}>{warning}</li>)}
         </ul>
       </Card>
 
-      <TechnicalClosure
+      {cierreSoportado && <><TechnicalClosure
         key={detalle.id}
         postulacion={detalle.id}
         initialClosure={cierre}
@@ -704,7 +712,7 @@ export default function ExpedientePage() {
         onChanged={() => setHistoryRevision((value) => value + 1)}
       />
 
-      <ClosureRequirements postulacion={detalle.id} canManage={canManageClosure} onChanged={() => setClosureRevision((value) => value + 1)} />
+      <ClosureRequirements postulacion={detalle.id} canManage={canManageClosure} onChanged={() => setClosureRevision((value) => value + 1)} /></>}
 
       <HistoryCard
         history={history}
@@ -774,7 +782,7 @@ export default function ExpedientePage() {
         />
       )}
       {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} canEvaluate={canManageEvaluations} onParticipantsChanged={refreshSelectedDefense} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
-      {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
+      {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} modalidadCodigo={detalle.modalidad_detalle?.codigo} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
       {assignment && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} onSubmit={submitAssignment} onClose={closeAssignment} />}
       {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
@@ -1066,12 +1074,13 @@ function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, can
 }
 
 const DEFENSE_TYPES = [
-  ['DEFENSA_PERFIL', 'Defensa de perfil', 'PERFIL_PROYECTO'],
+  ['DEFENSA_TEMATICA', 'Defensa de temática', 'TEMATICA_TESIS'],
+  ['DEFENSA_PERFIL', 'Defensa de perfil', ['PERFIL_PROYECTO', 'PERFIL_TESIS']],
   ['DEFENSA_PRIVADA', 'Defensa privada', 'DEFENSA_PRIVADA'],
   ['DEFENSA_PUBLICA', 'Defensa pública', 'DEFENSA_PUBLICA'],
 ]
 
-function DefenseOperationDialog({ operation, stages, quorum, onSubmit, onClose }) {
+function DefenseOperationDialog({ operation, stages, quorum, modalidadCodigo, onSubmit, onClose }) {
   const [type, setType] = useState('')
   const [mode, setMode] = useState('PRESENCIAL')
   const titles = { programar: 'Programar defensa', iniciar: 'Iniciar defensa', finalizar: 'Finalizar defensa', suspender: 'Suspender defensa', cancelar: 'Cancelar defensa', reprogramar: 'Reprogramar defensa' }
@@ -1080,7 +1089,7 @@ function DefenseOperationDialog({ operation, stages, quorum, onSubmit, onClose }
     return Array.isArray(value) ? value.join(' ') : value
   }
   const expectedStage = DEFENSE_TYPES.find(([value]) => value === type)?.[2]
-  const compatibleStages = stages.filter((stage) => stage.codigo === expectedStage && ['EN_PROCESO', 'OBSERVADA'].includes(stage.estado) && stage.activo !== false)
+  const compatibleStages = stages.filter((stage) => (Array.isArray(expectedStage) ? expectedStage : [expectedStage]).includes(stage.codigo) && ['EN_PROCESO', 'OBSERVADA'].includes(stage.estado) && stage.activo !== false)
   const disabled = operation.submitting
   const error = (name) => fieldMessage(name) && <span id={`defense-${name}-error`} role="alert" className="mt-1 block text-sm text-red-600">{fieldMessage(name)}</span>
 
@@ -1096,7 +1105,7 @@ function DefenseOperationDialog({ operation, stages, quorum, onSubmit, onClose }
         {(mode === 'PRESENCIAL' || mode === 'MIXTA') && <label className="text-sm">Lugar<input name="lugar" required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('lugar')}</label>}
         {(mode === 'VIRTUAL' || mode === 'MIXTA') && <label className="text-sm">Enlace virtual<input name="enlace_virtual" type="url" required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('enlace_virtual')}</label>}
         <label className="text-sm">Observaciones (opcional)<textarea name="observaciones" disabled={disabled} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>
-        <aside role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950">Virtual y mixta son modalidades técnicas y no acreditan autorización normativa. La regla de 48 horas de la defensa pública no acredita publicación de convocatoria.</aside>
+        <aside role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950">Virtual y mixta son modalidades técnicas y no acreditan autorización normativa.{modalidadCodigo === 'PROYECTO_GRADO' && ' La regla de 48 horas de la defensa pública no acredita publicación de convocatoria.'}</aside>
       </> : <>
         <p className="text-sm">Confirma la acción sobre el evento técnico seleccionado.</p>
         {operation.action === 'finalizar' && <p className="rounded-lg border p-3 text-sm">Quórum técnico confirmado por backend: <strong>{quorum.data?.valido ? 'válido' : 'no válido'}</strong>. Finalizar no registra resultado académico, acta firmada ni cierre universitario.</p>}
