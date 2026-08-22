@@ -320,6 +320,24 @@ class WorkflowService:
             raise ValidationError("Existen etapas obligatorias anteriores sin aprobar.")
 
     @staticmethod
+    @transaction.atomic
+    def concluir_postulacion(postulacion: Postulacion, usuario: CustomUser, observaciones: str = "") -> Postulacion:
+        """Conclusi\u00f3n acad\u00e9mica reutilizable, validada por la policy de modalidad."""
+        WorkflowService._validar_postulacion(postulacion)
+        WorkflowService._validar_usuario(usuario)
+        # estado_actual es nullable; PostgreSQL no permite bloquear el lado
+        # nullable de ese join. Se bloquea exclusivamente la postulación.
+        post = Postulacion.objects.select_for_update(of=("self",)).select_related("modalidad", "estado_actual").get(pk=postulacion.pk)
+        if post.estado_actual and post.estado_actual.codigo == "CONCLUIDA":
+            return post
+        ModalidadPolicyRegistry.get(post).validar_conclusion_academica(post)
+        WorkflowService._actualizar_estado_general(
+            post, "CONCLUIDA", usuario,
+            observaciones or "Conclusi\u00f3n acad\u00e9mica validada por la modalidad.", True,
+        )
+        return post
+
+    @staticmethod
     def _actualizar_estado_general(
         postulacion: Postulacion,
         codigo_estado: str,

@@ -195,7 +195,7 @@ OFFICIAL_ETAPAS_MODALIDAD = {
          "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulo V."},
         {"codigo": "DEFENSA_PRIVADA", "nombre": "Defensa Privada", "orden": 7, "obligatoria": True, "permite_repeticion": True,
          "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulos VI y VII; implementación posterior."},
-        {"codigo": "DEFENSA_PUBLICA", "nombre": "Defensa Pública", "orden": 8, "obligatoria": True, "permite_repeticion": False,
+        {"codigo": "DEFENSA_PUBLICA", "nombre": "Defensa Pública", "orden": 8, "obligatoria": True, "permite_repeticion": True,
          "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulos VI y VII; implementación posterior."},
     ],
 }

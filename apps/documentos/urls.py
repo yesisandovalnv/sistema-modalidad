@@ -11,6 +11,7 @@ router.register(r"tipos-documento", views.TipoDocumentoViewSet, basename="tipos-
 router.register(r"documentos", views.DocumentoPostulacionViewSet, basename="documentos")
 router.register(r"versiones", views.VersionDocumentoViewSet, basename="versiones")
 router.register(r"observaciones", views.ObservacionDocumentoViewSet, basename="observaciones")
+router.register(r"confirmaciones-correccion", views.ConfirmacionCorreccionDocumentoViewSet, basename="confirmaciones-correccion")
 
 urlpatterns = [
     path("", include(router.urls)),

@@ -360,6 +360,16 @@ export const postulacionesService = {
   concluirPostulacion(postulacion, observaciones, signal) {
     return closureRequest('post', `/api/v1/postulaciones/${postulacion}/cierre/concluir/`, { observaciones }, signal)
   },
+  async concluirAcademicamente(postulacion, observaciones = '', signal) {
+    try {
+      return (await apiClient.post(`/api/v1/postulaciones/${postulacion}/concluir-academicamente/`, { observaciones }, { signal })).data
+    } catch (error) {
+      throw normalizeDocuments(error, 'la conclusión académica')
+    }
+  },
+  async obtenerResultadoFinal(postulacion, signal) {
+    return (await apiClient.get(`/api/v1/postulaciones/${postulacion}/resultado-final/`, { signal })).data
+  },
   reabrirCierre(postulacion, motivo, signal) {
     return closureRequest('post', `/api/v1/postulaciones/${postulacion}/cierre/reabrir/`, { motivo }, signal)
   },
@@ -402,6 +412,16 @@ export const postulacionesService = {
   },
   obtenerObservaciones(versionDocumento, page, signal) {
     return getDocumentResource('/api/v1/documentos/observaciones/', { version_documento: versionDocumento, ordering: 'fecha_observacion', page }, signal, 'las observaciones')
+  },
+  async obtenerConfirmacionesCorreccion(postulacion, signal) {
+    return (await apiClient.get('/api/v1/documentos/confirmaciones-correccion/', { params: { postulacion, ordering: '-fecha_confirmacion' }, signal })).data
+  },
+  async registrarConfirmacionCorreccion(payload, signal) {
+    try {
+      return (await apiClient.post('/api/v1/documentos/confirmaciones-correccion/', payload, { signal })).data
+    } catch (error) {
+      throw normalizeDocuments(error, 'la confirmación de corrección')
+    }
   },
   async obtenerTiposDocumento(signal) {
     try {

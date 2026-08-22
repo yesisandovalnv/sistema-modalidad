@@ -290,3 +290,81 @@ class ObservacionDocumento(BaseModel):
     def __str__(self) -> str:
         """Retorna una representación legible de la observación."""
         return f"{self.version_documento.documento} - v{self.version_documento.numero_version} - {self.usuario}"
+
+
+class ConfirmacionCorreccionDocumento(BaseModel):
+    """Registro técnico trazable de una subsanación documental.
+
+    No constituye certificación oficial, acta ni aprobación institucional.
+    Vincula una versión observada con una versión posterior que la subsana.
+    Las reglas sobre quién puede confirmarla pertenecen a la policy de modalidad.
+    """
+
+    postulacion = models.ForeignKey(
+        Postulacion, on_delete=models.CASCADE, related_name="confirmaciones_correccion",
+    )
+    evento_origen = models.ForeignKey(
+        "postulantes.EventoDefensa", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="confirmaciones_correccion",
+    )
+    version_observada = models.ForeignKey(
+        VersionDocumento, on_delete=models.PROTECT, related_name="confirmaciones_observacion",
+    )
+    version_corregida = models.ForeignKey(
+        VersionDocumento, on_delete=models.PROTECT, related_name="confirmaciones_correccion",
+    )
+    confirmado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="confirmaciones_correccion_realizadas",
+    )
+    asignacion_confirmante = models.ForeignKey(
+        "postulantes.AsignacionPostulacion", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="confirmaciones_correccion_emitidas",
+    )
+    fecha_confirmacion = models.DateTimeField(auto_now_add=True)
+    observaciones = models.TextField(blank=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["-fecha_confirmacion", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["version_observada", "version_corregida"],
+                condition=models.Q(activo=True),
+                name="confirmacion_correccion_versiones_activa_unica",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["postulacion", "activo"]),
+            models.Index(fields=["evento_origen", "activo"]),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        observada = self.version_observada if self.version_observada_id else None
+        corregida = self.version_corregida if self.version_corregida_id else None
+        if observada and corregida:
+            if observada.pk == corregida.pk:
+                errors["version_corregida"] = "La versión corregida debe ser distinta de la observada."
+            if observada.documento_id != corregida.documento_id:
+                errors["version_corregida"] = "Ambas versiones deben pertenecer al mismo documento."
+            elif corregida.numero_version <= observada.numero_version:
+                errors["version_corregida"] = "La versión corregida debe ser posterior a la observada."
+            if self.postulacion_id and observada.documento.postulacion_id != self.postulacion_id:
+                errors["version_observada"] = "La versión observada debe pertenecer a la misma postulación."
+            if self.postulacion_id and corregida.documento.postulacion_id != self.postulacion_id:
+                errors["version_corregida"] = "La versión corregida debe pertenecer a la misma postulación."
+        if self.evento_origen_id and self.evento_origen.postulacion_id != self.postulacion_id:
+            errors["evento_origen"] = "El evento debe pertenecer a la misma postulación."
+        if self.asignacion_confirmante_id and self.asignacion_confirmante.postulacion_id != self.postulacion_id:
+            errors["asignacion_confirmante"] = "La asignación debe pertenecer a la misma postulación."
+        if self.confirmado_por_id and not self.confirmado_por.is_active:
+            errors["confirmado_por"] = "El confirmante debe estar activo."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)

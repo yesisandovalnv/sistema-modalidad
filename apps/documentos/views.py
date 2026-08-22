@@ -11,9 +11,10 @@ from rest_framework.exceptions import MethodNotAllowed, ValidationError as DRFVa
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.documentos.models import EstadoDocumento, ObservacionDocumento, TipoDocumento, VersionDocumento, DocumentoPostulacion
+from apps.documentos.models import ConfirmacionCorreccionDocumento, EstadoDocumento, ObservacionDocumento, TipoDocumento, VersionDocumento, DocumentoPostulacion
 from apps.documentos.serializers import (
     AprobarDocumentoSerializer,
+    ConfirmacionCorreccionDocumentoSerializer,
     DocumentoPostulacionSerializer,
     ObservacionDocumentoSerializer,
     RechazarDocumentoSerializer,
@@ -23,7 +24,7 @@ from apps.documentos.serializers import (
     VersionDocumentoSerializer,
     EstadoDocumentoSerializer,
 )
-from apps.documentos.services import DocumentoService
+from apps.documentos.services import ConfirmacionCorreccionDocumentoService, DocumentoService
 from apps.postulantes.models import EventoDefensa, Postulacion
 from core.permissions import IsStaffOrReadOnly
 
@@ -317,3 +318,23 @@ class ObservacionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
 
         serializer = self.get_serializer(observacion_corregida)
         return Response(serializer.data)
+
+
+class ConfirmacionCorreccionDocumentoViewSet(viewsets.ModelViewSet):
+    """Consulta y registro de confirmaciones técnicas del motor documental."""
+    serializer_class = ConfirmacionCorreccionDocumentoSerializer
+    permission_classes = [IsAuthenticated, IsStaffOrReadOnly]
+    filterset_fields = ["postulacion", "evento_origen", "version_observada", "version_corregida"]
+
+    def get_queryset(self):
+        qs = ConfirmacionCorreccionDocumento.objects.select_related("postulacion", "evento_origen", "version_observada", "version_corregida", "confirmado_por", "asignacion_confirmante__usuario")
+        if getattr(self.request.user, "is_staff", False) or getattr(self.request.user, "is_superuser", False): return qs
+        return qs.filter(Q(postulacion__estudiante=self.request.user) | Q(postulacion__asignaciones__usuario=self.request.user)).distinct()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data); serializer.is_valid(raise_exception=True)
+        try:
+            item = ConfirmacionCorreccionDocumentoService.registrar(confirmado_por=request.user, **serializer.validated_data)
+        except DjangoValidationError as exc:
+            raise DRFValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages) from exc
+        return Response(self.get_serializer(item).data, status=status.HTTP_201_CREATED)

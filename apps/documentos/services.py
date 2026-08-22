@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from apps.documentos.models import (
+    ConfirmacionCorreccionDocumento,
     DocumentoPostulacion,
     EstadoDocumento,
     ObservacionDocumento,
@@ -385,7 +386,11 @@ class DocumentoService:
             ).get(pk=documento.pk)
             self._validar_documento_activo(documento)
             self._validar_postulacion_editable(documento.postulacion)
-            self._validar_estado_revision(documento)
+            if getattr(documento.estado, "codigo", None) != "ENV":
+                from apps.modalidades.policies import ModalidadPolicyRegistry
+                policy = ModalidadPolicyRegistry.get(documento.postulacion)
+                if not policy.permite_observacion_post_aprobacion(documento):
+                    self._validar_estado_revision(documento)
 
             version_actual = self.obtener_version_actual(documento)
             observacion = ObservacionDocumento.objects.create(
@@ -616,3 +621,24 @@ class DocumentoService:
             "status": "ready",
             "module": "documentos",
         }
+
+
+class ConfirmacionCorreccionDocumentoService:
+    """Servicio común para registrar subsanaciones documentales trazables."""
+
+    @staticmethod
+    @transaction.atomic
+    def registrar(*, postulacion, evento_origen, version_observada, version_corregida,
+                  confirmado_por, asignacion_confirmante, observaciones=""):
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+        confirmation = ConfirmacionCorreccionDocumento(
+            postulacion=postulacion, evento_origen=evento_origen,
+            version_observada=version_observada, version_corregida=version_corregida,
+            confirmado_por=confirmado_por, asignacion_confirmante=asignacion_confirmante,
+            observaciones=(observaciones or "").strip(),
+        )
+        confirmation.full_clean()
+        ModalidadPolicyRegistry.get(postulacion).validar_confirmacion_correccion(confirmacion=confirmation)
+        confirmation.save()
+        AuditLog.objects.create(usuario=confirmado_por, accion="CONFIRM_CORRECTION", modulo="DOCUMENTOS", descripcion=f"Confirmación técnica {confirmation.pk} entre versiones {version_observada.pk} y {version_corregida.pk}.")
+        return confirmation

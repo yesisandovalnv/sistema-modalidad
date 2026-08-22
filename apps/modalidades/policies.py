@@ -143,6 +143,13 @@ class BaseModalidadPolicy(ABC):
     def validar_nuevo_intento(self, *, postulacion, etapa, ultimo_seguimiento): return None
     def validar_inicio_etapa(self, seguimiento): return None
     def validar_aprobacion_etapa(self, seguimiento): return None
+    def validar_confirmacion_correccion(self, **kwargs):
+        raise ModalidadNoSoportadaError(self.codigo)
+    def validar_conclusion_academica(self, postulacion):
+        raise ModalidadNoSoportadaError(self.codigo)
+    def permite_observacion_post_aprobacion(self, documento):
+        """Capacidad documental excepcional, cerrada por defecto."""
+        return False
 
     def validate_configuration(self):
         errors = []

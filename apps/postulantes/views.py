@@ -219,6 +219,19 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         serializer = FlujoPostulacionSerializer(postulacion, context=self.get_serializer_context())
         return Response(serializer.data)
 
+    @extend_schema(request=None, responses={200: PostulacionSerializer})
+    @action(detail=True, methods=["post"], url_path="concluir-academicamente")
+    def concluir_academicamente(self, request, pk=None):
+        if not is_staff_user(request.user):
+            raise PermissionDenied("Solo un usuario administrativo puede concluir acad\u00e9micamente una postulaci\u00f3n.")
+        try:
+            postulacion = WorkflowService.concluir_postulacion(
+                self.get_object(), request.user, request.data.get("observaciones", ""),
+            )
+        except DjangoValidationError as exc:
+            raise DRFValidationError(str(exc)) from exc
+        return Response(self.get_serializer(postulacion).data)
+
     @extend_schema(request=None, responses={200: FlujoPostulacionSerializer})
     @action(detail=True, methods=["post"], url_path="flujo/inicializar")
     def inicializar_flujo(self, request, pk=None):

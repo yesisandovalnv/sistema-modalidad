@@ -39,8 +39,8 @@ class TesisDefensaPrivadaTest(TestCase):
             EventoDefensaService.registrar_asistencia(participant, True, self.admin)
         self.assertTrue(EventoDefensaService.validar_quorum(event)['valido'])
         EventoDefensaService.finalizar_evento(event, self.admin)
-        evaluation = EvaluacionDefensaService.registrar_evaluacion_privada(event, self.admin, 'SUFICIENTE', nota=None, modalidad_registro='CONSENSO')
-        self.assertEqual(evaluation.nota_numerica, None)
+        evaluation = EvaluacionDefensaService.registrar_evaluacion_privada(event, self.admin, 'SUFICIENTE', nota=Decimal('30'), modalidad_registro='CONSENSO')
+        self.assertEqual(evaluation.nota_numerica, Decimal('30'))
 
     def test_sin_secretario_o_tribunales_no_programa(self):
         self.secretary.activo=False; self.secretary.save(update_fields=['activo'])
@@ -59,7 +59,7 @@ class TesisDefensaPrivadaTest(TestCase):
             participant = EventoDefensaService.agregar_participante(event, assignment, assignment.tipo_participacion, self.admin)
             EventoDefensaService.registrar_asistencia(participant, True, self.admin)
         EventoDefensaService.finalizar_evento(event, self.admin)
-        EvaluacionDefensaService.registrar_evaluacion_privada(event, self.admin, result, nota=None, modalidad_registro='CONSENSO')
+        EvaluacionDefensaService.registrar_evaluacion_privada(event, self.admin, result, nota=Decimal('20'), modalidad_registro='CONSENSO')
         EvaluacionDefensaService.consolidar_evaluacion_evento(event, self.admin)
         return event
 
@@ -78,7 +78,7 @@ class TesisDefensaPrivadaTest(TestCase):
             participant = EventoDefensaService.agregar_participante(event, assignment, assignment.tipo_participacion, self.admin)
             EventoDefensaService.registrar_asistencia(participant, assignment != self.secretary, self.admin)
         self.assertFalse(EventoDefensaService.validar_quorum(event)['valido'])
-        with self.assertRaises(ValidationError): EvaluacionDefensaService.registrar_evaluacion_privada(event, self.admin, 'SUFICIENTE', nota=None, modalidad_registro='CONSENSO')
+        with self.assertRaises(ValidationError): EvaluacionDefensaService.registrar_evaluacion_privada(event, self.admin, 'SUFICIENTE', nota=Decimal('20'), modalidad_registro='CONSENSO')
         with self.assertRaises(ValidationError): EventoDefensaService.finalizar_evento(event, self.admin)
 
     def test_participantes_ajenos_o_incompatibles_se_rechazan(self):

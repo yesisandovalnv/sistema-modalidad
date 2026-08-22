@@ -12,6 +12,8 @@ import DefenseEvaluation from './DefenseEvaluation'
 import ClosureRequirements from './ClosureRequirements'
 import TechnicalClosure from './TechnicalClosure'
 import DocumentReviewDictamens from './DocumentReviewDictamens'
+import CorrectionConfirmations from './CorrectionConfirmations'
+import AcademicConclusion from './AcademicConclusion'
 
 const EMPTY = 'No registrado'
 const DEFENSE_WARNING = 'Los datos de defensa, quórum y evaluación mostrados por el sistema son registros técnicos y no sustituyen convocatoria formal, acta firmada, legalización ni resultado académico institucional.'
@@ -679,6 +681,7 @@ export default function ExpedientePage() {
         }}
       />}
       {(flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo)).map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
+      <CorrectionConfirmations postulacion={id} modalidadCodigo={detalle.modalidad_detalle?.codigo} defenses={defenses} assignments={activeActors} canManage={canManageTribunalReports} onChanged={() => { setDocumentsRevision((value) => value + 1); setDefensesRevision((value) => value + 1); setRevision((value) => value + 1) }} />
 
       <Card className="overflow-hidden">
         <h2 className="text-xl font-bold">Resultado académico técnico</h2>
@@ -692,6 +695,7 @@ export default function ExpedientePage() {
         )}
         {resultado.data?.limitacion_normativa && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{resultado.data.limitacion_normativa}</p>}
       </Card>
+      <AcademicConclusion postulacion={detalle.id} modalidadCodigo={detalle.modalidad_detalle?.codigo} resultado={resultado} canManage={canManageClosure} onChanged={() => { setRevision((value) => value + 1); setHistoryRevision((value) => value + 1) }} />
 
       <Card role="note" aria-labelledby="limites-normativos" className="overflow-hidden border-amber-300 bg-amber-50 dark:bg-amber-950">
         <h2 id="limites-normativos" className="text-xl font-bold">Límites normativos</h2>

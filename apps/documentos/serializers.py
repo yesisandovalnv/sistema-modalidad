@@ -1,12 +1,23 @@
 from rest_framework import serializers
 
 from apps.documentos.models import (
+    ConfirmacionCorreccionDocumento,
     DocumentoPostulacion,
     EstadoDocumento,
     ObservacionDocumento,
     TipoDocumento,
     VersionDocumento,
 )
+
+
+class ConfirmacionCorreccionDocumentoSerializer(serializers.ModelSerializer):
+    confirmado_por_nombre = serializers.CharField(source="confirmado_por.username", read_only=True)
+    asignacion_confirmante_nombre = serializers.CharField(source="asignacion_confirmante.usuario.username", read_only=True)
+
+    class Meta:
+        model = ConfirmacionCorreccionDocumento
+        fields = ("id", "postulacion", "evento_origen", "version_observada", "version_corregida", "confirmado_por", "confirmado_por_nombre", "asignacion_confirmante", "asignacion_confirmante_nombre", "fecha_confirmacion", "observaciones", "activo")
+        read_only_fields = ("id", "confirmado_por", "confirmado_por_nombre", "asignacion_confirmante_nombre", "fecha_confirmacion", "activo")
 
 
 class EstadoDocumentoSerializer(serializers.ModelSerializer):

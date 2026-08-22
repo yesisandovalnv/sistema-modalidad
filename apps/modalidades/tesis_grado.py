@@ -62,16 +62,21 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
         if self.get_etapa_asociada(evento.tipo_evento) != evento.seguimiento_etapa.etapa.codigo:
             raise ValidationError("El tipo de evento no corresponde a la etapa de Tesis.")
 
-    def validar_programacion(self, *, tipo_evento, seguimiento, **kwargs):
+    def validar_programacion(self, *, tipo_evento, seguimiento, fecha_programada=None, **kwargs):
         if tipo_evento not in self.EVENT_STAGE:
             raise ValidationError("Tipo de evento aún no implementado para Tesis de Grado.")
         if seguimiento.etapa.codigo != self.EVENT_STAGE[tipo_evento]:
             raise ValidationError("La etapa no corresponde a la defensa de perfil de Tesis.")
         if tipo_evento == "DEFENSA_PUBLICA":
-            raise ValidationError(
-                "PENDIENTE_DE_VALIDACION_INSTITUCIONAL: no existe evidencia normada "
-                "para acreditar las correcciones de forma previas a la Defensa Pública."
-            )
+            TesisGradoPolicy.validar_gate_publica(seguimiento.postulacion)
+            asignaciones = kwargs.get("asignaciones")
+            required = {"TRIBUNAL": 3, "PRESIDENTE": 1, "SECRETARIO": 1}
+            missing = {role: count - asignaciones.filter(tipo_participacion=role).count()
+                       for role, count in required.items()
+                       if asignaciones.filter(tipo_participacion=role).count() < count}
+            if missing:
+                raise ValidationError({"asignaciones": f"La Defensa Pública de Tesis requiere: {missing}."})
+            return
         from apps.postulantes.models import AsignacionPostulacion
         tribunales = AsignacionPostulacion.objects.filter(
             postulacion=seguimiento.postulacion, tipo_participacion="TRIBUNAL", activo=True,
@@ -93,6 +98,10 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
                 raise ValidationError("La nueva Defensa Privada debe programarse dentro de las dos semanas posteriores al intento insuficiente.")
 
     def validar_participante(self, *, evento, asignacion, rol_evento, **kwargs):
+        if evento.tipo_evento == "DEFENSA_PUBLICA":
+            if rol_evento not in {"TRIBUNAL", "PRESIDENTE", "SECRETARIO"}:
+                raise ValidationError("La Defensa Pública de Tesis solo admite Tribunal, Presidente y Secretario.")
+            return
         if evento.tipo_evento != "DEFENSA_PRIVADA":
             return
         if rol_evento == "TRIBUNAL":
@@ -104,19 +113,25 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
         else:
             raise ValidationError("La Defensa Privada de Tesis no requiere Presidente ni otros participantes.")
 
+    def requiere_vinculo_evento_documento(self, tipo_documento):
+        return tipo_documento.codigo == "ACTA_DEFENSA"
+
+    def validar_vinculo_documento(self, *, postulacion, tipo_documento, evento_defensa):
+        if tipo_documento.codigo != "ACTA_DEFENSA":
+            if evento_defensa is not None:
+                raise ValidationError("Solo ACTA_DEFENSA puede vincularse a una defensa.")
+            return
+        if not evento_defensa or (evento_defensa.postulacion_id != postulacion.pk
+                or evento_defensa.tipo_evento != "DEFENSA_PUBLICA"
+                or evento_defensa.estado != "FINALIZADA" or not evento_defensa.activo):
+            raise ValidationError("ACTA_DEFENSA de Tesis debe vincularse a una Defensa Pública activa y finalizada de la misma postulación.")
+
     def validar_inicio(self, evento):
         if evento.tipo_evento == "DEFENSA_PUBLICA":
-            raise ValidationError(
-                "PENDIENTE_DE_VALIDACION_INSTITUCIONAL: la Defensa Pública de Tesis "
-                "no puede iniciarse mientras no se norme el gate de correcciones de forma."
-            )
+            TesisGradoPolicy.validar_gate_publica(evento.postulacion)
 
     def validar_finalizacion(self, evento):
-        if evento.tipo_evento == "DEFENSA_PUBLICA":
-            raise ValidationError(
-                "PENDIENTE_DE_VALIDACION_INSTITUCIONAL: el quórum definitivo de la "
-                "Defensa Pública de Tesis no está normativamente confirmado."
-            )
+        return None
 
     def validar_quorum(self, evento):
         presentes = evento.participantes.filter(activo=True, presente=True)
@@ -128,11 +143,9 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
             secretario = presentes.filter(rol_evento="DOCENTE_MODALIDAD").count()
             return {"valido": tribunales >= 2 and secretario >= 1, "faltantes": {"TRIBUNAL": max(0, 2-tribunales), "DOCENTE_MODALIDAD": max(0, 1-secretario)}, "detalle": {"TRIBUNAL": tribunales, "DOCENTE_MODALIDAD": secretario}}
         if evento.tipo_evento == "DEFENSA_PUBLICA":
-            return {
-                "valido": False,
-                "faltantes": {},
-                "detalle": {"pendiente_de_validacion_institucional": "quorum_publico"},
-            }
+            counts = {role: presentes.filter(rol_evento=role).count() for role in ("TRIBUNAL", "PRESIDENTE", "SECRETARIO")}
+            missing = {role: required - counts[role] for role, required in {"TRIBUNAL": 3, "PRESIDENTE": 1, "SECRETARIO": 1}.items() if counts[role] < required}
+            return {"valido": not missing, "faltantes": missing, "detalle": counts}
         # El reglamento exige tribunal designado, pero no fija quórum para perfil.
         return {"valido": True, "faltantes": {}, "detalle": {"pendiente_de_validacion_institucional": True}}
 
@@ -182,18 +195,18 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
             raise ValidationError({"resultado_cualitativo": "La evaluación de Tesis debe ser SUFICIENTE o INSUFICIENTE."})
         if evaluacion.tipo_evaluacion not in {"PRIVADA", "PUBLICA"} and any(value is not None for value in (evaluacion.nota_numerica, evaluacion.ponderacion, evaluacion.aporte_ponderado)):
             raise ValidationError({"nota_numerica": "Esta evaluación cualitativa no admite nota ni ponderación."})
-        if evaluacion.tipo_evaluacion == "PRIVADA" and evaluacion.modalidad_registro == "INDIVIDUAL" and evaluacion.nota_numerica is None:
+        if evaluacion.tipo_evaluacion == "PRIVADA" and (evaluacion.nota_numerica is None or not Decimal("0") <= evaluacion.nota_numerica <= Decimal("30")):
             raise ValidationError({"nota_numerica": "La evaluación individual requiere nota para calcular el promedio normativo."})
         if evaluacion.tipo_evaluacion == "PUBLICA":
-            if evaluacion.nota_numerica is None or not Decimal("1") <= evaluacion.nota_numerica <= Decimal("100"):
+            if evaluacion.nota_numerica is None or not Decimal("0") <= evaluacion.nota_numerica <= Decimal("70"):
                 raise ValidationError({"nota_numerica": "La Defensa Pública de Tesis admite notas de 1 a 100."})
 
     def get_valores_registro(self, *, evento, tipo, nota):
         if tipo == "PUBLICA":
-            if nota is None:
-                return {"ponderacion": Decimal("0.70"), "aporte_ponderado": None}
-            return {"ponderacion": Decimal("0.70"), "aporte_ponderado": nota * Decimal("0.70")}
-        return {"ponderacion": None, "aporte_ponderado": nota if tipo == "PRIVADA" else None}
+            return {"ponderacion": Decimal("70.00"), "aporte_ponderado": nota}
+        if tipo == "PRIVADA":
+            return {"ponderacion": Decimal("30.00"), "aporte_ponderado": nota}
+        return {"ponderacion": None, "aporte_ponderado": None}
 
     def obtener_evaluacion_para_consolidar(self, *, evaluaciones, **kwargs):
         consenso = evaluaciones.filter(modalidad_registro="CONSENSO")
@@ -216,26 +229,45 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
             evento=evaluacion.evento, tipo_evaluacion="RESULTADO_FINAL",
             modalidad_registro="CONSENSO", resultado_cualitativo=evaluacion.resultado_cualitativo,
             nota_numerica=nota,
-            ponderacion=Decimal("0.70") if es_publica else None,
-            aporte_ponderado=(nota * Decimal("0.70")) if es_publica and nota is not None else promedio,
+            ponderacion=Decimal("70.00") if es_publica else (Decimal("30.00") if evaluacion.tipo_evaluacion == "PRIVADA" else None),
+            aporte_ponderado=nota,
             es_resultado_final_evento=True, registrado_por=usuario,
         )
 
-    def obtener_aprobacion_por_consolidacion(self, *, evaluacion, **kwargs):
+    def obtener_aprobacion_por_consolidacion(self, *, evento, evaluacion, resultado_final, **kwargs):
+        if evento.tipo_evento == "DEFENSA_PUBLICA":
+            if resultado_final["clasificacion"] != "POSTERGADO":
+                return "Defensa Pública de Tesis aprobada por resultado final conforme a 51 puntos."
+            return None
         if evaluacion.resultado_cualitativo == "SUFICIENTE":
             return "Resultado suficiente del acto académico de Tesis."
         return None
 
-    def obtener_rechazo_por_consolidacion(self, *, evento, evaluacion, **kwargs):
+    def obtener_rechazo_por_consolidacion(self, *, evento, evaluacion, resultado_final, **kwargs):
         if evento.tipo_evento in {"DEFENSA_PERFIL", "DEFENSA_PRIVADA"} and evaluacion.resultado_cualitativo == "INSUFICIENTE":
             return "Perfil de Tesis insuficiente; se conserva el intento y se habilita un único reintento."
+        if evento.tipo_evento == "DEFENSA_PUBLICA" and resultado_final["clasificacion"] == "POSTERGADO":
+            return "Defensa Pública postergada: se conserva el intento y se habilita una segunda oportunidad."
         return None
 
+    def clasificar_nota_final(self, nota):
+        if nota <= Decimal("50"): return "POSTERGADO"
+        if nota <= Decimal("74"): return "APROBADO"
+        if nota <= Decimal("89"): return "APROBACION_PLENA"
+        return "APROBACION_PLENA_CON_FELICITACION"
+
     def calcular_resultado_final(self, postulacion):
-        return {
-            "nota_final": None, "clasificacion": None, "resultado": None,
-            "limitacion_normativa": "La evaluación final de Tesis se implementará en un bloque posterior.",
-        }
+        from apps.postulantes.models import EvaluacionDefensa
+        results = EvaluacionDefensa.objects.filter(evento__postulacion=postulacion, tipo_evaluacion="RESULTADO_FINAL", es_resultado_final_evento=True, activo=True)
+        privada = results.filter(evento__tipo_evento="DEFENSA_PRIVADA").order_by("-created_at").first()
+        publica = results.filter(evento__tipo_evento="DEFENSA_PUBLICA").order_by("-created_at").first()
+        private_note = privada.nota_numerica if privada else None
+        public_note = publica.nota_numerica if publica else None
+        private_contribution = private_note
+        public_contribution = public_note
+        final = (private_contribution + public_contribution).quantize(Decimal("0.01")) if private_contribution is not None and public_contribution is not None else None
+        classification = self.clasificar_nota_final(final) if final is not None else None
+        return {"nota_privada": private_note, "nota_publica": public_note, "aporte_privada": private_contribution, "aporte_publica": public_contribution, "nota_final": final, "clasificacion": classification, "resultado": classification, "limitacion_normativa": "El artículo 42 contiene la referencia contradictoria a 61; se aplica 51 conforme a los artículos 37–41 y Reglamento General."}
 
 
 class TesisGradoRequisitosPolicy(BaseRequisitosPolicy):
@@ -280,13 +312,94 @@ class TesisGradoPolicy(BaseModalidadPolicy):
             )
         if etapa.codigo == "DEFENSA_PRIVADA" and ultimo_seguimiento.numero_intento >= 2:
             raise ValidationError("La nueva oportunidad posterior a una segunda Defensa Privada requiere decisión académica institucional.")
+        if etapa.codigo == "DEFENSA_PUBLICA" and ultimo_seguimiento.numero_intento >= 2:
+            raise ValidationError("No procede un tercer intento de Defensa Pública de Tesis.")
+
+    @classmethod
+    def validar_gate_publica(cls, postulacion):
+        """Gate común-documental para el paso Privada suficiente → Pública."""
+        from apps.documentos.models import ConfirmacionCorreccionDocumento, DocumentoPostulacion, ObservacionDocumento, VersionDocumento
+        from apps.postulantes.models import EventoDefensa
+
+        private = EventoDefensa.objects.filter(postulacion=postulacion, tipo_evento="DEFENSA_PRIVADA", estado="FINALIZADA", activo=True).order_by("-numero_intento").first()
+        if not private or not private.evaluaciones.filter(tipo_evaluacion="RESULTADO_FINAL", resultado_cualitativo="SUFICIENTE", activo=True).exists():
+            raise ValidationError("La Defensa Pública requiere una Defensa Privada finalizada con resultado SUFICIENTE.")
+        document = DocumentoPostulacion.objects.filter(postulacion=postulacion, tipo_documento__codigo="DOCUMENTO_FINAL", activo=True).first()
+        if not document:
+            raise ValidationError("La Defensa Pública requiere Documento Final vigente.")
+        observations = ObservacionDocumento.objects.filter(version_documento__documento=document, activo=True)
+        if not observations.exists():
+            return
+        pending = observations.filter(corregida=False)
+        if pending.exists():
+            raise ValidationError("La Defensa Pública permanece bloqueada: existen observaciones de forma pendientes.")
+        for observation in observations:
+            confirmations = ConfirmacionCorreccionDocumento.objects.filter(
+                postulacion=postulacion, evento_origen=private,
+                version_observada=observation.version_documento, activo=True,
+            )
+            if not confirmations.exists():
+                raise ValidationError("La Defensa Pública permanece bloqueada: falta confirmación técnica trazable de la versión corregida.")
+            if not confirmations.filter(version_corregida__documento=document, version_corregida__activo=True).exists():
+                raise ValidationError("La confirmación de corrección no apunta al Documento Final de esta postulación.")
+
+    def validar_confirmacion_correccion(self, *, confirmacion, **kwargs):
+        from apps.postulantes.models import AsignacionPostulacion, EventoDefensa
+        if confirmacion.postulacion.modalidad.codigo != self.codigo:
+            raise ValidationError("La confirmación no corresponde a Tesis de Grado.")
+        event = confirmacion.evento_origen
+        if not event or event.tipo_evento != EventoDefensa.Tipo.DEFENSA_PRIVADA or event.estado != EventoDefensa.Estado.FINALIZADA:
+            raise ValidationError("La confirmación de Tesis debe vincularse a una Defensa Privada finalizada.")
+        if not event.evaluaciones.filter(tipo_evaluacion="RESULTADO_FINAL", resultado_cualitativo="SUFICIENTE", activo=True).exists():
+            raise ValidationError("Solo una Defensa Privada suficiente admite confirmación de correcciones de forma.")
+        assignment = confirmacion.asignacion_confirmante
+        if not assignment or not assignment.activo:
+            raise ValidationError("La confirmación requiere registrar la asignación académica que respalda la decisión.")
+        valid_tribunal = assignment.tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL and assignment.seguimiento_etapa and assignment.seguimiento_etapa.etapa.codigo == "TEMATICA_TESIS"
+        if not valid_tribunal:
+            raise ValidationError("La habilitación de Pública requiere decisión del Tribunal designado de Tesis; el Tutor no puede confirmarla individualmente.")
+
+    def validar_conclusion_academica(self, postulacion):
+        """Conclusi\u00f3n de Tesis sobre workflow y documentos comunes."""
+        from apps.documentos.models import DocumentoPostulacion
+        from apps.postulantes.models import EventoDefensa, SeguimientoEtapa
+
+        public = postulacion.seguimientos_etapa.filter(
+            etapa__codigo="DEFENSA_PUBLICA", activo=True,
+        ).order_by("-numero_intento").first()
+        if not public or public.estado != SeguimientoEtapa.EstadoChoices.APROBADA:
+            raise ValidationError("La conclusi\u00f3n acad\u00e9mica requiere Defensa P\u00fablica aprobada.")
+        resultado = self.evaluacion_policy.calcular_resultado_final(postulacion)
+        if resultado["nota_final"] is None or resultado["clasificacion"] == "POSTERGADO":
+            raise ValidationError("La conclusi\u00f3n acad\u00e9mica requiere nota final aprobatoria consolidada.")
+        evento = EventoDefensa.objects.filter(
+            postulacion=postulacion, seguimiento_etapa=public,
+            tipo_evento="DEFENSA_PUBLICA", estado=EventoDefensa.Estado.FINALIZADA,
+            activo=True,
+        ).order_by("-fecha_fin_real").first()
+        acta = DocumentoPostulacion.objects.filter(
+            postulacion=postulacion, tipo_documento__codigo="ACTA_DEFENSA",
+            evento_defensa=evento, activo=True, estado__codigo="APR",
+            requiere_correccion=False, versiones__activo=True,
+            versiones__es_version_actual=True,
+        ).exists()
+        if not acta:
+            raise ValidationError("La conclusi\u00f3n acad\u00e9mica requiere ACTA_DEFENSA vigente, aprobada y vinculada a la Defensa P\u00fablica.")
+
+    def permite_observacion_post_aprobacion(self, documento):
+        from apps.postulantes.models import EventoDefensa
+        if documento.tipo_documento.codigo != "DOCUMENTO_FINAL":
+            return False
+        return EventoDefensa.objects.filter(
+            postulacion=documento.postulacion, tipo_evento="DEFENSA_PRIVADA",
+            estado=EventoDefensa.Estado.FINALIZADA, activo=True,
+            evaluaciones__tipo_evaluacion="RESULTADO_FINAL",
+            evaluaciones__resultado_cualitativo="SUFICIENTE", evaluaciones__activo=True,
+        ).exists()
 
     def validar_inicio_etapa(self, seguimiento):
         if seguimiento.etapa.codigo == "DEFENSA_PUBLICA":
-            raise ValidationError(
-                "PENDIENTE_DE_VALIDACION_INSTITUCIONAL: no se puede iniciar DEFENSA_PUBLICA "
-                "sin un mecanismo normado para acreditar las correcciones de forma."
-            )
+            self.validar_gate_publica(seguimiento.postulacion)
 
     def validar_aprobacion_etapa(self, seguimiento):
         if seguimiento.etapa.codigo == "INSCRIPCION":
@@ -354,7 +467,7 @@ class TesisGradoPolicy(BaseModalidadPolicy):
             if not evento or not evento.evaluaciones.filter(tipo_evaluacion="RESULTADO_FINAL", resultado_cualitativo="SUFICIENTE", activo=True).exists():
                 raise ValidationError("La Defensa Privada requiere evento finalizado y resultado SUFICIENTE consolidado.")
         if seguimiento.etapa.codigo == "DEFENSA_PUBLICA":
-            raise ValidationError("PENDIENTE_DE_VALIDACION_INSTITUCIONAL: no existe evidencia normada para automatizar el gate de correcciones posterior a Defensa Privada.")
+            self.validar_gate_publica(seguimiento.postulacion)
 
     def validar_dictamen_revision(self, *, seguimiento, tipo_revision, version_documento_revisada,
                                   evidencia_version, asignacion_emisora, resultado, **kwargs):
