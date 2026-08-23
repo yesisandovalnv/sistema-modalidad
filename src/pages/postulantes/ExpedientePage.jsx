@@ -281,10 +281,7 @@ export default function ExpedientePage() {
   const safeProgress = progress !== null && Number.isFinite(progress)
     ? Math.min(100, Math.max(0, progress))
     : null
-  const roleCode = (auth?.roleCode || auth?.user?.rol?.codigo || '').toUpperCase()
-  const isOwner = String(auth?.user?.id) === String(detalle.estudiante_detalle?.id)
-  const isStaff = ['ADM', 'ADMIN', 'ADMINISTRACION', 'ADMINISTRADOR'].includes(roleCode)
-  const canUpload = auth?.hasPermission?.('puede_cargar_documentos') === true && (isOwner || isStaff)
+  const canUpload = auth?.hasPermission?.('puede_cargar_documentos') === true
   const canReview = auth?.hasPermission?.('puede_gestionar_documentos') === true
   const canManageDefenses = auth?.hasPermission?.('puede_gestionar_defensas') === true
   const canManageEvaluations = auth?.hasPermission?.('puede_gestionar_evaluaciones') === true && canManageDefenses
@@ -387,7 +384,6 @@ export default function ExpedientePage() {
     const selectedType = upload.document || documentTypes.data.find((type) => String(type.id) === String(typeId))
     const isDefenseRecord = selectedType?.codigo === 'ACTA_DEFENSA' || selectedType?.tipo_documento_codigo === 'ACTA_DEFENSA'
     const eventoDefensaId = form.evento_defensa_id?.value
-    const publicDefenses = (defenses.data?.results || defenses.data || []).filter((item) => item.tipo_evento === 'DEFENSA_PUBLICA' && item.estado === 'FINALIZADA' && item.activo !== false)
     if (!file || typeof file.size !== 'number' || file.size === 0 || !file.name) {
       setUpload((current) => ({ ...current, fields: { archivo: ['Selecciona un archivo no vacío.'] }, error: '' }))
       return
@@ -397,8 +393,8 @@ export default function ExpedientePage() {
     uploadController.current = controller
     setUpload((current) => ({ ...current, submitting: true, fields: {}, error: '' }))
     try {
-      if (isDefenseRecord && publicDefenses.length && !eventoDefensaId) {
-        setUpload((current) => ({ ...current, fields: { evento_defensa_id: ['Selecciona la Defensa Pública finalizada.'] }, error: '' }))
+      if (isDefenseRecord && !eventoDefensaId) {
+        setUpload((current) => ({ ...current, submitting: false, fields: { evento_defensa_id: ['Selecciona la Defensa Pública finalizada.'] }, error: '' }))
         return
       }
       const uploadPayload = { postulacionId: detalle.id, tipoDocumentoId: typeId, archivo: file }
@@ -763,7 +759,7 @@ export default function ExpedientePage() {
         }}
       />
 
-      {upload && <UploadDialog upload={upload} types={documentTypes} defenses={defenses} onSubmit={submitUpload} onClose={closeUpload} />}
+      {upload && <UploadDialog upload={upload} types={documentTypes} postulacion={detalle.id} onSubmit={submitUpload} onClose={closeUpload} />}
 
       {selectedDocument && (
         <DocumentDetail
@@ -1253,12 +1249,50 @@ function DownloadVersionButton({ version, label = 'Descargar' }) {
   return <div><Button variant="outline" disabled={downloading} onClick={download}>{downloading ? 'Descargando…' : label}</Button>{error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}</div>
 }
 
-function UploadDialog({ upload, types, defenses, onSubmit, onClose }) {
+function UploadDialog({ upload, types, postulacion, onSubmit, onClose }) {
   const fixedType = upload.document
   const [selectedTypeId, setSelectedTypeId] = useState('')
+  const [selectedEventId, setSelectedEventId] = useState('')
+  const [publicDefenses, setPublicDefenses] = useState({ data: [], loading: false, error: '' })
   const selectedType = fixedType || types.data.find((type) => String(type.id) === String(selectedTypeId))
   const isDefenseRecord = selectedType?.codigo === 'ACTA_DEFENSA' || selectedType?.tipo_documento_codigo === 'ACTA_DEFENSA'
-  const publicDefenses = (defenses.data?.results || defenses.data || []).filter((item) => item.tipo_evento === 'DEFENSA_PUBLICA' && item.estado === 'FINALIZADA' && item.activo !== false)
+  useEffect(() => {
+    setSelectedEventId('')
+    if (!isDefenseRecord) {
+      setPublicDefenses({ data: [], loading: false, error: '' })
+      return undefined
+    }
+    const controller = new AbortController()
+    setPublicDefenses({ data: [], loading: true, error: '' })
+    const load = async () => {
+      try {
+        const candidates = []
+        const seenCandidates = new Set()
+        const seenNextPages = new Set()
+        let page = 1
+        let next = true
+        while (next && !controller.signal.aborted) {
+          const result = await postulacionesService.obtenerDefensas(postulacion, page, controller.signal)
+          const items = result?.results || result || []
+          items.filter((item) => item.tipo_evento === 'DEFENSA_PUBLICA' && item.estado === 'FINALIZADA' && item.activo !== false).forEach((item) => {
+            if (!seenCandidates.has(item.id)) { seenCandidates.add(item.id); candidates.push(item) }
+          })
+          const nextPage = result?.next || ''
+          next = Boolean(nextPage) && !seenNextPages.has(nextPage)
+          if (nextPage) seenNextPages.add(nextPage)
+          page += 1
+        }
+        if (!controller.signal.aborted) {
+          setPublicDefenses({ data: candidates, loading: false, error: '' })
+          if (candidates.length === 1) setSelectedEventId(String(candidates[0].id))
+        }
+      } catch (error) {
+        if (!error.canceled && !controller.signal.aborted) setPublicDefenses({ data: [], loading: false, error: error.message })
+      }
+    }
+    load()
+    return () => controller.abort()
+  }, [isDefenseRecord, postulacion])
   const fieldMessage = (name) => {
     const value = upload.fields?.[name]
     return Array.isArray(value) ? value.join(' ') : value
@@ -1273,9 +1307,12 @@ function UploadDialog({ upload, types, defenses, onSubmit, onClose }) {
       {types.loading && <p role="status">Cargando tipos documentales…</p>}
       {types.error && <p role="alert" className="text-red-600">{types.error}</p>}
       {!fixedType && !types.loading && !types.error && types.data.length === 0 && <p role="status">No hay tipos documentales activos disponibles.</p>}
-      {isDefenseRecord && publicDefenses.length > 0 && <label className="text-sm">Defensa Pública finalizada
-        <select name="evento_defensa_id" required disabled={upload.submitting} aria-describedby={fieldMessage('evento_defensa_id') ? 'defensa-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
-          <option value="">Seleccione la Defensa Pública</option>{publicDefenses.map((defense) => <option key={defense.id} value={defense.id}>{formatDefenseDate(defense.fecha_fin_real || defense.fecha_programada)} — {defense.lugar || 'Sin lugar'}</option>)}
+      {isDefenseRecord && publicDefenses.loading && <p role="status">Buscando Defensas Públicas finalizadas…</p>}
+      {isDefenseRecord && publicDefenses.error && <p role="alert" className="text-red-600">{publicDefenses.error}</p>}
+      {isDefenseRecord && !publicDefenses.loading && !publicDefenses.error && publicDefenses.data.length === 0 && <p role="alert" className="text-amber-700">No existen Defensas Públicas finalizadas disponibles para vincular el Acta de Defensa.</p>}
+      {isDefenseRecord && publicDefenses.data.length > 0 && <label className="text-sm">Defensa Pública finalizada
+        <select name="evento_defensa_id" required value={selectedEventId} disabled={upload.submitting} onChange={(event) => setSelectedEventId(event.target.value)} aria-describedby={fieldMessage('evento_defensa_id') ? 'defensa-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
+          <option value="">Seleccione la Defensa Pública</option>{publicDefenses.data.map((defense) => <option key={defense.id} value={defense.id}>{formatDefenseDate(defense.fecha_fin_real || defense.fecha_programada)} — {defense.lugar || 'Sin lugar'}</option>)}
         </select>{fieldMessage('evento_defensa_id') && <span id="defensa-error" className="mt-1 block text-red-600">{fieldMessage('evento_defensa_id')}</span>}
       </label>}
       <label className="text-sm">Archivo
@@ -1284,7 +1321,7 @@ function UploadDialog({ upload, types, defenses, onSubmit, onClose }) {
       </label>
       {fieldMessage('non_field_errors') && <p role="alert" className="text-red-600">{fieldMessage('non_field_errors')}</p>}
       {upload.error && <p role="alert" className="text-red-600">{upload.error}</p>}
-      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={upload.submitting || types.loading || Boolean(types.error) || (!fixedType && types.data.length === 0)}>{upload.submitting ? 'Enviando…' : fixedType ? 'Cargar nueva versión' : 'Cargar documento'}</Button><Button type="button" variant="secondary" disabled={upload.submitting} onClick={onClose}>Cancelar</Button></div>
+      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={upload.submitting || types.loading || Boolean(types.error) || (!fixedType && types.data.length === 0) || (isDefenseRecord && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))}>{upload.submitting ? 'Enviando…' : fixedType ? 'Cargar nueva versión' : 'Cargar documento'}</Button><Button type="button" variant="secondary" disabled={upload.submitting} onClick={onClose}>Cancelar</Button></div>
     </form>}
   </Modal>
 }

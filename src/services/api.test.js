@@ -95,4 +95,30 @@ describe('apiClient JWT refresh', () => {
     await expect(apiClient.post(url, {}, { adapter: (config) => failure(config, 401) })).rejects.toBeTruthy()
     expect(refresh).not.toHaveBeenCalled()
   })
+
+  it('serializa objetos normales como JSON sin un Content-Type global', async () => {
+    const adapter = vi.fn((config) => response(config))
+    await apiClient.post('/recurso-json/', { nombre: 'Documento' }, { adapter })
+
+    const config = adapter.mock.calls[0][0]
+    expect(config.data).toBe(JSON.stringify({ nombre: 'Documento' }))
+    expect(config.headers.get('Content-Type')).toBe('application/json')
+  })
+
+  it('preserva FormData y File sin serializarlos como JSON', async () => {
+    const file = new File(['%PDF-1.4'], 'acta.pdf', { type: 'application/pdf' })
+    const body = new FormData()
+    body.append('postulacion_id', '7')
+    body.append('evento_defensa_id', '81')
+    body.append('archivo', file)
+    const adapter = vi.fn((config) => response(config))
+
+    await apiClient.post('/recurso-multipart/', body, { adapter })
+
+    const config = adapter.mock.calls[0][0]
+    expect(config.data).toBe(body)
+    expect(config.data.get('archivo')).toBe(file)
+    expect(config.data.get('evento_defensa_id')).toBe('81')
+    expect(config.headers.get('Content-Type')).not.toBe('application/json')
+  })
 })

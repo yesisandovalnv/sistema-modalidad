@@ -343,17 +343,18 @@ describe('postulacionesService', () => {
     })
   })
 
-  it('carga con FormData exacto, URL fija, señal y sin Content-Type manual', async () => {
+  it('carga ACTA_DEFENSA con FormData exacto, File y evento, sin Content-Type manual', async () => {
     const signal = new AbortController().signal
-    const archivo = new File(['%PDF-'], 'informe.pdf', { type: 'application/pdf' })
+    const archivo = new File(['%PDF-'], 'acta.pdf', { type: 'application/pdf' })
     apiClient.post.mockResolvedValue({ data: { id: 91, numero_version: 1 } })
-    await postulacionesService.cargarDocumento({ postulacionId: 7, tipoDocumentoId: 4, archivo }, signal)
+    await postulacionesService.cargarDocumento({ postulacionId: 7, tipoDocumentoId: 5, archivo, eventoDefensaId: 81 }, signal)
     const [url, body, config] = apiClient.post.mock.calls[0]
     expect(url).toBe('/api/v1/documentos/documentos/subir/')
-    expect([...body.keys()]).toEqual(['postulacion_id', 'tipo_documento_id', 'archivo'])
+    expect([...body.keys()]).toEqual(['postulacion_id', 'tipo_documento_id', 'archivo', 'evento_defensa_id'])
     expect(body.get('postulacion_id')).toBe('7')
-    expect(body.get('tipo_documento_id')).toBe('4')
+    expect(body.get('tipo_documento_id')).toBe('5')
     expect(body.get('archivo')).toBe(archivo)
+    expect(body.get('evento_defensa_id')).toBe('81')
     expect(config).toEqual({ signal })
     expect(config.headers).toBeUndefined()
   })

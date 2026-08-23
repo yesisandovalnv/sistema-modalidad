@@ -64,6 +64,6 @@ describe('Subir documento', () => {
     expect(body.get('postulacion_id')).toBe('2')
     expect(body.get('tipo_documento_id')).toBe('3')
     expect(body.get('archivo')).toBeInstanceOf(File)
-    expect(config).toEqual({ headers: { 'Content-Type': 'multipart/form-data' } })
+    expect(config).toBeUndefined()
   })
 })

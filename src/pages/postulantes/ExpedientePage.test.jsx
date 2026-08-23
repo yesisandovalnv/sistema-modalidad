@@ -872,6 +872,33 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
   })
 
+  it.each([
+    ['staff con rol no reconocido localmente', { id: 9, is_staff: true, rol: { codigo: 'ADMIN-API' } }],
+    ['superusuario sin código de rol', { id: 10, is_superuser: true, rol: null }],
+  ])('muestra Cargar documento a un %s autorizado por capacidades', async (_label, user) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    const auth = { user, roleCode: user.rol?.codigo || '', hasPermission: (name) => name === 'puede_cargar_documentos' }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+
+    expect(await screen.findByRole('button', { name: 'Cargar documento' })).toBeVisible()
+  })
+
+  it('oculta Cargar documento a un usuario sin la capacidad backend', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    const auth = { user: { id: 3, rol: { codigo: 'EST' } }, roleCode: 'EST', hasPermission: () => false }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+    await screen.findByText('EXP-007')
+
+    expect(screen.queryByRole('button', { name: 'Cargar documento' })).not.toBeInTheDocument()
+  })
+
+  it('mantiene Cargar documento para el propietario autorizado', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    renderOwnerPage()
+
+    expect(await screen.findByRole('button', { name: 'Cargar documento' })).toBeVisible()
+  })
+
   it('carga un documento inicial con postulación contextual y tipo por nombre', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
     renderOwnerPage()
@@ -907,6 +934,106 @@ describe('ExpedientePage US-008', () => {
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cargar documento' }))
     await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledWith(
       { postulacionId: 7, tipoDocumentoId: '5', archivo: file, eventoDefensaId: '81' }, expect.any(AbortSignal),
+    ))
+  })
+
+  it('encuentra una Defensa Pública finalizada aunque no esté en la página visible', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockImplementation((_postulacion, page) => Promise.resolve(page === 1
+      ? { count: 21, next: 'page=2', previous: null, results: [{ ...defenseRows[1], id: 86, tipo_evento: 'DEFENSA_PUBLICA', estado: 'PROGRAMADA' }] }
+      : { count: 21, next: null, previous: 'page=1', results: [defenseRows[0]] }))
+    renderOwnerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+    await userEvent.selectOptions(screen.getByLabelText('Tipo documental'), '5')
+
+    const selector = await screen.findByLabelText('Defensa Pública finalizada')
+    expect([...selector.options].map((option) => option.value)).toEqual(['', '81'])
+    expect(postulacionesService.obtenerDefensas).toHaveBeenCalledWith(7, 2, expect.any(AbortSignal))
+  })
+
+  it('bloquea ACTA_DEFENSA sin evento incluso ante un submit directo', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockResolvedValue({
+      count: 2, next: null, previous: null,
+      results: [defenseRows[0], { ...defenseRows[0], id: 87, numero_intento: 2 }],
+    })
+    renderOwnerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+    await userEvent.selectOptions(screen.getByLabelText('Tipo documental'), '5')
+    const selector = await screen.findByLabelText('Defensa Pública finalizada')
+    expect(selector).toHaveValue('')
+    const file = new File(['%PDF-1.4'], 'acta.pdf', { type: 'application/pdf' })
+    await userEvent.upload(screen.getByLabelText('Archivo'), file)
+    fireEvent.submit(selector.closest('form'))
+
+    expect(await screen.findByText('Selecciona la Defensa Pública finalizada.')).toBeVisible()
+    expect(postulacionesService.cargarDocumento).not.toHaveBeenCalled()
+  })
+
+  it('muestra ausencia de candidatas y no permite enviar el Acta', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+    renderOwnerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+    await userEvent.selectOptions(screen.getByLabelText('Tipo documental'), '5')
+
+    expect(await screen.findByText('No existen Defensas Públicas finalizadas disponibles para vincular el Acta de Defensa.')).toBeVisible()
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cargar documento' })).toBeDisabled()
+    expect(postulacionesService.cargarDocumento).not.toHaveBeenCalled()
+  })
+
+  it('muestra el error de consulta de candidatas y bloquea el Acta', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas
+      .mockResolvedValueOnce(defensesResponse)
+      .mockRejectedValueOnce({ message: 'No se pudieron consultar las Defensas Públicas.' })
+    renderOwnerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+    await userEvent.selectOptions(screen.getByLabelText('Tipo documental'), '5')
+    const dialog = screen.getByRole('dialog')
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('No se pudieron consultar las Defensas Públicas.')
+    expect(within(dialog).getByRole('button', { name: 'Cargar documento' })).toBeDisabled()
+    expect(postulacionesService.cargarDocumento).not.toHaveBeenCalled()
+  })
+
+  it('limpia el evento al cambiar de postulación', async () => {
+    postulacionesService.obtenerExpediente.mockImplementation((id) => Promise.resolve({ ...response, detalle: { ...response.detalle, id: Number(id), codigo: `EXP-${id}` } }))
+    postulacionesService.obtenerDefensas.mockImplementation((id) => Promise.resolve({
+      count: String(id) === '7' ? 2 : 1, next: null, previous: null,
+      results: String(id) === '7' ? [defenseRows[0], { ...defenseRows[0], id: 87 }] : [{ ...defenseRows[0], id: 181 }],
+    }))
+    const auth = { user: { id: 3, rol: { codigo: 'EST' } }, roleCode: 'EST', hasPermission: (name) => name === 'puede_cargar_documentos' }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<><ExpedientePage /><Link to="/postulaciones/8">Cambiar postulación</Link></>} /></Routes></MemoryRouter></AuthContext.Provider>)
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+    await userEvent.selectOptions(screen.getByLabelText('Tipo documental'), '5')
+    const firstSelector = await screen.findByLabelText('Defensa Pública finalizada')
+    await userEvent.selectOptions(firstSelector, '81')
+    await userEvent.click(screen.getByRole('link', { name: 'Cambiar postulación' }))
+    await screen.findByText('EXP-8')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cargar documento' }))
+    await userEvent.selectOptions(screen.getByLabelText('Tipo documental'), '5')
+    expect(await screen.findByLabelText('Defensa Pública finalizada')).toHaveValue('181')
+  })
+
+  it('limpia el vínculo al dejar ACTA_DEFENSA y conserva otros documentos sin evento', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defenseRows[0]] })
+    renderOwnerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+    const typeSelector = screen.getByLabelText('Tipo documental')
+    await userEvent.selectOptions(typeSelector, '5')
+    expect(await screen.findByLabelText('Defensa Pública finalizada')).toHaveValue('81')
+    await userEvent.selectOptions(typeSelector, '4')
+    expect(screen.queryByLabelText('Defensa Pública finalizada')).not.toBeInTheDocument()
+    const file = new File(['%PDF-1.4'], 'informe.pdf', { type: 'application/pdf' })
+    await userEvent.upload(screen.getByLabelText('Archivo'), file)
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cargar documento' }))
+
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledWith(
+      { postulacionId: 7, tipoDocumentoId: '4', archivo: file }, expect.any(AbortSignal),
     ))
   })
 
