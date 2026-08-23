@@ -123,6 +123,19 @@ describe('ClosureRequirements', () => {
     await waitFor(() => expect(within(item).queryByRole('form')).not.toBeInTheDocument())
   })
 
+  it('compacta condiciones y entregas cuando todas están completas', async () => {
+    postulacionesService.obtenerCondiciones.mockResolvedValue({ results: conditions.results.map((item) => ({ ...item, estado: 'CUMPLE', estado_display: 'Cumple' })) })
+    postulacionesService.obtenerEntregas.mockResolvedValue({ results: deliveries.results.map((item) => ({ ...item, estado: 'COMPLETA', estado_display: 'Completa', cantidad_recibida: item.cantidad })) })
+    render(<ClosureRequirements postulacion={7} canManage />)
+
+    const conditionsSummary = await screen.findByText(/Condiciones técnicas/)
+    const deliveriesSummary = screen.getByText(/Entregas técnicas/)
+    expect(conditionsSummary.closest('details')).not.toHaveAttribute('open')
+    expect(deliveriesSummary.closest('details')).not.toHaveAttribute('open')
+    expect(conditionsSummary).toHaveTextContent('2/2 cumplidas')
+    expect(deliveriesSummary).toHaveTextContent('2/2 completas')
+  })
+
   describe('entregas', () => {
     beforeEach(() => {
       postulacionesService.obtenerEntregas.mockResolvedValue(deliveries)

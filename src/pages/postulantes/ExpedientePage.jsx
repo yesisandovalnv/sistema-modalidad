@@ -301,6 +301,11 @@ export default function ExpedientePage() {
     && data.capacidades?.soportada === true
     && data.capacidades?.configuracion_valida === true
     && (flujo.etapas || []).length === 0
+  const stages = flujo.etapas || []
+  const completedStages = stages.filter((stage) => ['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)).length
+  const isConcluded = detalle.estado_actual_detalle?.codigo === 'CONCLUIDA'
+    || cierre.data?.concluida === true
+    || cierre.data?.estado_general === 'CONCLUIDA'
 
   const initializeFlow = async () => {
     if (flowInitialization.submitting) return
@@ -606,22 +611,22 @@ export default function ExpedientePage() {
   }
 
   return (
-    <section className="mx-auto max-w-5xl space-y-5">
-      <PageHeader
-        title={`Expediente de ${detalle.modalidad_detalle?.nombre || flujo.modalidad?.nombre || 'postulación'}`}
-        description={`Postulación ${detalle.codigo || EMPTY}`}
-        action={<BackLink />}
-      />
+    <section className="mx-auto max-w-6xl space-y-5">
+      <BackLink />
 
-      <Card>
-        <h2 className="text-xl font-bold">Resumen técnico</h2>
-        <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          <Info label="Código" value={detalle.codigo} />
-          <Info label="Estudiante" value={student ? formatStudentLabel(student) : EMPTY} />
-          <Info label="Modalidad" value={detalle.modalidad_detalle?.nombre || flujo.modalidad?.nombre} />
-          <Info label="Gestión y semestre" value={period ? formatPeriodoLabel(period) : EMPTY} />
-          <Info label="Estado técnico general" value={detalle.estado_actual_detalle?.nombre} />
-          <Info label="Macroetapa técnica actual" value={currentStage?.nombre} />
+      <Card className="overflow-hidden border-slate-300 dark:border-slate-700">
+        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{detalle.modalidad_detalle?.nombre || flujo.modalidad?.nombre || 'Postulación'}</p>
+            <h1 className="mt-2 break-words text-3xl font-bold tracking-tight">{detalle.codigo || EMPTY}</h1>
+            <p className="mt-2 break-words text-base font-medium">{student ? formatStudentLabel(student) : EMPTY}</p>
+            <p className="mt-1 text-sm text-slate-500">{period ? formatPeriodoLabel(period) : EMPTY}</p>
+          </div>
+          <StatusBadge value={detalle.estado_actual_detalle?.nombre || detalle.estado_actual_detalle?.codigo} positive={isConcluded} />
+        </div>
+        <h2 className="sr-only">Resumen técnico</h2>
+        <dl className="mt-6 grid gap-4 border-t border-slate-200 pt-5 dark:border-slate-800">
+          <Info label="Macroetapa técnica actual" value={currentStage?.nombre || 'Sin etapa pendiente'} />
         </dl>
 
         <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
@@ -634,6 +639,7 @@ export default function ExpedientePage() {
               {safeProgress}%
             </progress>
           )}
+          <p className="mt-2 text-sm text-slate-500">{stages.length ? `${completedStages} de ${stages.length} etapas completadas` : 'Flujo académico sin etapas registradas'}</p>
           {canInitializeFlow && (
             <div className="mt-5">
               <Button disabled={flowInitialization.submitting} onClick={initializeFlow}>
@@ -646,19 +652,26 @@ export default function ExpedientePage() {
         </div>
       </Card>
 
-      <Card className="overflow-hidden" aria-labelledby="etapas-flujo-title">
+      <ExpedienteNav />
+      <OperationalSummary cierre={cierre.data} currentStage={currentStage} resultado={resultado} concluded={isConcluded} />
+
+      <Card id="resumen" className="scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
         <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
         {(flujo.etapas || []).length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">El flujo académico todavía no fue inicializado.</p>
         ) : (
-          <ol className="mt-4 space-y-3">
+          <ol className="mt-5">
             {flujo.etapas.map((stage) => (
-              <li key={stage.id} className="rounded-lg border p-4 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong>{stage.nombre || stage.codigo}</strong>
-                  <span className="rounded-full border px-2 py-1 text-xs font-semibold">{stage.estado_display || stage.estado}</span>
+              <li key={stage.id} className="relative flex gap-4 pb-5 last:pb-0">
+                <span aria-hidden="true" className="absolute bottom-0 left-[0.7rem] top-6 w-px bg-slate-200 last:hidden dark:bg-slate-700" />
+                <StageMarker state={stage.estado} />
+                <div className="min-w-0 flex-1 rounded-lg border border-slate-200 px-4 py-3 text-sm dark:border-slate-700">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <strong>{stage.nombre || stage.codigo}</strong>
+                    <StatusBadge value={stage.estado_display || stage.estado} compact positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)} />
+                  </div>
+                  <p className="mt-1 text-slate-500">Intento {stage.numero_intento ?? 1}</p>
                 </div>
-                <p className="mt-2 text-slate-500">Intento {stage.numero_intento ?? 1}</p>
               </li>
             ))}
           </ol>
@@ -679,27 +692,27 @@ export default function ExpedientePage() {
       {(flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo)).map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
       <CorrectionConfirmations postulacion={id} modalidadCodigo={detalle.modalidad_detalle?.codigo} defenses={defenses} assignments={activeActors} canManage={canManageTribunalReports} onChanged={() => { setDocumentsRevision((value) => value + 1); setDefensesRevision((value) => value + 1); setRevision((value) => value + 1) }} />
 
-      <Card className="overflow-hidden">
-        <h2 className="text-xl font-bold">Resultado académico técnico</h2>
+      <Card className="overflow-hidden" aria-labelledby="resultado-academico-title">
+        <h2 id="resultado-academico-title" className="text-xl font-bold">Resultado académico técnico</h2>
         {resultado.error ? <PartialState message={resultado.error} onRetry={() => setRevision((value) => value + 1)} /> : (
-          <dl className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            <Info label="Nota privada" value={resultado.data?.nota_privada} />
-            <Info label="Nota pública" value={resultado.data?.nota_publica} />
-            <Info label="Nota final" value={resultado.data?.nota_final ?? 'Pendiente: falta privada o pública'} />
-            <Info label="Clasificación" value={resultado.data?.clasificacion} />
+          <dl className="mt-5 grid gap-3 sm:grid-cols-3">
+            <Score label="Privada" value={resultado.data?.nota_privada} scale="30" />
+            <Score label="Pública" value={resultado.data?.nota_publica} scale="70" />
+            <Score label="Final" value={resultado.data?.nota_final} scale="100" fallback="Pendiente" />
           </dl>
         )}
+        {resultado.data?.clasificacion && <p className="mt-5 rounded-lg bg-slate-100 px-4 py-3 text-center font-bold tracking-wide dark:bg-slate-800">{formatCode(resultado.data.clasificacion)}</p>}
         {resultado.data?.limitacion_normativa && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{resultado.data.limitacion_normativa}</p>}
       </Card>
       <AcademicConclusion postulacion={detalle.id} modalidadCodigo={detalle.modalidad_detalle?.codigo} resultado={resultado} canManage={canManageClosure} onChanged={() => { setRevision((value) => value + 1); setHistoryRevision((value) => value + 1) }} />
 
-      <Card role="note" aria-labelledby="limites-normativos" className="overflow-hidden border-amber-300 bg-amber-50 dark:bg-amber-950">
-        <h2 id="limites-normativos" className="text-xl font-bold">Límites normativos</h2>
+      <details role="note" aria-label="Límites normativos" className="overflow-hidden rounded-xl border border-amber-300 bg-amber-50 p-5 dark:bg-amber-950">
+        <summary className="cursor-pointer list-none font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">Información y límites normativos ({(cierreSoportado ? CONTRACT_WARNINGS : TESIS_WARNINGS).length + (cierreSoportado ? (cierre.data?.advertencias_normativas || []).length : 0)}) <span className="ml-2 text-sm font-normal">Ver detalles</span></summary>
         <ul className="mt-4 list-disc space-y-2 pl-5 text-sm">
           {(cierreSoportado ? CONTRACT_WARNINGS : TESIS_WARNINGS).map((warning) => <li key={warning}>{warning}</li>)}
           {cierreSoportado && (cierre.data?.advertencias_normativas || []).map((warning) => <li key={`backend-${warning}`}>{warning}</li>)}
         </ul>
-      </Card>
+      </details>
 
       {cierreSoportado && <><TechnicalClosure
         key={detalle.id}
@@ -714,14 +727,14 @@ export default function ExpedientePage() {
 
       <ClosureRequirements postulacion={detalle.id} canManage={canManageClosure} onChanged={() => setClosureRevision((value) => value + 1)} /></>}
 
-      <HistoryCard
+      <div id="historial" className="scroll-mt-24"><HistoryCard
         history={history}
         page={historyPage}
         onPage={(page) => setHistoryView({ id, page })}
         onRetry={() => setHistoryRevision((value) => value + 1)}
-      />
+      /></div>
 
-      <ActorsCard
+      <div id="actores" className="scroll-mt-24"><ActorsCard
         active={activeActors}
         historical={historicalActors}
         activePage={activeActorsPage}
@@ -732,9 +745,9 @@ export default function ExpedientePage() {
         onRetryHistorical={() => setHistoricalActorsRevision((value) => value + 1)}
         canManage={canManageAssignments}
         onAssign={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '' }) }}
-      />
+      /></div>
 
-      <DefensesCard
+      <div id="defensas" className="scroll-mt-24"><DefensesCard
         defenses={defenses}
         page={defensesPage}
         onPage={(page) => { closeDefense(); setDefensesView({ id, page }) }}
@@ -742,9 +755,9 @@ export default function ExpedientePage() {
         onSelect={openDefense}
         canManage={canManageDefenses}
         onProgram={() => openDefenseOperation('programar')}
-      />
+      /></div>
 
-      <DocumentsCard
+      <div id="documentos" className="scroll-mt-24"><DocumentsCard
         documents={documents}
         page={documentsPage}
         onPage={(page) => setDocumentsView({ id, page })}
@@ -757,7 +770,7 @@ export default function ExpedientePage() {
           setSelectedVersion(null)
           setObservations({ data: null, loading: false, error: '' })
         }}
-      />
+      /></div>
 
       {upload && <UploadDialog upload={upload} types={documentTypes} postulacion={detalle.id} onSubmit={submitUpload} onClose={closeUpload} />}
 
@@ -788,6 +801,50 @@ export default function ExpedientePage() {
       {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
     </section>
   )
+}
+
+function ExpedienteNav() {
+  const items = [['resumen', 'Resumen'], ['documentos', 'Documentos'], ['actores', 'Actores'], ['defensas', 'Defensas'], ['historial', 'Historial']]
+  return <nav aria-label="Secciones del expediente" className="sticky top-2 z-10 overflow-x-auto rounded-xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+    <ul className="flex min-w-max gap-1">{items.map(([target, label]) => <li key={target}><a href={`#${target}`} className="block rounded-lg px-4 py-2 text-sm font-medium hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 dark:hover:bg-slate-800">{label}</a></li>)}</ul>
+  </nav>
+}
+
+function OperationalSummary({ cierre, currentStage, resultado, concluded }) {
+  const pending = [
+    ...(cierre?.documentos_faltantes || []),
+    ...(cierre?.condiciones_faltantes || []),
+    ...(cierre?.entregas_faltantes || []),
+  ]
+  if (concluded) return <Card className="overflow-hidden border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
+    <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-800 dark:text-emerald-200">✓ Expediente concluido</p>
+    <p className="mt-3 font-medium">Todas las etapas académicas y el cierre documental se encuentran completados.</p>
+    <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Nota final: {resultado?.data?.nota_final ?? 'No registrada'}</strong>{resultado?.data?.clasificacion && <StatusBadge value={formatCode(resultado.data.clasificacion)} positive />}</div>
+  </Card>
+  return <Card className="overflow-hidden border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950">
+    <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800 dark:text-sky-200">Acción requerida</p>
+    <h2 className="mt-2 text-xl font-bold">Estado operativo</h2>
+    <p className="mt-1 font-medium">{currentStage?.nombre || formatCode(cierre?.etapa_actual) || 'Sin etapa pendiente'}</p>
+    {pending.length > 0 ? <div className="mt-4"><p className="text-sm font-semibold">Falta:</p><ul className="mt-2 flex flex-wrap gap-2">{pending.map((item) => <li key={String(item)} className="rounded-full border border-sky-300 bg-white px-3 py-1 text-sm dark:border-sky-700 dark:bg-slate-900">{formatCode(item)}</li>)}</ul></div> : <p className="mt-3 text-sm">No se reportan requisitos técnicos pendientes. Consulte las acciones disponibles en cierre del expediente.</p>}
+  </Card>
+}
+
+function StatusBadge({ value, positive = false, compact = false }) {
+  return <span className={`inline-flex w-fit items-center rounded-full border font-semibold ${compact ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm'} ${positive ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100' : 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100'}`}>{positive ? '✓ ' : ''}{value || EMPTY}</span>
+}
+
+function StageMarker({ state }) {
+  const complete = ['APROBADA', 'COMPLETADA', 'CERRADA'].includes(state)
+  const active = ['EN_PROCESO', 'OBSERVADA'].includes(state)
+  return <span aria-hidden="true" className={`relative z-[1] mt-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold ${complete ? 'border-emerald-600 bg-emerald-600 text-white' : active ? 'border-sky-600 bg-white text-sky-700 dark:bg-slate-900' : 'border-slate-300 bg-white text-slate-400 dark:border-slate-600 dark:bg-slate-900'}`}>{complete ? '✓' : active ? '●' : '○'}</span>
+}
+
+function Score({ label, value, scale, fallback = EMPTY }) {
+  return <div className="rounded-lg border border-slate-200 p-4 text-center dark:border-slate-700"><dt className="text-sm font-medium text-slate-500">{label}</dt><dd className="mt-2 text-2xl font-bold">{value ?? fallback}{value !== null && value !== undefined ? <span className="text-sm font-medium text-slate-500"> / {scale}</span> : null}</dd></div>
+}
+
+function formatCode(value) {
+  return String(value || '').replaceAll('_', ' ')
 }
 
 function TribunalReviewReports({ stage, reports, canManage, versions, onRetry, onRegister }) {
@@ -881,14 +938,13 @@ function ActorGroup({ title, stateLabel, actors, page, onPage, onRetry, empty })
 
 function ActorItem({ actor, stateLabel }) {
   const order = actor.orden_cargo === null || actor.orden_cargo === undefined ? null : actor.orden_cargo
-  return <li className="min-w-0 rounded-lg border border-slate-200 p-4 text-sm dark:border-slate-700">
-    <div className="flex flex-wrap items-start justify-between gap-2">
-      <div className="min-w-0"><h4 className="break-words font-semibold">{actor.usuario_nombre || 'Usuario no disponible'}</h4><p className="mt-1 break-words">{actor.tipo_participacion_display || actor.tipo_participacion_nombre || 'Tipo no registrado'}</p></div>
+  return <li className="min-w-0 rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700">
+    <div className="grid items-start gap-3 sm:grid-cols-[minmax(8rem,1fr)_minmax(10rem,1.5fr)_auto]">
+      <div className="min-w-0"><p className="text-xs text-slate-500">{actor.tipo_participacion_display || actor.tipo_participacion_nombre || 'Tipo no registrado'}{order !== null ? ` ${order}` : ''}</p><h4 className="mt-1 break-words font-semibold">{actor.usuario_nombre || 'Usuario no disponible'}</h4></div>
+      <div><p className="text-xs text-slate-500">Etapa</p><p className="mt-1 break-words font-medium">{actor.etapa_nombre || 'Sin etapa asociada'}</p></div>
       <span className="rounded-full border px-2 py-1 text-xs font-semibold">{stateLabel}</span>
     </div>
-    <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-      {order !== null && <Info label="Orden de cargo" value={String(order)} />}
-      <Info label="Etapa" value={actor.etapa_nombre || 'Sin etapa asociada'} />
+    <dl className="mt-3 grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2 dark:border-slate-800">
       <Info label="Fecha de inicio" value={formatActorDate(actor.fecha_inicio || actor.fecha_designacion)} />
       {stateLabel === 'Histórica' && <Info label="Fecha de finalización" value={formatActorDate(actor.fecha_fin || actor.fecha_finalizacion, 'No registrada')} />}
     </dl>
@@ -1147,10 +1203,10 @@ function DocumentsCard({ documents, page, onPage, onRetry, onSelect, canUpload, 
       {documents.loading && <p role="status" className="mt-4 text-sm">Cargando documentos…</p>}
       {documents.error && <SectionError message={documents.error} label="Reintentar documentos" onRetry={onRetry} />}
       {!documents.loading && !documents.error && rows.length === 0 && <p className="mt-4 text-sm text-slate-500">No se registraron documentos.</p>}
-      {!documents.loading && !documents.error && rows.length > 0 && <><ul className="mt-5 space-y-4">{rows.map((document) => (
-        <li key={document.id} className="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+      {!documents.loading && !documents.error && rows.length > 0 && <><ul className="mt-5 divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 dark:divide-slate-700 dark:border-slate-700">{rows.map((document) => (
+        <li key={document.id} className="min-w-0 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0"><h3 className="break-words font-semibold">{document.tipo_documento_nombre || 'Tipo no registrado'}</h3><p className="mt-1 text-sm">Estado técnico: {document.estado_nombre || 'No registrado'}</p></div>
+            <div className="min-w-0"><h3 className="break-words font-semibold">{document.estado_codigo === 'APR' ? '✓ ' : '• '}{document.tipo_documento_nombre || 'Tipo no registrado'}</h3><p className="mt-1 text-sm text-slate-500">Estado técnico: {document.estado_nombre || 'No registrado'}{document.requiere_correccion ? ' · Requiere corrección' : ''}</p></div>
             <Button variant="secondary" onClick={() => onSelect(document)}>Ver detalle</Button>
           </div>
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">

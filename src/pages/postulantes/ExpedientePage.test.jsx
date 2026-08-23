@@ -239,6 +239,10 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('En proceso')).toBeInTheDocument()
     expect(within(screen.getByRole('heading', { name: 'Resumen técnico' }).parentElement).getByText('Perfil de Proyecto')).toBeInTheDocument()
     expect(screen.getByRole('progressbar', { name: 'Avance del macroflujo' })).toHaveValue(25)
+    expect(screen.getByRole('navigation', { name: 'Secciones del expediente' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Documentos' })).toHaveAttribute('href', '#documentos')
+    expect(screen.getByRole('heading', { name: 'Estado operativo' })).toBeInTheDocument()
+    expect(screen.getByText('0 de 3 etapas completadas')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Resultado académico técnico' })).toBeInTheDocument()
     expect(screen.getByText('24.00')).toBeInTheDocument()
     expect(screen.getByText('60.00')).toBeInTheDocument()
@@ -262,6 +266,20 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('INFORME')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Volver a postulaciones' })).toHaveAttribute('href', '/postulantes')
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+  })
+
+  it('prioriza el modo consulta cuando el expediente está concluido', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, estado_actual_detalle: { codigo: 'CONCLUIDA', nombre: 'Concluida' } },
+      cierre: { data: { ...closureResponse, estado_general: 'CONCLUIDA', concluida: true, documentos_faltantes: [], condiciones_faltantes: [], entregas_faltantes: [] }, error: '' },
+    })
+    renderPage()
+
+    expect(await screen.findByText('✓ Expediente concluido')).toBeInTheDocument()
+    expect(screen.getByText(/Todas las etapas académicas y el cierre documental/)).toBeInTheDocument()
+    expect(screen.getByText('Nota final: 84.00')).toBeInTheDocument()
+    expect(screen.getAllByText('APROBACION PLENA').length).toBeGreaterThan(0)
   })
 
   it('muestra inicialización administrativa solo cuando el flujo soportado está vacío', async () => {
