@@ -103,3 +103,49 @@ class CapabilitiesApiTests(TestCase):
     def test_api_requiere_autenticacion(self):
         self.client.force_authenticate(user=None)
         self.assertEqual(self.client.get(reverse("modalidad-capacidades", args=[self.pg.pk])).status_code, 401)
+
+
+class ProyectoGradoRequisitosTests(TestCase):
+    """Tests para verificar que la política de Proyecto de Grado ofrece documentos correctos por etapa."""
+
+    def setUp(self):
+        self.policy = ProyectoGradoPolicy()
+        self.requisitos_policy = self.policy.requisitos_policy
+
+    def test_documento_final_etapa_ofrece_documento_final(self):
+        """Verificar que DOCUMENTO_FINAL etapa permite cargar DOCUMENTO_FINAL."""
+        resultado = self.requisitos_policy.get_documentos_requeridos("DOCUMENTO_FINAL")
+        self.assertEqual(resultado, ("DOCUMENTO_FINAL",))
+
+    def test_revision_tribunal_previa_etapa_ofrece_informe_revision_tribunal_previa(self):
+        """Verificar que REVISION_TRIBUNAL_PREVIA etapa permite cargar INFORME_REVISION_TRIBUNAL_PREVIA."""
+        resultado = self.requisitos_policy.get_documentos_requeridos("REVISION_TRIBUNAL_PREVIA")
+        self.assertEqual(resultado, ("INFORME_REVISION_TRIBUNAL_PREVIA",))
+
+    def test_etapa_no_configurada_es_fail_closed(self):
+        """Verificar que etapas sin documentos configurados devuelven tupla vacía (fail-closed)."""
+        # INSCRIPCION, PERFIL_PROYECTO, DEFENSA_PRIVADA, DEFENSA_PUBLICA, etc.
+        etapas_sin_docs = ["INSCRIPCION", "PERFIL_PROYECTO", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"]
+        for etapa in etapas_sin_docs:
+            with self.subTest(etapa=etapa):
+                resultado = self.requisitos_policy.get_documentos_requeridos(etapa)
+                self.assertEqual(resultado, (), f"Etapa {etapa} debe devolver tupla vacía")
+
+    def test_sin_fase_devuelve_todos_documentos(self):
+        """Verificar que llamar sin fase devuelve todos los documentos requeridos (compatibilidad)."""
+        resultado = self.requisitos_policy.get_documentos_requeridos(None)
+        self.assertEqual(
+            resultado,
+            ("DOCUMENTO_FINAL", "ACTA_DEFENSA", "HOJA_APROBACION", "INFORME_FINAL_TUTOR")
+        )
+
+    def test_documentos_aplicables_en_etapa_revision_tribunal_previa(self):
+        """Verificar que get_documentos_aplicables_en_etapa devuelve INFORME_REVISION_TRIBUNAL_PREVIA."""
+        # El método get_documentos_aplicables_en_etapa delega a get_documentos_requeridos
+        resultado = self.policy.get_documentos_aplicables_en_etapa("REVISION_TRIBUNAL_PREVIA")
+        self.assertEqual(resultado, ("INFORME_REVISION_TRIBUNAL_PREVIA",))
+
+    def test_documentos_aplicables_en_etapa_documento_final(self):
+        """Verificar que DOCUMENTO_FINAL sigue siendo aplicable en su etapa."""
+        resultado = self.policy.get_documentos_aplicables_en_etapa("DOCUMENTO_FINAL")
+        self.assertEqual(resultado, ("DOCUMENTO_FINAL",))

@@ -219,6 +219,38 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         serializer = FlujoPostulacionSerializer(postulacion, context=self.get_serializer_context())
         return Response(serializer.data)
 
+    @action(detail=True, methods=["get"], url_path="documentos-aplicables")
+    def documentos_aplicables(self, request, pk=None):
+        """Retorna los tipos de documentos que pueden cargarse en la etapa actual de la postulación."""
+        from apps.documentos.models import TipoDocumento
+        postulacion = self.get_object()
+        
+        # Obtener etapa actual
+        etapa_actual = postulacion.seguimientos_etapa.filter(
+            activo=True, estado__in=["PENDIENTE", "EN_PROCESO", "OBSERVADA"]
+        ).select_related("etapa").first()
+        
+        etapa_codigo = etapa_actual.etapa.codigo if etapa_actual else None
+        documentos_aplicables = []
+        
+        # Si hay policy, consultar documentos aplicables en etapa
+        if ModalidadPolicyRegistry.has_policy(postulacion):
+            policy = ModalidadPolicyRegistry.get(postulacion)
+            if etapa_codigo:
+                codigos_permitidos = policy.get_documentos_aplicables_en_etapa(etapa_codigo)
+                if codigos_permitidos:
+                    documentos_aplicables = list(
+                        TipoDocumento.objects.filter(codigo__in=codigos_permitidos, activo=True)
+                        .values("id", "codigo", "nombre")
+                    )
+        
+        return Response({
+            "postulacion_id": postulacion.pk,
+            "modalidad": postulacion.modalidad.codigo,
+            "etapa_actual": etapa_codigo,
+            "documentos_aplicables": documentos_aplicables,
+        })
+
     @extend_schema(request=None, responses={200: PostulacionSerializer})
     @action(detail=True, methods=["post"], url_path="concluir-academicamente")
     def concluir_academicamente(self, request, pk=None):

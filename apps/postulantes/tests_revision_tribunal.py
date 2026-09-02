@@ -135,9 +135,17 @@ class RevisionTribunalServiceTest(RevisionTribunalFixtureMixin, TestCase):
         self.assertEqual(self.seguimiento.estado, SeguimientoEtapa.EstadoChoices.OBSERVADA)
         self.assertEqual(self.postulacion.estado_actual, self.estado_postulacion)
 
-    def test_rechaza_tribunal_incompleto_o_no_asociado_al_seguimiento(self):
-        asignacion = AsignacionPostulacion.objects.get(seguimiento_etapa=self.seguimiento, orden_cargo=3)
-        asignacion.seguimiento_etapa = None
+    def test_acepta_tribunal_vigente_aunque_asignado_en_etapa_anterior(self):
+        """Verifica que tribunales vigentes de PERFIL_PROYECTO se aceptan en REVISION_TRIBUNAL_PREVIA."""
+        # Los tribunales fueron creados con seguimiento_etapa=PERFIL_PROYECTO (ver setUp)
+        # pero deben ser válidos en REVISION_TRIBUNAL_PREVIA porque están activos
+        informe = self.registrar()
+        self.assertEqual(informe.resultado, InformeRevisionTribunalPrevia.Resultado.SUFICIENTE)
+
+    def test_rechaza_tribunal_inactivo(self):
+        """Verifica que tribunales inactivos no cuentan."""
+        asignacion = AsignacionPostulacion.objects.get(orden_cargo=3)
+        asignacion.activo = False
         asignacion.save()
         with self.assertRaisesMessage(ValidationError, "tres tribunales activos distintos"):
             self.registrar()
@@ -147,6 +155,121 @@ class RevisionTribunalServiceTest(RevisionTribunalFixtureMixin, TestCase):
         self.documento_final.save()
         with self.assertRaisesMessage(ValidationError, "Documento Final activo, aprobado"):
             self.registrar()
+
+    def test_rechaza_solo_dos_tribunales_activos(self):
+        """Caso 2: Verifica que solo 2 tribunales vigentes causa rechazo."""
+        asignacion = AsignacionPostulacion.objects.get(orden_cargo=3)
+        asignacion.activo = False
+        asignacion.save()
+        with self.assertRaisesMessage(ValidationError, "tres tribunales activos distintos"):
+            self.registrar()
+
+    def test_rechaza_ordenes_incompletas_1_2_en_lugar_de_1_2_3(self):
+        """Caso 3: Verifica que órdenes {1, 2} sin 3 causa rechazo."""
+        asignacion = AsignacionPostulacion.objects.get(orden_cargo=3)
+        asignacion.activo = False
+        asignacion.save()
+        with self.assertRaisesMessage(ValidationError, "órdenes 1, 2 y 3"):
+            self.registrar()
+
+    def test_rechaza_ordenes_incorrectas_1_2_4_en_lugar_de_1_2_3(self):
+        """Caso 3: Verifica que órdenes {1, 2, 4} causa rechazo."""
+        asignacion = AsignacionPostulacion.objects.get(orden_cargo=3)
+        asignacion.orden_cargo = 4
+        asignacion.save()
+        with self.assertRaisesMessage(ValidationError, "órdenes 1, 2 y 3"):
+            self.registrar()
+
+    def test_rechaza_mismo_usuario_en_dos_posiciones(self):
+        """Caso 4: Verifica que 2 usuarios (con uno en dos órdenes) causa rechazo."""
+        # Asignación para tribunal 3 → cambiar a usuario de tribunal 1
+        asignacion = AsignacionPostulacion.objects.get(orden_cargo=3)
+        asignacion.usuario = self.tribunales[0]  # Mismo usuario que orden_cargo=1
+        asignacion.save()
+        with self.assertRaisesMessage(ValidationError, "tres tribunales activos distintos"):
+            self.registrar()
+
+    def test_rechaza_usuario_inactivo_en_sistema(self):
+        """Caso 6: Verifica que usuario.is_active=False causa exclusión."""
+        tribunal = AsignacionPostulacion.objects.get(orden_cargo=3).usuario
+        tribunal.is_active = False
+        tribunal.save()
+        with self.assertRaisesMessage(ValidationError, "tres tribunales activos distintos"):
+            self.registrar()
+
+    def test_rechaza_usuario_con_activo_false_en_campo_custom(self):
+        """Caso 6: Verifica que usuario.activo=False causa exclusión."""
+        tribunal = AsignacionPostulacion.objects.get(orden_cargo=3).usuario
+        tribunal.activo = False
+        tribunal.save()
+        with self.assertRaisesMessage(ValidationError, "tres tribunales activos distintos"):
+            self.registrar()
+
+    def test_rechaza_tribunal_de_otra_postulacion(self):
+        """Caso 7: Verifica que tribunal de diferente postulación no cuenta."""
+        # Crear otra postulación con su propio tribunal
+        otra_postulacion = Postulacion.objects.create(
+            codigo="PG-TEST-OTRO", estudiante=self.student,
+            modalidad=self.modalidad, periodo=self.periodo,
+            estado_actual=self.estado_postulacion,
+        )
+        otro_tribunal = User.objects.create_user(
+            username="tribunal_otro", password="segura123",
+            ci="7100099", ru="7100099",
+        )
+        AsignacionPostulacion.objects.create(
+            postulacion=otra_postulacion, usuario=otro_tribunal,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
+            orden_cargo=3, designado_por=self.admin,
+        )
+        
+        # Desactivar tribunal 3 de esta postulación
+        asignacion = AsignacionPostulacion.objects.get(postulacion=self.postulacion, orden_cargo=3)
+        asignacion.activo = False
+        asignacion.save()
+        
+        # Debe fallar porque el tribunal de otra_postulacion no cuenta para esta
+        with self.assertRaisesMessage(ValidationError, "tres tribunales activos distintos"):
+            self.registrar()
+
+    def test_acepta_tribunal_aunque_asignado_en_distinta_etapa(self):
+        """Caso 8: Verifica que tribunal vigente de PERFIL se acepta en REVISION (comportamiento correcto)."""
+        # Todos los tribunales tienen seguimiento_etapa=PERFIL_PROYECTO
+        # Pero deben aceptarse en REVISION_TRIBUNAL_PREVIA si están activos
+        self.assertTrue(
+            any(
+                AsignacionPostulacion.objects.filter(
+                    postulacion=self.postulacion,
+                    tipo_participacion="TRIBUNAL",
+                    activo=True,
+                    orden_cargo__in=[1, 2, 3],
+                )
+            )
+        )
+        informe = self.registrar()
+        self.assertEqual(informe.resultado, InformeRevisionTribunalPrevia.Resultado.SUFICIENTE)
+
+    def test_acepta_tribunal_aunque_asignado_con_seguimiento_etapa_null(self):
+        """Verifica que tribunal vigente sin seguimiento_etapa específico se acepta."""
+        # Crear una asignación sin seguimiento_etapa
+        tribunal_sin_etapa = User.objects.create_user(
+            username="tribunal_sin_etapa", password="segura123",
+            ci="7100099", ru="7100099",
+        )
+        # Remover los tribunales actuales
+        AsignacionPostulacion.objects.filter(postulacion=self.postulacion, tipo_participacion="TRIBUNAL").update(activo=False)
+        
+        # Crear nuevas asignaciones sin seguimiento_etapa
+        for order, usuario in enumerate([self.tribunales[0], self.tribunales[1], tribunal_sin_etapa], 1):
+            AsignacionPostulacion.objects.create(
+                postulacion=self.postulacion, usuario=usuario,
+                tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
+                orden_cargo=order, seguimiento_etapa=None, designado_por=self.admin,
+            )
+        
+        # Debe aceptar aunque seguimiento_etapa sea None
+        informe = self.registrar()
+        self.assertEqual(informe.resultado, InformeRevisionTribunalPrevia.Resultado.SUFICIENTE)
 
     def test_rechaza_version_revisada_que_no_es_actual(self):
         self.version_final.es_version_actual = False

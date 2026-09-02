@@ -298,6 +298,7 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
     etapa_actual = serializers.SerializerMethodField()
     porcentaje_avance = serializers.SerializerMethodField()
     etapas = serializers.SerializerMethodField()
+    orientacion_etapa_actual = serializers.SerializerMethodField()
 
     class Meta:
         model = Postulacion
@@ -308,6 +309,7 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
             "etapa_actual",
             "porcentaje_avance",
             "etapas",
+            "orientacion_etapa_actual",
         )
         read_only_fields = fields
 
@@ -368,6 +370,72 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
             and seguimiento.etapa.activo
         }
         return round((len(etapas_aprobadas_ids) / len(etapas_obligatorias_ids)) * 100, 2)
+
+    def get_orientacion_etapa_actual(self, obj: Postulacion) -> dict | None:
+        """Evalúa precondiciones operativas declaradas por el policy de modalidad."""
+        actual_data = self.get_etapa_actual(obj)
+        if not actual_data:
+            return None
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+        if not ModalidadPolicyRegistry.has_policy(obj.modalidad):
+            return None
+        policy = ModalidadPolicyRegistry.get(obj.modalidad)
+        evento_policy = policy.evento_policy
+        precondiciones = evento_policy.get_precondiciones_programacion(actual_data["codigo"]) if evento_policy else None
+        if not precondiciones:
+            return None
+        nombres_roles = dict(AsignacionPostulacion.TipoParticipacionChoices.choices)
+        nombres_roles.update(precondiciones.get("nombres_asignaciones", {}))
+        asignaciones = obj.asignaciones.filter(activo=True)
+        evaluacion = evento_policy.evaluar_requisitos_programacion(
+            tipo_evento=precondiciones["tipo_evento"], seguimiento=self._seguimiento_actual(obj), asignaciones=asignaciones,
+        )
+        requisitos, faltan_actores = [], False
+        for rol, minimo in precondiciones["asignaciones_minimas"].items():
+            resultado = evaluacion["requisitos"][rol]
+            actual, cumplido = resultado["actual"], resultado["cumplido"]
+            faltan_actores = faltan_actores or not cumplido
+            estado_display = f"{actual}/{minimo}"
+            if resultado.get("conflicto_identidad"):
+                estado_display += " conflicto de identidad"
+            else:
+                estado_display += f" {'✓' if cumplido else 'pendiente'}"
+            requisitos.append({
+                "tipo": "ACTOR", "codigo": rol, "nombre": nombres_roles.get(rol, rol),
+                "actual": actual, "minimo": minimo, "cumplido": cumplido,
+                "estado": "CUMPLIDO" if cumplido else "PENDIENTE",
+                "estado_display": estado_display,
+                "conflicto_identidad": resultado.get("conflicto_identidad", False),
+                "destino": "#actores" if not cumplido else None,
+            })
+        horas = precondiciones.get("anticipacion_minima_horas")
+        if horas is not None:
+            requisitos.append({
+                "tipo": "ANTICIPACION", "codigo": "ANTICIPACION_MINIMA",
+                "nombre": "Anticipación mínima", "valor": horas, "unidad": "HORAS",
+                "cumplido": None, "estado": "INFORMATIVO", "estado_display": f"{horas} h", "destino": None,
+            })
+        siguiente_accion = ({
+            "codigo": "GESTIONAR_ACTORES", "titulo": "Actores de la postulación",
+            "descripcion": "Completa las asignaciones mínimas requeridas antes de programar.",
+            "estado": "PENDIENTE", "estado_display": "Pendiente", "destino": "#actores",
+        } if faltan_actores else {
+            "codigo": "PROGRAMAR_EVENTO", "titulo": "Programar defensa",
+            "descripcion": "Los actores requeridos están completos. Programa la defensa respetando la anticipación mínima.",
+            "estado": "DISPONIBLE", "estado_display": "Disponible", "destino": "#defensas",
+        })
+        return {
+            "operacion": "PROGRAMAR_EVENTO", "tipo_evento": precondiciones["tipo_evento"],
+            "mensaje": "Verifica estas precondiciones antes de intentar programar la defensa.",
+            "requisitos": requisitos, "siguiente_accion": siguiente_accion,
+            "conflictos_identidad": evaluacion.get("conflictos", []),
+        }
+
+    def _seguimiento_actual(self, obj: Postulacion) -> SeguimientoEtapa | None:
+        actual_data = self.get_etapa_actual(obj)
+        if not actual_data:
+            return None
+        return next((item for item in self._obtener_seguimientos(obj) if item.pk == actual_data["id"]), None)
 
     def _obtener_seguimientos(self, obj: Postulacion) -> list[SeguimientoEtapa]:
         seguimientos = getattr(obj, "_prefetched_flujo", None)

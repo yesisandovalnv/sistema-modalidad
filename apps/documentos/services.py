@@ -81,6 +81,23 @@ class DocumentoService:
                         postulacion=postulacion, tipo_documento=tipo_documento,
                         evento_defensa=evento_defensa,
                     )
+                
+                # Validar que el tipo de documento sea aplicable en la etapa actual
+                etapa_actual_codigo = (
+                    postulacion.seguimientos_etapa
+                    .filter(activo=True, estado__in=["PENDIENTE", "EN_PROCESO", "OBSERVADA"])
+                    .values_list("etapa__codigo", flat=True)
+                    .first()
+                )
+                if etapa_actual_codigo:
+                    documentos_permitidos = policy.get_documentos_aplicables_en_etapa(etapa_actual_codigo)
+                    # Fail-closed: Si documentos_permitidos está vacío, rechaza cualquier documento.
+                    # Si no está vacío, solo permite los de la lista.
+                    if tipo_documento.codigo not in documentos_permitidos:
+                        raise ValidationError(
+                            f"El tipo '{tipo_documento.nombre}' no puede cargarse en la etapa '{etapa_actual_codigo}'. "
+                            f"Tipos permitidos: {', '.join(documentos_permitidos) or 'ninguno'}."
+                        )
             elif evento_defensa is not None:
                 raise ValidationError("La modalidad no admite vincular documentos a eventos.")
             if documento is None:

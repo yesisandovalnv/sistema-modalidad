@@ -41,6 +41,9 @@ export default function TechnicalClosure({ postulacion, initialClosure, resultad
 
   useEffect(() => () => controller.current?.abort(), [])
   useEffect(() => {
+    setState({ data: initialClosure?.data || null, loading: false, error: initialClosure?.error || '' })
+  }, [initialClosure])
+  useEffect(() => {
     if (!mounted.current) { mounted.current = true; return }
     load()
   }, [refreshToken]) // eslint-disable-line react-hooks/exhaustive-deps

@@ -66,6 +66,10 @@ class EventoDefensaService:
         policy = ModalidadPolicyRegistry.get(evento.postulacion)
         if policy.evento_policy:
             policy.evento_policy.validar_participante(evento=evento, asignacion=asignacion, rol_evento=rol_evento)
+        if ParticipanteEvento._base_manager.select_for_update().filter(
+            evento=evento, asignacion__usuario_id=asignacion.usuario_id, activo=True,
+        ).exists():
+            raise ValidationError({"non_field_errors": ["La persona ya participa activamente en el evento mediante otra asignación."]})
         existente=ParticipanteEvento._base_manager.select_for_update().filter(evento=evento,asignacion=asignacion).first()
         if existente and existente.activo:
             raise ValidationError({"non_field_errors": ["La asignación ya participa activamente en el evento."]})

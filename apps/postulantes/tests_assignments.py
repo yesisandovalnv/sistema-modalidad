@@ -1,16 +1,26 @@
 from unittest.mock import patch
+from threading import Barrier, Thread
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import close_old_connections
 from django.db.models import ProtectedError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.postulantes.asignaciones import AsignacionService
-from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.models import (
+    AsignacionPostulacion,
+    EstadoPostulacion,
+    EventoDefensa,
+    ParticipanteEvento,
+    Postulacion,
+    SeguimientoEtapa,
+)
 from apps.usuarios.models import AuditLog, Role
 
 
@@ -229,6 +239,55 @@ class AsignacionPostulacionModelTest(AssignmentBaseMixin, TestCase):
 class AsignacionServiceTest(AssignmentBaseMixin, TestCase):
     """Pruebas del servicio de asignaciones."""
 
+    def _seguimiento_publico(self, intento=1):
+        etapa, _ = EtapaModalidad.objects.get_or_create(
+            modalidad=self.modalidad, codigo="DEFENSA_PUBLICA",
+            defaults={"nombre": "Defensa Pública", "orden": 6, "origen_normativo": "Reglamento"},
+        )
+        return SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion, etapa=etapa,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO, numero_intento=intento,
+        )
+
+    def test_rechaza_misma_persona_como_presidente_y_secretario_en_defensa_publica(self):
+        seguimiento = self._seguimiento_publico()
+        AsignacionService.asignar_actor(self.postulacion, self.docente_1, "PRESIDENTE", self.admin, seguimiento_etapa=seguimiento)
+        with self.assertRaisesMessage(ValidationError, "cargo incompatible"):
+            AsignacionService.asignar_actor(self.postulacion, self.docente_1, "SECRETARIO", self.admin, seguimiento_etapa=seguimiento)
+
+    def test_rechaza_secretario_o_presidente_que_ya_es_tribunal(self):
+        seguimiento = self._seguimiento_publico()
+        AsignacionService.asignar_actor(
+            self.postulacion, self.docente_1, "TRIBUNAL", self.admin,
+            orden_cargo=1, seguimiento_etapa=self.seguimiento_perfil,
+        )
+        for rol in ("SECRETARIO", "PRESIDENTE"):
+            with self.subTest(rol=rol), self.assertRaisesMessage(ValidationError, "cargo incompatible"):
+                AsignacionService.asignar_actor(self.postulacion, self.docente_1, rol, self.admin, seguimiento_etapa=seguimiento)
+
+    def test_permite_rol_historico_finalizado(self):
+        seguimiento = self._seguimiento_publico()
+        tribunal = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_1, "TRIBUNAL", self.admin,
+            orden_cargo=1, seguimiento_etapa=self.seguimiento_perfil,
+        )
+        AsignacionService.finalizar_asignacion(tribunal, self.admin, "Fin de designación")
+        presidente = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_1, "PRESIDENTE", self.admin, seguimiento_etapa=seguimiento,
+        )
+        self.assertTrue(presidente.activo)
+
+    def test_permite_roles_en_intentos_publicos_distintos(self):
+        intento_1 = self._seguimiento_publico(1)
+        intento_2 = self._seguimiento_publico(2)
+        presidente = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_1, "PRESIDENTE", self.admin, seguimiento_etapa=intento_1,
+        )
+        secretario = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_1, "SECRETARIO", self.admin, seguimiento_etapa=intento_2,
+        )
+        self.assertNotEqual(presidente.seguimiento_etapa_id, secretario.seguimiento_etapa_id)
+
     def test_asignar_tutor_y_obtener_tutor_activo(self):
         asignacion = AsignacionService.asignar_actor(
             postulacion=self.postulacion,
@@ -399,6 +458,142 @@ class AsignacionServiceTest(AssignmentBaseMixin, TestCase):
                 seguimiento_etapa=self.seguimiento_ajeno,
             )
 
+    def test_bloquea_finalizacion_si_la_asignacion_participa_en_evento_programado_o_en_curso(self):
+        etapa = EtapaModalidad.objects.create(
+            modalidad=self.modalidad,
+            codigo="DEFENSA_PUBLICA",
+            nombre="Defensa Pública",
+            orden=6,
+            origen_normativo="Reglamento",
+        )
+        seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=etapa,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+            numero_intento=1,
+        )
+        asignacion = AsignacionService.asignar_actor(
+            postulacion=self.postulacion,
+            usuario_asignado=self.docente_1,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.SECRETARIO,
+            designado_por=self.admin,
+            seguimiento_etapa=seguimiento,
+        )
+        evento_programado = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=seguimiento,
+            tipo_evento=EventoDefensa.Tipo.DEFENSA_PUBLICA,
+            estado=EventoDefensa.Estado.PROGRAMADA,
+            fecha_programada=timezone.now() + timezone.timedelta(days=1),
+            lugar="Sala 1",
+            programado_por=self.admin,
+        )
+        ParticipanteEvento.objects.create(
+            evento=evento_programado,
+            asignacion=asignacion,
+            rol_evento=ParticipanteEvento.Rol.SECRETARIO,
+        )
+
+        with self.assertRaisesMessage(ValidationError, "No se puede finalizar la asignación porque participa activamente en un evento"):
+            AsignacionService.finalizar_asignacion(asignacion, self.admin, "Regularización por conflicto de roles")
+
+        evento_en_curso = EventoDefensa.objects.get(pk=evento_programado.pk)
+        evento_en_curso.estado = EventoDefensa.Estado.EN_CURSO
+        evento_en_curso.fecha_programada = timezone.now()
+        evento_en_curso.lugar = "Sala 2"
+        evento_en_curso.fecha_inicio_real = timezone.now()
+        evento_en_curso.save()
+
+        participante = ParticipanteEvento.objects.get(evento=evento_en_curso, asignacion=asignacion)
+        participante.presente = True
+        participante.save()
+
+        with self.assertRaisesMessage(ValidationError, "No se puede finalizar la asignación porque participa activamente en un evento"):
+            AsignacionService.finalizar_asignacion(asignacion, self.admin, "Regularización por conflicto de roles")
+
+    def test_no_bloquea_finalizacion_si_evento_vinculado_ya_finalizo(self):
+        etapa = EtapaModalidad.objects.create(
+            modalidad=self.modalidad,
+            codigo="DEFENSA_PUBLICA",
+            nombre="Defensa Pública",
+            orden=6,
+            origen_normativo="Reglamento",
+        )
+        seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=etapa,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+            numero_intento=1,
+        )
+        asignacion = AsignacionService.asignar_actor(
+            postulacion=self.postulacion,
+            usuario_asignado=self.docente_1,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.SECRETARIO,
+            designado_por=self.admin,
+            seguimiento_etapa=seguimiento,
+        )
+        evento = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=seguimiento,
+            tipo_evento=EventoDefensa.Tipo.DEFENSA_PUBLICA,
+            estado=EventoDefensa.Estado.FINALIZADA,
+            fecha_programada=timezone.now() - timezone.timedelta(days=2),
+            lugar="Sala 3",
+            programado_por=self.admin,
+            fecha_inicio_real=timezone.now() - timezone.timedelta(days=2),
+            fecha_fin_real=timezone.now() - timezone.timedelta(days=1),
+        )
+        ParticipanteEvento.objects.create(
+            evento=evento,
+            asignacion=asignacion,
+            rol_evento=ParticipanteEvento.Rol.SECRETARIO,
+            presente=None,
+        )
+
+        actualizada = AsignacionService.finalizar_asignacion(asignacion, self.admin, "Cierre histórico")
+
+        self.assertFalse(actualizada.activo)
+        self.assertIsNotNone(actualizada.fecha_finalizacion)
+
+    def test_reemplazar_actor_no_bypassea_proteccion_de_evento_activo(self):
+        etapa = EtapaModalidad.objects.create(
+            modalidad=self.modalidad,
+            codigo="DEFENSA_PUBLICA",
+            nombre="Defensa Pública",
+            orden=6,
+            origen_normativo="Reglamento",
+        )
+        seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=etapa,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+            numero_intento=1,
+        )
+        asignacion = AsignacionService.asignar_actor(
+            postulacion=self.postulacion,
+            usuario_asignado=self.docente_1,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.SECRETARIO,
+            designado_por=self.admin,
+            seguimiento_etapa=seguimiento,
+        )
+        evento = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=seguimiento,
+            tipo_evento=EventoDefensa.Tipo.DEFENSA_PUBLICA,
+            estado=EventoDefensa.Estado.PROGRAMADA,
+            fecha_programada=timezone.now() + timezone.timedelta(days=3),
+            lugar="Sala 4",
+            programado_por=self.admin,
+        )
+        ParticipanteEvento.objects.create(
+            evento=evento,
+            asignacion=asignacion,
+            rol_evento=ParticipanteEvento.Rol.SECRETARIO,
+        )
+
+        with self.assertRaisesMessage(ValidationError, "No se puede finalizar la asignación porque participa activamente en un evento"):
+            AsignacionService.reemplazar_actor(asignacion, self.docente_2, self.admin, "Cambio de secretario")
+
     def test_reemplazo_es_atomico_si_falla_creacion_nueva(self):
         asignacion = AsignacionService.asignar_actor(
             postulacion=self.postulacion,
@@ -438,6 +633,46 @@ class AsignacionServiceTest(AssignmentBaseMixin, TestCase):
         self.assertTrue(AuditLog.objects.filter(usuario=self.admin, accion="ASSIGN", modulo="ASIGNACIONES").exists())
         self.assertTrue(AuditLog.objects.filter(usuario=self.admin, accion="FINISH", modulo="ASIGNACIONES").exists())
         self.assertTrue(AuditLog.objects.filter(usuario=self.admin, accion="REPLACE", modulo="ASIGNACIONES").exists())
+
+
+class AsignacionPublicaConcurrencyTest(AssignmentBaseMixin, TransactionTestCase):
+    reset_sequences = True
+
+    def test_solicitudes_concurrentes_no_crean_roles_incompatibles(self):
+        etapa = EtapaModalidad.objects.create(
+            modalidad=self.modalidad, codigo="DEFENSA_PUBLICA", nombre="Defensa Pública",
+            orden=6, origen_normativo="Reglamento",
+        )
+        seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion, etapa=etapa,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO, numero_intento=1,
+        )
+        barrera, resultados = Barrier(2), []
+
+        def asignar(rol):
+            close_old_connections()
+            try:
+                barrera.wait()
+                asignacion = AsignacionService.asignar_actor(
+                    Postulacion.objects.get(pk=self.postulacion.pk),
+                    User.objects.get(pk=self.docente_1.pk), rol,
+                    User.objects.get(pk=self.admin.pk),
+                    seguimiento_etapa=SeguimientoEtapa.objects.get(pk=seguimiento.pk),
+                )
+                resultados.append(("ok", asignacion.tipo_participacion))
+            except ValidationError as exc:
+                resultados.append(("rechazado", str(exc)))
+            finally:
+                close_old_connections()
+
+        hilos = [Thread(target=asignar, args=(rol,)) for rol in ("PRESIDENTE", "SECRETARIO")]
+        for hilo in hilos: hilo.start()
+        for hilo in hilos: hilo.join(timeout=10)
+
+        self.assertFalse(any(hilo.is_alive() for hilo in hilos))
+        self.assertEqual([estado for estado, _ in resultados].count("ok"), 1)
+        self.assertEqual([estado for estado, _ in resultados].count("rechazado"), 1)
+        self.assertEqual(AsignacionPostulacion.objects.filter(postulacion=self.postulacion).count(), 1)
 
 
 class AsignacionApiTest(AssignmentBaseMixin, APITestCase):

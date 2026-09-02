@@ -8,7 +8,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
-from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Postulacion, SeguimientoEtapa
+from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, HistorialEstado, Postulacion, SeguimientoEtapa
 from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.workflow import WorkflowService
 
@@ -303,6 +303,67 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
         )
 
         self.assertEqual(serializer.data["porcentaje_avance"], 66.67)
+
+
+class ProgrammingOrientationTest(WorkflowBaseMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.etapa_defensa = EtapaModalidad.objects.create(
+            modalidad=self.modalidad, codigo="DEFENSA_PUBLICA", nombre="Defensa Pública",
+            orden=6, origen_normativo="Diagrama oficial",
+        )
+        self.seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion, etapa=self.etapa_defensa,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO, numero_intento=1,
+        )
+        self.actors = [User.objects.create_user(
+            username=f"actor_orientacion_{index}", password="segura123", ci=f"910000{index}", ru=f"RU910000{index}",
+        ) for index in range(1, 6)]
+
+    def _asignar(self, usuario, rol, orden=None):
+        return AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion, usuario=usuario, tipo_participacion=rol,
+            orden_cargo=orden, designado_por=self.admin, seguimiento_etapa=self.seguimiento,
+        )
+
+    def _orientacion(self):
+        return FlujoPostulacionSerializer(self.postulacion, context={}).data["orientacion_etapa_actual"]
+
+    def test_orienta_a_actores_cuando_faltan_presidente_y_secretario(self):
+        for index, usuario in enumerate(self.actors[:3], 1):
+            self._asignar(usuario, "TRIBUNAL", index)
+        orientacion = self._orientacion()
+        requisitos = {item["codigo"]: item for item in orientacion["requisitos"]}
+        self.assertEqual(requisitos["TRIBUNAL"]["nombre"], "Tribunales")
+        self.assertEqual(requisitos["TRIBUNAL"]["estado_display"], "3/2 ✓")
+        self.assertEqual(requisitos["PRESIDENTE"]["estado_display"], "0/1 pendiente")
+        self.assertEqual(requisitos["SECRETARIO"]["estado_display"], "0/1 pendiente")
+        self.assertEqual(requisitos["ANTICIPACION_MINIMA"]["estado_display"], "48 h")
+        self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Actores de la postulación")
+        self.assertEqual(orientacion["siguiente_accion"]["destino"], "#actores")
+
+    def test_orienta_a_programar_defensa_cuando_actores_estan_completos(self):
+        self._asignar(self.actors[0], "TRIBUNAL", 1)
+        self._asignar(self.actors[1], "TRIBUNAL", 2)
+        self._asignar(self.actors[2], "PRESIDENTE")
+        self._asignar(self.actors[3], "SECRETARIO")
+        orientacion = self._orientacion()
+        self.assertTrue(all(item["cumplido"] for item in orientacion["requisitos"] if item["tipo"] == "ACTOR"))
+        self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Programar defensa")
+        self.assertEqual(orientacion["siguiente_accion"]["destino"], "#defensas")
+
+    def test_orientacion_detecta_conflicto_de_identidad(self):
+        self._asignar(self.actors[0], "TRIBUNAL", 1)
+        self._asignar(self.actors[1], "TRIBUNAL", 2)
+        self._asignar(self.actors[2], "PRESIDENTE")
+        self._asignar(self.actors[2], "SECRETARIO")
+        orientacion = self._orientacion()
+        requisitos = {item["codigo"]: item for item in orientacion["requisitos"]}
+        self.assertFalse(requisitos["PRESIDENTE"]["cumplido"])
+        self.assertFalse(requisitos["SECRETARIO"]["cumplido"])
+        self.assertTrue(requisitos["PRESIDENTE"]["conflicto_identidad"])
+        self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Actores de la postulación")
+        self.assertEqual(orientacion["conflictos_identidad"][0]["usuario_id"], self.actors[2].pk)
 
 
 class DocumentoFinalApprovalPreconditionTest(WorkflowBaseMixin, TestCase):

@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from apps.postulantes.models import AsignacionPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.models import AsignacionPostulacion, EventoDefensa, Postulacion, SeguimientoEtapa
 from apps.usuarios.models import AuditLog, CustomUser
 from apps.notificaciones.events import EventTypes, publish_domain_event
 
@@ -53,11 +53,10 @@ class AsignacionService:
             AsignacionService._validar_contexto_seguimiento(postulacion, seguimiento_bloqueado)
             AsignacionService._validar_reglas_actor(postulacion, usuario_asignado, tipo_participacion, orden_cargo)
 
-            asignaciones_activas_tipo = AsignacionPostulacion.objects.select_for_update().filter(
-                postulacion=postulacion,
-                tipo_participacion=tipo_participacion,
-                activo=True,
+            asignaciones_activas = AsignacionPostulacion.objects.select_for_update().filter(
+                postulacion=postulacion, activo=True,
             )
+            asignaciones_activas_tipo = asignaciones_activas.filter(tipo_participacion=tipo_participacion)
             activos_mismo_contexto = AsignacionService._filtrar_por_contexto(
                 asignaciones_activas_tipo,
                 seguimiento_bloqueado,
@@ -76,6 +75,8 @@ class AsignacionService:
                 tipo_participacion=tipo_participacion,
                 orden_cargo=orden_cargo,
                 seguimiento_etapa=seguimiento_bloqueado,
+                usuario_asignado=usuario_asignado,
+                queryset_activas=asignaciones_activas,
             )
 
             asignacion = AsignacionPostulacion.objects.create(
@@ -115,6 +116,7 @@ class AsignacionService:
         with transaction.atomic():
             asignacion = AsignacionService._bloquear_asignacion(asignacion.pk)
             AsignacionService._validar_asignacion_activa(asignacion)
+            AsignacionService._validar_no_participa_en_evento_activo(asignacion)
 
             asignacion.fecha_finalizacion = timezone.now()
             asignacion.activo = False
@@ -283,6 +285,8 @@ class AsignacionService:
         tipo_participacion: str,
         orden_cargo: int | None,
         seguimiento_etapa: SeguimientoEtapa | None,
+        usuario_asignado: CustomUser,
+        queryset_activas,
     ) -> None:
         if tipo_participacion in AsignacionService.SINGLE_ACTIVE_TYPES and queryset_tipo.exists():
             raise ValidationError(f"La postulación ya tiene un {tipo_participacion} activo.")
@@ -292,7 +296,8 @@ class AsignacionService:
             queryset_tipo=queryset_tipo, queryset_contexto=queryset_contexto,
             postulacion=postulacion,
             tipo_participacion=tipo_participacion, seguimiento_etapa=seguimiento_etapa,
-            orden_cargo=orden_cargo,
+            orden_cargo=orden_cargo, usuario_asignado=usuario_asignado,
+            queryset_activas=queryset_activas,
         )
 
     @staticmethod
@@ -367,6 +372,19 @@ class AsignacionService:
     def _validar_asignacion_activa(asignacion: AsignacionPostulacion) -> None:
         if not asignacion.activo:
             raise ValidationError("La asignación ya está finalizada.")
+
+    @staticmethod
+    def _validar_no_participa_en_evento_activo(asignacion: AsignacionPostulacion) -> None:
+        participaciones = asignacion.participaciones_evento.select_related("evento").filter(activo=True)
+        for participacion in participaciones:
+            evento = participacion.evento
+            if evento is None or not evento.activo:
+                continue
+            if evento.estado in {EventoDefensa.Estado.PROGRAMADA, EventoDefensa.Estado.EN_CURSO}:
+                raise ValidationError(
+                    "No se puede finalizar la asignación porque participa activamente en un evento "
+                    "PROGRAMADA o EN_CURSO."
+                )
 
     @staticmethod
     def _validar_postulacion(postulacion: Postulacion) -> None:

@@ -27,6 +27,24 @@ describe('postulacionesService', () => {
     expect(apiClient.post).toHaveBeenCalledWith('/api/v1/postulaciones/7/flujo/inicializar/', {}, { signal })
   })
 
+  it('inicia una etapa usando el endpoint real del seguimiento', async () => {
+    const signal = new AbortController().signal
+    apiClient.post.mockResolvedValue({ data: { id: 18, codigo: 'DOCUMENTO_FINAL', estado: 'EN_PROCESO' } })
+
+    await postulacionesService.iniciarEtapa(18, signal)
+
+    expect(apiClient.post).toHaveBeenCalledWith('/api/v1/seguimientos-etapa/18/iniciar/', {}, { signal })
+  })
+
+  it('aprueba una etapa usando el endpoint real del seguimiento', async () => {
+    const signal = new AbortController().signal
+    apiClient.post.mockResolvedValue({ data: { id: 18, codigo: 'DOCUMENTO_FINAL', estado: 'APROBADA' } })
+
+    await postulacionesService.aprobarEtapa(18, signal)
+
+    expect(apiClient.post).toHaveBeenCalledWith('/api/v1/seguimientos-etapa/18/aprobar/', {}, { signal })
+  })
+
   it('obtiene el detalle básico con AbortSignal', async () => {
     const signal = new AbortController().signal
     apiClient.get.mockResolvedValue({ data: { id: 5, codigo: 'BASIC-005' } })
@@ -288,6 +306,14 @@ describe('postulacionesService', () => {
     apiClient.post.mockRejectedValue({ response: status ? { status, data } : undefined })
     await expect(postulacionesService.suspenderDefensa(81, '')).rejects.toEqual({
       status, message, ...(status === 400 ? { fields: data } : {}),
+    })
+  })
+
+  it('muestra el mensaje específico cuando el error 400 de defensa es una lista', async () => {
+    const data = ['No existen asignaciones mínimas activas: PRESIDENTE, SECRETARIO.']
+    apiClient.post.mockRejectedValue({ response: { status: 400, data } })
+    await expect(postulacionesService.programarDefensa(7, {})).rejects.toEqual({
+      status: 400, message: data[0], fields: {},
     })
   })
 

@@ -18,7 +18,7 @@ vi.mock('../../services/postulacionesService', () => ({
     obtenerEntregas: vi.fn(), registrarEntrega: vi.fn(),
     obtenerCierre: vi.fn(), aprobarRevisionFinal: vi.fn(), aprobarCierreDocumental: vi.fn(),
     concluirPostulacion: vi.fn(), reabrirCierre: vi.fn(),
-    obtenerCandidatosAsignacion: vi.fn(), asignarActor: vi.fn(),
+    obtenerCandidatosAsignacion: vi.fn(), asignarActor: vi.fn(), finalizarAsignacion: vi.fn(),
     obtenerInformesRevisionTribunal: vi.fn(), registrarInformeRevisionTribunal: vi.fn(),
   },
 }))
@@ -163,6 +163,11 @@ function renderDefenseManagerPage() {
   return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 }
 
+function renderDefenseEvaluationManagerPage() {
+  const auth = { user: { id: 9 }, hasPermission: (name) => ['puede_gestionar_defensas', 'puede_gestionar_evaluaciones'].includes(name) }
+  return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+}
+
 function renderClosureManagerPage() {
   const auth = { user: { id: 9 }, hasPermission: (name) => name === 'puede_gestionar_cierre' }
   return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
@@ -195,6 +200,7 @@ describe('ExpedientePage US-008', () => {
       { id: 41, username: 'Johnny', nombre_completo: 'Johnny Rosas', codigo: 'Johnny', rol_codigo: 'DOCENTE', rol_nombre: 'Docente', activo: true },
     ] })
     postulacionesService.asignarActor.mockResolvedValue({ id: 90 })
+    postulacionesService.finalizarAsignacion.mockResolvedValue({ id: 7, activo: false })
     postulacionesService.obtenerInformesRevisionTribunal.mockResolvedValue([])
     postulacionesService.registrarInformeRevisionTribunal.mockResolvedValue({ id: 501, resultado: 'SUFICIENTE' })
     postulacionesService.obtenerDocumentos.mockResolvedValue(documentsResponse)
@@ -225,6 +231,87 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.suspenderDefensa.mockResolvedValue({ ...defenseRows[1], estado: 'SUSPENDIDA', estado_display: 'Suspendida' })
     postulacionesService.cancelarDefensa.mockResolvedValue({ ...defenseRows[1], estado: 'CANCELADA', estado_display: 'Cancelada' })
     postulacionesService.reprogramarDefensa.mockResolvedValue({ ...defenseRows[1], fecha_programada: '2026-09-01T10:00:00Z' })
+  })
+
+  it('no muestra la acción de finalización si el usuario no puede gestionar asignaciones', async () => {
+    postulacionesService.obtenerActores.mockImplementation((_id, activo) => Promise.resolve(activo ? activeActorsResponse : historicalActorsResponse))
+    renderPage()
+
+    const activeHeading = await screen.findByRole('heading', { name: 'Asignaciones vigentes' })
+    const activeGroup = activeHeading.closest('section')
+    expect(within(activeGroup).queryByRole('button', { name: /Finalizar asignación/i })).not.toBeInTheDocument()
+  })
+
+  it('muestra el botón de finalización sólo para actores vigentes y abre la confirmación', async () => {
+    postulacionesService.obtenerActores.mockImplementation((_id, activo) => Promise.resolve(activo ? activeActorsResponse : historicalActorsResponse))
+    renderAssignmentManagerPage()
+
+    const activeHeading = await screen.findByRole('heading', { name: 'Asignaciones vigentes' })
+    const activeGroup = activeHeading.closest('section')
+    expect(within(activeGroup).getAllByRole('button', { name: /Finalizar asignación/i }).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: /Finalizar asignación/i })).not.toBeNull()
+
+    await userEvent.click(within(activeGroup).getAllByRole('button', { name: /Finalizar asignación/i })[0])
+    const dialog = await screen.findByRole('dialog', { name: /Finalizar asignación/i })
+    expect(dialog).toBeInTheDocument()
+    expect(within(dialog).getByText(/Tutor Uno|Tribunal Uno|Docente Uno|Presidente Uno|Secretario Uno/)).toBeInTheDocument()
+    expect(within(dialog).getByLabelText(/Motivo o observación/i)).toBeInTheDocument()
+  })
+
+  it('confirma finalización con motivo y evita doble submit', async () => {
+    postulacionesService.obtenerActores.mockImplementation((_id, activo) => Promise.resolve(activo ? activeActorsResponse : historicalActorsResponse))
+    postulacionesService.finalizarAsignacion.mockResolvedValue({ id: 1, activo: false })
+    renderAssignmentManagerPage()
+
+    const activeGroup = (await screen.findByRole('heading', { name: 'Asignaciones vigentes' })).closest('section')
+    await userEvent.click(within(activeGroup).getAllByRole('button', { name: /Finalizar asignación/i })[0])
+    const dialog = await screen.findByRole('dialog', { name: /Finalizar asignación/i })
+
+    const reason = within(dialog).getByLabelText(/Motivo o observación/i)
+    await userEvent.type(reason, 'Regularización por conflicto de roles')
+    const submit = within(dialog).getByRole('button', { name: /Confirmar finalización/i })
+
+    await userEvent.click(submit)
+    await waitFor(() => expect(postulacionesService.finalizarAsignacion).toHaveBeenCalledWith(1, { observaciones: 'Regularización por conflicto de roles' }, expect.any(AbortSignal)))
+
+    const submitAgain = within(dialog).getByRole('button', { name: /Confirmar finalización/i })
+    expect(submitAgain).toBeDisabled()
+  })
+
+  it('muestra el error específico del backend al finalizar', async () => {
+    postulacionesService.obtenerActores.mockImplementation((_id, activo) => Promise.resolve(activo ? activeActorsResponse : historicalActorsResponse))
+    postulacionesService.finalizarAsignacion.mockRejectedValue({
+      response: { status: 400, data: { non_field_errors: ['No se puede finalizar la asignación porque participa activamente en un evento PROGRAMADA o EN_CURSO.'] } },
+    })
+    renderAssignmentManagerPage()
+
+    const activeGroup = (await screen.findByRole('heading', { name: 'Asignaciones vigentes' })).closest('section')
+    await userEvent.click(within(activeGroup).getAllByRole('button', { name: /Finalizar asignación/i })[0])
+    const dialog = await screen.findByRole('dialog', { name: /Finalizar asignación/i })
+    const reason = within(dialog).getByLabelText(/Motivo o observación/i)
+    await userEvent.type(reason, 'Motivo inválido')
+    await userEvent.click(within(dialog).getByRole('button', { name: /Confirmar finalización/i }))
+
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('No se puede finalizar la asignación porque participa activamente en un evento PROGRAMADA o EN_CURSO.'))
+  })
+
+  it('permite registrar informe cuando la evidencia viene identificada por su código de tipo documental', async () => {
+    postulacionesService.obtenerDocumentos.mockResolvedValue({
+      count: 2, next: null, previous: null, results: [
+        { id: 41, tipo_documento_codigo: 'DOCUMENTO_FINAL', tipo_documento_nombre: 'Documento Final', activo: true, versiones: [{ id: 601, numero_version: 1, nombre_original: 'documento-final.pdf', es_version_actual: true, activo: true }] },
+        { id: 42, tipo_documento_codigo: 'INFORME_REVISION_TRIBUNAL_PREVIA', tipo_documento_nombre: 'Informe de revisión', activo: true, versiones: [{ id: 602, numero_version: 1, nombre_original: 'informe-tribunal.pdf', es_version_actual: true, activo: true }] },
+      ],
+    })
+    postulacionesService.obtenerInformesRevisionTribunal.mockResolvedValue([])
+
+    renderWorkflowManagerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Registrar informe del tribunal' }))
+    const dialog = screen.getByRole('dialog', { name: 'Registrar informe del tribunal' })
+
+    expect(dialog).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Evidencia' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Registrar informe' })).toBeEnabled()
   })
 
   it('renderiza el resumen, macroetapa, avance y advertencia institucional', async () => {
@@ -1270,6 +1357,53 @@ describe('ExpedientePage US-008', () => {
     await userEvent.click(within(screen.getAllByRole('dialog').at(-1)).getByRole('button', { name: 'Confirmar' }))
     await waitFor(() => expect(postulacionesService.obtenerQuorumDefensa).toHaveBeenCalledTimes(2))
     expect(within(screen.getByRole('dialog', { name: 'Detalle de defensa' })).getByText('En curso')).toBeInTheDocument()
+  })
+
+  it('sincroniza flujo, resultado y cierre en la misma sesión después de consolidar', async () => {
+    const privateDefense = {
+      ...defenseRows[1],
+      estado: 'FINALIZADA',
+      estado_display: 'Finalizada',
+      evaluaciones: [{ id: 201, tipo_evaluacion: 'PRIVADA', modalidad_registro: 'CONSENSO', resultado_cualitativo: 'SUFICIENTE', nota_numerica: '28.00', ponderacion: '30.00', aporte_ponderado: '28.00' }],
+    }
+    const stale = {
+      ...response,
+      flujo: {
+        ...response.flujo,
+        etapa_actual: { id: 12, codigo: 'DEFENSA_PRIVADA', nombre: 'Defensa Privada', estado: 'EN_PROCESO', orden: 5 },
+      },
+      resultado: { data: { nota_privada: null, nota_publica: null, nota_final: null }, error: '' },
+      cierre: { data: { ...closureResponse, etapa_actual: 'DEFENSA_PRIVADA' }, error: '' },
+    }
+    const synchronized = {
+      ...stale,
+      flujo: {
+        ...stale.flujo,
+        etapa_actual: { id: 13, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'PENDIENTE', orden: 6 },
+        etapas: stale.flujo.etapas.map((stage) => stage.codigo === 'DEFENSA_PRIVADA'
+          ? { ...stage, estado: 'APROBADA' }
+          : stage),
+      },
+      resultado: { data: { nota_privada: '28.00', nota_publica: null, nota_final: null }, error: '' },
+      cierre: { data: { ...closureResponse, etapa_actual: 'DEFENSA_PUBLICA' }, error: '' },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValueOnce(stale).mockResolvedValue(synchronized)
+    postulacionesService.obtenerDefensas.mockResolvedValue({ ...defensesResponse, results: [defenseRows[0], privateDefense] })
+    postulacionesService.consolidarEvaluacionDefensa.mockResolvedValue({})
+    postulacionesService.obtenerDefensa.mockResolvedValue({
+      ...privateDefense,
+      resultado_consolidado: { id: 202, tipo_evaluacion: 'RESULTADO_FINAL', resultado_cualitativo: 'SUFICIENTE', nota_numerica: '28.00', ponderacion: '30.00', aporte_ponderado: '28.00' },
+    })
+
+    renderDefenseEvaluationManagerPage()
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Consultar defensa' }))[1])
+    await userEvent.click(await screen.findByRole('button', { name: 'Consolidar resultado del evento' }))
+
+    await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
+    expect(within(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).getByText('28.00')).toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).getByText('/ 30')).toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Cierre técnico' }).parentElement).getByText('DEFENSA_PUBLICA')).toBeInTheDocument()
+    expect(screen.getAllByText('Defensa Pública').length).toBeGreaterThan(0)
   })
 
   it('no muestra acciones para finalizada/cancelada ni funcionalidades de historias posteriores', async () => {

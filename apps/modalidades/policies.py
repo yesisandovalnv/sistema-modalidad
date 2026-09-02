@@ -55,6 +55,14 @@ class ModalidadCapabilities:
 
 class BaseEventoPolicy(ABC):
     def get_tipos_evento(self): return ()
+    def get_precondiciones_programacion(self, codigo_etapa): return None
+    def evaluar_requisitos_programacion(self, *, tipo_evento, seguimiento, asignaciones):
+        requisitos = self.get_precondiciones_programacion(seguimiento.etapa.codigo) or {}
+        resultado = {}
+        for rol, minimo in requisitos.get("asignaciones_minimas", {}).items():
+            actual = asignaciones.filter(tipo_participacion=rol).values("usuario_id").distinct().count()
+            resultado[rol] = {"actual": actual, "minimo": minimo, "cumplido": actual >= minimo, "conflicto_identidad": False}
+        return {"cumple": all(item["cumplido"] for item in resultado.values()), "requisitos": resultado, "conflictos": []}
     def validar_programacion(self, **kwargs): raise ModalidadNoSoportadaError(kwargs.get("codigo", ""))
     def validar_participante(self, **kwargs): return None
     def validar_quorum(self, evento): raise ModalidadNoSoportadaError(evento.postulacion.modalidad.codigo)
@@ -135,6 +143,15 @@ class BaseModalidadPolicy(ABC):
     def get_condiciones_requeridas(self, fase=None): return tuple(self.requisitos_policy.get_condiciones_requeridas(fase)) if self.requisitos_policy else ()
     def get_entregas_requeridas(self, fase=None): return tuple(self.requisitos_policy.get_entregas_requeridas(fase)) if self.requisitos_policy else ()
     def get_documentos_requeridos(self, fase=None): return tuple(self.requisitos_policy.get_documentos_requeridos(fase)) if self.requisitos_policy else ()
+    def get_documentos_aplicables_en_etapa(self, codigo_etapa: str) -> tuple:
+        """Retorna los códigos de tipos documentales que pueden cargarse en una etapa específica.
+        
+        Reutiliza requisitos_policy.get_documentos_requeridos(codigo_etapa) como fuente de verdad.
+        Si el policy no diferencia por etapa, devuelve vacío para ser explícito.
+        """
+        if self.requisitos_policy:
+            return tuple(self.requisitos_policy.get_documentos_requeridos(codigo_etapa))
+        return ()
     def get_cierre_policy(self): return None
     def get_revision_tribunal_previa_policy(self): return None
     def validar_dictamen_revision(self, **kwargs):

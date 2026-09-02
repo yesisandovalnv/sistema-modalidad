@@ -16,6 +16,12 @@ import CorrectionConfirmations from './CorrectionConfirmations'
 import AcademicConclusion from './AcademicConclusion'
 
 const EMPTY = 'No registrado'
+const ORIENTATION_TO_DEFENSE_ACTION = {
+  INICIAR_DEFENSA: 'iniciar',
+  FINALIZAR_DEFENSA: 'finalizar',
+  REGISTRAR_EVALUACION: 'registrar_evaluacion',
+  CONSOLIDAR_RESULTADO: 'consolidar_resultado',
+}
 const DEFENSE_WARNING = 'Los datos de defensa, quórum y evaluación mostrados por el sistema son registros técnicos y no sustituyen convocatoria formal, acta firmada, legalización ni resultado académico institucional.'
 const CONTRACT_WARNINGS = [
   'La aprobación y originalidad del tema no están certificadas automáticamente por el sistema.',
@@ -52,6 +58,9 @@ export default function ExpedientePage() {
   const [assignment, setAssignment] = useState(null)
   const assignmentController = useRef(null)
   const assignmentSubmitting = useRef(false)
+  const [finalization, setFinalization] = useState(null)
+  const finalizationController = useRef(null)
+  const finalizationSubmitting = useRef(false)
   const activeActorsPage = String(actorsView.id) === String(id) ? actorsView.activePage : 1
   const historicalActorsPage = String(actorsView.id) === String(id) ? actorsView.historicalPage : 1
   const [documents, setDocuments] = useState({ data: null, loading: true, error: '' })
@@ -82,6 +91,12 @@ export default function ExpedientePage() {
   const defenseOperationController = useRef(null)
   const [flowInitialization, setFlowInitialization] = useState({ submitting: false, error: '' })
   const flowInitializationController = useRef(null)
+  const [stageInitialization, setStageInitialization] = useState({ submitting: false, error: '' })
+  const stageInitializationController = useRef(null)
+  const stageInitializationSubmitting = useRef(false)
+  const [stageApproval, setStageApproval] = useState({ submitting: false, error: '', fields: {} })
+  const stageApprovalController = useRef(null)
+  const stageApprovalSubmitting = useRef(false)
   const [tribunalReports, setTribunalReports] = useState({ data: null, loading: false, error: '' })
   const [tribunalReportsRevision, setTribunalReportsRevision] = useState(0)
   const [tribunalReportDialog, setTribunalReportDialog] = useState(null)
@@ -105,10 +120,26 @@ export default function ExpedientePage() {
     flowInitializationController.current?.abort()
     flowInitializationController.current = null
     setFlowInitialization({ submitting: false, error: '' })
+    stageInitializationController.current?.abort()
+    stageInitializationController.current = null
+    stageInitializationSubmitting.current = false
+    setStageInitialization({ submitting: false, error: '' })
+    stageApprovalController.current?.abort()
+    stageApprovalController.current = null
+    stageApprovalSubmitting.current = false
+    setStageApproval({ submitting: false, error: '', fields: {} })
     assignmentController.current?.abort()
     assignmentController.current = null
     assignmentSubmitting.current = false
     setAssignment(null)
+    finalizationController.current?.abort()
+    finalizationController.current = null
+    finalizationSubmitting.current = false
+    setFinalization(null)
+    finalizationController.current?.abort()
+    finalizationController.current = null
+    finalizationSubmitting.current = false
+    setFinalization(null)
     tribunalReportController.current?.abort()
     tribunalReportController.current = null
     tribunalReportSubmitting.current = false
@@ -122,6 +153,8 @@ export default function ExpedientePage() {
     quorumController.current?.abort()
     defenseOperationController.current?.abort()
     flowInitializationController.current?.abort()
+    stageInitializationController.current?.abort()
+    stageApprovalController.current?.abort()
     assignmentController.current?.abort()
     tribunalReportController.current?.abort()
   }, [])
@@ -291,9 +324,15 @@ export default function ExpedientePage() {
   const canManageTribunalReports = auth?.hasPermission?.('puede_gestionar_seguimiento') === true
   const tribunalReviewStage = (flujo.etapas || []).find((stage) => stage.codigo === 'REVISION_TRIBUNAL_PREVIA')
   const documentRows = documents.data?.results || []
-  const finalDocument = documentRows.find((document) => document.tipo_documento_nombre === 'Documento Final' && document.activo !== false)
+  const finalDocument = documentRows.find((document) => document.tipo_documento_nombre === 'Documento Final' || document.tipo_documento_codigo === 'DOCUMENTO_FINAL')
   const currentFinalVersion = finalDocument?.versiones?.find((version) => version.es_version_actual && version.activo !== false)
-  const evidenceDocuments = documentRows.filter((document) => document.tipo_documento_nombre === 'Informe de Evaluación del Tribunal' && document.activo !== false)
+  const evidenceDocuments = documentRows.filter((document) => (
+    document.activo !== false && (
+      document.tipo_documento_codigo === 'INFORME_REVISION_TRIBUNAL_PREVIA'
+      || document.tipo_documento_nombre === 'Informe de Evaluación del Tribunal'
+      || document.tipo_documento_nombre === 'Informe de revisión'
+    )
+  ))
   const currentEvidenceVersions = evidenceDocuments.flatMap((document) => document.versiones || []).filter((version) => version.es_version_actual && version.activo !== false)
   const allDocumentVersions = documentRows.flatMap((document) => document.versiones || [])
   const canInitializeFlow = canManageApplications
@@ -302,7 +341,13 @@ export default function ExpedientePage() {
     && data.capacidades?.configuracion_valida === true
     && (flujo.etapas || []).length === 0
   const stages = flujo.etapas || []
+  const capabilityStages = data.capacidades?.etapas || []
+  const lastCapabilityOrder = capabilityStages.reduce((last, stage) => Math.max(last, Number(stage.orden) || 0), 0)
+  const closureIsRelevant = cierreSoportado && currentStage?.orden && lastCapabilityOrder > 0
+    && Number(currentStage.orden) >= lastCapabilityOrder - 1
   const completedStages = stages.filter((stage) => ['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)).length
+  const currentRequirements = flujo.orientacion_etapa_actual?.requisitos || []
+  const pendingCurrentRequirements = currentRequirements.filter((item) => !item.cumplido).length
   const isConcluded = detalle.estado_actual_detalle?.codigo === 'CONCLUIDA'
     || cierre.data?.concluida === true
     || cierre.data?.estado_general === 'CONCLUIDA'
@@ -330,6 +375,54 @@ export default function ExpedientePage() {
     }
   }
 
+  const startCurrentStage = async () => {
+    if (stageInitializationSubmitting.current || !currentStage?.id || currentStage.estado !== 'PENDIENTE') return
+    stageInitializationSubmitting.current = true
+    stageInitializationController.current?.abort()
+    const controller = new AbortController()
+    stageInitializationController.current = controller
+    setStageInitialization({ submitting: true, error: '' })
+    try {
+      await postulacionesService.iniciarEtapa(currentStage.id, controller.signal)
+      if (!controller.signal.aborted) {
+        stageInitializationSubmitting.current = false
+        setStageInitialization({ submitting: false, error: '' })
+        setRevision((value) => value + 1)
+      }
+    } catch (requestError) {
+      if (!requestError.canceled && !controller.signal.aborted) {
+        stageInitializationSubmitting.current = false
+        setStageInitialization({ submitting: false, error: requestError.message })
+      }
+    }
+  }
+
+  const approveCurrentStage = async () => {
+    if (stageApprovalSubmitting.current || !currentStage?.id || !['EN_PROCESO', 'OBSERVADA'].includes(currentStage.estado)) return
+    const confirmed = window.confirm(
+      `¿Confirmas la aprobación de la etapa ${currentStage.nombre || formatCode(currentStage.codigo)}? Esta acción es explícita y no inicia ninguna etapa.`,
+    )
+    if (!confirmed) return
+    stageApprovalSubmitting.current = true
+    stageApprovalController.current?.abort()
+    const controller = new AbortController()
+    stageApprovalController.current = controller
+    setStageApproval({ submitting: true, error: '', fields: {} })
+    try {
+      await postulacionesService.aprobarEtapa(currentStage.id, controller.signal)
+      if (!controller.signal.aborted) {
+        stageApprovalSubmitting.current = false
+        setStageApproval({ submitting: false, error: '', fields: {} })
+        setRevision((value) => value + 1)
+      }
+    } catch (requestError) {
+      if (!requestError.canceled && !controller.signal.aborted) {
+        stageApprovalSubmitting.current = false
+        setStageApproval({ submitting: false, error: requestError.message, fields: requestError.fields || {} })
+      }
+    }
+  }
+
   const closeAssignment = () => {
     assignmentController.current?.abort()
     assignmentController.current = null
@@ -349,11 +442,44 @@ export default function ExpedientePage() {
       if (!controller.signal.aborted) {
         closeAssignment()
         setActiveActorsRevision((value) => value + 1)
+        setRevision((value) => value + 1)
       }
     } catch (requestError) {
       if (!requestError.canceled && !controller.signal.aborted) {
         assignmentSubmitting.current = false
         setAssignment((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
+      }
+    }
+  }
+
+  const closeFinalization = () => {
+    finalizationController.current?.abort()
+    finalizationController.current = null
+    finalizationSubmitting.current = false
+    setFinalization(null)
+  }
+
+  const submitFinalization = async (event) => {
+    event.preventDefault()
+    if (!finalization || finalization.submitting) return
+    const observaciones = event.currentTarget.elements.observaciones?.value?.trim() || ''
+    finalizationSubmitting.current = true
+    finalizationController.current?.abort()
+    const controller = new AbortController()
+    finalizationController.current = controller
+    setFinalization((current) => ({ ...current, submitting: true, error: '' }))
+    try {
+      await postulacionesService.finalizarAsignacion(finalization.actor.id, { observaciones }, controller.signal)
+      if (!controller.signal.aborted) {
+        closeFinalization()
+        setActiveActorsRevision((value) => value + 1)
+        setHistoricalActorsRevision((value) => value + 1)
+        setRevision((value) => value + 1)
+      }
+    } catch (requestError) {
+      if (!requestError.canceled && !controller.signal.aborted) {
+        finalizationSubmitting.current = false
+        setFinalization((current) => ({ ...current, submitting: false, error: requestError.message }))
       }
     }
   }
@@ -366,8 +492,8 @@ export default function ExpedientePage() {
     if (document) return
     setDocumentTypes((current) => ({ ...current, loading: true, error: '' }))
     try {
-      const catalog = await postulacionesService.obtenerTiposDocumento(controller.signal)
-      const rows = (catalog.results || catalog || []).filter((type) => type.activo !== false)
+      const response = await postulacionesService.obtenerDocumentosAplicables(id, controller.signal)
+      const rows = response.documentos_aplicables || []
       setDocumentTypes({ data: rows, loading: false, error: '' })
     } catch (requestError) {
       if (!requestError.canceled) setDocumentTypes({ data: [], loading: false, error: requestError.message })
@@ -438,9 +564,24 @@ export default function ExpedientePage() {
     loadQuorum(defense)
   }
 
+  const refreshExpedienteFlow = async (signal) => {
+    const expediente = await postulacionesService.obtenerExpediente(id, signal)
+    if (!signal?.aborted) {
+      setData((current) => current ? {
+        ...current,
+        flujo: expediente.flujo,
+        resultado: expediente.resultado,
+        cierre: expediente.cierre,
+      } : current)
+    }
+  }
+
   const refreshSelectedDefense = async (signal) => {
     if (!selectedDefense) return
-    const updated = await postulacionesService.obtenerDefensa(selectedDefense.id, signal)
+    const [updated] = await Promise.all([
+      postulacionesService.obtenerDefensa(selectedDefense.id, signal),
+      refreshExpedienteFlow(signal),
+    ])
     if (!signal?.aborted) {
       setSelectedDefense(updated)
       setDefensesRevision((value) => value + 1)
@@ -522,6 +663,7 @@ export default function ExpedientePage() {
         if (updated.estado === 'EN_CURSO') loadQuorum(updated)
       }
       setDefensesRevision((value) => value + 1)
+      if (action === 'finalizar') await refreshExpedienteFlow(controller.signal)
     } catch (requestError) {
       if (!requestError.canceled) setDefenseOperation((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
     }
@@ -639,7 +781,6 @@ export default function ExpedientePage() {
               {safeProgress}%
             </progress>
           )}
-          <p className="mt-2 text-sm text-slate-500">{stages.length ? `${completedStages} de ${stages.length} etapas completadas` : 'Flujo académico sin etapas registradas'}</p>
           {canInitializeFlow && (
             <div className="mt-5">
               <Button disabled={flowInitialization.submitting} onClick={initializeFlow}>
@@ -649,11 +790,31 @@ export default function ExpedientePage() {
             </div>
           )}
           {flowInitialization.error && <p role="alert" className="mt-3 text-sm text-red-600">{flowInitialization.error}</p>}
+          {canManageApplications && currentStage?.id && currentStage.estado === 'PENDIENTE' && !isConcluded && (
+            <div className="mt-5">
+              <Button disabled={stageInitialization.submitting} onClick={startCurrentStage}>
+                {stageInitialization.submitting ? 'Iniciando…' : `Iniciar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
+              </Button>
+              {stageInitialization.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageInitialization.error}</p>}
+            </div>
+          )}
+          {canManageApplications && currentStage?.id && ['EN_PROCESO', 'OBSERVADA'].includes(currentStage.estado) && !['DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(currentStage.codigo) && !isConcluded && (
+            <div className="mt-5">
+              <Button variant={pendingCurrentRequirements > 0 ? 'secondary' : 'default'} aria-describedby={pendingCurrentRequirements > 0 ? 'stage-approval-guidance' : undefined} disabled={stageApproval.submitting} onClick={approveCurrentStage}>
+                {stageApproval.submitting ? 'Procesando...' : `Aprobar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
+              </Button>
+              {pendingCurrentRequirements > 0 && <p id="stage-approval-guidance" className="mt-2 text-sm text-amber-700 dark:text-amber-300">Hay {pendingCurrentRequirements} {pendingCurrentRequirements === 1 ? 'requisito pendiente' : 'requisitos pendientes'}. Puedes intentar la aprobación; el backend realizará la validación definitiva.</p>}
+              {stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
+              {Array.isArray(stageApproval.fields?.faltantes) && stageApproval.fields.faltantes.length > 0 && (
+                <p role="alert" className="mt-2 text-sm text-red-600">Faltantes: {stageApproval.fields.faltantes.map(formatCode).join(', ')}</p>
+              )}
+            </div>
+          )}
         </div>
       </Card>
 
       <ExpedienteNav />
-      <OperationalSummary cierre={cierre.data} currentStage={currentStage} resultado={resultado} concluded={isConcluded} />
+      <OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={flujo.orientacion_etapa_actual} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} assignments={activeActors.data?.results || []} documents={documents.data?.results || []} defenses={defenses.data?.results || []} reports={tribunalReports.data} stageReportsAvailable={Boolean(tribunalReviewStage)} />
 
       <Card id="resumen" className="scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
         <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
@@ -714,18 +875,26 @@ export default function ExpedientePage() {
         </ul>
       </details>
 
-      {cierreSoportado && <><TechnicalClosure
-        key={detalle.id}
-        postulacion={detalle.id}
-        initialClosure={cierre}
-        resultado={resultado}
-        stages={flujo.etapas}
-        canManage={canManageClosure}
-        refreshToken={closureRevision}
-        onChanged={() => setHistoryRevision((value) => value + 1)}
-      />
-
-      <ClosureRequirements postulacion={detalle.id} canManage={canManageClosure} onChanged={() => setClosureRevision((value) => value + 1)} /></>}
+      {cierreSoportado && <details id="condiciones-tecnicas" open={closureIsRelevant} className="scroll-mt-24 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+        <summary className="cursor-pointer list-none px-6 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">
+          <span className="text-lg font-bold">{closureIsRelevant ? 'Cierre técnico' : 'Preparación para cierre'}</span>
+          <span className="mt-1 block text-sm text-slate-500">{formatClosureSummary(cierre.data)}</span>
+          <span className="mt-2 block text-sm font-medium text-sky-700 dark:text-sky-300">Ver detalle</span>
+        </summary>
+        <div className="grid gap-5 border-t border-slate-200 p-5 dark:border-slate-700">
+          <TechnicalClosure
+            key={detalle.id}
+            postulacion={detalle.id}
+            initialClosure={cierre}
+            resultado={resultado}
+            stages={flujo.etapas}
+            canManage={canManageClosure}
+            refreshToken={closureRevision}
+            onChanged={() => setHistoryRevision((value) => value + 1)}
+          />
+          <ClosureRequirements postulacion={detalle.id} canManage={canManageClosure} onChanged={() => { setStageApproval({ submitting: false, error: '', fields: {} }); setClosureRevision((value) => value + 1); setRevision((value) => value + 1) }} />
+        </div>
+      </details>}
 
       <div id="historial" className="scroll-mt-24"><HistoryCard
         history={history}
@@ -745,7 +914,26 @@ export default function ExpedientePage() {
         onRetryHistorical={() => setHistoricalActorsRevision((value) => value + 1)}
         canManage={canManageAssignments}
         onAssign={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '' }) }}
+        onFinish={(actor) => setFinalization({ actor, submitting: false, error: '' })}
       /></div>
+
+      {finalization && <Modal title="Finalizar asignación" onClose={closeFinalization}>
+        <form className="mt-4 grid gap-4" onSubmit={submitFinalization} noValidate>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
+            <dl className="grid gap-3 sm:grid-cols-3">
+              <div><dt className="text-xs uppercase tracking-wide text-slate-500">Persona</dt><dd className="mt-1 font-semibold">{finalization.actor.usuario_nombre || 'Usuario no disponible'}</dd></div>
+              <div><dt className="text-xs uppercase tracking-wide text-slate-500">Rol</dt><dd className="mt-1 font-semibold">{finalization.actor.tipo_participacion_display || finalization.actor.tipo_participacion_nombre || finalization.actor.tipo_participacion || 'Sin rol'}</dd></div>
+              <div><dt className="text-xs uppercase tracking-wide text-slate-500">Etapa / contexto</dt><dd className="mt-1 font-semibold">{finalization.actor.etapa_nombre || 'Sin etapa asociada'}</dd></div>
+            </dl>
+          </div>
+          <label className="text-sm">Motivo o observación<textarea name="observaciones" rows="4" disabled={finalization.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" placeholder="Ej.: Regularización por conflicto de roles en Defensa Pública" /></label>
+          {finalization.error && <p role="alert" className="text-red-600">{finalization.error}</p>}
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" disabled={finalization.submitting}>{finalization.submitting ? 'Finalizando…' : 'Confirmar finalización'}</Button>
+            <Button type="button" variant="secondary" disabled={finalization.submitting} onClick={closeFinalization}>Cancelar</Button>
+          </div>
+        </form>
+      </Modal>}
 
       <div id="defensas" className="scroll-mt-24"><DefensesCard
         defenses={defenses}
@@ -794,7 +982,7 @@ export default function ExpedientePage() {
           onReview={openReview}
         />
       )}
-      {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} canEvaluate={canManageEvaluations} onParticipantsChanged={refreshSelectedDefense} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
+      {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} nextAction={flujo.orientacion_etapa_actual?.siguiente_accion} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} canEvaluate={canManageEvaluations} onParticipantsChanged={refreshSelectedDefense} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} modalidadCodigo={detalle.modalidad_detalle?.codigo} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
       {assignment && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} onSubmit={submitAssignment} onClose={closeAssignment} />}
@@ -810,23 +998,75 @@ function ExpedienteNav() {
   </nav>
 }
 
-function OperationalSummary({ cierre, currentStage, resultado, concluded }) {
-  const pending = [
-    ...(cierre?.documentos_faltantes || []),
-    ...(cierre?.condiciones_faltantes || []),
-    ...(cierre?.entregas_faltantes || []),
-  ]
+function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, completedStages = 0, totalStages = 0, resultado, concluded, assignments = [], documents = [], defenses = [], reports, stageReportsAvailable = false }) {
   if (concluded) return <Card className="overflow-hidden border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
     <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-800 dark:text-emerald-200">✓ Expediente concluido</p>
-    <p className="mt-3 font-medium">Todas las etapas académicas y el cierre documental se encuentran completados.</p>
+    <p className="mt-3 font-medium">{cierreSoportado ? 'Todas las etapas académicas y el cierre documental se encuentran completados.' : 'Todas las etapas académicas se encuentran completadas.'}</p>
     <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Nota final: {resultado?.data?.nota_final ?? 'No registrada'}</strong>{resultado?.data?.clasificacion && <StatusBadge value={formatCode(resultado.data.clasificacion)} positive />}</div>
   </Card>
+  const stageMessage = currentStage?.estado === 'PENDIENTE'
+    ? 'La etapa está lista para iniciarse.'
+    : ['EN_PROCESO', 'OBSERVADA'].includes(currentStage?.estado)
+      ? 'La etapa se encuentra en curso. Revisa la información y las acciones disponibles.'
+      : 'No existe una etapa actual disponible.'
+  const reportRows = Array.isArray(reports) ? reports : reports?.results || []
+  const requirements = orientation?.requisitos || []
+  const nextAction = orientation?.siguiente_accion
+  const completedRequirements = requirements.filter((item) => item.cumplido).length
   return <Card className="overflow-hidden border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950">
-    <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800 dark:text-sky-200">Acción requerida</p>
-    <h2 className="mt-2 text-xl font-bold">Estado operativo</h2>
-    <p className="mt-1 font-medium">{currentStage?.nombre || formatCode(cierre?.etapa_actual) || 'Sin etapa pendiente'}</p>
-    {pending.length > 0 ? <div className="mt-4"><p className="text-sm font-semibold">Falta:</p><ul className="mt-2 flex flex-wrap gap-2">{pending.map((item) => <li key={String(item)} className="rounded-full border border-sky-300 bg-white px-3 py-1 text-sm dark:border-sky-700 dark:bg-slate-900">{formatCode(item)}</li>)}</ul></div> : <p className="mt-3 text-sm">No se reportan requisitos técnicos pendientes. Consulte las acciones disponibles en cierre del expediente.</p>}
+    <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800 dark:text-sky-200">Orientación del expediente</p>
+    <h2 className="mt-2 text-xl font-bold">Qué debes hacer ahora</h2>
+    <section className="mt-4 rounded-xl border border-sky-200 bg-white/70 p-4 dark:border-sky-800 dark:bg-slate-900/60" aria-labelledby="current-stage-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h3 id="current-stage-title" className="text-lg font-bold">{currentStage?.nombre || formatCode(cierre?.etapa_actual) || 'Sin etapa pendiente'}</h3><p className="mt-1 text-sm text-slate-500">{totalStages ? `${completedStages} de ${totalStages} etapas completadas` : 'Flujo académico sin etapas registradas'}</p></div>
+        {currentStage?.estado && <StatusBadge value={currentStage.estado_display || formatStatus(currentStage.estado)} positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(currentStage.estado)} />}
+      </div>
+    </section>
+    <p className="mt-4 text-sm">{requirements.length ? orientation.mensaje : stageMessage}</p>
+    {nextAction && <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="next-action-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{nextAction.titulo}</p><p className="mt-1 text-sm">{nextAction.descripcion}</p></div>
+        {nextAction.estado && <StatusBadge value={nextAction.estado_display || nextAction.estado} positive={nextAction.estado === 'COMPLETADA'} compact />}
+      </div>
+      {nextAction.destino && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino}>Ir a gestionar</a>}
+    </section>}
+    {requirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">
+      <h3 id="stage-requirements-title" className="text-lg font-bold">Precondiciones de la operación</h3>
+      <ul className="mt-3 space-y-2">{requirements.map((item) => <li key={`${item.tipo}-${item.codigo}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 dark:border-sky-800 dark:bg-slate-900/60">
+        <span className="font-medium">{item.cumplido === true ? '✓' : item.cumplido === false ? '⚠' : 'ℹ'} {item.nombre}</span>
+        <span className={item.cumplido === true ? 'font-semibold text-emerald-700 dark:text-emerald-300' : item.cumplido === false ? 'font-semibold text-amber-700 dark:text-amber-300' : 'font-semibold text-sky-700 dark:text-sky-300'}>{item.estado_display}</span>
+        {item.destino && <a className="w-full text-sm font-medium text-sky-700 hover:underline dark:text-sky-300" href={item.destino}>Ir a gestionar</a>}
+      </li>)}</ul>
+      <p className="mt-3 text-sm font-semibold">{completedRequirements} de {requirements.length} cumplidos</p>
+    </section>}
+    {(currentStage?.estado && currentStage.estado !== 'PENDIENTE') && <section className="mt-6 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="work-sections-title">
+      <h3 id="work-sections-title" className="text-lg font-bold">Secciones de trabajo</h3>
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Accesos a los recursos del expediente. No representan una secuencia de pasos.</p>
+      <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <ContextLink href="#actores" label="Asignaciones" value={assignments.length} valueLabel="activas" />
+        <ContextLink href="#documentos" label="Documentos" value={documents.length} valueLabel="cargados" />
+        <ContextLink href="#defensas" label="Defensas" value={defenses.length} valueLabel="registradas" />
+        {stageReportsAvailable && <ContextLink href="#informes-etapa" label="Informes" value={reportRows.length} valueLabel="cargados" />}
+      </dl>
+    </section>}
   </Card>
+}
+
+function ContextLink({ href, label, value, valueLabel }) {
+  return <div className="rounded-lg border border-sky-200 bg-white/70 p-3 dark:border-sky-800 dark:bg-slate-900/60"><dt className="font-semibold">{label}</dt><dd className="mt-1 text-sm text-slate-600 dark:text-slate-300"><strong className="text-lg text-slate-900 dark:text-slate-100">{value}</strong> {valueLabel}</dd><a className="mt-2 block text-sm font-medium text-sky-700 hover:underline dark:text-sky-300" href={href}>Ver sección</a></div>
+}
+
+function formatStatus(value) {
+  const text = formatCode(value).toLocaleLowerCase('es-BO')
+  return text ? text.charAt(0).toLocaleUpperCase('es-BO') + text.slice(1) : EMPTY
+}
+
+function formatClosureSummary(cierre) {
+  if (!cierre) return 'Estado de cierre técnico no disponible.'
+  const conditions = cierre.condiciones_faltantes?.length || 0
+  const deliveries = cierre.entregas_faltantes?.length || 0
+  const documents = cierre.documentos_faltantes?.length || 0
+  return `${conditions} condiciones pendientes · ${deliveries} entregas pendientes · ${documents} documentos pendientes`
 }
 
 function StatusBadge({ value, positive = false, compact = false }) {
@@ -851,7 +1091,7 @@ function TribunalReviewReports({ stage, reports, canManage, versions, onRetry, o
   const rows = Array.isArray(reports.data) ? reports.data : reports.data?.results || []
   const canRegister = canManage && ['EN_PROCESO', 'OBSERVADA'].includes(stage.estado)
   const versionById = new Map(versions.map((version) => [String(version.id), version]))
-  return <Card className="overflow-hidden" aria-labelledby="revision-tribunal-title">
+  return <Card id="informes-etapa" className="scroll-mt-24 overflow-hidden" aria-labelledby="revision-tribunal-title">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 id="revision-tribunal-title" className="text-xl font-bold">Revisión de Tribunal Previa</h2><p className="mt-1 text-sm text-slate-500">Informes del tribunal vinculados a versiones exactas del Documento Final.</p></div>
       {canRegister && <Button onClick={onRegister}>Registrar informe del tribunal</Button>}
@@ -903,7 +1143,7 @@ function formatReportResult(value) {
   return value || 'No registrado'
 }
 
-function ActorsCard({ active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical, canManage, onAssign }) {
+function ActorsCard({ active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical, canManage, onAssign, onFinish }) {
   return (
     <Card className="overflow-hidden" aria-labelledby="actores-title">
       <h2 id="actores-title" className="text-xl font-bold">Actores de la postulación</h2>
@@ -914,14 +1154,14 @@ function ActorsCard({ active, historical, activePage, historicalPage, onActivePa
         <p className="mt-2">Una asignación histórica representa una participación finalizada y no una función vigente.</p>
       </aside>
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
-        <ActorGroup title="Asignaciones vigentes" stateLabel="Activa" actors={active} page={activePage} onPage={onActivePage} onRetry={onRetryActive} empty="No hay asignaciones vigentes registradas." />
-        <ActorGroup title="Asignaciones históricas" stateLabel="Histórica" actors={historical} page={historicalPage} onPage={onHistoricalPage} onRetry={onRetryHistorical} empty="No hay asignaciones históricas registradas." />
+        <ActorGroup title="Asignaciones vigentes" stateLabel="Activa" actors={active} page={activePage} onPage={onActivePage} onRetry={onRetryActive} empty="No hay asignaciones vigentes registradas." canManage={canManage} onFinish={onFinish} />
+        <ActorGroup title="Asignaciones históricas" stateLabel="Histórica" actors={historical} page={historicalPage} onPage={onHistoricalPage} onRetry={onRetryHistorical} empty="No hay asignaciones históricas registradas." canManage={canManage} />
       </div>
     </Card>
   )
 }
 
-function ActorGroup({ title, stateLabel, actors, page, onPage, onRetry, empty }) {
+function ActorGroup({ title, stateLabel, actors, page, onPage, onRetry, empty, canManage, onFinish }) {
   const rows = actors.data?.results || []
   const slug = stateLabel === 'Activa' ? 'vigentes' : 'historicas'
   return <section aria-labelledby={`actores-${slug}`} className="min-w-0 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -930,13 +1170,13 @@ function ActorGroup({ title, stateLabel, actors, page, onPage, onRetry, empty })
     {actors.error && <div className="px-4 pb-4"><SectionError message={actors.error} label={`Reintentar ${title.toLowerCase()}`} onRetry={onRetry} /></div>}
     {!actors.loading && !actors.error && rows.length === 0 && <p className="px-4 pb-4 text-sm text-slate-500">{empty}</p>}
     {!actors.loading && !actors.error && rows.length > 0 && <>
-      <ul className="space-y-3 px-4 pb-4">{rows.map((actor) => <ActorItem key={actor.id} actor={actor} stateLabel={stateLabel} />)}</ul>
+      <ul className="space-y-3 px-4 pb-4">{rows.map((actor) => <ActorItem key={actor.id} actor={actor} stateLabel={stateLabel} canManage={canManage} onFinish={onFinish} />)}</ul>
       <Pagination count={actors.data.count} page={page} hasNext={Boolean(actors.data.next)} hasPrevious={Boolean(actors.data.previous)} onPage={onPage} />
     </>}
   </section>
 }
 
-function ActorItem({ actor, stateLabel }) {
+function ActorItem({ actor, stateLabel, canManage, onFinish }) {
   const order = actor.orden_cargo === null || actor.orden_cargo === undefined ? null : actor.orden_cargo
   return <li className="min-w-0 rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700">
     <div className="grid items-start gap-3 sm:grid-cols-[minmax(8rem,1fr)_minmax(10rem,1.5fr)_auto]">
@@ -948,7 +1188,10 @@ function ActorItem({ actor, stateLabel }) {
       <Info label="Fecha de inicio" value={formatActorDate(actor.fecha_inicio || actor.fecha_designacion)} />
       {stateLabel === 'Histórica' && <Info label="Fecha de finalización" value={formatActorDate(actor.fecha_fin || actor.fecha_finalizacion, 'No registrada')} />}
     </dl>
-    <div className="mt-4"><p className="text-sm text-slate-500">Observaciones</p><p className="mt-1 break-words font-medium">{actor.observaciones?.trim() || 'Sin observaciones'}</p></div>
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0 flex-1"><p className="text-sm text-slate-500">Observaciones</p><p className="mt-1 break-words font-medium">{actor.observaciones?.trim() || 'Sin observaciones'}</p></div>
+      {stateLabel === 'Activa' && canManage && onFinish && <Button type="button" variant="secondary" onClick={() => onFinish(actor)}>Finalizar asignación</Button>}
+    </div>
   </li>
 }
 
@@ -1080,10 +1323,23 @@ function DefensesCard({ defenses, page, onPage, onRetry, onSelect, canManage, on
   </Card>
 }
 
-function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, canEvaluate, onParticipantsChanged, onAction }) {
+function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, canManage, canEvaluate, onParticipantsChanged, onAction }) {
   const evaluations = defense.evaluaciones || []
   const actions = { PROGRAMADA: ['iniciar', 'suspender', 'cancelar', 'reprogramar'], EN_CURSO: ['finalizar', 'suspender', 'cancelar'], SUSPENDIDA: ['reprogramar', 'cancelar'] }[defense.estado] || []
   const actionLabels = { iniciar: 'Iniciar defensa', finalizar: 'Finalizar defensa', suspender: 'Suspender defensa', cancelar: 'Cancelar defensa', reprogramar: 'Reprogramar defensa' }
+  const orientedAction = ORIENTATION_TO_DEFENSE_ACTION[nextAction?.accion || nextAction?.codigo]
+  const hasEvaluation = evaluations.some((item) => item.tipo_evaluacion !== 'RESULTADO_FINAL')
+  const hasResult = Boolean(defense.resultado_consolidado)
+  const canRegisterEvaluation = canEvaluate && !hasEvaluation && ['EN_CURSO', 'FINALIZADA'].includes(defense.estado) && quorum.data?.valido === true
+  const canConsolidateEvaluation = canEvaluate && hasEvaluation && !hasResult && defense.estado === 'FINALIZADA'
+  const evaluationActionAvailable = canEvaluate && (
+    (orientedAction === 'registrar_evaluacion' && canRegisterEvaluation)
+    || (orientedAction === 'consolidar_resultado' && canConsolidateEvaluation)
+  )
+  const primaryAction = (canManage && actions.includes(orientedAction)) || evaluationActionAvailable ? orientedAction : null
+  const secondaryActions = primaryAction ? actions.filter((action) => action !== primaryAction) : actions
+  const hasSecondaryEvaluationAction = (canRegisterEvaluation && primaryAction !== 'registrar_evaluacion') || (canConsolidateEvaluation && primaryAction !== 'consolidar_resultado')
+  const duplicateQuorumDetail = sameTechnicalCounts(quorum.data?.conteos, quorum.data?.detalle)
   return <Modal title="Detalle de defensa" onClose={onClose}>
     <div className="mt-4 min-w-0 space-y-6">
       <section aria-labelledby="defensa-evento-title">
@@ -1107,11 +1363,13 @@ function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, can
       <section aria-labelledby="quorum-defensa-title"><h3 id="quorum-defensa-title" className="text-lg font-bold">Quórum técnico</h3>
         {quorum.loading && <p role="status" className="mt-3 text-sm">Consultando quórum técnico…</p>}
         {quorum.error && <SectionError message={quorum.error} label="Reintentar quórum técnico" onRetry={onRetryQuorum} />}
-        {!quorum.loading && !quorum.error && quorum.data && <div className="mt-3 space-y-3 text-sm"><p className="font-semibold">{quorum.data.valido ? 'Quórum técnico válido' : 'Quórum técnico no válido'}</p><TechnicalCounts title="Conteos" values={quorum.data.conteos} empty="Sin conteos registrados." /><TechnicalCounts title="Faltantes" values={quorum.data.faltantes} empty="Sin participantes faltantes." /><TechnicalCounts title="Detalle técnico" values={quorum.data.detalle} empty="Sin detalle adicional." /></div>}
+        {!quorum.loading && !quorum.error && quorum.data && <div className="mt-3 space-y-3 text-sm"><p className="font-semibold">{quorum.data.valido ? 'Quórum técnico válido' : 'Quórum técnico no válido'}</p><TechnicalCounts title="Conteos" values={quorum.data.conteos} empty="Sin conteos registrados." /><TechnicalCounts title="Faltantes" values={quorum.data.faltantes} empty="Sin participantes faltantes." />{!duplicateQuorumDetail && <TechnicalCounts title="Detalle técnico" values={quorum.data.detalle} empty="Sin detalle adicional." />}</div>}
         <p className="mt-3 text-sm text-slate-500">El quórum mostrado es una verificación técnica del sistema y no acredita por sí mismo la conformación formal del tribunal ni la validez institucional del acto. Esta verificación técnica no certifica validez institucional.</p>
       </section>
 
-      {canManage && actions.length > 0 && <section aria-labelledby="acciones-defensa-title"><h3 id="acciones-defensa-title" className="text-lg font-bold">Administración técnica</h3><div className="mt-3 flex flex-wrap gap-2">{actions.map((action) => {
+      {primaryAction && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950" aria-labelledby="siguiente-accion-defensa-title"><h3 id="siguiente-accion-defensa-title" className="text-sm font-bold uppercase tracking-wide text-sky-800 dark:text-sky-200">Siguiente acción</h3><p className="mt-2 font-semibold">{nextAction.titulo}</p>{nextAction.descripcion && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{nextAction.descripcion}</p>}{['registrar_evaluacion', 'consolidar_resultado'].includes(primaryAction) ? <DefenseEvaluation defense={defense} quorum={quorum} canManage={canEvaluate} action={primaryAction} actionLabel={nextAction.titulo} onChanged={onParticipantsChanged} /> : <Button className="mt-4" disabled={primaryAction === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)} onClick={() => onAction(primaryAction)}>{nextAction.titulo}</Button>}</section>}
+
+      {((canManage && secondaryActions.length > 0) || hasSecondaryEvaluationAction) && <section aria-labelledby="otras-acciones-defensa-title"><h3 id="otras-acciones-defensa-title" className="text-lg font-bold">Otras acciones</h3><DefenseEvaluation defense={defense} quorum={quorum} canManage={canEvaluate} buttonVariant="secondary" hiddenAction={primaryAction} onChanged={onParticipantsChanged} /><div className="mt-3 flex flex-wrap gap-2">{canManage && secondaryActions.map((action) => {
         const finalBlocked = action === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)
         return <Button key={action} variant={action === 'cancelar' ? 'outline' : 'secondary'} disabled={finalBlocked} title={finalBlocked ? 'La finalización requiere quórum técnico válido confirmado por el backend.' : undefined} onClick={() => onAction(action)}>{actionLabels[action]}</Button>
       })}</div>{defense.estado === 'EN_CURSO' && quorum.data?.valido !== true && <p className="mt-3 text-sm text-slate-500">La finalización estará disponible cuando el backend confirme quórum técnico válido.</p>}</section>}
@@ -1123,7 +1381,6 @@ function DefenseDetail({ defense, quorum, onRetryQuorum, onClose, canManage, can
       <section aria-labelledby="resultado-consolidado-title"><h3 id="resultado-consolidado-title" className="text-lg font-bold">Resultado consolidado</h3>
         {defense.resultado_consolidado ? <div className="mt-3 rounded-lg border p-3"><EvaluationData evaluation={defense.resultado_consolidado} /></div> : <p className="mt-3 text-sm text-slate-500">Resultado consolidado todavía no disponible.</p>}
       </section>
-      <DefenseEvaluation defense={defense} quorum={quorum} canManage={canEvaluate} onChanged={onParticipantsChanged} />
       <aside role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:bg-amber-950">{DEFENSE_WARNING}</aside>
     </div>
   </Modal>
@@ -1182,6 +1439,19 @@ function EvaluationData({ evaluation }) {
 function TechnicalCounts({ title, values, empty }) {
   const entries = Object.entries(values || {})
   return <div><h4 className="font-semibold">{title}</h4>{entries.length === 0 ? <p className="text-slate-500">{empty}</p> : <ul className="mt-1 flex flex-wrap gap-2">{entries.map(([role, count]) => <li key={role} className="rounded border px-2 py-1">{formatTechnicalRole(role)}: {count}</li>)}</ul>}</div>
+}
+
+function sameTechnicalCounts(left, right) {
+  const normalize = (value) => Object.entries(value || {})
+    .map(([role, count]) => [String(role).trim().toUpperCase(), normalizeTechnicalCount(count)])
+    .sort(([a], [b]) => a.localeCompare(b))
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right))
+}
+
+function normalizeTechnicalCount(value) {
+  if (value === null || value === undefined || value === '') return value
+  const numeric = Number(value)
+  return Number.isNaN(numeric) ? String(value).trim() : numeric
 }
 
 function formatTechnicalRole(value) {

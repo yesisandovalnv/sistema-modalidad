@@ -36,7 +36,9 @@ function normalizeAssignmentManagement(error, resource = 'la asignación') {
   const status = error?.response?.status
   const data = error?.response?.data
   const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
-  if (status === 400) return { status, message: 'Revisa los datos de la asignación.', fields }
+  const detail = Array.isArray(data) ? data : fields.detail || fields.non_field_errors
+  const backendMessage = Array.isArray(detail) ? detail.join(' ') : detail
+  if (status === 400) return { status, message: backendMessage || 'Revisa los datos de la asignación.', fields }
   if (status === 401) return { status, message: `Debes iniciar sesión para gestionar ${resource}.` }
   if (status === 403) return { status, message: `No tienes autorización para gestionar ${resource}.` }
   if (status === 404) return { status, message: 'La postulación, el candidato o la etapa ya no está disponible.' }
@@ -57,7 +59,9 @@ function normalizeDefenseAction(error) {
   const status = error?.response?.status
   const data = error?.response?.data
   const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
-  if (status === 400) return { status, message: 'No se pudo completar la acción. Revisa los datos y el estado técnico de la defensa.', fields }
+  const detail = Array.isArray(data) ? data : fields.detail || fields.non_field_errors
+  const backendMessage = Array.isArray(detail) ? detail.join(' ') : detail
+  if (status === 400) return { status, message: backendMessage || 'No se pudo completar la acción. Revisa los datos y el estado técnico de la defensa.', fields }
   if (status === 401) return { status, message: 'Debes iniciar sesión para administrar defensas.' }
   if (status === 403) return { status, message: 'No tienes autorización para administrar defensas.' }
   if (status === 404) return { status, message: 'La postulación, etapa o defensa ya no está disponible.' }
@@ -196,6 +200,30 @@ export const postulacionesService = {
       throw { status, message: 'No se pudo inicializar el flujo académico. Intenta nuevamente.' }
     }
   },
+  async iniciarEtapa(seguimientoId, signal) {
+    try {
+      return (await apiClient.post(`/api/v1/seguimientos-etapa/${seguimientoId}/iniciar/`, {}, { signal })).data
+    } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') throw { canceled: true }
+      const status = error?.response?.status
+      if (status === 401) throw { status, message: 'Debes iniciar sesión para iniciar la etapa.' }
+      if (status === 403) throw { status, message: 'No tienes autorización para iniciar esta etapa.' }
+      if (status === 404) throw { status, message: 'El seguimiento o la etapa ya no están disponibles.' }
+      throw { status, message: 'No se pudo iniciar la etapa. Intenta nuevamente.' }
+    }
+  },
+  async aprobarEtapa(seguimientoId, signal) {
+    try {
+      return (await apiClient.post(`/api/v1/seguimientos-etapa/${seguimientoId}/aprobar/`, {}, { signal })).data
+    } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') throw { canceled: true }
+      const status = error?.response?.status
+      if (status === 401) throw { status, message: 'Debes iniciar sesión para aprobar la etapa.' }
+      if (status === 403) throw { status, message: 'No tienes autorización para aprobar esta etapa.' }
+      if (status === 404) throw { status, message: 'El seguimiento o la etapa ya no están disponibles.' }
+      throw { status, message: 'No se pudo aprobar la etapa. Intenta nuevamente.' }
+    }
+  },
   async obtenerDetalle(id, signal) {
     try {
       return (await apiClient.get(`/api/v1/postulaciones/${id}/`, { signal })).data
@@ -265,6 +293,13 @@ export const postulacionesService = {
       return (await apiClient.post(`/api/v1/postulaciones/${postulacion}/asignaciones/asignar/`, payload, { signal })).data
     } catch (error) {
       throw normalizeAssignmentManagement(error)
+    }
+  },
+  async finalizarAsignacion(asignacionId, payload, signal) {
+    try {
+      return (await apiClient.post(`/api/v1/asignaciones/${asignacionId}/finalizar/`, payload, { signal })).data
+    } catch (error) {
+      throw normalizeAssignmentManagement(error, 'la asignación')
     }
   },
   async obtenerDefensas(postulacion, page, signal) {
@@ -428,6 +463,13 @@ export const postulacionesService = {
       return (await apiClient.get('/api/v1/documentos/tipos-documento/', { params: { activo: true, page_size: 100, ordering: 'nombre' }, signal })).data
     } catch (error) {
       throw normalizeDocuments(error, 'los tipos documentales')
+    }
+  },
+  async obtenerDocumentosAplicables(postulacionId, signal) {
+    try {
+      return (await apiClient.get(`/api/v1/postulaciones/${postulacionId}/documentos-aplicables/`, { signal })).data
+    } catch (error) {
+      throw normalizeDocuments(error, 'los documentos aplicables')
     }
   },
   async cargarDocumento({ postulacionId, tipoDocumentoId, archivo, eventoDefensaId }, signal) {

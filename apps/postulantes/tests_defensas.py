@@ -119,6 +119,29 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         SeguimientoEtapa.objects.filter(pk__in=[self.follow["PERFIL_PROYECTO"].pk,self.follow["DEFENSA_PRIVADA"].pk]).update(estado="APROBADA")
         with self.assertRaises(ValidationError): EventoDefensaService.programar_evento(self.post,self.follow["DEFENSA_PUBLICA"],"DEFENSA_PUBLICA",timezone.now()+timedelta(hours=47),self.admin,lugar="S")
 
+    def test_programacion_publica_rechaza_identidades_repetidas(self):
+        secretario = self.assign["SECRETARIO"][0]
+        secretario.usuario = self.assign["PRESIDENTE"][0].usuario
+        secretario.save(update_fields=["usuario"])
+        SeguimientoEtapa.objects.filter(
+            pk__in=[self.follow["PERFIL_PROYECTO"].pk, self.follow["DEFENSA_PRIVADA"].pk],
+        ).update(estado="APROBADA")
+        with self.assertRaisesMessage(ValidationError, "cargos incompatibles"):
+            EventoDefensaService.programar_evento(
+                self.post, self.follow["DEFENSA_PUBLICA"], "DEFENSA_PUBLICA",
+                timezone.now()+timedelta(hours=49), self.admin, lugar="Sala",
+            )
+
+    def test_programacion_publica_acepta_composicion_con_identidades_distintas(self):
+        SeguimientoEtapa.objects.filter(
+            pk__in=[self.follow["PERFIL_PROYECTO"].pk, self.follow["DEFENSA_PRIVADA"].pk],
+        ).update(estado="APROBADA")
+        evento = EventoDefensaService.programar_evento(
+            self.post, self.follow["DEFENSA_PUBLICA"], "DEFENSA_PUBLICA",
+            timezone.now()+timedelta(hours=49), self.admin, lugar="Sala",
+        )
+        self.assertEqual(evento.estado, "PROGRAMADA")
+
     def test_programacion_duplicada_y_carrera_de_integridad_son_errores_controlados(self):
         self.event()
         with self.assertRaisesMessage(ValidationError, "Ya existe una defensa activa del mismo tipo e intento."):
@@ -248,6 +271,16 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         with self.assertRaisesMessage(ValidationError,"usuario asignado debe estar activo"):
             EventoDefensaService.agregar_participante(ev,assignment,"TRIBUNAL",self.admin)
 
+    def test_participante_rechaza_misma_persona_mediante_asignaciones_distintas(self):
+        ev = self.event("DEFENSA_PUBLICA")
+        presidente = self.assign["PRESIDENTE"][0]
+        secretario = self.assign["SECRETARIO"][0]
+        secretario.usuario = presidente.usuario
+        secretario.save(update_fields=["usuario"])
+        EventoDefensaService.agregar_participante(ev, presidente, "PRESIDENTE", self.admin)
+        with self.assertRaisesMessage(ValidationError, "persona ya participa"):
+            EventoDefensaService.agregar_participante(ev, secretario, "SECRETARIO", self.admin)
+
     def test_asistencia_se_corrige_y_retiro_ajeno_es_controlado(self):
         ev=self.event(state="EN_CURSO"); participant=self.add(ev,["TRIBUNAL"],present=False)[0]
         first=EventoDefensaService.registrar_asistencia(participant,True,self.admin,"Primera")
@@ -282,6 +315,27 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         for kind,roles in cases:
             ev=self.event(kind,"EN_CURSO"); parts=self.add(ev,roles); self.assertTrue(EventoDefensaService.validar_quorum(ev)["valido"])
             parts[-1].presente=False; parts[-1].save(); self.assertFalse(EventoDefensaService.validar_quorum(ev)["valido"])
+
+    def test_quorum_publico_no_cuenta_dos_roles_de_la_misma_persona(self):
+        self.assign["SECRETARIO"][0].usuario = self.assign["PRESIDENTE"][0].usuario
+        self.assign["SECRETARIO"][0].save(update_fields=["usuario"])
+        ev = self.event("DEFENSA_PUBLICA", "EN_CURSO")
+        self.add(ev, ["TRIBUNAL", "TRIBUNAL", "PRESIDENTE", "SECRETARIO"])
+        resultado = EventoDefensaService.validar_quorum(ev)
+        self.assertFalse(resultado["valido"])
+        self.assertTrue(resultado["conflictos_identidad"])
+
+    def test_quorum_exige_dos_tribunales_que_sean_usuarios_distintos(self):
+        ev = self.event("DEFENSA_PUBLICA", "EN_CURSO")
+        self.add(ev, ["TRIBUNAL", "TRIBUNAL", "PRESIDENTE", "SECRETARIO"])
+        repetida = self.assign["TRIBUNAL"][1]
+        repetida.activo = False
+        repetida.usuario = self.assign["TRIBUNAL"][0].usuario
+        repetida.save(update_fields=["activo", "usuario"])
+        resultado = EventoDefensaService.validar_quorum(ev)
+        self.assertFalse(resultado["valido"])
+        self.assertEqual(resultado["detalle"]["TRIBUNAL"], 1)
+        self.assertEqual(resultado["faltantes"]["TRIBUNAL"], 1)
 
     def test_evaluacion_publica_exige_quorum_y_acepta_limites(self):
         for note in (Decimal("0"),Decimal("70")):

@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.modalidades.policies import (BaseEvaluacionPolicy, BaseEventoPolicy,
@@ -22,20 +23,91 @@ ETAPAS = tuple(EtapaDefinition(code, name, i + 1, inicial=i == 0, final=i == len
 class ProyectoGradoEventoPolicy(BaseEventoPolicy):
     EVENT_STAGE = {"DEFENSA_PERFIL": "PERFIL_PROYECTO", "DEFENSA_PRIVADA": "DEFENSA_PRIVADA", "DEFENSA_PUBLICA": "DEFENSA_PUBLICA"}
     ASSIGNMENTS = {"DEFENSA_PERFIL": {"TRIBUNAL": 2}, "DEFENSA_PRIVADA": {"TRIBUNAL": 2, "DOCENTE_MODALIDAD": 1}, "DEFENSA_PUBLICA": {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1}}
+    ASSIGNMENT_NAMES = {"TRIBUNAL": "Tribunales"}
+    MINIMUM_NOTICE_HOURS = {"DEFENSA_PUBLICA": 48}
+    PUBLIC_ROLES = ("TRIBUNAL", "PRESIDENTE", "SECRETARIO")
     def get_tipos_evento(self): return tuple(self.EVENT_STAGE)
     def get_etapa_asociada(self, tipo_evento): return self.EVENT_STAGE.get(tipo_evento)
+    def get_precondiciones_programacion(self, codigo_etapa):
+        tipo_evento = next((tipo for tipo, etapa in self.EVENT_STAGE.items() if etapa == codigo_etapa), None)
+        if not tipo_evento:
+            return None
+        return {
+            "tipo_evento": tipo_evento,
+            "asignaciones_minimas": dict(self.ASSIGNMENTS.get(tipo_evento, {})),
+            "nombres_asignaciones": dict(self.ASSIGNMENT_NAMES),
+            "anticipacion_minima_horas": self.MINIMUM_NOTICE_HOURS.get(tipo_evento),
+        }
+    def _asignaciones_composicion_publica(self, asignaciones, seguimiento):
+        contexto_autoridades = Q(seguimiento_etapa__isnull=True)
+        if seguimiento is not None:
+            contexto_autoridades |= Q(seguimiento_etapa=seguimiento)
+        return asignaciones.filter(
+            Q(tipo_participacion="TRIBUNAL")
+            | (Q(tipo_participacion__in=("PRESIDENTE", "SECRETARIO")) & contexto_autoridades)
+        )
+    def evaluar_requisitos_programacion(self, *, tipo_evento, seguimiento, asignaciones):
+        if tipo_evento != "DEFENSA_PUBLICA":
+            return super().evaluar_requisitos_programacion(
+                tipo_evento=tipo_evento, seguimiento=seguimiento, asignaciones=asignaciones,
+            )
+        candidatas = self._asignaciones_composicion_publica(asignaciones, seguimiento)
+        identidades = {rol: set(candidatas.filter(tipo_participacion=rol).values_list("usuario_id", flat=True)) for rol in self.PUBLIC_ROLES}
+        roles_por_usuario = {}
+        for rol, usuarios in identidades.items():
+            for usuario_id in usuarios:
+                roles_por_usuario.setdefault(usuario_id, set()).add(rol)
+        conflictos = [
+            {"usuario_id": usuario_id, "roles": sorted(roles)}
+            for usuario_id, roles in roles_por_usuario.items() if len(roles) > 1
+        ]
+        roles_en_conflicto = {rol for conflicto in conflictos for rol in conflicto["roles"]}
+        requisitos = {}
+        for rol, minimo in self.ASSIGNMENTS[tipo_evento].items():
+            actual = len(identidades[rol])
+            conflicto = rol in roles_en_conflicto
+            requisitos[rol] = {
+                "actual": actual, "minimo": minimo,
+                "cumplido": actual >= minimo and not conflicto,
+                "conflicto_identidad": conflicto,
+            }
+        return {"cumple": all(item["cumplido"] for item in requisitos.values()), "requisitos": requisitos, "conflictos": conflictos}
     def validar_programacion(self, *, tipo_evento, seguimiento, fecha_programada, asignaciones, **kwargs):
         if tipo_evento not in self.EVENT_STAGE: raise ValidationError("Tipo de evento no soportado por Proyecto de Grado.")
         if seguimiento.etapa.codigo != self.EVENT_STAGE[tipo_evento]: raise ValidationError("La etapa no corresponde al tipo de evento.")
-        missing = {r:n-asignaciones.filter(tipo_participacion=r).count() for r,n in self.ASSIGNMENTS[tipo_evento].items() if asignaciones.filter(tipo_participacion=r).count() < n}
+        evaluacion = self.evaluar_requisitos_programacion(tipo_evento=tipo_evento, seguimiento=seguimiento, asignaciones=asignaciones)
+        if evaluacion["conflictos"]:
+            raise ValidationError("La composición de la Defensa Pública contiene una persona con cargos incompatibles. Presidente, Secretario y tribunales deben ser personas distintas.")
+        missing = {rol:item["minimo"]-item["actual"] for rol,item in evaluacion["requisitos"].items() if item["actual"] < item["minimo"]}
         if missing: raise ValidationError(f"No existen asignaciones mínimas activas: {missing}.")
-        if tipo_evento == "DEFENSA_PUBLICA" and fecha_programada < timezone.now()+timedelta(hours=48): raise ValidationError("La defensa pública debe programarse con al menos 48 horas de anticipación (diagrama oficial).")
+        anticipacion = self.MINIMUM_NOTICE_HOURS.get(tipo_evento)
+        if anticipacion and fecha_programada < timezone.now()+timedelta(hours=anticipacion): raise ValidationError(f"La defensa pública debe programarse con al menos {anticipacion} horas de anticipación (diagrama oficial).")
     def validar_quorum(self, evento):
         presentes = evento.participantes.filter(presente=True, activo=True)
-        counts = {r: presentes.filter(rol_evento=r).count() for r in ("TRIBUNAL","DOCENTE_MODALIDAD","PRESIDENTE","SECRETARIO")}
+        counts = {r: presentes.filter(rol_evento=r).values("asignacion__usuario_id").distinct().count() for r in ("TRIBUNAL","DOCENTE_MODALIDAD","PRESIDENTE","SECRETARIO")}
         req = self.ASSIGNMENTS[evento.tipo_evento]
         missing = {r:n-counts.get(r,0) for r,n in req.items() if counts.get(r,0)<n}
-        return {"valido": not missing, "faltantes": missing, "detalle": counts}
+        conflictos = []
+        if evento.tipo_evento == "DEFENSA_PUBLICA":
+            roles_por_usuario = {}
+            for usuario_id, rol in presentes.filter(rol_evento__in=self.PUBLIC_ROLES).values_list("asignacion__usuario_id", "rol_evento"):
+                roles_por_usuario.setdefault(usuario_id, set()).add(rol)
+            conflictos = [
+                {"usuario_id": usuario_id, "roles": sorted(roles)}
+                for usuario_id, roles in roles_por_usuario.items() if len(roles) > 1
+            ]
+        return {"valido": not missing and not conflictos, "faltantes": missing, "detalle": counts, "conflictos_identidad": conflictos}
+
+    def validar_asignacion_publica(self, *, queryset_activas, usuario_asignado, tipo_participacion, seguimiento_etapa):
+        if tipo_participacion not in self.PUBLIC_ROLES:
+            return
+        etapa_publica = seguimiento_etapa is None or seguimiento_etapa.etapa.codigo == "DEFENSA_PUBLICA"
+        if not etapa_publica:
+            return
+        candidatas = self._asignaciones_composicion_publica(queryset_activas, seguimiento_etapa)
+        incompatibles = candidatas.filter(usuario=usuario_asignado).exclude(tipo_participacion=tipo_participacion)
+        if incompatibles.exists():
+            raise ValidationError("La persona ya tiene un cargo incompatible para la misma Defensa Pública. Presidente, Secretario y tribunales deben ser personas distintas.")
     def validar_vinculo_documento(self, *, postulacion, tipo_documento, evento_defensa):
         if tipo_documento.codigo != "ACTA_DEFENSA":
             if evento_defensa is not None:
@@ -51,8 +123,9 @@ class ProyectoGradoEventoPolicy(BaseEventoPolicy):
         if self.get_etapa_asociada(evento.tipo_evento) != evento.seguimiento_etapa.etapa.codigo:
             raise ValidationError("El tipo de evento no corresponde a la etapa.")
     def validar_reprogramacion(self, evento, nueva_fecha):
-        if evento.tipo_evento == "DEFENSA_PUBLICA" and nueva_fecha < timezone.now() + timedelta(hours=48):
-            raise ValidationError("La defensa p\u00fablica requiere 48 horas de anticipaci\u00f3n.")
+        anticipacion = self.MINIMUM_NOTICE_HOURS.get(evento.tipo_evento)
+        if anticipacion and nueva_fecha < timezone.now() + timedelta(hours=anticipacion):
+            raise ValidationError(f"La defensa pública requiere {anticipacion} horas de anticipación.")
 
 
 class ProyectoGradoEvaluacionPolicy(BaseEvaluacionPolicy):
@@ -129,7 +202,7 @@ class ProyectoGradoRevisionTribunalPreviaPolicy(BaseRevisionTribunalPreviaPolicy
         if seguimiento.etapa.codigo != self.ETAPA: raise ValidationError("El seguimiento debe corresponder a REVISION_TRIBUNAL_PREVIA.")
     def validar_tribunales(self, seguimiento):
         from apps.postulantes.models import AsignacionPostulacion
-        tribunales = list(AsignacionPostulacion.objects.select_for_update().select_related("usuario").filter(postulacion=seguimiento.postulacion, seguimiento_etapa=seguimiento, tipo_participacion="TRIBUNAL", activo=True, usuario__is_active=True, usuario__activo=True))
+        tribunales = list(AsignacionPostulacion.objects.select_for_update().select_related("usuario").filter(postulacion=seguimiento.postulacion, tipo_participacion="TRIBUNAL", activo=True, usuario__is_active=True, usuario__activo=True))
         if len(tribunales) != 3 or {x.orden_cargo for x in tribunales} != self.ORDENES_TRIBUNAL or len({x.usuario_id for x in tribunales}) != 3: raise ValidationError("REVISION_TRIBUNAL_PREVIA requiere tres tribunales activos distintos con \u00f3rdenes 1, 2 y 3.")
         return tribunales
     def get_documento_final_codigo(self): return self.DOCUMENTO_FINAL
@@ -142,7 +215,15 @@ class ProyectoGradoRequisitosPolicy(BaseRequisitosPolicy):
     DOCUMENTS = ("DOCUMENTO_FINAL", "ACTA_DEFENSA", "HOJA_APROBACION", "INFORME_FINAL_TUTOR")
     def get_condiciones_requeridas(self, fase=None): return self.CONDITIONS
     def get_entregas_requeridas(self, fase=None): return self.DELIVERIES
-    def get_documentos_requeridos(self, fase=None): return self.DOCUMENTS
+    def get_documentos_requeridos(self, fase=None):
+        # Si se especifica etapa, retorna solo documentos aplicables en esa etapa
+        if fase == "DOCUMENTO_FINAL":
+            return ("DOCUMENTO_FINAL",)
+        if fase == "REVISION_TRIBUNAL_PREVIA":
+            return ("INFORME_REVISION_TRIBUNAL_PREVIA",)
+        # Para compatibilidad, si no se especifica fase retorna todos los documentos requeridos
+        # Otras etapas: no permiten carga de documentos
+        return self.DOCUMENTS if fase is None else ()
 
 
 class ProyectoGradoPolicy(BaseModalidadPolicy):
@@ -153,7 +234,11 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
     requisitos_policy = ProyectoGradoRequisitosPolicy()
     def get_reglas_asignacion(self): return self.evento_policy.ASSIGNMENTS
     def get_revision_tribunal_previa_policy(self): return ProyectoGradoRevisionTribunalPreviaPolicy()
-    def validar_asignacion(self, *, queryset_contexto, tipo_participacion, seguimiento_etapa, orden_cargo, **kwargs):
+    def validar_asignacion(self, *, queryset_contexto, tipo_participacion, seguimiento_etapa, orden_cargo, queryset_activas, usuario_asignado, **kwargs):
+        self.evento_policy.validar_asignacion_publica(
+            queryset_activas=queryset_activas, usuario_asignado=usuario_asignado,
+            tipo_participacion=tipo_participacion, seguimiento_etapa=seguimiento_etapa,
+        )
         if tipo_participacion == "TRIBUNAL" and seguimiento_etapa and seguimiento_etapa.etapa.codigo == "PERFIL_PROYECTO":
             if queryset_contexto.count() >= 3: raise ValidationError("Proyecto de Grado admite como m\u00e1ximo tres miembros activos de tribunal en el perfil.")
             if orden_cargo is not None and queryset_contexto.filter(orden_cargo=orden_cargo).exists(): raise ValidationError("Ya existe un miembro activo del tribunal con ese orden de cargo.")
