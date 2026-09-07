@@ -59,3 +59,33 @@ Cuando exista autorización para cambiar el motor común:
 - informar cualquier diferencia de comportamiento.
 
 Antes de proponer o aplicar cambios, comprobar este archivo y verificar el impacto sobre Proyecto de Grado. No modificar modelos, migraciones, datos de PostgreSQL, endpoints, workflows, reglas académicas, frontend funcional ni políticas de Proyecto de Grado como parte de una tarea cuyo objetivo sea establecer o mantener esta protección, salvo autorización reforzada para el cambio protegido.
+
+## TESIS DE GRADO — MÓDULO ESTABLE / PROTEGIDO
+
+El flujo de `TESIS_GRADO` está validado de extremo a extremo hasta la conclusión académica y no debe modificarse durante el desarrollo de otras modalidades.
+
+### Superficie funcional protegida
+
+Queda protegido el comportamiento funcional de `TESIS_GRADO` relacionado con:
+
+- etapas, workflow y policies;
+- documentos y versiones;
+- dictámenes de Tutor y Tribunal;
+- asignaciones;
+- defensas, participantes y quórum;
+- evaluaciones y cálculo de notas/resultados;
+- `ACTA_DEFENSA`;
+- orientación del expediente;
+- conclusión académica.
+
+No modificar deliberadamente reglas o comportamiento de `TESIS_GRADO` salvo que sea estrictamente necesario para corregir un defecto real o implementar un requerimiento explícitamente solicitado.
+
+### Protocolo ante impacto en Tesis
+
+Si un cambio futuro en código compartido puede afectar `TESIS_GRADO`:
+
+1. Analizar primero el impacto sobre la superficie protegida.
+2. Ejecutar la regresión de Tesis correspondiente.
+3. Si la tarea requiere modificar deliberadamente el comportamiento protegido de Tesis, detenerse antes de editar y solicitar autorización explícita.
+
+Esta protección no impide cambios internos compartidos necesarios para otras modalidades cuando se demuestre mediante regresión que Tesis conserva exactamente su comportamiento.
