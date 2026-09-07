@@ -348,6 +348,18 @@ export default function ExpedientePage() {
   const completedStages = stages.filter((stage) => ['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)).length
   const currentRequirements = flujo.orientacion_etapa_actual?.requisitos || []
   const pendingCurrentRequirements = currentRequirements.filter((item) => !item.cumplido).length
+  const isThesisPublicStage = (detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' || flujo.modalidad?.codigo === 'TESIS_GRADO')
+    && currentStage?.codigo === 'DEFENSA_PUBLICA'
+  const publicDefenseMissingRoles = isThesisPublicStage
+    ? getMissingPublicDefenseRoles(flujo.orientacion_etapa_actual)
+    : []
+  const thesisConclusionOrientation = getThesisConclusionOrientation({
+    isThesisPublicStage,
+    currentStage,
+    resultado,
+    documents,
+    defenses,
+  })
   const isConcluded = detalle.estado_actual_detalle?.codigo === 'CONCLUIDA'
     || cierre.data?.concluida === true
     || cierre.data?.estado_general === 'CONCLUIDA'
@@ -440,7 +452,10 @@ export default function ExpedientePage() {
     try {
       await postulacionesService.asignarActor(detalle.id, payload, controller.signal)
       if (!controller.signal.aborted) {
-        closeAssignment()
+        if (assignment?.context === 'TESIS_DEFENSA_PUBLICA') {
+          assignmentSubmitting.current = false
+          setAssignment((current) => ({ ...current, submitting: false, fields: {}, error: '' }))
+        } else closeAssignment()
         setActiveActorsRevision((value) => value + 1)
         setRevision((value) => value + 1)
       }
@@ -500,10 +515,23 @@ export default function ExpedientePage() {
     }
   }
 
+  const openUploadFromDetail = (document) => {
+    setSelectedVersion(null)
+    setSelectedDocument(null)
+    openUpload(document)
+  }
+
   const closeUpload = () => {
+    const document = upload?.document
     uploadController.current?.abort()
     uploadController.current = null
     setUpload(null)
+    if (document) {
+      setSelectedVersion(null)
+      setSelectedDocument(document)
+      setVersionsPage(1)
+      setVersionsRevision((value) => value + 1)
+    }
   }
 
   const submitUpload = async (event) => {
@@ -773,11 +801,11 @@ export default function ExpedientePage() {
 
         <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
           <div className="flex items-center justify-between gap-4 text-sm">
-            <span className="font-semibold">Avance del macroflujo</span>
+            <span className="font-semibold">{detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' ? 'Avance de etapas' : 'Avance del macroflujo'}</span>
             <span>{safeProgress === null ? EMPTY : `${safeProgress}%`}</span>
           </div>
           {safeProgress !== null && (
-            <progress className="mt-2 h-3 w-full" max="100" value={safeProgress} aria-label="Avance del macroflujo">
+            <progress className="mt-2 h-3 w-full" max="100" value={safeProgress} aria-label={detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' ? 'Avance de etapas' : 'Avance del macroflujo'}>
               {safeProgress}%
             </progress>
           )}
@@ -814,7 +842,7 @@ export default function ExpedientePage() {
       </Card>
 
       <ExpedienteNav />
-      <OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={flujo.orientacion_etapa_actual} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} assignments={activeActors.data?.results || []} documents={documents.data?.results || []} defenses={defenses.data?.results || []} reports={tribunalReports.data} stageReportsAvailable={Boolean(tribunalReviewStage)} />
+      <OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} assignments={activeActors.data?.results || []} documents={documents.data?.results || []} defenses={defenses.data?.results || []} reports={tribunalReports.data} stageReportsAvailable={Boolean(tribunalReviewStage)} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} />
 
       <Card id="resumen" className="scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
         <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
@@ -858,7 +886,8 @@ export default function ExpedientePage() {
         {resultado.error ? <PartialState message={resultado.error} onRetry={() => setRevision((value) => value + 1)} /> : (
           <dl className="mt-5 grid gap-3 sm:grid-cols-3">
             <Score label="Privada" value={resultado.data?.nota_privada} scale="30" />
-            <Score label="Pública" value={resultado.data?.nota_publica} scale="70" />
+            <Score label="Pública" value={resultado.data?.nota_publica} scale={detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' ? '100' : '70'} />
+            {detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' && <Score label="Aporte pública" value={resultado.data?.aporte_publica} scale="70" />}
             <Score label="Final" value={resultado.data?.nota_final} scale="100" fallback="Pendiente" />
           </dl>
         )}
@@ -977,7 +1006,7 @@ export default function ExpedientePage() {
           onObservationsRetry={() => setObservationsRevision((value) => value + 1)}
           onClose={() => { setSelectedDocument(null); setSelectedVersion(null) }}
           canUpload={canUpload}
-          onUpload={() => openUpload(selectedDocument)}
+          onUpload={() => openUploadFromDetail(selectedDocument)}
           canReview={canReview}
           onReview={openReview}
         />
@@ -985,7 +1014,7 @@ export default function ExpedientePage() {
       {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} nextAction={flujo.orientacion_etapa_actual?.siguiente_accion} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} canEvaluate={canManageEvaluations} onParticipantsChanged={refreshSelectedDefense} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} modalidadCodigo={detalle.modalidad_detalle?.codigo} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
-      {assignment && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} onSubmit={submitAssignment} onClose={closeAssignment} />}
+      {assignment && (assignment.context !== 'TESIS_DEFENSA_PUBLICA' || publicDefenseMissingRoles.length > 0) && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} allowedTypes={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? publicDefenseMissingRoles : undefined} initialStageId={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? currentStage?.id : undefined} onSubmit={submitAssignment} onClose={closeAssignment} />}
       {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
     </section>
   )
@@ -998,7 +1027,7 @@ function ExpedienteNav() {
   </nav>
 }
 
-function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, completedStages = 0, totalStages = 0, resultado, concluded, assignments = [], documents = [], defenses = [], reports, stageReportsAvailable = false }) {
+function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, completedStages = 0, totalStages = 0, resultado, concluded, assignments = [], documents = [], defenses = [], reports, stageReportsAvailable = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], onManageMissingActors }) {
   if (concluded) return <Card className="overflow-hidden border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
     <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-800 dark:text-emerald-200">✓ Expediente concluido</p>
     <p className="mt-3 font-medium">{cierreSoportado ? 'Todas las etapas académicas y el cierre documental se encuentran completados.' : 'Todas las etapas académicas se encuentran completadas.'}</p>
@@ -1012,6 +1041,10 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
   const reportRows = Array.isArray(reports) ? reports : reports?.results || []
   const requirements = orientation?.requisitos || []
   const nextAction = orientation?.siguiente_accion
+  const managesMissingPublicActors = publicDefenseMissingRoles.length > 0 && nextAction?.destino === '#actores'
+  const nextActionTitle = isThesisPublicStage && publicDefenseMissingRoles.length === 0 && nextAction?.codigo === 'PROGRAMAR_EVENTO'
+    ? 'Programar Defensa Pública'
+    : nextAction?.titulo
   const completedRequirements = requirements.filter((item) => item.cumplido).length
   return <Card className="overflow-hidden border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950">
     <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800 dark:text-sky-200">Orientación del expediente</p>
@@ -1025,10 +1058,11 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
     <p className="mt-4 text-sm">{requirements.length ? orientation.mensaje : stageMessage}</p>
     {nextAction && <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="next-action-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{nextAction.titulo}</p><p className="mt-1 text-sm">{nextAction.descripcion}</p></div>
+        <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{nextActionTitle}</p><p className="mt-1 text-sm">{nextAction.descripcion}</p></div>
         {nextAction.estado && <StatusBadge value={nextAction.estado_display || nextAction.estado} positive={nextAction.estado === 'COMPLETADA'} compact />}
       </div>
-      {nextAction.destino && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino}>Ir a gestionar</a>}
+      {managesMissingPublicActors && <div className="mt-3 rounded-lg border border-amber-300 bg-white/70 p-3 text-sm dark:bg-slate-900/50"><p className="font-semibold">Para programar la Defensa Pública faltan:</p><ul className="mt-2 list-disc pl-5">{publicDefenseMissingRoles.map((role) => <li key={role}>{assignmentTypeLabel(role)}</li>)}</ul></div>}
+      {nextAction.destino && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.accion_label || 'Ir a gestionar'}</a>}
     </section>}
     {requirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">
       <h3 id="stage-requirements-title" className="text-lg font-bold">Precondiciones de la operación</h3>
@@ -1203,15 +1237,59 @@ const ASSIGNMENT_TYPES = [
   ['SECRETARIO', 'Secretario'],
 ]
 
-function AssignmentDialog({ assignment, stages, activeActors, isProjectGrade, onSubmit, onClose }) {
+const PUBLIC_DEFENSE_AUTHORITY_ROLES = ['PRESIDENTE', 'SECRETARIO']
+const assignmentTypeLabel = (role) => ASSIGNMENT_TYPES.find(([value]) => value === role)?.[1] || formatCode(role)
+
+function getMissingPublicDefenseRoles(orientation) {
+  const contractText = [orientation?.mensaje, orientation?.siguiente_accion?.titulo, orientation?.siguiente_accion?.descripcion,
+    ...(orientation?.requisitos || []).flatMap((item) => [item.codigo, item.nombre, item.estado_display])].filter(Boolean).join(' ')
+  return PUBLIC_DEFENSE_AUTHORITY_ROLES.filter((role) => new RegExp(`\\b${role}\\b`).test(contractText))
+}
+
+function getThesisConclusionOrientation({ isThesisPublicStage, currentStage, resultado, documents, defenses }) {
+  if (!isThesisPublicStage || currentStage?.estado !== 'APROBADA' || documents.loading || defenses.loading || documents.error || defenses.error) return null
+
+  const result = resultado?.data
+  const resultApproved = result?.nota_final != null && result?.clasificacion && result.clasificacion !== 'POSTERGADO'
+  if (!resultApproved) return null
+
+  const documentRows = documents.data?.results || []
+  const defenseRows = defenses.data?.results || []
+  const acta = documentRows.find((document) => document.activo !== false && document.tipo_documento_codigo === 'ACTA_DEFENSA')
+  const linkedPublicDefense = acta && defenseRows.find((defense) => String(defense.id) === String(acta.evento_defensa)
+    && defense.tipo_evento === 'DEFENSA_PUBLICA' && defense.estado === 'FINALIZADA' && defense.activo !== false)
+  const currentVersion = acta?.versiones?.some((version) => version.activo !== false && version.es_version_actual)
+  const validActa = Boolean(acta && acta.estado_codigo === 'APR' && !acta.requiere_correccion && currentVersion && linkedPublicDefense)
+  const requirements = [
+    { tipo: 'ACADEMICO', codigo: 'DEFENSA_PUBLICA_APROBADA', nombre: 'Defensa Pública aprobada', cumplido: true, estado: 'CUMPLIDO', estado_display: 'Cumplido', destino: '#resumen' },
+    { tipo: 'ACADEMICO', codigo: 'RESULTADO_FINAL_APROBATORIO', nombre: `Resultado final aprobatorio (${result.nota_final}/100)`, cumplido: true, estado: 'CUMPLIDO', estado_display: 'Cumplido', destino: '#resumen' },
+    { tipo: 'DOCUMENTO', codigo: 'ACTA_DEFENSA_VIGENTE', nombre: 'Acta de Defensa vigente vinculada', cumplido: validActa, estado: validActa ? 'CUMPLIDO' : 'PENDIENTE', estado_display: validActa ? 'Cumplido' : 'Pendiente', destino: validActa ? null : '#documentos' },
+  ]
+
+  let action
+  if (validActa) {
+    action = { codigo: 'CONCLUIR_ACADEMICAMENTE', titulo: 'Concluir académicamente', descripcion: 'La Defensa Pública, el resultado final y el Acta de Defensa cumplen las precondiciones. El backend realizará la validación definitiva.', estado: 'DISPONIBLE', estado_display: 'Disponible', destino: '#resumen', accion_label: 'Ir a concluir académicamente' }
+  } else if (acta) {
+    action = { codigo: 'COMPLETAR_ACTA_DEFENSA', titulo: 'Completar Acta de Defensa', descripcion: 'La Defensa Pública está aprobada. El Acta de Defensa registrada todavía debe quedar vigente, aprobada y correctamente vinculada para concluir académicamente.', estado: 'PENDIENTE', estado_display: 'Pendiente', destino: '#documentos', accion_label: 'Ir a documentos' }
+  } else {
+    action = { codigo: 'CARGAR_ACTA_DEFENSA', titulo: 'Cargar Acta de Defensa', descripcion: 'La Defensa Pública está aprobada. Para concluir académicamente el expediente debes cargar y vincular el Acta de Defensa vigente.', estado: 'PENDIENTE', estado_display: 'Pendiente', destino: '#documentos', accion_label: 'Ir a documentos' }
+  }
+  return { operacion: 'ORIENTAR_CONCLUSION_ACADEMICA', mensaje: 'Completa las precondiciones posteriores al macroflujo para concluir académicamente el expediente.', requisitos: requirements, siguiente_accion: action, conflictos_identidad: [] }
+}
+
+function AssignmentDialog({ assignment, stages, activeActors, isProjectGrade, allowedTypes, initialStageId, onSubmit, onClose }) {
   const [candidateQuery, setCandidateQuery] = useState('')
   const [candidateSearch, setCandidateSearch] = useState('')
   const [candidatePage, setCandidatePage] = useState(1)
   const [candidateRevision, setCandidateRevision] = useState(0)
   const [candidates, setCandidates] = useState({ data: null, loading: true, error: '' })
   const [type, setType] = useState('')
-  const [stageId, setStageId] = useState('')
+  const [stageId, setStageId] = useState(initialStageId ? String(initialStageId) : '')
   const [localFields, setLocalFields] = useState({})
+
+  useEffect(() => {
+    if (allowedTypes && type && !allowedTypes.includes(type)) setType('')
+  }, [allowedTypes, type])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -1228,6 +1306,8 @@ function AssignmentDialog({ assignment, stages, activeActors, isProjectGrade, on
   const tribunals = contextActors.filter((actor) => actor.tipo_participacion === 'TRIBUNAL')
   const occupiedOrders = new Set(tribunals.map((actor) => Number(actor.orden_cargo)).filter((order) => order >= 1 && order <= 3))
   const tribunalComplete = isProjectGrade && tribunals.length >= 3
+  const availableTypes = allowedTypes ? ASSIGNMENT_TYPES.filter(([value]) => allowedTypes.includes(value)) : ASSIGNMENT_TYPES
+  const unavailableCandidateIds = new Set(allowedTypes && type ? activeActors.filter((actor) => actor.tipo_participacion === type).map((actor) => String(actor.usuario)) : [])
   const fieldMessage = (name) => {
     const value = localFields[name] || assignment.fields?.[name]
     return Array.isArray(value) ? value.join(' ') : value
@@ -1262,6 +1342,7 @@ function AssignmentDialog({ assignment, stages, activeActors, isProjectGrade, on
   const activeStages = stages.filter((stage) => stage.activo !== false)
   return <Modal title="Asignar actor" onClose={onClose}>
     <form className="mt-4 grid gap-4" onSubmit={submit} noValidate>
+      {allowedTypes && <aside role="note" className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm dark:bg-sky-950"><p className="font-semibold">Para programar la Defensa Pública faltan:</p><ul className="mt-2 list-disc pl-5">{availableTypes.map(([value, label]) => <li key={value}>{label}</li>)}</ul><p className="mt-2">Cada rol se registra como una asignación independiente y explícita.</p></aside>}
       <div>
         <label className="text-sm">Buscar candidato<input value={candidateQuery} onChange={(event) => setCandidateQuery(event.target.value)} disabled={assignment.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>
         <Button type="button" variant="secondary" className="mt-2" disabled={assignment.submitting} onClick={() => { setCandidateSearch(candidateQuery.trim()); setCandidatePage(1) }}>Buscar</Button>
@@ -1269,11 +1350,11 @@ function AssignmentDialog({ assignment, stages, activeActors, isProjectGrade, on
       {candidates.loading && <p role="status">Cargando candidatos…</p>}
       {candidates.error && <div><p role="alert" className="text-red-600">{candidates.error}</p><Button type="button" variant="secondary" className="mt-2" onClick={() => setCandidateRevision((value) => value + 1)}>Reintentar candidatos</Button></div>}
       {!candidates.loading && !candidates.error && <>
-        <label className="text-sm">Candidato<select name="usuario" required disabled={assignment.submitting || rows.length === 0} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una persona</option>{rows.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.nombre_completo || candidate.username} — {candidate.rol_nombre || candidate.rol_codigo} — {candidate.codigo || candidate.username}</option>)}</select>{error('usuario')}</label>
+        <label className="text-sm">Candidato<select name="usuario" required disabled={assignment.submitting || rows.length === 0} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una persona</option>{rows.map((candidate) => <option key={candidate.id} value={candidate.id} disabled={unavailableCandidateIds.has(String(candidate.id))}>{candidate.nombre_completo || candidate.username} — {candidate.rol_nombre || candidate.rol_codigo} — {candidate.codigo || candidate.username}</option>)}</select>{error('usuario')}</label>
         {rows.length === 0 && <p role="status" className="text-sm text-slate-500">No se encontraron candidatos.</p>}
         <Pagination count={candidates.data?.count || 0} page={candidatePage} hasNext={Boolean(candidates.data?.next)} hasPrevious={Boolean(candidates.data?.previous)} onPage={setCandidatePage} />
       </>}
-      <label className="text-sm">Tipo de participación<select name="tipo_participacion" value={type} onChange={(event) => { setType(event.target.value); setLocalFields({}) }} required disabled={assignment.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione un tipo</option>{ASSIGNMENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{error('tipo_participacion')}</label>
+      <label className="text-sm">Tipo de participación<select name="tipo_participacion" value={type} onChange={(event) => { setType(event.target.value); setLocalFields({}) }} required disabled={assignment.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione un tipo</option>{availableTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{error('tipo_participacion')}</label>
       <label className="text-sm">Etapa asociada (opcional)<select name="seguimiento_etapa" value={stageId} onChange={(event) => { setStageId(event.target.value); setLocalFields({}) }} disabled={assignment.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Sin etapa asociada</option>{activeStages.map((stage) => <option key={stage.id} value={stage.id}>{stage.nombre || stage.codigo} — intento {stage.numero_intento ?? 1} — {stage.estado_display || stage.estado}</option>)}</select>{error('seguimiento_etapa')}</label>
       {type === 'TRIBUNAL' && <>
         {isProjectGrade && <p role="status" className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm dark:bg-sky-950">Tribunales designados: <strong>{Math.min(tribunals.length, 3)} de 3</strong>. La designación completa requiere Tribunal 1, Tribunal 2 y Tribunal 3; esto no representa quórum.</p>}

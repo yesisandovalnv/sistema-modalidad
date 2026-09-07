@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/button'
 import { postulacionesService } from '../../services/postulacionesService'
 
 const SUPPORTED_ROLES = new Set(['TUTOR', 'TRIBUNAL', 'DOCENTE_MODALIDAD', 'PRESIDENTE', 'SECRETARIO'])
+const PRIVATE_THESIS_ROLES = new Set(['TRIBUNAL', 'DOCENTE_MODALIDAD'])
 const MUTABLE_STATES = new Set(['PROGRAMADA', 'EN_CURSO', 'SUSPENDIDA'])
 
 function dateLabel(value) {
@@ -60,7 +61,10 @@ export default function DefenseParticipants({ defense, canManage, onChanged }) {
     try {
       const data = await postulacionesService.obtenerAsignacionesCandidatas(defense.postulacion, request.signal)
       const activeIds = new Set(participants.filter((item) => item.activo !== false).map((item) => String(item.asignacion)))
-      const rows = (data.results || data || []).filter((item) => item.activo !== false && SUPPORTED_ROLES.has(item.tipo_participacion) && !activeIds.has(String(item.id)))
+      const allowedRoles = defense.postulacion_modalidad_codigo === 'TESIS_GRADO' && defense.tipo_evento === 'DEFENSA_PRIVADA'
+        ? PRIVATE_THESIS_ROLES
+        : SUPPORTED_ROLES
+      const rows = (data.results || data || []).filter((item) => item.activo !== false && allowedRoles.has(item.tipo_participacion) && !activeIds.has(String(item.id)))
       if (!request.signal.aborted) setCatalog({ rows, loading: false, error: '' })
     } catch (error) {
       if (!error.canceled && !request.signal.aborted) setCatalog({ rows: [], loading: false, error: error.message })

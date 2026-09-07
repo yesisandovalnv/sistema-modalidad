@@ -380,6 +380,11 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
         if not ModalidadPolicyRegistry.has_policy(obj.modalidad):
             return None
         policy = ModalidadPolicyRegistry.get(obj.modalidad)
+        orientacion = policy.get_orientacion_etapa_actual(
+            postulacion=obj, seguimiento=self._seguimiento_actual(obj),
+        )
+        if orientacion is not None:
+            return orientacion
         evento_policy = policy.evento_policy
         precondiciones = evento_policy.get_precondiciones_programacion(actual_data["codigo"]) if evento_policy else None
         if not precondiciones:

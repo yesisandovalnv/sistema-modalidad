@@ -152,6 +152,15 @@ class BaseModalidadPolicy(ABC):
         if self.requisitos_policy:
             return tuple(self.requisitos_policy.get_documentos_requeridos(codigo_etapa))
         return ()
+    def resolver_contexto_documental(self, postulacion):
+        """Resuelve la etapa operativa que gobierna la carga documental actual."""
+        return (
+            postulacion.seguimientos_etapa
+            .filter(activo=True, estado__in=("PENDIENTE", "EN_PROCESO", "OBSERVADA"))
+            .values_list("etapa__codigo", flat=True)
+            .first()
+        )
+    def get_orientacion_etapa_actual(self, *, postulacion, seguimiento): return None
     def get_cierre_policy(self): return None
     def get_revision_tribunal_previa_policy(self): return None
     def validar_dictamen_revision(self, **kwargs):

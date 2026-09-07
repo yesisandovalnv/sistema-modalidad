@@ -12,9 +12,12 @@ vi.mock('../../services/postulacionesService', () => ({ postulacionesService: {
 const candidateRows = [
   { id: 11, usuario_nombre: 'Ana Tribunal', tipo_participacion: 'TRIBUNAL', tipo_participacion_display: 'Tribunal', activo: true },
   { id: 12, usuario_nombre: 'Tomás Tutor', tipo_participacion: 'TUTOR', tipo_participacion_display: 'Tutor', activo: true },
+  { id: 13, usuario_nombre: 'Diana Modalidad', tipo_participacion: 'DOCENTE_MODALIDAD', tipo_participacion_display: 'Docente de modalidad', activo: true },
+  { id: 14, usuario_nombre: 'Pablo Presidente', tipo_participacion: 'PRESIDENTE', tipo_participacion_display: 'Presidente', activo: true },
+  { id: 15, usuario_nombre: 'Sara Secretaria', tipo_participacion: 'SECRETARIO', tipo_participacion_display: 'Secretario', activo: true },
 ]
 const participant = { id: 91, asignacion: 11, usuario_nombre: 'Ana Tribunal', rol_evento: 'TRIBUNAL', rol_display: 'Tribunal', convocado: true, presente: null, fecha_asistencia: null, observaciones: '', activo: true }
-const defense = { id: 81, postulacion: 7, estado: 'PROGRAMADA', participantes: [participant] }
+const defense = { id: 81, postulacion: 7, postulacion_modalidad_codigo: 'TESIS_GRADO', tipo_evento: 'DEFENSA_PRIVADA', estado: 'PROGRAMADA', participantes: [participant] }
 
 describe('DefenseParticipants US-020', () => {
   beforeEach(() => {
@@ -40,19 +43,28 @@ describe('DefenseParticipants US-020', () => {
     expect(screen.queryByRole('button', { name: /Agregar|Retirar|asistencia/i })).not.toBeInTheDocument()
   })
 
-  it('selecciona por nombre y conserva exactamente el rol de la asignación', async () => {
+  it('filtra roles incompatibles en Defensa Privada de Tesis', async () => {
     const onChanged = vi.fn().mockResolvedValue()
     render(<DefenseParticipants defense={{ ...defense, participantes: [] }} canManage onChanged={onChanged} />)
     await userEvent.click(screen.getByRole('button', { name: 'Agregar participante' }))
     const dialog = screen.getByRole('dialog', { name: 'Agregar participante' })
-    expect(await within(dialog).findByRole('option', { name: 'Tomás Tutor — Tutor' })).toBeInTheDocument()
-    await userEvent.type(within(dialog).getByLabelText('Buscar por nombre o rol'), 'Tomás')
-    expect(within(dialog).getByRole('option', { name: 'Tomás Tutor — Tutor' })).toBeInTheDocument()
-    await userEvent.selectOptions(within(dialog).getByLabelText('Asignación activa'), '12')
+    expect(await within(dialog).findByRole('option', { name: 'Ana Tribunal — Tribunal' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('option', { name: 'Diana Modalidad — Docente de modalidad' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('option', { name: 'Tomás Tutor — Tutor' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('option', { name: 'Pablo Presidente — Presidente' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('option', { name: 'Sara Secretaria — Secretario' })).not.toBeInTheDocument()
+    await userEvent.selectOptions(within(dialog).getByLabelText('Asignación activa'), '11')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Agregar participante' }))
-    await waitFor(() => expect(postulacionesService.agregarParticipanteDefensa).toHaveBeenCalledWith(81, 12, 'TUTOR', expect.any(AbortSignal)))
-    expect(postulacionesService.agregarParticipanteDefensa).not.toHaveBeenCalledWith(81, 12, 'TRIBUNAL', expect.anything())
+    await waitFor(() => expect(postulacionesService.agregarParticipanteDefensa).toHaveBeenCalledWith(81, 11, 'TRIBUNAL', expect.any(AbortSignal)))
     expect(onChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('mantiene todos los roles soportados para otras defensas', async () => {
+    render(<DefenseParticipants defense={{ ...defense, tipo_evento: 'DEFENSA_PUBLICA' }} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar participante' }))
+    const dialog = screen.getByRole('dialog', { name: 'Agregar participante' })
+    expect(await within(dialog).findByRole('option', { name: 'Tomás Tutor — Tutor' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('option', { name: 'Pablo Presidente — Presidente' })).toBeInTheDocument()
   })
 
   it('confirma retiro y evita doble envío', async () => {

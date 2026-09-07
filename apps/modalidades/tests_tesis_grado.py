@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
+from rest_framework.test import APIClient
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.modalidades.policies import ModalidadPolicyRegistry
@@ -14,8 +15,9 @@ from apps.documentos.models import (ConfirmacionCorreccionDocumento, DocumentoPo
 from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.models import (
     AsignacionPostulacion, EstadoPostulacion, EvaluacionDefensa, EventoDefensa,
-    ParticipanteEvento, Postulacion, SeguimientoEtapa,
+    DictamenRevisionDocumento, ParticipanteEvento, Postulacion, SeguimientoEtapa,
 )
+from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.workflow import WorkflowService
 from apps.postulantes.defensas_api import EvaluarPayload
 from apps.usuarios.models import CustomUser, Role
@@ -54,6 +56,110 @@ class TesisGradoPolicyTest(TestCase):
         with self.assertRaises(ValidationError):
             WorkflowService.aprobar_etapa(self.seguimientos["INSCRIPCION"], self.admin)
 
+    def test_documentos_aplicables_por_etapa(self):
+        policy = TesisGradoPolicy().requisitos_policy
+        self.assertEqual(policy.get_documentos_requeridos("INSCRIPCION"), (
+            "CARTA_SOLICITUD", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ",
+        ))
+        self.assertEqual(policy.get_documentos_requeridos("TEMATICA_TESIS"), ())
+        self.assertEqual(policy.get_documentos_requeridos("PERFIL_TESIS"), ("PERFIL_TESIS", "INFORME_TUTOR_TESIS"))
+        self.assertEqual(policy.get_documentos_requeridos("DOCUMENTO_FINAL"), ("DOCUMENTO_FINAL", "INFORME_TUTOR_TESIS"))
+        self.assertEqual(policy.get_documentos_requeridos("REVISION_TUTOR"), ("DOCUMENTO_FINAL", "INFORME_TUTOR_TESIS"))
+        self.assertEqual(policy.get_documentos_requeridos("REVISION_TRIBUNAL"), ("DOCUMENTO_FINAL", "INFORME_TRIB_TESIS"))
+        self.assertEqual(policy.get_documentos_requeridos("DEFENSA_PRIVADA"), ())
+        self.assertEqual(policy.get_documentos_requeridos("DEFENSA_PUBLICA"), ("ACTA_DEFENSA",))
+
+    def test_contexto_documental_post_macroflujo_expone_acta_defensa(self):
+        policy = ModalidadPolicyRegistry.get(self.postulacion)
+        self.assertEqual(policy.resolver_contexto_documental(self.postulacion), "INSCRIPCION")
+
+        self.postulacion.seguimientos_etapa.update(estado=SeguimientoEtapa.EstadoChoices.APROBADA)
+        self.assertEqual(policy.resolver_contexto_documental(self.postulacion), "DEFENSA_PUBLICA")
+
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        response = client.get(f"/api/v1/postulaciones/{self.postulacion.pk}/documentos-aplicables/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["etapa_actual"], "DEFENSA_PUBLICA")
+        self.assertEqual(response.data["documentos_aplicables"], [{
+            "id": TipoDocumento.objects.get(codigo="ACTA_DEFENSA").pk,
+            "codigo": "ACTA_DEFENSA",
+            "nombre": "Acta de Defensa",
+        }])
+
+        self.postulacion.estado_actual = EstadoPostulacion.objects.get(codigo="CONCLUIDA")
+        self.assertIsNone(policy.resolver_contexto_documental(self.postulacion))
+
+    def _crear_documento_version(self, codigo, numero=1, actual=True):
+        documento = DocumentoPostulacion.objects.create(
+            postulacion=self.postulacion,
+            tipo_documento=TipoDocumento.objects.get(codigo=codigo),
+            estado=EstadoDocumento.objects.get(codigo="APR"),
+        )
+        return VersionDocumento.objects.create(
+            documento=documento, subido_por=self.admin, numero_version=numero,
+            archivo=SimpleUploadedFile(f"{codigo}-{numero}.pdf", b"pdf"),
+            nombre_original=f"{codigo}-{numero}.pdf", tamano_bytes=3,
+            hash_sha256=str(numero) * 64, es_version_actual=actual,
+        )
+
+    def _orientacion_revision_tribunal(self):
+        return FlujoPostulacionSerializer(self.postulacion, context={}).data["orientacion_etapa_actual"]
+
+    def test_orientacion_revision_tribunal_insuficiente_pide_corregir_documento(self):
+        seguimiento = self.seguimientos["REVISION_TRIBUNAL"]
+        SeguimientoEtapa.objects.filter(pk=seguimiento.pk).update(estado="OBSERVADA")
+        final = self._crear_documento_version("DOCUMENTO_FINAL")
+        evidencia = self._crear_documento_version("INFORME_TRIB_TESIS")
+        DictamenRevisionDocumento.objects.create(
+            seguimiento_etapa=seguimiento, version_documento_revisada=final,
+            tipo_revision="TRIBUNAL", resultado="INSUFICIENTE",
+            evidencia_version=evidencia,
+        )
+        orientacion = self._orientacion_revision_tribunal()
+        action = orientacion["siguiente_accion"]
+        self.assertEqual(action["titulo"], "Corregir Documento Final y registrar nuevo dictamen")
+        self.assertEqual(action["estado"], "PENDIENTE")
+        self.assertEqual(action["destino"], "#documentos")
+
+    def test_orientacion_revision_tribunal_version_nueva_pide_nuevo_dictamen(self):
+        seguimiento = self.seguimientos["REVISION_TRIBUNAL"]
+        SeguimientoEtapa.objects.filter(pk=seguimiento.pk).update(estado="EN_PROCESO")
+        final_v1 = self._crear_documento_version("DOCUMENTO_FINAL")
+        final_v1.es_version_actual = False
+        final_v1.save(update_fields=["es_version_actual"])
+        final_document = final_v1.documento
+        final_v2 = VersionDocumento.objects.create(
+            documento=final_document, subido_por=self.admin, numero_version=2,
+            archivo=SimpleUploadedFile("DOCUMENTO_FINAL-2.pdf", b"pdf"),
+            nombre_original="DOCUMENTO_FINAL-2.pdf", tamano_bytes=3,
+            hash_sha256="2" * 64, es_version_actual=True,
+        )
+        evidence = self._crear_documento_version("INFORME_TRIB_TESIS")
+        DictamenRevisionDocumento.objects.create(
+            seguimiento_etapa=seguimiento, version_documento_revisada=final_v1,
+            tipo_revision="TRIBUNAL", resultado="INSUFICIENTE", evidencia_version=evidence,
+        )
+        action = self._orientacion_revision_tribunal()["siguiente_accion"]
+        self.assertEqual(action["titulo"], "Registrar nuevo dictamen del Tribunal")
+        self.assertEqual(action["estado"], "DISPONIBLE")
+        self.assertEqual(action["destino"], "#dictamen-tribunal")
+
+    def test_orientacion_revision_tribunal_suficiente_sobre_version_actual_pide_aprobar(self):
+        seguimiento = self.seguimientos["REVISION_TRIBUNAL"]
+        SeguimientoEtapa.objects.filter(pk=seguimiento.pk).update(estado="EN_PROCESO")
+        final = self._crear_documento_version("DOCUMENTO_FINAL")
+        evidence = self._crear_documento_version("INFORME_TRIB_TESIS")
+        DictamenRevisionDocumento.objects.create(
+            seguimiento_etapa=seguimiento, version_documento_revisada=final,
+            tipo_revision="TRIBUNAL", resultado="SUFICIENTE", evidencia_version=evidence,
+        )
+        action = self._orientacion_revision_tribunal()["siguiente_accion"]
+        self.assertEqual(action["titulo"], "Aprobar revisión")
+        self.assertEqual(action["estado"], "DISPONIBLE")
+        self.assertEqual(action["destino"], "#resumen")
+
     def test_tematica_exige_maximo_tres_tribunales_y_tutor_posterior(self):
         with self.assertRaises(ValidationError):
             AsignacionService.asignar_actor(self.postulacion, self.docentes[0], "TUTOR", self.admin)
@@ -73,6 +179,43 @@ class TesisGradoPolicyTest(TestCase):
         SeguimientoEtapa.objects.filter(pk=segundo.pk).update(estado="RECHAZADA")
         with self.assertRaises(ValidationError):
             WorkflowService.crear_nuevo_intento(self.postulacion, perfil.etapa, self.admin)
+
+    def test_defensa_privada_no_impone_un_tercer_intento(self):
+        privada = self.seguimientos["DEFENSA_PRIVADA"]
+        SeguimientoEtapa.objects.filter(pk=privada.pk).update(estado="RECHAZADA")
+        segundo = WorkflowService.crear_nuevo_intento(self.postulacion, privada.etapa, self.admin)
+        SeguimientoEtapa.objects.filter(pk=segundo.pk).update(estado="RECHAZADA")
+        tercero = WorkflowService.crear_nuevo_intento(self.postulacion, privada.etapa, self.admin)
+        self.assertEqual(tercero.numero_intento, 3)
+
+    def test_quorum_publico_acepta_dos_tribunales_presidente_y_secretario(self):
+        public = self.seguimientos["DEFENSA_PUBLICA"]
+        event = EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=public,
+            tipo_evento="DEFENSA_PUBLICA", estado="EN_CURSO", numero_intento=1,
+            fecha_programada="2026-08-01T10:00:00Z", lugar="Aula",
+            programado_por=self.admin,
+        )
+        roles = (("TRIBUNAL", self.docentes[0]), ("TRIBUNAL", self.docentes[1]),
+                 ("PRESIDENTE", self.docentes[2]), ("SECRETARIO", self.docentes[3]))
+        for role, user in roles:
+            assignment = AsignacionPostulacion.objects.create(
+                postulacion=self.postulacion, usuario=user,
+                tipo_participacion=role, designado_por=self.admin,
+            )
+            participant = ParticipanteEvento.objects.create(
+                evento=event, asignacion=assignment, rol_evento=role, presente=True,
+            )
+            self.assertTrue(participant.presente)
+
+        result = TesisGradoPolicy().evento_policy.validar_quorum(event)
+        self.assertTrue(result["valido"])
+        self.assertEqual(result["detalle"], {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1})
+
+        ParticipanteEvento.objects.filter(rol_evento="PRESIDENTE").update(presente=False)
+        result = TesisGradoPolicy().evento_policy.validar_quorum(event)
+        self.assertFalse(result["valido"])
+        self.assertEqual(result["faltantes"], {"PRESIDENTE": 1})
 
     def test_capacidad_preparatoria_publica_escala_promedio_y_gate(self):
         """La policy queda verificable sin habilitar ningún acto público real."""
@@ -101,20 +244,20 @@ class TesisGradoPolicyTest(TestCase):
             evento=event, asignacion=secretary_assignment, rol_evento="DOCENTE_MODALIDAD",
         )
 
-        for note in (Decimal("0"), Decimal("70")):
+        for note in (Decimal("1"), Decimal("100")):
             evaluation = EvaluacionDefensa(
                 evento=event, tipo_evaluacion="PUBLICA", modalidad_registro="CONSENSO",
                 nota_numerica=note,
             )
             evaluation.full_clean()
-        for note in (Decimal("-0.01"), Decimal("70.01")):
+        for note in (Decimal("0.99"), Decimal("100.01")):
             with self.assertRaises(ValidationError):
                 EvaluacionDefensa(
                     evento=event, tipo_evaluacion="PUBLICA", modalidad_registro="CONSENSO",
                     nota_numerica=note,
                 ).full_clean()
         values = policy.get_valores_registro(evento=event, tipo="PUBLICA", nota=Decimal("70"))
-        self.assertEqual(values, {"ponderacion": Decimal("70.00"), "aporte_ponderado": Decimal("70")})
+        self.assertEqual(values, {"ponderacion": Decimal("70.00"), "aporte_ponderado": Decimal("49.00")})
         with self.assertRaises(ValidationError):
             policy.validar_solicitud_registro(
                 modalidad_registro="INDIVIDUAL", evaluador=secretary, evento=event, tipo="PUBLICA",
@@ -162,7 +305,8 @@ class TesisGradoPolicyTest(TestCase):
         )
         self.assertEqual(consolidated_source._tesis_promedio, Decimal("60"))
         consolidated = policy.construir_consolidado(consolidated_source, self.admin)
-        self.assertEqual(consolidated.aporte_ponderado, Decimal("60"))
+        self.assertEqual(consolidated.nota_numerica, Decimal("60"))
+        self.assertEqual(consolidated.aporte_ponderado, Decimal("42.00"))
         self.assertEqual(event.evaluaciones.filter(tipo_evaluacion="PUBLICA").count(), 3)
         self.assertIsNone(policy.calcular_resultado_final(self.postulacion)["clasificacion"])
 
@@ -209,11 +353,11 @@ class TesisGradoPolicyTest(TestCase):
         EvaluacionDefensa.objects.create(
             evento=public, tipo_evaluacion="RESULTADO_FINAL", modalidad_registro="CONSENSO",
             nota_numerica=Decimal("70"), ponderacion=Decimal("70.00"),
-            aporte_ponderado=Decimal("70"), es_resultado_final_evento=True,
+            aporte_ponderado=Decimal("49.00"), es_resultado_final_evento=True,
             registrado_por=self.admin,
         )
         result = TesisGradoEvaluacionPolicy().calcular_resultado_final(self.postulacion)
         self.assertEqual(result["aporte_privada"], Decimal("30"))
-        self.assertEqual(result["aporte_publica"], Decimal("70"))
-        self.assertEqual(result["nota_final"], Decimal("100.00"))
-        self.assertEqual(result["clasificacion"], "APROBACION_PLENA_CON_FELICITACION")
+        self.assertEqual(result["aporte_publica"], Decimal("49.00"))
+        self.assertEqual(result["nota_final"], Decimal("79.00"))
+        self.assertEqual(result["clasificacion"], "APROBACION_PLENA")

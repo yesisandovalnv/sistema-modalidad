@@ -225,17 +225,13 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         from apps.documentos.models import TipoDocumento
         postulacion = self.get_object()
         
-        # Obtener etapa actual
-        etapa_actual = postulacion.seguimientos_etapa.filter(
-            activo=True, estado__in=["PENDIENTE", "EN_PROCESO", "OBSERVADA"]
-        ).select_related("etapa").first()
-        
-        etapa_codigo = etapa_actual.etapa.codigo if etapa_actual else None
+        etapa_codigo = None
         documentos_aplicables = []
         
         # Si hay policy, consultar documentos aplicables en etapa
         if ModalidadPolicyRegistry.has_policy(postulacion):
             policy = ModalidadPolicyRegistry.get(postulacion)
+            etapa_codigo = policy.resolver_contexto_documental(postulacion)
             if etapa_codigo:
                 codigos_permitidos = policy.get_documentos_aplicables_en_etapa(etapa_codigo)
                 if codigos_permitidos:

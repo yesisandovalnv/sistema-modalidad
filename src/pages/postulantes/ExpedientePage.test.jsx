@@ -20,6 +20,8 @@ vi.mock('../../services/postulacionesService', () => ({
     concluirPostulacion: vi.fn(), reabrirCierre: vi.fn(),
     obtenerCandidatosAsignacion: vi.fn(), asignarActor: vi.fn(), finalizarAsignacion: vi.fn(),
     obtenerInformesRevisionTribunal: vi.fn(), registrarInformeRevisionTribunal: vi.fn(),
+    obtenerDictamenesRevision: vi.fn(),
+    obtenerDocumentosAplicables: vi.fn(),
   },
 }))
 
@@ -127,6 +129,24 @@ const response = {
   },
 }
 
+const thesisPostPublicResponse = {
+  ...response,
+  detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+  flujo: {
+    ...response.flujo,
+    modalidad: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' },
+    etapa_actual: { id: 82, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'APROBADA', numero_intento: 1, activo: true },
+    porcentaje_avance: 100,
+    etapas: Array.from({ length: 8 }, (_, index) => ({ id: 75 + index, codigo: index === 7 ? 'DEFENSA_PUBLICA' : `ETAPA_${index + 1}`, nombre: index === 7 ? 'Defensa Pública' : `Etapa ${index + 1}`, estado: 'APROBADA', activo: true })),
+    orientacion_etapa_actual: {
+      mensaje: 'Completa las precondiciones y gestiona la Defensa Publica.',
+      requisitos: [{ tipo: 'OPERATIVO', codigo: 'RESULTADO_CONSOLIDADO', nombre: 'Resultado consolidado', cumplido: true, estado_display: 'Cumplido', destino: '#resumen' }],
+      siguiente_accion: { codigo: 'APROBAR_ETAPA', titulo: 'Aprobar etapa', descripcion: 'La defensa tiene un resultado consolidado.', estado: 'DISPONIBLE', estado_display: 'Disponible', destino: '#resumen' },
+    },
+  },
+  resultado: { data: { nota_privada: '28.00', nota_publica: '70.00', aporte_publica: '49.00', nota_final: '77.00', clasificacion: 'APROBACION_PLENA' }, error: '' },
+}
+
 const tribunalStage = { id: 4, codigo: 'REVISION_TRIBUNAL_PREVIA', nombre: 'Revisión de Tribunal Previa', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
 const tribunalResponse = { ...response, flujo: { ...response.flujo, etapa_actual: tribunalStage, etapas: [...response.flujo.etapas, tribunalStage] } }
 const tribunalDocuments = {
@@ -191,6 +211,7 @@ function renderWorkflowManagerPage() {
 describe('ExpedientePage US-008', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
     postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue({ soportada: true, configuracion_valida: true })
     postulacionesService.inicializarFlujo.mockResolvedValue({})
     postulacionesService.obtenerHistorial.mockResolvedValue(historyResponse)
@@ -202,6 +223,11 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.asignarActor.mockResolvedValue({ id: 90 })
     postulacionesService.finalizarAsignacion.mockResolvedValue({ id: 7, activo: false })
     postulacionesService.obtenerInformesRevisionTribunal.mockResolvedValue([])
+    postulacionesService.obtenerDictamenesRevision.mockResolvedValue([])
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
+      { id: 4, codigo: 'INFORME_FINAL', nombre: 'Informe final' },
+      { id: 5, codigo: 'ACTA_DEFENSA', nombre: 'Acta de Defensa' },
+    ] })
     postulacionesService.registrarInformeRevisionTribunal.mockResolvedValue({ id: 501, resultado: 'SUFICIENTE' })
     postulacionesService.obtenerDocumentos.mockResolvedValue(documentsResponse)
     postulacionesService.obtenerVersiones.mockResolvedValue(versionsResponse)
@@ -249,7 +275,7 @@ describe('ExpedientePage US-008', () => {
     const activeHeading = await screen.findByRole('heading', { name: 'Asignaciones vigentes' })
     const activeGroup = activeHeading.closest('section')
     expect(within(activeGroup).getAllByRole('button', { name: /Finalizar asignación/i }).length).toBeGreaterThan(0)
-    expect(screen.queryByRole('button', { name: /Finalizar asignación/i })).not.toBeNull()
+    expect(screen.getAllByRole('button', { name: /Finalizar asignación/i }).length).toBeGreaterThan(0)
 
     await userEvent.click(within(activeGroup).getAllByRole('button', { name: /Finalizar asignación/i })[0])
     const dialog = await screen.findByRole('dialog', { name: /Finalizar asignación/i })
@@ -274,13 +300,14 @@ describe('ExpedientePage US-008', () => {
     await userEvent.click(submit)
     await waitFor(() => expect(postulacionesService.finalizarAsignacion).toHaveBeenCalledWith(1, { observaciones: 'Regularización por conflicto de roles' }, expect.any(AbortSignal)))
 
-    const submitAgain = within(dialog).getByRole('button', { name: /Confirmar finalización/i })
+    const submitAgain = within(dialog).getByRole('button', { name: /Finalizando…/i })
     expect(submitAgain).toBeDisabled()
   })
 
   it('muestra el error específico del backend al finalizar', async () => {
     postulacionesService.obtenerActores.mockImplementation((_id, activo) => Promise.resolve(activo ? activeActorsResponse : historicalActorsResponse))
     postulacionesService.finalizarAsignacion.mockRejectedValue({
+      message: 'No se puede finalizar la asignación porque participa activamente en un evento PROGRAMADA o EN_CURSO.',
       response: { status: 400, data: { non_field_errors: ['No se puede finalizar la asignación porque participa activamente en un evento PROGRAMADA o EN_CURSO.'] } },
     })
     renderAssignmentManagerPage()
@@ -296,6 +323,7 @@ describe('ExpedientePage US-008', () => {
   })
 
   it('permite registrar informe cuando la evidencia viene identificada por su código de tipo documental', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(tribunalResponse)
     postulacionesService.obtenerDocumentos.mockResolvedValue({
       count: 2, next: null, previous: null, results: [
         { id: 41, tipo_documento_codigo: 'DOCUMENTO_FINAL', tipo_documento_nombre: 'Documento Final', activo: true, versiones: [{ id: 601, numero_version: 1, nombre_original: 'documento-final.pdf', es_version_actual: true, activo: true }] },
@@ -328,7 +356,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByRole('progressbar', { name: 'Avance del macroflujo' })).toHaveValue(25)
     expect(screen.getByRole('navigation', { name: 'Secciones del expediente' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Documentos' })).toHaveAttribute('href', '#documentos')
-    expect(screen.getByRole('heading', { name: 'Estado operativo' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Qué debes hacer ahora' })).toBeInTheDocument()
     expect(screen.getByText('0 de 3 etapas completadas')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Resultado académico técnico' })).toBeInTheDocument()
     expect(screen.getByText('24.00')).toBeInTheDocument()
@@ -504,6 +532,99 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByRole('note', { name: 'Límites normativos' })).toHaveTextContent(/defensa pública permanece bloqueada/i)
   })
 
+  it('muestra resultado de Tesis con nota pública sobre 100 y aporte ponderado del backend', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+      flujo: { ...response.flujo, modalidad: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' }, orientacion_etapa_actual: { mensaje: 'Completa los actores de Tesis.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_ACTORES', titulo: 'Actores de la postulación', descripcion: 'Completa las asignaciones de Tesis.', estado: 'PENDIENTE', estado_display: 'Pendiente', destino: '#actores', accion_label: 'Ir a actores' } } },
+      resultado: { data: { nota_privada: '20.00', nota_publica: '80.00', aporte_publica: '56.00', nota_final: '76.00', clasificacion: 'APROBACION_PLENA', resultado: 'APROBACION_PLENA', limitacion_normativa: '' }, error: '' },
+    })
+    renderPage()
+    await screen.findByText('EXP-007')
+    const result = screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement
+    expect(within(result).getAllByText('/ 100')).toHaveLength(2)
+    expect(within(result).getByText('Aporte pública')).toBeInTheDocument()
+    expect(within(result).getByText('56.00')).toBeInTheDocument()
+    expect(within(result).getByText('/ 70')).toBeInTheDocument()
+    expect(within(result).getByText('76.00')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Siguiente acción' })).toBeInTheDocument()
+    expect(screen.getByText('Completa las asignaciones de Tesis.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ir a actores' })).toHaveAttribute('href', '#actores')
+  })
+
+  it('orienta a cargar el Acta cuando la Defensa Pública de Tesis ya está aprobada', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(thesisPostPublicResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+    renderPage()
+
+    expect(await screen.findByText('Cargar Acta de Defensa')).toBeInTheDocument()
+    expect(screen.getByText(/debes cargar y vincular el Acta de Defensa vigente/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ir a documentos' })).toHaveAttribute('href', '#documentos')
+    expect(screen.queryByText('Aprobar etapa')).not.toBeInTheDocument()
+    expect(screen.getByText('2 de 3 cumplidos')).toBeInTheDocument()
+    expect(screen.getByText(/Resultado final aprobatorio/)).toHaveTextContent('77.00/100')
+    expect(screen.getByText('Avance de etapas')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Avance de etapas' })).toHaveValue(100)
+  })
+
+  it('orienta a completar un Acta existente que todavía no está aprobada', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(thesisPostPublicResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue({ count: 1, next: null, previous: null, results: [{
+      id: 91, tipo_documento_codigo: 'ACTA_DEFENSA', tipo_documento_nombre: 'Acta de Defensa', estado_codigo: 'ENV', requiere_correccion: false, evento_defensa: 81, activo: true,
+      versiones: [{ id: 911, activo: true, es_version_actual: true }],
+    }] })
+    renderPage()
+
+    expect(await screen.findByText('Completar Acta de Defensa')).toBeInTheDocument()
+    expect(screen.getByText(/todavía debe quedar vigente, aprobada y correctamente vinculada/i)).toBeInTheDocument()
+    expect(screen.getByText('2 de 3 cumplidos')).toBeInTheDocument()
+    expect(screen.queryByText('Aprobar etapa')).not.toBeInTheDocument()
+  })
+
+  it('orienta a concluir académicamente cuando el Acta vigente está aprobada y vinculada', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(thesisPostPublicResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue({ count: 1, next: null, previous: null, results: [{
+      id: 91, tipo_documento_codigo: 'ACTA_DEFENSA', tipo_documento_nombre: 'Acta de Defensa', estado_codigo: 'APR', requiere_correccion: false, evento_defensa: 81, activo: true,
+      versiones: [{ id: 911, activo: true, es_version_actual: true }],
+    }] })
+    renderPage()
+
+    const summary = (await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })).closest('section')
+    expect(within(summary).getByText('Concluir académicamente')).toBeInTheDocument()
+    expect(within(summary).getByText('3 de 3 cumplidos')).toBeInTheDocument()
+    expect(within(summary).getByText('Disponible')).toBeInTheDocument()
+    expect(within(summary).getByRole('link', { name: 'Ir a concluir académicamente' })).toHaveAttribute('href', '#resumen')
+    expect(within(summary).queryByText('Aprobar etapa')).not.toBeInTheDocument()
+  })
+
+  it('consume documentos aplicables de Tesis y deja accesibles revisiones y correcciones', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+      flujo: { ...response.flujo, modalidad: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' }, etapa_actual: { codigo: 'REVISION_TRIBUNAL', nombre: 'Revisión de Tribunal' }, etapas: [
+        { id: 21, codigo: 'REVISION_TUTOR', nombre: 'Revisión de Tutor', estado: 'EN_PROCESO', numero_intento: 1, activo: true },
+        { id: 22, codigo: 'REVISION_TRIBUNAL', nombre: 'Revisión de Tribunal', estado: 'EN_PROCESO', numero_intento: 1, activo: true },
+      ] },
+    })
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
+      { id: 10, codigo: 'PERFIL_TESIS', nombre: 'Perfil de Tesis' },
+      { id: 11, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final' },
+      { id: 12, codigo: 'INFORME_TUTOR_TESIS', nombre: 'Informe del Tutor de Tesis' },
+      { id: 13, codigo: 'INFORME_TRIB_TESIS', nombre: 'Informe del Tribunal de Tesis' },
+    ] })
+    const auth = { user: { id: 3, rol: { codigo: 'EST' } }, roleCode: 'EST', hasPermission: (name) => name === 'puede_cargar_documentos' }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+    expect(await screen.findByRole('option', { name: 'Perfil de Tesis' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Documento Final' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Informe del Tutor de Tesis' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Informe del Tribunal de Tesis' })).toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledWith('7', expect.any(AbortSignal))
+    expect(screen.getAllByRole('heading', { name: 'Dictamen del Tutor' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('heading', { name: 'Dictamen del Tribunal' }).length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { name: 'Correcciones posteriores a Defensa Privada' })).toBeInTheDocument()
+  })
+
   it('mantiene expediente y advertencias ante errores parciales y permite reintentar', async () => {
     const partial = {
       ...response,
@@ -561,7 +682,7 @@ describe('ExpedientePage US-008', () => {
     const card = (await screen.findByRole('heading', { name: 'Actores de la postulación' })).parentElement
     expect(within(card).getByRole('heading', { name: 'Asignaciones vigentes' })).toBeInTheDocument()
     expect(within(card).getByRole('heading', { name: 'Asignaciones históricas' })).toBeInTheDocument()
-    for (const label of ['Tutor', 'Tribunal', 'Docente de modalidad', 'Presidente', 'Secretario']) expect(within(card).getAllByText(label).length).toBeGreaterThan(0)
+    for (const label of ['Tutor', 'Tribunal', 'Docente de modalidad', 'Presidente', 'Secretario']) expect(within(card).getAllByText(new RegExp(`^${label}(?: \\d+)?$`)).length).toBeGreaterThan(0)
     expect(within(card).getAllByText('Activa')).toHaveLength(5)
     expect(within(card).getByText('Histórica')).toBeInTheDocument()
     expect(within(card).getByText('Tutor Uno')).toBeInTheDocument()
@@ -596,6 +717,64 @@ describe('ExpedientePage US-008', () => {
     await waitFor(() => expect(postulacionesService.obtenerCandidatosAsignacion).toHaveBeenLastCalledWith(
       { search: 'Rosas', rol: '', ordering: 'apellido_paterno', page: 1 }, expect.any(AbortSignal),
     ))
+  })
+
+  it('guía la asignación de autoridades faltantes de Defensa Pública de Tesis y recalcula el siguiente rol', async () => {
+    const publicStage = { id: 82, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+    const thesisResponse = (description) => ({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+      flujo: {
+        ...response.flujo,
+        modalidad: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' },
+        etapa_actual: publicStage,
+        etapas: [...response.flujo.etapas.filter((stage) => stage.codigo !== 'DEFENSA_PUBLICA'), publicStage],
+        orientacion_etapa_actual: {
+          mensaje: 'Completa las precondiciones y gestiona la Defensa Pública.',
+          requisitos: [{ tipo: 'OPERATIVO', codigo: 'PRECONDICIONES_DEFENSA', nombre: 'Precondiciones de defensa', cumplido: false, estado_display: 'Pendiente', destino: '#actores' }],
+          siguiente_accion: { codigo: 'GESTIONAR_PRECONDICIONES', titulo: 'Completar precondiciones de defensa', descripcion: description, estado: 'PENDIENTE', destino: '#actores', accion_label: 'Ir a precondiciones' },
+        },
+      },
+    })
+    postulacionesService.obtenerExpediente
+      .mockResolvedValueOnce(thesisResponse("La Defensa Pública de Tesis requiere: {'PRESIDENTE': 1, 'SECRETARIO': 1}."))
+      .mockResolvedValue(thesisResponse("La Defensa Pública de Tesis requiere: {'SECRETARIO': 1}."))
+    renderAssignmentManagerPage()
+
+    expect(await screen.findByText('Para programar la Defensa Pública faltan:')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('link', { name: 'Ir a precondiciones' }))
+    const dialog = screen.getByRole('dialog', { name: 'Asignar actor' })
+    expect(within(dialog).getByRole('option', { name: 'Presidente' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('option', { name: 'Secretario' })).toBeInTheDocument()
+    for (const excluded of ['Tribunal', 'Tutor', 'Docente de modalidad']) expect(within(dialog).queryByRole('option', { name: excluded })).not.toBeInTheDocument()
+
+    await within(dialog).findByRole('option', { name: /Johnny Rosas/ })
+    await userEvent.selectOptions(within(dialog).getByLabelText('Candidato'), '41')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Tipo de participación'), 'PRESIDENTE')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar asignación' }))
+
+    expect(postulacionesService.asignarActor).toHaveBeenCalledWith(7, expect.objectContaining({
+      usuario: 41, tipo_participacion: 'PRESIDENTE', seguimiento_etapa: 82,
+    }), expect.any(AbortSignal))
+    await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
+    expect(within(dialog).queryByRole('option', { name: 'Presidente' })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('option', { name: 'Secretario' })).toBeInTheDocument()
+  })
+
+  it('orienta a programar Defensa Pública cuando el contrato ya no informa autoridades faltantes', async () => {
+    const publicStage = { id: 82, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+      flujo: { ...response.flujo, modalidad: { id: 2, codigo: 'TESIS_GRADO' }, etapa_actual: publicStage, etapas: [publicStage], orientacion_etapa_actual: {
+        mensaje: 'Gestiona la Defensa Pública.', requisitos: [],
+        siguiente_accion: { codigo: 'PROGRAMAR_EVENTO', titulo: 'Programar defensa', descripcion: 'Programa la defensa correspondiente a esta etapa.', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a programar defensa' },
+      } },
+    })
+    renderAssignmentManagerPage()
+    expect(await screen.findByText('Programar Defensa Pública')).toBeInTheDocument()
+    expect(screen.queryByText('Para programar la Defensa Pública faltan:')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ir a programar defensa' })).toHaveAttribute('href', '#defensas')
   })
 
   it('representa Tribunal 1 a 3, deshabilita órdenes ocupados e impide un cuarto', async () => {
@@ -633,7 +812,7 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.asignarActor).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(postulacionesService.obtenerActores.mock.calls.filter(([, activo]) => activo === true)).toHaveLength(2))
     expect(postulacionesService.obtenerActores.mock.calls.filter(([, activo]) => activo === false)).toHaveLength(1)
-    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2)
   })
 
   it('permite asignar sin etapa y muestra errores de validación del backend', async () => {
@@ -845,7 +1024,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
     renderPage()
     expect(await screen.findByRole('heading', { name: 'Documentos' })).toBeInTheDocument()
-    expect(screen.getByText('Informe final')).toBeInTheDocument()
+    expect(screen.getByText(/Informe final/)).toBeInTheDocument()
     expect(screen.getByText(/Estado técnico: Enviado/)).toBeInTheDocument()
     expect(screen.getByText('Requerida')).toBeInTheDocument()
     expect(screen.getByText('1')).toBeInTheDocument()
@@ -952,7 +1131,8 @@ describe('ExpedientePage US-008', () => {
     renderPage()
     await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
     await waitFor(() => expect(versionSignals).toHaveLength(1))
-    await userEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+    const detailDialog = screen.getByRole('dialog', { name: 'Detalle del documento' })
+    await userEvent.click(within(detailDialog).getByRole('button', { name: 'Cerrar' }))
     expect(versionSignals[0].aborted).toBe(true)
     await userEvent.click(screen.getByRole('button', { name: 'Ver detalle' }))
     await userEvent.click((await screen.findAllByRole('button', { name: 'Ver observaciones' }))[0])
@@ -973,7 +1153,7 @@ describe('ExpedientePage US-008', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
     expect(screen.getByText('EXP-007')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar documentos' }))
-    expect(await screen.findByText('Informe final')).toBeInTheDocument()
+    expect(await screen.findByText(/Informe final/)).toBeInTheDocument()
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
   })
 
@@ -1144,10 +1324,18 @@ describe('ExpedientePage US-008', () => {
 
   it('carga una nueva versión derivando postulación y tipo del detalle', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDocumentos.mockResolvedValue({
+      ...documentsResponse,
+      results: [{ ...documentsResponse.results[0], tipo_documento_nombre: 'Documento Final' }],
+    })
     renderOwnerPage()
     await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
     await userEvent.click(screen.getByRole('button', { name: 'Cargar nueva versión' }))
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(screen.getByRole('dialog', { name: 'Cargar nueva versión' })).toBeInTheDocument()
+    expect(screen.getByText('Documento Final')).toBeInTheDocument()
+    expect(screen.getByLabelText('Archivo')).toBeVisible()
+    expect(screen.queryByRole('dialog', { name: 'Detalle del documento' })).not.toBeInTheDocument()
     const file = new File(['%PDF-1.4'], 'informe-v3.pdf', { type: 'application/pdf' })
     await userEvent.upload(screen.getByLabelText('Archivo'), file)
     fireEvent.submit(screen.getByLabelText('Archivo').closest('form'))
@@ -1155,6 +1343,8 @@ describe('ExpedientePage US-008', () => {
       { postulacionId: 7, tipoDocumentoId: 4, archivo: file }, expect.any(AbortSignal),
     ))
     expect(await screen.findByText('Nueva versión cargada')).toBeInTheDocument()
+    await userEvent.click(within(screen.getByRole('dialog', { name: 'Cargar nueva versión' })).getByText('Cerrar', { selector: 'button' }))
+    expect(await screen.findByRole('dialog', { name: 'Detalle del documento' })).toBeInTheDocument()
     await waitFor(() => expect(postulacionesService.obtenerVersiones).toHaveBeenCalledTimes(2))
   })
 
@@ -1442,7 +1632,7 @@ describe('ExpedientePage US-008', () => {
     managed.unmount()
 
     renderOwnerPage()
-    await screen.findByRole('heading', { name: 'Revisión de Tribunal Previa' })
+    expect((await screen.findAllByRole('heading', { name: 'Revisión de Tribunal Previa' })).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Registrar informe del tribunal' })).not.toBeInTheDocument()
   })
 

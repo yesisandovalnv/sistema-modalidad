@@ -143,8 +143,12 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
             secretario = presentes.filter(rol_evento="DOCENTE_MODALIDAD").count()
             return {"valido": tribunales >= 2 and secretario >= 1, "faltantes": {"TRIBUNAL": max(0, 2-tribunales), "DOCENTE_MODALIDAD": max(0, 1-secretario)}, "detalle": {"TRIBUNAL": tribunales, "DOCENTE_MODALIDAD": secretario}}
         if evento.tipo_evento == "DEFENSA_PUBLICA":
-            counts = {role: presentes.filter(rol_evento=role).count() for role in ("TRIBUNAL", "PRESIDENTE", "SECRETARIO")}
-            missing = {role: required - counts[role] for role, required in {"TRIBUNAL": 3, "PRESIDENTE": 1, "SECRETARIO": 1}.items() if counts[role] < required}
+            counts = {
+                "TRIBUNAL": presentes.filter(rol_evento="TRIBUNAL").values("asignacion__usuario_id").distinct().count(),
+                "PRESIDENTE": presentes.filter(rol_evento="PRESIDENTE").values("asignacion__usuario_id").distinct().count(),
+                "SECRETARIO": presentes.filter(rol_evento="SECRETARIO").values("asignacion__usuario_id").distinct().count(),
+            }
+            missing = {role: required - counts[role] for role, required in {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1}.items() if counts[role] < required}
             return {"valido": not missing, "faltantes": missing, "detalle": counts}
         # El reglamento exige tribunal designado, pero no fija quórum para perfil.
         return {"valido": True, "faltantes": {}, "detalle": {"pendiente_de_validacion_institucional": True}}
@@ -196,14 +200,14 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
         if evaluacion.tipo_evaluacion not in {"PRIVADA", "PUBLICA"} and any(value is not None for value in (evaluacion.nota_numerica, evaluacion.ponderacion, evaluacion.aporte_ponderado)):
             raise ValidationError({"nota_numerica": "Esta evaluación cualitativa no admite nota ni ponderación."})
         if evaluacion.tipo_evaluacion == "PRIVADA" and (evaluacion.nota_numerica is None or not Decimal("0") <= evaluacion.nota_numerica <= Decimal("30")):
-            raise ValidationError({"nota_numerica": "La evaluación individual requiere nota para calcular el promedio normativo."})
+            raise ValidationError({"nota_numerica": "La escala numérica provisional de la Defensa Privada es 0 a 30; la normativa no la define expresamente."})
         if evaluacion.tipo_evaluacion == "PUBLICA":
-            if evaluacion.nota_numerica is None or not Decimal("0") <= evaluacion.nota_numerica <= Decimal("70"):
+            if evaluacion.nota_numerica is None or not Decimal("1") <= evaluacion.nota_numerica <= Decimal("100"):
                 raise ValidationError({"nota_numerica": "La Defensa Pública de Tesis admite notas de 1 a 100."})
 
     def get_valores_registro(self, *, evento, tipo, nota):
         if tipo == "PUBLICA":
-            return {"ponderacion": Decimal("70.00"), "aporte_ponderado": nota}
+            return {"ponderacion": Decimal("70.00"), "aporte_ponderado": (nota * Decimal("0.70")).quantize(Decimal("0.01"))}
         if tipo == "PRIVADA":
             return {"ponderacion": Decimal("30.00"), "aporte_ponderado": nota}
         return {"ponderacion": None, "aporte_ponderado": None}
@@ -230,7 +234,7 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
             modalidad_registro="CONSENSO", resultado_cualitativo=evaluacion.resultado_cualitativo,
             nota_numerica=nota,
             ponderacion=Decimal("70.00") if es_publica else (Decimal("30.00") if evaluacion.tipo_evaluacion == "PRIVADA" else None),
-            aporte_ponderado=nota,
+            aporte_ponderado=(nota * Decimal("0.70")).quantize(Decimal("0.01")) if es_publica else nota,
             es_resultado_final_evento=True, registrado_por=usuario,
         )
 
@@ -263,8 +267,10 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
         publica = results.filter(evento__tipo_evento="DEFENSA_PUBLICA").order_by("-created_at").first()
         private_note = privada.nota_numerica if privada else None
         public_note = publica.nota_numerica if publica else None
+        # La nota privada conserva provisionalmente la escala 0-30; la pública
+        # se registra sobre 100 y aporta el 70% mediante esta conversión.
         private_contribution = private_note
-        public_contribution = public_note
+        public_contribution = (public_note * Decimal("0.70")).quantize(Decimal("0.01")) if public_note is not None else None
         final = (private_contribution + public_contribution).quantize(Decimal("0.01")) if private_contribution is not None and public_contribution is not None else None
         classification = self.clasificar_nota_final(final) if final is not None else None
         return {"nota_privada": private_note, "nota_publica": public_note, "aporte_privada": private_contribution, "aporte_publica": public_contribution, "nota_final": final, "clasificacion": classification, "resultado": classification, "limitacion_normativa": "El artículo 42 contiene la referencia contradictoria a 61; se aplica 51 conforme a los artículos 37–41 y Reglamento General."}
@@ -277,8 +283,21 @@ class TesisGradoRequisitosPolicy(BaseRequisitosPolicy):
         "HISTORIAL_PRERREQ",
     )
 
+    DOCUMENTS_BY_STAGE = {
+        "INSCRIPCION": INSCRIPCION_DOCUMENTS,
+        "TEMATICA_TESIS": (),
+        "PERFIL_TESIS": ("PERFIL_TESIS", "INFORME_TUTOR_TESIS"),
+        "DOCUMENTO_FINAL": ("DOCUMENTO_FINAL", "INFORME_TUTOR_TESIS"),
+        "REVISION_TUTOR": ("DOCUMENTO_FINAL", "INFORME_TUTOR_TESIS"),
+        "REVISION_TRIBUNAL": ("DOCUMENTO_FINAL", "INFORME_TRIB_TESIS"),
+        "DEFENSA_PRIVADA": (),
+        "DEFENSA_PUBLICA": ("ACTA_DEFENSA",),
+    }
+
     def get_documentos_requeridos(self, fase=None):
-        return self.INSCRIPCION_DOCUMENTS if fase in (None, "INSCRIPCION") else ()
+        if fase is not None:
+            return tuple(self.DOCUMENTS_BY_STAGE.get(fase, ()))
+        return tuple(dict.fromkeys(codigo for documentos in self.DOCUMENTS_BY_STAGE.values() for codigo in documentos))
 
 
 class TesisGradoPolicy(BaseModalidadPolicy):
@@ -287,6 +306,229 @@ class TesisGradoPolicy(BaseModalidadPolicy):
     evento_policy = TesisGradoEventoPolicy()
     evaluacion_policy = TesisGradoEvaluacionPolicy()
     requisitos_policy = TesisGradoRequisitosPolicy()
+
+    def resolver_contexto_documental(self, postulacion):
+        contexto = super().resolver_contexto_documental(postulacion)
+        if contexto or (postulacion.estado_actual and postulacion.estado_actual.codigo == "CONCLUIDA"):
+            return contexto
+        publica_aprobada = postulacion.seguimientos_etapa.filter(
+            activo=True,
+            etapa__codigo="DEFENSA_PUBLICA",
+            estado="APROBADA",
+        ).order_by("-numero_intento").first()
+        return publica_aprobada.etapa.codigo if publica_aprobada else None
+
+    @staticmethod
+    def _orientation_requirement(code, name, complete, destination=None, display=None):
+        return {
+            "tipo": "OPERATIVO", "codigo": code, "nombre": name,
+            "cumplido": complete, "estado": "CUMPLIDO" if complete else "PENDIENTE",
+            "estado_display": display or ("Cumplido" if complete else "Pendiente"),
+            "destino": destination,
+        }
+
+    @staticmethod
+    def _orientation_action(code, title, description, state, destination, label):
+        return {
+            "codigo": code, "titulo": title, "descripcion": description,
+            "estado": state,
+            "estado_display": {"DISPONIBLE": "Disponible", "PENDIENTE": "Pendiente"}.get(state, state),
+            "destino": destination, "accion_label": label,
+        }
+
+    def _document_orientation(self, postulacion, codes):
+        from apps.documentos.models import DocumentoPostulacion, VersionDocumento
+
+        requirements = []
+        for code in codes:
+            document = DocumentoPostulacion.objects.filter(
+                postulacion=postulacion, tipo_documento__codigo=code, activo=True,
+            ).select_related("estado").first()
+            current = document and VersionDocumento.objects.filter(
+                documento=document, activo=True, es_version_actual=True,
+            ).exists()
+            complete = bool(document and document.estado.codigo == "APR" and not document.requiere_correccion and current)
+            requirements.append(self._orientation_requirement(
+                code, code.replace("_", " ").title(), complete, "#documentos",
+                "Aprobado y vigente" if complete else "Pendiente de carga o aprobación",
+            ))
+        return requirements
+
+    def _event_orientation(self, postulacion, seguimiento, event_type):
+        from apps.postulantes.models import EventoDefensa
+
+        destination = "#defensas"
+        assignments = postulacion.asignaciones.filter(activo=True)
+        try:
+            self.evento_policy.validar_programacion(
+                tipo_evento=event_type, seguimiento=seguimiento,
+                fecha_programada=timezone.now(), asignaciones=assignments,
+            )
+        except ValidationError as error:
+            if not EventoDefensa.objects.filter(
+                postulacion=postulacion, seguimiento_etapa=seguimiento,
+                tipo_evento=event_type, activo=True,
+            ).exists():
+                return self._orientation_action(
+                    "GESTIONAR_PRECONDICIONES", "Completar precondiciones de defensa",
+                    str(error.messages[0] if hasattr(error, "messages") else error),
+                    "PENDIENTE", "#actores", "Ir a precondiciones",
+                ), [self._orientation_requirement("PRECONDICIONES_DEFENSA", "Precondiciones de defensa", False, "#actores")]
+        event = EventoDefensa.objects.filter(
+            postulacion=postulacion, seguimiento_etapa=seguimiento,
+            tipo_evento=event_type, activo=True,
+        ).order_by("-numero_intento").first()
+        if event is None:
+            return self._orientation_action(
+                "PROGRAMAR_EVENTO", "Programar defensa",
+                "Programa la defensa correspondiente a esta etapa.",
+                "DISPONIBLE", destination, "Ir a programar defensa",
+            ), []
+        if event.estado == EventoDefensa.Estado.PROGRAMADA:
+            return self._orientation_action(
+                "GESTIONAR_DEFENSA", "Gestionar defensa",
+                "La defensa está programada y debe gestionarse desde la sección de defensas.",
+                "PENDIENTE", destination, "Ir a defensas",
+            ), [self._orientation_requirement("DEFENSA_PROGRAMADA", "Defensa programada", True, destination, "Programada")]
+        if event.estado == EventoDefensa.Estado.EN_CURSO:
+            return self._orientation_action(
+                "GESTIONAR_DEFENSA", "Gestionar defensa",
+                "La defensa se encuentra en curso. Registra la asistencia y las acciones disponibles.",
+                "PENDIENTE", destination, "Ir a defensas",
+            ), [self._orientation_requirement("DEFENSA_EN_CURSO", "Defensa en curso", True, destination, "En curso")]
+        if event.estado == EventoDefensa.Estado.FINALIZADA:
+            evaluations = event.evaluaciones.filter(activo=True)
+            if not evaluations.exists():
+                return self._orientation_action(
+                    "REGISTRAR_EVALUACION", "Registrar evaluación",
+                    "La defensa finalizó y aún no tiene una evaluación registrada.",
+                    "DISPONIBLE", destination, "Ir a registrar evaluación",
+                ), [self._orientation_requirement("EVALUACION", "Evaluación de la defensa", False, destination)]
+            if not evaluations.filter(es_resultado_final_evento=True).exists():
+                return self._orientation_action(
+                    "CONSOLIDAR_RESULTADO", "Consolidar resultado",
+                    "La evaluación está registrada y requiere consolidación.",
+                    "DISPONIBLE", destination, "Ir a consolidar resultado",
+                ), [self._orientation_requirement("RESULTADO_CONSOLIDADO", "Resultado consolidado", False, destination)]
+            return self._orientation_action(
+                "APROBAR_ETAPA", "Aprobar etapa",
+                "La defensa tiene un resultado consolidado. Revisa y aprueba la etapa.",
+                "DISPONIBLE", "#resumen", "Ir a aprobar etapa",
+            ), [self._orientation_requirement("RESULTADO_CONSOLIDADO", "Resultado consolidado", True, "#resumen")]
+        return self._orientation_action(
+            "GESTIONAR_DEFENSA", "Gestionar defensa",
+            "Revisa el estado de la defensa y las acciones disponibles.",
+            "PENDIENTE", destination, "Ir a defensas",
+        ), [self._orientation_requirement("DEFENSA", "Estado de la defensa", False, destination)]
+
+    def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
+        if seguimiento is None:
+            return None
+        stage = seguimiento.etapa.codigo
+        if seguimiento.estado == "PENDIENTE":
+            action = self._orientation_action(
+                "INICIAR_ETAPA", "Iniciar etapa", "La etapa está lista para iniciarse.",
+                "DISPONIBLE", "#resumen", "Ir a iniciar etapa",
+            )
+            return {"operacion": "ORIENTAR_ETAPA", "mensaje": "Inicia la etapa para continuar el trámite.", "requisitos": [], "siguiente_accion": action, "conflictos_identidad": []}
+
+        requirements = []
+        if stage in {"INSCRIPCION", "DOCUMENTO_FINAL"}:
+            codes = self.requisitos_policy.DOCUMENTS_BY_STAGE[stage]
+            requirements = self._document_orientation(postulacion, codes)
+            complete = all(item["cumplido"] for item in requirements)
+            title = "Aprobar inscripción" if stage == "INSCRIPCION" else "Aprobar Documento Final"
+            description = (
+                "Los documentos de inscripción están completos y aprobados."
+                if complete and stage == "INSCRIPCION" else
+                "El Documento Final y el informe del Tutor están completos y aprobados."
+                if complete else
+                "Carga y completa la aprobación de los documentos pendientes."
+            )
+            action = self._orientation_action(
+                "APROBAR_ETAPA" if complete else "COMPLETAR_DOCUMENTOS", title if complete else "Completar documentos",
+                description, "DISPONIBLE" if complete else "PENDIENTE", "#documentos", "Ir a documentos",
+            )
+            message = "Completa los documentos requeridos para la etapa."
+        elif stage == "TEMATICA_TESIS":
+            tribunals = postulacion.asignaciones.filter(
+                activo=True, tipo_participacion="TRIBUNAL", seguimiento_etapa=seguimiento,
+            ).count()
+            requirements = [self._orientation_requirement("TRIBUNALES", "Tribunales", tribunals == 3, "#actores", f"{tribunals}/3")]
+            if tribunals < 3:
+                action = self._orientation_action("GESTIONAR_ACTORES", "Completar tribunales", "Designa los tres tribunales requeridos para la temática.", "PENDIENTE", "#actores", "Ir a actores")
+            else:
+                action, event_requirements = self._event_orientation(postulacion, seguimiento, "DEFENSA_TEMATICA")
+                requirements.extend(event_requirements)
+            message = "Completa la composición del tribunal y la evaluación de la temática."
+        elif stage == "PERFIL_TESIS":
+            tutor = postulacion.asignaciones.filter(activo=True, tipo_participacion="TUTOR").exists()
+            requirements = [self._orientation_requirement("TUTOR", "Tutor", tutor, "#actores")]
+            requirements.extend(self._document_orientation(postulacion, self.requisitos_policy.DOCUMENTS_BY_STAGE[stage]))
+            if tutor and all(item["cumplido"] for item in requirements):
+                action, event_requirements = self._event_orientation(postulacion, seguimiento, "DEFENSA_PERFIL")
+                requirements.extend(event_requirements)
+            else:
+                action = self._orientation_action("COMPLETAR_PERFIL", "Completar perfil de Tesis", "Completa el tutor y los documentos requeridos del perfil.", "PENDIENTE", "#documentos", "Ir a documentos")
+            message = "Completa el tutor, los documentos y la defensa del perfil según corresponda."
+        elif stage in {"REVISION_TUTOR", "REVISION_TRIBUNAL"}:
+            from apps.documentos.models import DocumentoPostulacion, VersionDocumento
+            from apps.postulantes.models import DictamenRevisionDocumento
+
+            review_type = "TUTOR" if stage == "REVISION_TUTOR" else "TRIBUNAL"
+            title = "Registrar dictamen del Tutor" if review_type == "TUTOR" else "Registrar dictamen del Tribunal"
+            description = (
+                "Registra el dictamen del Tutor sobre la versión vigente del Documento Final."
+                if review_type == "TUTOR" else
+                "Registra el dictamen del Tribunal sobre la versión vigente del Documento Final."
+            )
+            destination = "#dictamen-tutor" if review_type == "TUTOR" else "#dictamen-tribunal"
+            dictamen = DictamenRevisionDocumento.objects.filter(
+                seguimiento_etapa=seguimiento, tipo_revision=review_type, activo=True,
+            ).order_by("-fecha_registro").first()
+            documento_final = DocumentoPostulacion.objects.filter(
+                postulacion=postulacion, tipo_documento__codigo="DOCUMENTO_FINAL", activo=True,
+            ).first()
+            version_actual = documento_final and VersionDocumento.objects.filter(
+                documento=documento_final, activo=True, es_version_actual=True,
+            ).first()
+            dictamen_actual = dictamen and version_actual and dictamen.version_documento_revisada_id == version_actual.pk
+            if dictamen_actual and dictamen.resultado == "INSUFICIENTE":
+                action = self._orientation_action(
+                    "CORREGIR_DOCUMENTO_FINAL", "Corregir Documento Final y registrar nuevo dictamen",
+                    "El dictamen vigente del Tribunal es insuficiente. Carga una nueva versión corregida del Documento Final y registra un nuevo dictamen del Tribunal sobre esa versión.",
+                    "PENDIENTE", "#documentos", "Ir a documentos",
+                )
+                requirements = [self._orientation_requirement(
+                    "DOCUMENTO_FINAL_CORRECCION", "Nueva versión corregida del Documento Final", False,
+                    "#documentos", "Pendiente",
+                )]
+            elif dictamen_actual and dictamen.resultado == "SUFICIENTE":
+                action = self._orientation_action(
+                    "APROBAR_ETAPA", "Aprobar revisión",
+                    "El dictamen está registrado sobre la versión vigente. Revisa y aprueba la etapa.",
+                    "DISPONIBLE", "#resumen", "Ir a aprobar etapa",
+                )
+                requirements = [self._orientation_requirement(
+                    "DICTAMEN", title, True, "#resumen", "Suficiente sobre la versión vigente",
+                )]
+            else:
+                action = self._orientation_action(
+                    "REGISTRAR_DICTAMEN", "Registrar nuevo dictamen del Tribunal" if review_type == "TRIBUNAL" else title,
+                    "Registra el dictamen del Tribunal sobre la versión vigente corregida del Documento Final." if review_type == "TRIBUNAL" else description,
+                    "DISPONIBLE", destination, "Ir a registrar dictamen",
+                )
+                requirements = [self._orientation_requirement(
+                    "DICTAMEN", title, False, destination, "Pendiente sobre la versión vigente",
+                )]
+            message = "Registra el dictamen correspondiente sobre la versión vigente del Documento Final."
+        elif stage in {"DEFENSA_PRIVADA", "DEFENSA_PUBLICA"}:
+            event_type = stage
+            action, requirements = self._event_orientation(postulacion, seguimiento, event_type)
+            message = f"Completa las precondiciones y gestiona la {stage.replace('_', ' ').title()}."
+        else:
+            return None
+        return {"operacion": "ORIENTAR_ETAPA", "mensaje": message, "requisitos": requirements, "siguiente_accion": action, "conflictos_identidad": []}
 
     def get_reglas_asignacion(self):
         return {"TEMATICA_TESIS": {"TRIBUNAL": 3}, "TUTOR": {"precondicion": "TEMATICA_TESIS_APROBADA"}}
@@ -310,8 +552,6 @@ class TesisGradoPolicy(BaseModalidadPolicy):
             raise ValidationError(
                 "No procede un tercer intento de perfil: la consecuencia sobre Metodología II requiere gestión académica externa."
             )
-        if etapa.codigo == "DEFENSA_PRIVADA" and ultimo_seguimiento.numero_intento >= 2:
-            raise ValidationError("La nueva oportunidad posterior a una segunda Defensa Privada requiere decisión académica institucional.")
         if etapa.codigo == "DEFENSA_PUBLICA" and ultimo_seguimiento.numero_intento >= 2:
             raise ValidationError("No procede un tercer intento de Defensa Pública de Tesis.")
 

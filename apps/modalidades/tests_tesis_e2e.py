@@ -27,7 +27,7 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         student_role, _ = Role.objects.get_or_create(codigo="EST_E2E", defaults={"nombre": "Estudiante E2E"})
         self.admin = CustomUser.objects.create_user(username="e2e-admin", password="x", ci="8800001", ru="RU8800001", role=admin_role, is_staff=True)
         student = CustomUser.objects.create_user(username="e2e-student", password="x", ci="8800002", ru="RU8800002", role=student_role)
-        self.teachers = [CustomUser.objects.create_user(username=f"e2e-doc-{n}", password="x", ci=f"880001{n}", ru=f"RU880001{n}", role=teacher_role) for n in range(1, 5)]
+        self.teachers = [CustomUser.objects.create_user(username=f"e2e-doc-{n}", password="x", ci=f"880001{n}", ru=f"RU880001{n}", role=teacher_role) for n in range(1, 6)]
         self.post = Postulacion.objects.create(codigo="TESIS-E2E-001", estudiante=student, modalidad=Modalidad.objects.get(codigo="TESIS_GRADO"), periodo=Periodo.objects.create(nombre="E2E-TESIS", gestion=2026, semestre="II", fecha_inicio="2026-07-01", fecha_fin="2026-12-31"), estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"))
         self.stages = {x.etapa.codigo: x for x in WorkflowService.inicializar_flujo(self.post, self.admin)}
         self.docs = DocumentoService()
@@ -136,7 +136,7 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         )
         public_stage = WorkflowService.iniciar_etapa(self.stages["DEFENSA_PUBLICA"], self.admin)
         president = AsignacionService.asignar_actor(self.post, self.teachers[3], "PRESIDENTE", self.admin)
-        secretary = AsignacionService.asignar_actor(self.post, self.teachers[3], "SECRETARIO", self.admin)
+        secretary = AsignacionService.asignar_actor(self.post, self.teachers[4], "SECRETARIO", self.admin)
         public_event = EventoDefensaService.programar_evento(self.post, public_stage, "DEFENSA_PUBLICA", timezone.now() - timedelta(minutes=1), self.admin, lugar="Auditorio")
         EventoDefensaService.iniciar_evento(public_event, self.admin)
         for assignment in self.tribunal_assignments + [president, secretary]:
@@ -146,7 +146,7 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         EvaluacionDefensaService.registrar_evaluacion_publica(public_event, self.admin, Decimal("50"), modalidad_registro="CONSENSO")
         EvaluacionDefensaService.consolidar_evaluacion_evento(public_event, self.admin)
         result = EvaluacionDefensaService.calcular_resultado_final(self.post, self.admin)
-        self.assertEqual(result["nota_final"], Decimal("70.00"))
+        self.assertEqual(result["nota_final"], Decimal("55.00"))
         self.assertEqual(result["clasificacion"], "APROBADO")
         acta = self.docs.subir_documento(self.post, TipoDocumento.objects.get(codigo="ACTA_DEFENSA"), SimpleUploadedFile("acta.pdf", b"%PDF-1.4\nacta"), self.admin, evento_defensa=public_event)
         self.docs.aprobar_documento(DocumentoPostulacion.objects.get(pk=acta.documento_id), self.admin)
@@ -157,7 +157,7 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         private_stage, _final_version, private_secretary = self.reach_private()
         self.complete_private(private_stage, private_secretary, Decimal("20"))
         president = AsignacionService.asignar_actor(self.post, self.teachers[3], "PRESIDENTE", self.admin)
-        secretary = AsignacionService.asignar_actor(self.post, self.teachers[3], "SECRETARIO", self.admin)
+        secretary = AsignacionService.asignar_actor(self.post, self.teachers[4], "SECRETARIO", self.admin)
 
         def complete_public(stage, note):
             event = EventoDefensaService.programar_evento(self.post, stage, "DEFENSA_PUBLICA", timezone.now() - timedelta(minutes=1), self.admin, lugar="Auditorio")
