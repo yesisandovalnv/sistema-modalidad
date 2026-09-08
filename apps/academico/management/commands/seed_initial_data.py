@@ -224,6 +224,27 @@ OFFICIAL_TIPOS_DOCUMENTO = [
     {"codigo": "SOLV_POSGRADO_DIPL", "nombre": "Solvencia económica de Posgrado", "descripcion": "Solvencia económica por el costo total del Diplomado.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
     {"codigo": "ACTA_DEFENSA_DIPL", "nombre": "Acta de Defensa de Diplomado", "descripcion": "Acta con calificación final y observaciones.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
     {"codigo": "MONOGRAFIA_EMPAST_D", "nombre": "Monografía empastada de Diplomado", "descripcion": "Cuatro ejemplares físicos para distribución institucional.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 20, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "CARTA_SOLICITUD_TD", "nombre": "Carta de solicitud de Trabajo Dirigido", "descripcion": "Solicitud a la Dirección de Carrera con modalidad y tema o términos de referencia.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "MATRICULA_VIGENTE_TD", "nombre": "Matrícula vigente de Trabajo Dirigido", "descripcion": "Recibo de matrícula del periodo académico vigente.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "HISTORIAL_PRERREQ_TD", "nombre": "Historial de prerrequisitos de Trabajo Dirigido", "descripcion": "Historial que acredita los prerrequisitos de Metodología de la Investigación II.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "FOLDER_AMARILLO_TD", "nombre": "Fólder amarillo de Trabajo Dirigido", "descripcion": "Fólder amarillo rotulado con nombre y modalidad.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,jpg,jpeg,png"},
+    {"codigo": "PERFIL_TRABAJO_DIRIGIDO", "nombre": "Perfil de Trabajo Dirigido", "descripcion": "Perfil con la estructura exigida por el Capítulo IV.", "obligatorio": True, "permite_multiple_version": True, "tamano_maximo_mb": 20, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "INFORME_TUTOR_PERFIL_TD", "nombre": "Informe del Tutor sobre el perfil", "descripcion": "Informe que acompaña la presentación del perfil.", "obligatorio": True, "permite_multiple_version": True, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "CONVENIO_TRABAJO_DIRIGIDO", "nombre": "Convenio de Trabajo Dirigido Externo", "descripcion": "Convenio entre la Universidad y la institución para Trabajo Dirigido Externo.", "obligatorio": False, "permite_multiple_version": True, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "INFORME_SUPERVISION_TD", "nombre": "Informe periódico de supervisión institucional", "descripcion": "Informe de desempeño emitido por el supervisor institucional.", "obligatorio": True, "permite_multiple_version": True, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "DOCUMENTO_FINAL_TD", "nombre": "Documento Final de Trabajo Dirigido", "descripcion": "Documento final conforme a la estructura del Capítulo VI.", "obligatorio": True, "permite_multiple_version": True, "tamano_maximo_mb": 20, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "INFORME_FINAL_TUTOR_TD", "nombre": "Informe final del Tutor de Trabajo Dirigido", "descripcion": "Informe suficiente o insuficiente emitido por el Tutor.", "obligatorio": True, "permite_multiple_version": True, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "INFORME_REVISION_TRIBUNAL_TD", "nombre": "Informe de revisión del Tribunal de Trabajo Dirigido", "descripcion": "Dictamen suficiente o insuficiente del Tribunal sobre el documento final.", "obligatorio": True, "permite_multiple_version": True, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "OFICIO_PRESENTACION_TD", "nombre": "Oficio de presentación del Trabajo Final", "descripcion": "Oficio dirigido a la Dirección de Carrera.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "HISTORIAL_PLAN_TD", "nombre": "Historial académico para defensa", "descripcion": "Historial con el plan vencido salvo Modalidad de Graduación.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "INFORME_CONCLUSION_TUTOR_TD", "nombre": "Informe de conclusión del Tutor", "descripcion": "Informe de conclusión del trabajo de investigación.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "CERT_ADMISION_TD", "nombre": "Certificado de admisión completa", "descripcion": "Certificado de Planificación Académica sin documentos pendientes.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "SOLVENCIA_UNIV_TD", "nombre": "Solvencia universitaria de Trabajo Dirigido", "descripcion": "Certificado de no tener cuentas pendientes.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "SOLVENCIA_BIBLIO_TD", "nombre": "Solvencia bibliotecaria de Trabajo Dirigido", "descripcion": "Certificado de no adeudar material bibliográfico.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "MATRICULA_DEFENSA_TD", "nombre": "Matrícula vigente para defensa de Trabajo Dirigido", "descripcion": "Recibo de matrícula como alumno regular.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "TIMBRE_DEFENSA_TD", "nombre": "Timbre universitario para defensa de Trabajo Dirigido", "descripcion": "Pago del valor universitario para la defensa pública.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,jpg,jpeg,png"},
+    {"codigo": "CARTA_CONFORMIDAD_INSTITUCION_TD", "nombre": "Carta de conformidad institucional", "descripcion": "Carta de la institución que acredita conformidad con el trabajo realizado.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "ACTA_DEFENSA_TD", "nombre": "Acta de Defensa de Trabajo Dirigido", "descripcion": "Acta con el resultado inapelable de la defensa.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
 ]
 
 OFFICIAL_ETAPAS_MODALIDAD = {
@@ -339,6 +360,16 @@ OFFICIAL_ETAPAS_MODALIDAD = {
         {"codigo": "DEFENSA_PUBLICA", "nombre": "Defensa Pública", "orden": 8, "obligatoria": True, "permite_repeticion": True, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículos 18 al 28."},
         {"codigo": "CIERRE_DOCUMENTAL", "nombre": "Cierre documental", "orden": 9, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículos 29 y 30."},
         {"codigo": "CONCLUSION_ACADEMICA", "nombre": "Conclusión académica", "orden": 10, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículo 30."},
+    ],
+    "TRABAJO_DIRIGIDO": [
+        {"codigo": "INSCRIPCION", "nombre": "Inscripción", "orden": 1, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Trabajo Dirigido CIS 2013, Capítulo II."},
+        {"codigo": "PERFIL_TRABAJO_DIRIGIDO", "nombre": "Perfil de Trabajo Dirigido", "orden": 2, "obligatoria": True, "permite_repeticion": True, "origen_normativo": "Reglamento de Trabajo Dirigido CIS 2013, Capítulo IV."},
+        {"codigo": "DESARROLLO_TRABAJO_DIRIGIDO", "nombre": "Desarrollo y seguimiento institucional", "orden": 3, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Trabajo Dirigido CIS 2013, Capítulos V y VI."},
+        {"codigo": "DOCUMENTO_FINAL", "nombre": "Documento Final", "orden": 4, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Trabajo Dirigido CIS 2013, Capítulo VI."},
+        {"codigo": "REVISION_TRIBUNAL_PREVIA", "nombre": "Revisión de Tribunal Previa", "orden": 5, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Trabajo Dirigido CIS 2013, Capítulo VII."},
+        {"codigo": "DEFENSA_PRIVADA", "nombre": "Defensa Privada", "orden": 6, "obligatoria": True, "permite_repeticion": True, "origen_normativo": "Reglamento de Trabajo Dirigido CIS 2013, capítulos de organización y evaluación."},
+        {"codigo": "DEFENSA_PUBLICA", "nombre": "Defensa Pública", "orden": 7, "obligatoria": True, "permite_repeticion": True, "origen_normativo": "Reglamento de Trabajo Dirigido CIS 2013, capítulos de organización y evaluación; referencias a Proyecto tratadas como error material de copia."},
+        {"codigo": "CIERRE_DOCUMENTAL", "nombre": "Cierre Documental", "orden": 8, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Trabajo Dirigido CIS 2013, acta y resultado final."},
     ],
 }
 
@@ -627,7 +658,17 @@ class Command(BaseCommand):
             values = {field: record.get(field) for field in defaults_fields}
             values["activo"] = True
             lookup = {"codigo": record["codigo"]}
-            instance, created = model.all_objects.get_or_create(defaults=values, **lookup)
+            instance = model.all_objects.filter(**lookup).first()
+            if instance is None and model is Modalidad:
+                instance = model.all_objects.filter(nombre=record["nombre"]).first()
+                if instance is not None:
+                    instance.codigo = record["codigo"]
+                    instance.save(update_fields=["codigo", "updated_at"])
+            if instance is None:
+                instance = model.all_objects.create(**lookup, **values)
+                created = True
+            else:
+                created = False
             if created:
                 self.summary.created += 1
                 continue

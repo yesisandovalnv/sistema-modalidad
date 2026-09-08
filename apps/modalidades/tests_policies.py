@@ -17,7 +17,7 @@ from apps.usuarios.models import CustomUser
 class RegistryTests(TestCase):
     def setUp(self):
         self.pg = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto de Grado policies")
-        self.other = Modalidad.objects.create(codigo="TRABAJO_DIRIGIDO", nombre="Trabajo dirigido policies")
+        self.other = Modalidad.objects.create(codigo="MODALIDAD_NO_CONFIG", nombre="Modalidad sin configurar")
         self.tesis = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis policies")
 
     def test_registry_resuelve_codigo_y_modalidad(self):
@@ -68,7 +68,7 @@ class CapabilitiesApiTests(TestCase):
         self.user = CustomUser.objects.create_user(username="cap-user", password="x")
         self.client.force_authenticate(self.user)
         self.pg = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto capacidades")
-        self.other = Modalidad.objects.create(codigo="TRABAJO_DIRIGIDO", nombre="Trabajo dirigido capacidades")
+        self.other = Modalidad.objects.create(codigo="MODALIDAD_NO_CONFIG", nombre="Modalidad sin configurar")
 
     def test_api_proyecto_soportado(self):
         response = self.client.get(reverse("modalidad-capacidades", args=[self.pg.pk]))

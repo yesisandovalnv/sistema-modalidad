@@ -367,6 +367,19 @@ export const postulacionesService = {
   concluirDiplomado(postulacion, signal) {
     return defenseAction(`/api/v1/postulaciones/${postulacion}/diplomado/concluir/`, {}, signal)
   },
+  async obtenerTrabajoDirigido(postulacion, signal) {
+    try { return (await apiClient.get(`/api/v1/postulaciones/${postulacion}/trabajo-dirigido/`, { signal })).data }
+    catch (error) { throw normalizeDefenses(error) }
+  },
+  configurarInstitucionTrabajoDirigido(postulacion, payload, signal) {
+    return defenseAction(`/api/v1/postulaciones/${postulacion}/trabajo-dirigido/institucion/`, payload, signal)
+  },
+  registrarInformeTrabajoDirigido(postulacion, payload, signal) {
+    return defenseAction(`/api/v1/postulaciones/${postulacion}/trabajo-dirigido/informes/`, payload, signal)
+  },
+  concluirTrabajoDirigido(postulacion, signal) {
+    return defenseAction(`/api/v1/postulaciones/${postulacion}/trabajo-dirigido/concluir/`, {}, signal)
+  },
   async obtenerQuorumDefensa(evento, signal) {
     try {
       return (await apiClient.get(`/api/v1/eventos-defensa/${evento}/quorum/`, { signal })).data

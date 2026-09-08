@@ -14,8 +14,10 @@ class ModalidadesConfig(AppConfig):
         from apps.modalidades.examen_grado import ExamenGradoPolicy
         from apps.modalidades.excelencia_academica import ExcelenciaAcademicaPolicy
         from apps.modalidades.diplomado import DiplomadoPolicy
+        from apps.modalidades.trabajo_dirigido import TrabajoDirigidoPolicy
         ModalidadPolicyRegistry.register("PROYECTO_GRADO", ProyectoGradoPolicy)
         ModalidadPolicyRegistry.register("TESIS_GRADO", TesisGradoPolicy)
         ModalidadPolicyRegistry.register("EXAMEN_GRADO", ExamenGradoPolicy)
         ModalidadPolicyRegistry.register("EXCELENCIA_ACADEMICA", ExcelenciaAcademicaPolicy)
         ModalidadPolicyRegistry.register("GRADUACION_VIA_DIPLOMADO", DiplomadoPolicy)
+        ModalidadPolicyRegistry.register("TRABAJO_DIRIGIDO", TrabajoDirigidoPolicy)

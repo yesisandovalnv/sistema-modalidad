@@ -194,7 +194,7 @@ class Requisito(BaseModel):
     """Catálogo maestro de requisitos académicos."""
 
     codigo = models.CharField(
-        max_length=20,
+        max_length=50,
         unique=True,
         verbose_name="Código",
     )

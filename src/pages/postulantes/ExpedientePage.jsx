@@ -17,6 +17,7 @@ import AcademicConclusion from './AcademicConclusion'
 import ExamenGradoAreas from './ExamenGradoAreas'
 import ExcelenciaAcademica from './ExcelenciaAcademica'
 import Diplomado from './Diplomado'
+import TrabajoDirigido from './TrabajoDirigido'
 
 const EMPTY = 'No registrado'
 const ORIENTATION_TO_DEFENSE_ACTION = {
@@ -111,6 +112,8 @@ export default function ExpedientePage() {
   const [excelenciaRevision, setExcelenciaRevision] = useState(0)
   const [diplomado, setDiplomado] = useState(null)
   const [diplomadoRevision, setDiplomadoRevision] = useState(0)
+  const [trabajoDirigido, setTrabajoDirigido] = useState(null)
+  const [trabajoDirigidoRevision, setTrabajoDirigidoRevision] = useState(0)
 
   useEffect(() => {
     uploadController.current?.abort()
@@ -232,6 +235,17 @@ export default function ExpedientePage() {
       .catch((requestError) => { if (!requestError.canceled && !controller.signal.aborted) setDiplomado(null) })
     return () => controller.abort()
   }, [data, diplomadoRevision, id])
+  useEffect(() => {
+    if (data?.detalle?.modalidad_detalle?.codigo !== 'TRABAJO_DIRIGIDO') {
+      setTrabajoDirigido(null)
+      return undefined
+    }
+    const controller = new AbortController()
+    postulacionesService.obtenerTrabajoDirigido(id, controller.signal)
+      .then((value) => { if (!controller.signal.aborted) setTrabajoDirigido(value) })
+      .catch((requestError) => { if (!requestError.canceled && !controller.signal.aborted) setTrabajoDirigido(null) })
+    return () => controller.abort()
+  }, [data, trabajoDirigidoRevision, id])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -888,6 +902,7 @@ export default function ExpedientePage() {
       {detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' && <ExamenGradoAreas postulacion={detalle.id} examen={examen} etapaCodigo={currentStage?.codigo} canManage={canManageEvaluations} onChanged={() => { setExamenRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
       {detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' && <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
       {detalle.modalidad_detalle?.codigo === 'GRADUACION_VIA_DIPLOMADO' && <Diplomado postulacion={detalle.id} diplomado={diplomado} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setDiplomadoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+      {detalle.modalidad_detalle?.codigo === 'TRABAJO_DIRIGIDO' && <TrabajoDirigido postulacion={detalle.id} trabajo={trabajoDirigido} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setTrabajoDirigidoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
 
       <Card id="resumen" className="scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
         <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
@@ -1059,7 +1074,7 @@ export default function ExpedientePage() {
       {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} nextAction={flujo.orientacion_etapa_actual?.siguiente_accion} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} canEvaluate={canManageEvaluations} onParticipantsChanged={refreshSelectedDefense} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} modalidadCodigo={detalle.modalidad_detalle?.codigo} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
-      {assignment && (assignment.context !== 'TESIS_DEFENSA_PUBLICA' || publicDefenseMissingRoles.length > 0) && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} allowedTypes={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? publicDefenseMissingRoles : detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO'] : detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO', 'DIRECTOR_INSTITUTO_INVESTIGACION'] : detalle.modalidad_detalle?.codigo === 'GRADUACION_VIA_DIPLOMADO' ? ['VICERRECTOR_POSGRADO', 'DECANO_FACULTAD', 'DIRECTOR_CARRERA', 'TRIBUNAL'] : undefined} initialStageId={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? currentStage?.id : undefined} onSubmit={submitAssignment} onClose={closeAssignment} />}
+      {assignment && (assignment.context !== 'TESIS_DEFENSA_PUBLICA' || publicDefenseMissingRoles.length > 0) && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} allowedTypes={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? publicDefenseMissingRoles : detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO'] : detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO', 'DIRECTOR_INSTITUTO_INVESTIGACION'] : detalle.modalidad_detalle?.codigo === 'GRADUACION_VIA_DIPLOMADO' ? ['VICERRECTOR_POSGRADO', 'DECANO_FACULTAD', 'DIRECTOR_CARRERA', 'TRIBUNAL'] : detalle.modalidad_detalle?.codigo === 'TRABAJO_DIRIGIDO' ? ['TUTOR', 'TRIBUNAL', 'DOCENTE_MODALIDAD', 'PRESIDENTE', 'SECRETARIO', 'SUPERVISOR_INSTITUCIONAL'] : undefined} initialStageId={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? currentStage?.id : undefined} onSubmit={submitAssignment} onClose={closeAssignment} />}
       {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
     </section>
   )
@@ -1284,6 +1299,7 @@ const ASSIGNMENT_TYPES = [
   ['VICERRECTOR_POSGRADO', 'Vicerrector de Posgrado'],
   ['DECANO_FACULTAD', 'Decano de Facultad'],
   ['DIRECTOR_CARRERA', 'Director de Carrera'],
+  ['SUPERVISOR_INSTITUCIONAL', 'Supervisor institucional'],
 ]
 
 const PUBLIC_DEFENSE_AUTHORITY_ROLES = ['PRESIDENTE', 'SECRETARIO']

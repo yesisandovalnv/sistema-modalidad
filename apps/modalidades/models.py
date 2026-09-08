@@ -203,3 +203,71 @@ class DiplomadoDefensa(BaseModel):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class TrabajoDirigidoExpediente(BaseModel):
+    class TipoEjecucion(models.TextChoices):
+        INTERNO = "INTERNO", "Interno"
+        EXTERNO = "EXTERNO", "Externo"
+
+    class TipoInstitucion(models.TextChoices):
+        PUBLICA = "PUBLICA", "Pública"
+        PRIVADA = "PRIVADA", "Privada"
+
+    postulacion = models.OneToOneField(
+        "postulantes.Postulacion", models.CASCADE, related_name="trabajo_dirigido_expediente",
+    )
+    tipo_ejecucion = models.CharField(max_length=10, choices=TipoEjecucion.choices)
+    institucion_nombre = models.CharField(max_length=250)
+    institucion_tipo = models.CharField(max_length=10, choices=TipoInstitucion.choices)
+    constituida_legalmente = models.BooleanField(default=False)
+    actividad_permanente = models.BooleanField(default=False)
+    proporciona_recursos = models.BooleanField(default=False)
+    supervisor_nombre = models.CharField(max_length=200)
+    supervisor_profesion = models.CharField(max_length=150, blank=True)
+    convenio_vigente = models.BooleanField(default=False)
+    fecha_firma_convenio = models.DateField(null=True, blank=True)
+    observaciones = models.TextField(blank=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.postulacion_id and self.postulacion.modalidad.codigo != "TRABAJO_DIRIGIDO":
+            errors["postulacion"] = "El expediente institucional solo corresponde a Trabajo Dirigido."
+        if self.tipo_ejecucion == self.TipoEjecucion.EXTERNO and not self.convenio_vigente:
+            errors["convenio_vigente"] = "El Trabajo Dirigido Externo requiere un convenio vigente."
+        if self.convenio_vigente and not self.fecha_firma_convenio:
+            errors["fecha_firma_convenio"] = "Registre la fecha de firma del convenio vigente."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class InformeSeguimientoTrabajoDirigido(BaseModel):
+    expediente = models.ForeignKey(
+        TrabajoDirigidoExpediente, models.CASCADE, related_name="informes_seguimiento",
+    )
+    periodo = models.CharField(max_length=80)
+    descripcion_desempeno = models.TextField()
+    evaluacion_cualitativa = models.TextField()
+    aporte_laboral = models.TextField()
+    sugerencias_recomendaciones = models.TextField(blank=True)
+    registrado_por = models.ForeignKey(
+        "usuarios.CustomUser", models.PROTECT, related_name="informes_trabajo_dirigido_registrados",
+    )
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["expediente", "created_at", "id"]
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)

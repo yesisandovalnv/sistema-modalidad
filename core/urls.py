@@ -7,6 +7,7 @@ from apps.academico.views import ModalidadViewSet
 from apps.modalidades.examen_grado_api import ExamenGradoOverviewView
 from apps.modalidades.excelencia_academica_api import ExcelenciaAcademicaOverviewView
 from apps.modalidades.diplomado_api import DiplomadoOverviewView
+from apps.modalidades.trabajo_dirigido_api import TrabajoDirigidoOverviewView
 from core.health import HealthCheckView
 
 urlpatterns = [
@@ -38,6 +39,10 @@ urlpatterns = [
     path('api/v1/postulaciones/<int:pk>/diplomado/', DiplomadoOverviewView.as_view()),
     path('api/v1/postulaciones/<int:pk>/diplomado/modulo/', DiplomadoOverviewView.as_view(), {'action': 'modulo'}),
     path('api/v1/postulaciones/<int:pk>/diplomado/concluir/', DiplomadoOverviewView.as_view(), {'action': 'concluir'}),
+    path('api/v1/postulaciones/<int:pk>/trabajo-dirigido/', TrabajoDirigidoOverviewView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/trabajo-dirigido/institucion/', TrabajoDirigidoOverviewView.as_view(), {'action': 'institucion'}),
+    path('api/v1/postulaciones/<int:pk>/trabajo-dirigido/informes/', TrabajoDirigidoOverviewView.as_view(), {'action': 'informe'}),
+    path('api/v1/postulaciones/<int:pk>/trabajo-dirigido/concluir/', TrabajoDirigidoOverviewView.as_view(), {'action': 'concluir'}),
     path('api/v1/documentos/', include('apps.documentos.urls')),
     path('api/v1/seguimiento/', include('apps.seguimiento.urls')),
     path('api/v1/reportes/', include('apps.reportes.urls')),
