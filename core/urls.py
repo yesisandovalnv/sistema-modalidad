@@ -5,6 +5,7 @@ from apps.postulantes.cierre_api import CierreAccionView, CierreEstadoView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.academico.views import ModalidadViewSet
 from apps.modalidades.examen_grado_api import ExamenGradoOverviewView
+from apps.modalidades.excelencia_academica_api import ExcelenciaAcademicaOverviewView
 from core.health import HealthCheckView
 
 urlpatterns = [
@@ -29,6 +30,10 @@ urlpatterns = [
     path('api/v1/postulaciones/<int:pk>/examen/', ExamenGradoOverviewView.as_view()),
     path('api/v1/postulaciones/<int:pk>/examen/areas/<str:area>/evaluar/', ExamenGradoOverviewView.as_view()),
     path('api/v1/postulaciones/<int:pk>/examen/concluir/', ExamenGradoOverviewView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/excelencia/', ExcelenciaAcademicaOverviewView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/excelencia/configurar/', ExcelenciaAcademicaOverviewView.as_view(), {'action': 'configurar'}),
+    path('api/v1/postulaciones/<int:pk>/excelencia/evaluar/', ExcelenciaAcademicaOverviewView.as_view(), {'action': 'evaluar'}),
+    path('api/v1/postulaciones/<int:pk>/excelencia/concluir/', ExcelenciaAcademicaOverviewView.as_view(), {'action': 'concluir'}),
     path('api/v1/documentos/', include('apps.documentos.urls')),
     path('api/v1/seguimiento/', include('apps.seguimiento.urls')),
     path('api/v1/reportes/', include('apps.reportes.urls')),

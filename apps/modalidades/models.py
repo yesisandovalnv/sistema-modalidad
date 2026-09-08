@@ -85,3 +85,48 @@ class ExamenEvaluacion(BaseModel):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class ExcelenciaExpediente(BaseModel):
+    class Criterio(models.TextChoices):
+        RENDIMIENTO_ACADEMICO = "RENDIMIENTO_ACADEMICO", "Rendimiento académico"
+        RECONOCIMIENTO_CALIDAD = "RECONOCIMIENTO_CALIDAD", "Reconocimiento a la calidad"
+
+    class Resultado(models.TextChoices):
+        PENDIENTE = "PENDIENTE", "Pendiente"
+        FAVORABLE = "FAVORABLE", "Favorable"
+        DESFAVORABLE = "DESFAVORABLE", "Desfavorable"
+
+    postulacion = models.OneToOneField(
+        "postulantes.Postulacion", models.CASCADE, related_name="excelencia_expediente",
+    )
+    criterio = models.CharField(max_length=30, choices=Criterio.choices)
+    resultado = models.CharField(max_length=20, choices=Resultado.choices, default=Resultado.PENDIENTE)
+    promedio_general = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    observaciones = models.TextField(blank=True)
+    evaluado_por = models.ForeignKey(
+        "usuarios.CustomUser", models.PROTECT, null=True, blank=True, related_name="evaluaciones_excelencia",
+    )
+    fecha_evaluacion = models.DateTimeField(null=True, blank=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["postulacion"]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.promedio_general is not None and not 0 <= self.promedio_general <= 100:
+            errors["promedio_general"] = "El promedio general debe estar entre 0 y 100."
+        if self.pk:
+            previous = type(self).all_objects.filter(pk=self.pk).values_list("criterio", flat=True).first()
+            if previous and previous != self.criterio:
+                errors["criterio"] = "El criterio no puede cambiar después de ser seleccionado."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)

@@ -15,6 +15,7 @@ import DocumentReviewDictamens from './DocumentReviewDictamens'
 import CorrectionConfirmations from './CorrectionConfirmations'
 import AcademicConclusion from './AcademicConclusion'
 import ExamenGradoAreas from './ExamenGradoAreas'
+import ExcelenciaAcademica from './ExcelenciaAcademica'
 
 const EMPTY = 'No registrado'
 const ORIENTATION_TO_DEFENSE_ACTION = {
@@ -105,6 +106,8 @@ export default function ExpedientePage() {
   const tribunalReportSubmitting = useRef(false)
   const [examen, setExamen] = useState(null)
   const [examenRevision, setExamenRevision] = useState(0)
+  const [excelencia, setExcelencia] = useState(null)
+  const [excelenciaRevision, setExcelenciaRevision] = useState(0)
 
   useEffect(() => {
     uploadController.current?.abort()
@@ -204,6 +207,17 @@ export default function ExpedientePage() {
       .catch((requestError) => { if (!requestError.canceled && !controller.signal.aborted) setExamen(null) })
     return () => controller.abort()
   }, [data, examenRevision, id])
+  useEffect(() => {
+    if (data?.detalle?.modalidad_detalle?.codigo !== 'EXCELENCIA_ACADEMICA') {
+      setExcelencia(null)
+      return undefined
+    }
+    const controller = new AbortController()
+    postulacionesService.obtenerExcelenciaAcademica(id, controller.signal)
+      .then((value) => { if (!controller.signal.aborted) setExcelencia(value) })
+      .catch((requestError) => { if (!requestError.canceled && !controller.signal.aborted) setExcelencia(null) })
+    return () => controller.abort()
+  }, [data, excelenciaRevision, id])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -858,6 +872,7 @@ export default function ExpedientePage() {
       <ExpedienteNav />
       <OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} assignments={activeActors.data?.results || []} documents={documents.data?.results || []} defenses={defenses.data?.results || []} reports={tribunalReports.data} stageReportsAvailable={Boolean(tribunalReviewStage)} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} />
       {detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' && <ExamenGradoAreas postulacion={detalle.id} examen={examen} etapaCodigo={currentStage?.codigo} canManage={canManageEvaluations} onChanged={() => { setExamenRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+      {detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' && <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
 
       <Card id="resumen" className="scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
         <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
@@ -1029,7 +1044,7 @@ export default function ExpedientePage() {
       {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} nextAction={flujo.orientacion_etapa_actual?.siguiente_accion} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} canEvaluate={canManageEvaluations} onParticipantsChanged={refreshSelectedDefense} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} modalidadCodigo={detalle.modalidad_detalle?.codigo} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
-      {assignment && (assignment.context !== 'TESIS_DEFENSA_PUBLICA' || publicDefenseMissingRoles.length > 0) && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} allowedTypes={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? publicDefenseMissingRoles : detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO'] : undefined} initialStageId={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? currentStage?.id : undefined} onSubmit={submitAssignment} onClose={closeAssignment} />}
+      {assignment && (assignment.context !== 'TESIS_DEFENSA_PUBLICA' || publicDefenseMissingRoles.length > 0) && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} allowedTypes={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? publicDefenseMissingRoles : detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO'] : detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO', 'DIRECTOR_INSTITUTO_INVESTIGACION'] : undefined} initialStageId={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? currentStage?.id : undefined} onSubmit={submitAssignment} onClose={closeAssignment} />}
       {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
     </section>
   )
@@ -1250,6 +1265,7 @@ const ASSIGNMENT_TYPES = [
   ['DOCENTE_MODALIDAD', 'Docente de modalidad'],
   ['PRESIDENTE', 'Presidente'],
   ['SECRETARIO', 'Secretario'],
+  ['DIRECTOR_INSTITUTO_INVESTIGACION', 'Director del Instituto de Investigación'],
 ]
 
 const PUBLIC_DEFENSE_AUTHORITY_ROLES = ['PRESIDENTE', 'SECRETARIO']

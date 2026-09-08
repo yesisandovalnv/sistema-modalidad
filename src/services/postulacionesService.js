@@ -341,6 +341,22 @@ export const postulacionesService = {
   concluirExamenGrado(postulacion, signal) {
     return defenseAction(`/api/v1/postulaciones/${postulacion}/examen/concluir/`, {}, signal)
   },
+  async obtenerExcelenciaAcademica(postulacion, signal) {
+    try {
+      return (await apiClient.get(`/api/v1/postulaciones/${postulacion}/excelencia/`, { signal })).data
+    } catch (error) {
+      throw normalizeDefenses(error)
+    }
+  },
+  configurarExcelenciaAcademica(postulacion, criterio, signal) {
+    return defenseAction(`/api/v1/postulaciones/${postulacion}/excelencia/configurar/`, { criterio }, signal)
+  },
+  registrarEvaluacionExcelencia(postulacion, payload, signal) {
+    return defenseAction(`/api/v1/postulaciones/${postulacion}/excelencia/evaluar/`, payload, signal)
+  },
+  concluirExcelenciaAcademica(postulacion, signal) {
+    return defenseAction(`/api/v1/postulaciones/${postulacion}/excelencia/concluir/`, {}, signal)
+  },
   async obtenerQuorumDefensa(evento, signal) {
     try {
       return (await apiClient.get(`/api/v1/eventos-defensa/${evento}/quorum/`, { signal })).data

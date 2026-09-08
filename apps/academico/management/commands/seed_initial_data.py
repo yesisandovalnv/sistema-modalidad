@@ -141,6 +141,72 @@ OFFICIAL_TIPOS_DOCUMENTO = [
         "descripcion": "Hoja de aprobación firmada del Examen de Grado por Contenidos.",
         "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
     },
+    {
+        "codigo": "CARTA_EXCELENCIA",
+        "nombre": "Carta de Solicitud de Excelencia Académica",
+        "descripcion": "Solicitud a la Dirección de Carrera con el criterio normativo elegido.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "RECIBO_MATRICULA_EXC",
+        "nombre": "Recibo de Matrícula de Excelencia Académica",
+        "descripcion": "Fotocopia del recibo de pago de matrícula del periodo vigente.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "HISTORIAL_EXCELENCIA",
+        "nombre": "Historial Académico de Excelencia",
+        "descripcion": "Historial académico oficial para acreditar las condiciones normativas.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "FOLDER_EXCELENCIA",
+        "nombre": "Fólder Amarillo de Excelencia Académica",
+        "descripcion": "Fólder amarillo rotulado con el nombre del postulante y la modalidad.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "CERT_DIR_CARRERA",
+        "nombre": "Certificación de la Dirección de Carrera",
+        "descripcion": "Certificación normativa de actividades documentadas de interacción social.",
+        "obligatorio": False, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "CERT_INST_INVEST",
+        "nombre": "Certificación del Instituto de Investigación",
+        "descripcion": "Certificación normativa de actividades documentadas de investigación.",
+        "obligatorio": False, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "CERT_PLANIFICACION",
+        "nombre": "Certificado de Planificación Académica",
+        "descripcion": "Certificado de no tener pendiente documentación de admisión.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "SOLVENCIA_UNIV",
+        "nombre": "Solvencia Universitaria",
+        "descripcion": "Certificado de no tener cuentas pendientes con la Universidad ni la Carrera.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "SOLVENCIA_BIBLIO",
+        "nombre": "Solvencia Bibliotecaria",
+        "descripcion": "Certificado de no adeudar libros o documentos de las bibliotecas.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "TIMBRE_EXCELENCIA",
+        "nombre": "Timbre Universitario de Excelencia Académica",
+        "descripcion": "Evidencia del pago del valor universitario de la modalidad.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "ACTA_EXCELENCIA",
+        "nombre": "Acta de Excelencia Académica",
+        "descripcion": "Acta que registra el resultado de la evaluación de Excelencia Académica.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
 ]
 
 OFFICIAL_ETAPAS_MODALIDAD = {
@@ -237,6 +303,13 @@ OFFICIAL_ETAPAS_MODALIDAD = {
         {"codigo": "AREA_4", "nombre": "Área 4: Ingeniería Aplicada", "orden": 6, "obligatoria": True, "permite_repeticion": True, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulos III, IV y VII."},
         {"codigo": "DOCUMENTACION_FINAL", "nombre": "Documentación final", "orden": 7, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulo VII."},
         {"codigo": "CONCLUSION_ACADEMICA", "nombre": "Conclusión académica", "orden": 8, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulos VII y IX."},
+    ],
+    "EXCELENCIA_ACADEMICA": [
+        {"codigo": "INSCRIPCION", "nombre": "Inscripción", "orden": 1, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Graduación por Excelencia Académica CIS-Ver 2013, Capítulos I y II."},
+        {"codigo": "REVISION_REQUISITOS", "nombre": "Revisión de requisitos", "orden": 2, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Graduación por Excelencia Académica CIS-Ver 2013, Capítulo II."},
+        {"codigo": "EVALUACION_TRIBUNAL", "nombre": "Evaluación del tribunal", "orden": 3, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Graduación por Excelencia Académica CIS-Ver 2013, Capítulo II."},
+        {"codigo": "REGISTRO_ACTA", "nombre": "Registro del acta", "orden": 4, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Graduación por Excelencia Académica CIS-Ver 2013, Capítulo II."},
+        {"codigo": "CONCLUSION_ACADEMICA", "nombre": "Conclusión académica", "orden": 5, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Graduación por Excelencia Académica CIS-Ver 2013, Capítulos I y III."},
     ],
 }
 

@@ -14,6 +14,22 @@
         {"codigo": "INFORME_TUTOR_TESIS", "nombre": "Informe del Tutor de Tesis", "descripcion": "Informe del Tutor sobre el Perfil o Documento Final de Tesis.", "obligatorio": true, "orden": 5, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": true},
         {"codigo": "INFORME_TRIB_TESIS", "nombre": "Informe del Tribunal de Tesis", "descripcion": "Informe del Tribunal sobre una versión del Documento Final de Tesis.", "obligatorio": true, "orden": 6, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": true}
       ]
+    },
+    {
+      "codigo_modalidad": "EXCELENCIA_ACADEMICA",
+      "tipos_documento": [
+        {"codigo": "CARTA_EXCELENCIA", "nombre": "Carta de Solicitud de Excelencia Académica", "descripcion": "Solicitud a la Dirección de Carrera con el criterio normativo elegido.", "obligatorio": true, "orden": 1, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false},
+        {"codigo": "RECIBO_MATRICULA_EXC", "nombre": "Recibo de Matrícula de Excelencia Académica", "descripcion": "Fotocopia del recibo de pago de matrícula del periodo vigente.", "obligatorio": true, "orden": 2, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false},
+        {"codigo": "HISTORIAL_EXCELENCIA", "nombre": "Historial Académico de Excelencia", "descripcion": "Historial académico oficial para acreditar las condiciones normativas.", "obligatorio": true, "orden": 3, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false},
+        {"codigo": "FOLDER_EXCELENCIA", "nombre": "Fólder Amarillo de Excelencia Académica", "descripcion": "Fólder amarillo rotulado con el nombre del postulante y la modalidad.", "obligatorio": true, "orden": 4, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false},
+        {"codigo": "CERT_DIR_CARRERA", "nombre": "Certificación de la Dirección de Carrera", "descripcion": "Certificación normativa de actividades documentadas de interacción social.", "obligatorio": false, "orden": 5, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false},
+        {"codigo": "CERT_INST_INVEST", "nombre": "Certificación del Instituto de Investigación", "descripcion": "Certificación normativa de actividades documentadas de investigación.", "obligatorio": false, "orden": 6, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false},
+        {"codigo": "CERT_PLANIFICACION", "nombre": "Certificado de Planificación Académica", "descripcion": "Certificado de no tener pendiente documentación de admisión.", "obligatorio": true, "orden": 7, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false},
+        {"codigo": "SOLVENCIA_UNIV", "nombre": "Solvencia Universitaria", "descripcion": "Certificado de no tener cuentas pendientes con la Universidad ni la Carrera.", "obligatorio": true, "orden": 8, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false},
+        {"codigo": "SOLVENCIA_BIBLIO", "nombre": "Solvencia Bibliotecaria", "descripcion": "Certificado de no adeudar libros o documentos de las bibliotecas.", "obligatorio": true, "orden": 9, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false},
+        {"codigo": "TIMBRE_EXCELENCIA", "nombre": "Timbre Universitario de Excelencia Académica", "descripcion": "Evidencia del pago del valor universitario de la modalidad.", "obligatorio": true, "orden": 10, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false},
+        {"codigo": "ACTA_EXCELENCIA", "nombre": "Acta de Excelencia Académica", "descripcion": "Acta que registra el resultado de la evaluación de Excelencia Académica.", "obligatorio": true, "orden": 11, "extensiones_permitidas": ["pdf", "doc", "docx"], "tamano_maximo_mb": 10, "permite_multiple_version": false}
+      ]
     }
   ]
 }

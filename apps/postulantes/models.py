@@ -355,6 +355,7 @@ class AsignacionPostulacion(BaseModel):
         DOCENTE_MODALIDAD = "DOCENTE_MODALIDAD", "Docente de modalidad"
         PRESIDENTE = "PRESIDENTE", "Presidente"
         SECRETARIO = "SECRETARIO", "Secretario"
+        DIRECTOR_INSTITUTO_INVESTIGACION = "DIRECTOR_INSTITUTO_INVESTIGACION", "Director del Instituto de Investigación"
 
     postulacion = models.ForeignKey(
         Postulacion,
@@ -369,7 +370,7 @@ class AsignacionPostulacion(BaseModel):
         verbose_name="Usuario asignado",
     )
     tipo_participacion = models.CharField(
-        max_length=30,
+        max_length=40,
         choices=TipoParticipacionChoices.choices,
         verbose_name="Tipo de participación",
         help_text=(
