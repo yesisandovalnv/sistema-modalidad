@@ -111,6 +111,36 @@ OFFICIAL_TIPOS_DOCUMENTO = [
         "tamano_maximo_mb": 10,
         "extensiones_permitidas": "pdf,doc,docx",
     },
+    {
+        "codigo": "CARTA_SOLICITUD_EXAMEN",
+        "nombre": "Carta de Solicitud de Examen de Grado",
+        "descripcion": "Solicitud formal para la modalidad Examen de Grado por Contenidos.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "HISTORIAL_ACADEMICO",
+        "nombre": "Historial Académico",
+        "descripcion": "Historial académico requerido para Examen de Grado por Contenidos.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "FOLDER_AMARILLO",
+        "nombre": "Fólder Amarillo",
+        "descripcion": "Registro documental del fólder amarillo exigido por la normativa de Examen.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "ACTA_EXAMEN",
+        "nombre": "Acta de Examen de Grado",
+        "descripcion": "Acta que registra el resultado del Examen de Grado por Contenidos.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
+        "codigo": "HOJA_APROBACION_EXAMEN",
+        "nombre": "Hoja de Aprobación de Examen de Grado",
+        "descripcion": "Hoja de aprobación firmada del Examen de Grado por Contenidos.",
+        "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
+    },
 ]
 
 OFFICIAL_ETAPAS_MODALIDAD = {
@@ -197,6 +227,16 @@ OFFICIAL_ETAPAS_MODALIDAD = {
          "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulos VI y VII; implementación posterior."},
         {"codigo": "DEFENSA_PUBLICA", "nombre": "Defensa Pública", "orden": 8, "obligatoria": True, "permite_repeticion": True,
          "origen_normativo": "Reglamento de Tesis de Grado CIS, Capítulos VI y VII; implementación posterior."},
+    ],
+    "EXAMEN_GRADO": [
+        {"codigo": "INSCRIPCION", "nombre": "Inscripción", "orden": 1, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulo II."},
+        {"codigo": "PREPARACION_EXAMEN", "nombre": "Preparación y habilitación", "orden": 2, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulo III."},
+        {"codigo": "AREA_1", "nombre": "Área 1: Ciencias Básicas y Matemáticas", "orden": 3, "obligatoria": True, "permite_repeticion": True, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulos III, IV y VII."},
+        {"codigo": "AREA_2", "nombre": "Área 2: Ciencias Sociales y Humanísticas", "orden": 4, "obligatoria": True, "permite_repeticion": True, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulos III, IV y VII."},
+        {"codigo": "AREA_3", "nombre": "Área 3: Ciencias de la Ingeniería", "orden": 5, "obligatoria": True, "permite_repeticion": True, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulos III, IV y VII."},
+        {"codigo": "AREA_4", "nombre": "Área 4: Ingeniería Aplicada", "orden": 6, "obligatoria": True, "permite_repeticion": True, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulos III, IV y VII."},
+        {"codigo": "DOCUMENTACION_FINAL", "nombre": "Documentación final", "orden": 7, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulo VII."},
+        {"codigo": "CONCLUSION_ACADEMICA", "nombre": "Conclusión académica", "orden": 8, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Examen de Grado por Contenidos, Capítulos VII y IX."},
     ],
 }
 

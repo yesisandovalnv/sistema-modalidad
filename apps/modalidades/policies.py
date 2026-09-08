@@ -173,6 +173,7 @@ class BaseModalidadPolicy(ABC):
         raise ModalidadNoSoportadaError(self.codigo)
     def validar_conclusion_academica(self, postulacion):
         raise ModalidadNoSoportadaError(self.codigo)
+    def usa_conclusion_academica_propia(self): return False
     def permite_observacion_post_aprobacion(self, documento):
         """Capacidad documental excepcional, cerrada por defecto."""
         return False

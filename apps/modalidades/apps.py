@@ -11,5 +11,7 @@ class ModalidadesConfig(AppConfig):
         from apps.modalidades.policies import ModalidadPolicyRegistry
         from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
         from apps.modalidades.tesis_grado import TesisGradoPolicy
+        from apps.modalidades.examen_grado import ExamenGradoPolicy
         ModalidadPolicyRegistry.register("PROYECTO_GRADO", ProyectoGradoPolicy)
         ModalidadPolicyRegistry.register("TESIS_GRADO", TesisGradoPolicy)
+        ModalidadPolicyRegistry.register("EXAMEN_GRADO", ExamenGradoPolicy)

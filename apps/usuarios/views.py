@@ -14,6 +14,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema
 
 from apps.usuarios.serializers import AssignmentCandidateSerializer, LoginSerializer, LogoutSerializer, RoleAdminSerializer, StudentOptionSerializer, UserAdminSerializer, UserProfileSerializer
 from apps.usuarios.models import CustomUser, Role
+from apps.postulantes.models import Postulacion
 from apps.usuarios.services import UserCapabilitiesService
 from core.pagination import StandardResultsSetPagination
 from core.permissions import IsActiveUser, IsStaff
@@ -157,10 +158,18 @@ class StudentOptionViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ("apellido_paterno", "apellido_materno", "nombres")
 
     def get_queryset(self):
-        return CustomUser.objects.filter(
+        queryset = CustomUser.objects.filter(
             is_active=True,
             role__codigo__in=UserCapabilitiesService.STUDENT_CODES,
         ).select_related("role")
+        periodo = self.request.query_params.get("periodo")
+        modalidad = self.request.query_params.get("modalidad")
+        if periodo and modalidad:
+            occupied = Postulacion.objects.filter(
+                periodo_id=periodo, modalidad_id=modalidad, activo=True,
+            ).values("estudiante_id")
+            queryset = queryset.exclude(id__in=occupied)
+        return queryset
 
 
 @extend_schema_view(

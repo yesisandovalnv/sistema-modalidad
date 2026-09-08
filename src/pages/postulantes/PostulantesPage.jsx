@@ -17,6 +17,7 @@ export default function PostulantesPage() {
   const [page, setPage] = useState(1)
   const [data, setData] = useState({ results: [] })
   const [catalogs, setCatalogs] = useState({ modalidades: [], periodos: [], estudiantes: [], capacidades: {} })
+  const [eligibleStudents, setEligibleStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [catalogError, setCatalogError] = useState('')
@@ -64,6 +65,7 @@ export default function PostulantesPage() {
           modalidades.map((modalidad, index) => [modalidad.id, capacidadesList[index]]),
         )
         setCatalogs({ modalidades, periodos, estudiantes, capacidades })
+        setEligibleStudents(estudiantes)
       } catch (requestError) {
         if (!requestError.canceled) {
           setCatalogError(requestError.status === 403
@@ -75,6 +77,22 @@ export default function PostulantesPage() {
 
     if (!signal?.aborted) setLoading(false)
   }, [search, page, canManage])
+
+  useEffect(() => {
+    if (!form || editing || !form.modalidad || !form.periodo) {
+      if (!form || editing) setEligibleStudents(catalogs.estudiantes)
+      return undefined
+    }
+    const controller = new AbortController()
+    listAll(endpoints.estudiantes, { modalidad: form.modalidad, periodo: form.periodo, ordering: 'apellido_paterno' }, controller.signal)
+      .then((students) => {
+        if (!controller.signal.aborted) setEligibleStudents(students)
+      })
+      .catch((requestError) => {
+        if (!requestError.canceled && !controller.signal.aborted) setCatalogError(requestError.message)
+      })
+    return () => controller.abort()
+  }, [catalogs.estudiantes, editing, form])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -112,15 +130,15 @@ export default function PostulantesPage() {
   )
   const visibleStudents = useMemo(() => {
     const value = studentQuery.trim().toLocaleLowerCase('es')
-    if (!value) return catalogs.estudiantes
-    return catalogs.estudiantes.filter((item) => (
+    if (!value) return eligibleStudents
+    return eligibleStudents.filter((item) => (
       [item.codigo, item.ru, item.ci, item.nombre_completo]
         .filter(Boolean)
         .join(' ')
         .toLocaleLowerCase('es')
         .includes(value)
     ))
-  }, [catalogs.estudiantes, studentQuery])
+  }, [eligibleStudents, studentQuery])
 
   const open = (item = null) => {
     setSelected(item)

@@ -4,6 +4,7 @@ from apps.postulantes.defensas_api import PostulacionEventosView, ResultadoFinal
 from apps.postulantes.cierre_api import CierreAccionView, CierreEstadoView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.academico.views import ModalidadViewSet
+from apps.modalidades.examen_grado_api import ExamenGradoOverviewView
 from core.health import HealthCheckView
 
 urlpatterns = [
@@ -25,6 +26,9 @@ urlpatterns = [
     path('api/v1/postulaciones/<int:pk>/resultado-final/calcular/', ResultadoFinalView.as_view()),
     path('api/v1/postulaciones/<int:pk>/cierre/', CierreEstadoView.as_view()),
     path('api/v1/postulaciones/<int:pk>/cierre/<str:action>/', CierreAccionView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/examen/', ExamenGradoOverviewView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/examen/areas/<str:area>/evaluar/', ExamenGradoOverviewView.as_view()),
+    path('api/v1/postulaciones/<int:pk>/examen/concluir/', ExamenGradoOverviewView.as_view()),
     path('api/v1/documentos/', include('apps.documentos.urls')),
     path('api/v1/seguimiento/', include('apps.seguimiento.urls')),
     path('api/v1/reportes/', include('apps.reportes.urls')),

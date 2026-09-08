@@ -328,6 +328,19 @@ export const postulacionesService = {
       throw normalizeAssignments(error)
     }
   },
+  async obtenerExamenGrado(postulacion, signal) {
+    try {
+      return (await apiClient.get(`/api/v1/postulaciones/${postulacion}/examen/`, { signal })).data
+    } catch (error) {
+      throw normalizeDefenses(error)
+    }
+  },
+  registrarEvaluacionExamen(postulacion, area, payload, signal) {
+    return defenseAction(`/api/v1/postulaciones/${postulacion}/examen/areas/${area}/evaluar/`, payload, signal)
+  },
+  concluirExamenGrado(postulacion, signal) {
+    return defenseAction(`/api/v1/postulaciones/${postulacion}/examen/concluir/`, {}, signal)
+  },
   async obtenerQuorumDefensa(evento, signal) {
     try {
       return (await apiClient.get(`/api/v1/eventos-defensa/${evento}/quorum/`, { signal })).data

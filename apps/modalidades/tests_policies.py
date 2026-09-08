@@ -40,6 +40,11 @@ class RegistryTests(TestCase):
         self.assertEqual(len(cap.etapas), 8)
         self.assertEqual(cap.tipos_evento, ["DEFENSA_PERFIL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"])
 
+    def test_capacidades_examen_configuradas(self):
+        examen = Modalidad.objects.create(codigo="EXAMEN_GRADO", nombre="Examen capacidades configuradas")
+        result = ModalidadConfigurationValidator.validate_modalidad(examen)
+        self.assertNotIn("Política de cierre no disponible.", result.errores)
+
     def test_validador_detecta_etapas_faltantes(self):
         result = ModalidadConfigurationValidator.validate_modalidad(self.pg)
         self.assertTrue(any("no persistida" in error for error in result.errores))
@@ -63,7 +68,7 @@ class CapabilitiesApiTests(TestCase):
         self.user = CustomUser.objects.create_user(username="cap-user", password="x")
         self.client.force_authenticate(self.user)
         self.pg = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto capacidades")
-        self.other = Modalidad.objects.create(codigo="EXAMEN_GRADO", nombre="Examen capacidades")
+        self.other = Modalidad.objects.create(codigo="TRABAJO_DIRIGIDO", nombre="Trabajo dirigido capacidades")
 
     def test_api_proyecto_soportado(self):
         response = self.client.get(reverse("modalidad-capacidades", args=[self.pg.pk]))

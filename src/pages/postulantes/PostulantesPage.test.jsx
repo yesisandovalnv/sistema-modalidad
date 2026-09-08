@@ -21,14 +21,14 @@ const student = { id: 17, codigo: '394090', ru: '394090', nombre_completo: 'Luis
 const ana = { id: 39, codigo: '20260001', ru: '20260001', ci: '9900001', nombre_completo: 'Ana Maria Quispe Mamani' }
 const period = { id: 8, nombre: '2026-II', gestion: 2026, semestre: 'II', activo: true }
 const modality = { id: 3, codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado', activo: true }
-const unsupportedModality = { id: 6, codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado', activo: true }
+const examenModality = { id: 6, codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado', activo: true }
 const auth = { hasPermission: (name) => name === 'puede_gestionar_postulaciones' }
 
 function setup({ periods = [period], rows = [], students = [student], modalities = [modality], listImplementation } = {}) {
   crudService.list.mockImplementation(listImplementation || (() => Promise.resolve({ count: rows.length, next: null, previous: null, results: rows })))
   listAll.mockImplementation((path) => Promise.resolve(path === endpoints.modalidades ? modalities : path === endpoints.periodos ? periods : students))
   postulacionesService.obtenerCapacidadesModalidad.mockImplementation((id) => Promise.resolve(
-    id === modality.id
+    id === modality.id || id === examenModality.id
       ? { soportada: true, configuracion_valida: true }
       : { soportada: false, configuracion_valida: false },
   ))
@@ -51,14 +51,26 @@ describe('Nueva postulación', () => {
     expect(screen.getByRole('option', { name: 'Gestión 2026 - Semestre II' })).toBeInTheDocument()
   })
 
-  it('mantiene Proyecto de Grado seleccionable y deshabilita modalidades sin policy completa', async () => {
-    setup({ modalities: [modality, unsupportedModality] })
+  it('mantiene Proyecto de Grado y Examen seleccionables según capabilities', async () => {
+    setup({ modalities: [modality, examenModality] })
     await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
 
     expect(screen.getByRole('option', { name: 'Proyecto de Grado' })).toBeEnabled()
-    expect(screen.getByRole('option', { name: 'Examen de Grado — Próximamente / No configurada' })).toBeDisabled()
+    expect(screen.getByRole('option', { name: 'Examen de Grado' })).toBeEnabled()
     expect(postulacionesService.obtenerCapacidadesModalidad).toHaveBeenCalledWith(3, expect.any(AbortSignal))
     expect(postulacionesService.obtenerCapacidadesModalidad).toHaveBeenCalledWith(6, expect.any(AbortSignal))
+  })
+
+  it('consulta estudiantes elegibles por modalidad y periodo', async () => {
+    setup({ modalities: [modality], students: [student, ana] })
+    await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await userEvent.selectOptions(screen.getByLabelText('Modalidad'), '3')
+    await userEvent.selectOptions(screen.getByLabelText('Gestión / Semestre'), '8')
+    await waitFor(() => expect(listAll).toHaveBeenCalledWith(
+      endpoints.estudiantes,
+      { modalidad: '3', periodo: '8', ordering: 'apellido_paterno' },
+      expect.any(AbortSignal),
+    ))
   })
 
   it('busca estudiantes localmente por nombre, apellido, codigo, RU y CI', async () => {

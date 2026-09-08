@@ -33,7 +33,7 @@ class ModalidadConfigurationValidator:
         for event_type in policy.get_tipos_evento():
             if not policy.evento_policy.get_etapa_asociada(event_type): result.errores.append(f"Tipo de evento sin etapa asociada: {event_type}.")
         if policy.get_tipos_evaluacion() and not policy.get_tipos_evento(): result.errores.append("Existen evaluaciones sin eventos compatibles.")
-        if policy.get_etapas_finales() and not policy.get_cierre_policy(): result.errores.append("Política de cierre no disponible.")
+        if policy.get_etapas_finales() and not policy.get_cierre_policy() and not policy.usa_conclusion_academica_propia(): result.errores.append("Política de cierre no disponible.")
         return result
 
     @classmethod
