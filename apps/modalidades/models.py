@@ -130,3 +130,76 @@ class ExcelenciaExpediente(BaseModel):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class DiplomadoModulo(BaseModel):
+    class Estado(models.TextChoices):
+        PENDIENTE = "PENDIENTE", "Pendiente"
+        EN_PROCESO = "EN_PROCESO", "En proceso"
+        APROBADO = "APROBADO", "Aprobado"
+        REPROBADO = "REPROBADO", "Reprobado"
+
+    postulacion = models.ForeignKey("postulantes.Postulacion", models.CASCADE, related_name="diplomado_modulos")
+    orden = models.PositiveSmallIntegerField()
+    nombre = models.CharField(max_length=180)
+    horas = models.PositiveSmallIntegerField(null=True, blank=True)
+    estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)
+    nota = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    observaciones = models.TextField(blank=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["postulacion", "orden"]
+        constraints = [
+            models.UniqueConstraint(fields=["postulacion", "orden"], name="unique_diplomado_modulo_orden"),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if not 1 <= self.orden <= 5:
+            errors["orden"] = "El módulo debe estar entre 1 y 5."
+        if self.orden == 5 and self.nombre != "Taller de Investigación":
+            errors["nombre"] = "El quinto módulo debe ser Taller de Investigación."
+        if self.nota is not None and not 0 <= self.nota <= 100:
+            errors["nota"] = "La nota del módulo debe estar entre 0 y 100."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class DiplomadoDefensa(BaseModel):
+    class Resultado(models.TextChoices):
+        PENDIENTE = "PENDIENTE", "Pendiente"
+        APROBADA = "APROBADA", "Aprobada"
+        REPROBADA = "REPROBADA", "Reprobada"
+
+    postulacion = models.ForeignKey("postulantes.Postulacion", models.CASCADE, related_name="diplomado_defensas")
+    numero_intento = models.PositiveSmallIntegerField(default=1)
+    nota_consenso = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    resultado = models.CharField(max_length=20, choices=Resultado.choices, default=Resultado.PENDIENTE)
+    reintento_hasta = models.DateTimeField(null=True, blank=True)
+    observaciones = models.TextField(blank=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["postulacion", "numero_intento"]
+        constraints = [
+            models.UniqueConstraint(fields=["postulacion", "numero_intento"], name="unique_diplomado_defensa_intento"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.nota_consenso is not None and not 0 <= self.nota_consenso <= 100:
+            raise ValidationError({"nota_consenso": "La nota debe estar entre 0 y 100."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)

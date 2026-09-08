@@ -30,7 +30,7 @@ OFFICIAL_MODALIDADES = [
         "descripcion": "Modalidad oficial de graduacion mediante tesis de grado.",
     },
     {
-        "codigo": "VIA_DIPLOMADO",
+        "codigo": "GRADUACION_VIA_DIPLOMADO",
         "nombre": "Graduacion Via Diplomado",
         "descripcion": "Modalidad oficial de graduacion mediante diplomado validado.",
     },
@@ -207,6 +207,23 @@ OFFICIAL_TIPOS_DOCUMENTO = [
         "descripcion": "Acta que registra el resultado de la evaluación de Excelencia Académica.",
         "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
     },
+    {"codigo": "CARTA_DIPLOMADO", "nombre": "Carta de inscripción a Diplomado", "descripcion": "Carta dirigida a la Dirección de Carrera.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "MATRICULA_DIPLOMADO", "nombre": "Matrícula vigente de Diplomado", "descripcion": "Recibo de matrícula académica vigente.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "SOLICITUD_AREA_DIPL", "nombre": "Solicitud de área de Diplomado", "descripcion": "Solicitud formal a un área afín de formación.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "BOLETA_PROG_DIPL", "nombre": "Boleta de programación de Diplomado", "descripcion": "Boleta otorgada por la Jefatura de Estudios.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "HISTORIAL_DIPLOMADO", "nombre": "Historial académico para Diplomado", "descripcion": "Historial que acredita las asignaturas vencidas.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "CEDULA_IDENTIDAD", "nombre": "Cédula de identidad", "descripcion": "Fotocopia simple de la cédula de identidad.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,jpg,jpeg,png"},
+    {"codigo": "ADMISION_DIPL", "nombre": "Admisión completa para Diplomado", "descripcion": "Certificado de documentación de admisión completa.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "SOLVENCIA_DIPLOMADO", "nombre": "Solvencia universitaria y bibliotecaria", "descripcion": "Solvencias exigidas por el Artículo 12.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "MONOGRAFIA_DIPLOMADO", "nombre": "Monografía de Diplomado", "descripcion": "Monografía firmada por el docente del Taller de Investigación.", "obligatorio": True, "permite_multiple_version": True, "tamano_maximo_mb": 20, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "NOTAS_MODULOS_DIPL", "nombre": "Certificado de notas de módulos", "descripcion": "Certificado original de aprobación de todos los módulos.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "CARTA_DEFENSA_DIPL", "nombre": "Carta de solicitud de defensa", "descripcion": "Carta al Vicerrectorado de Posgrado solicitando defensa.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "MATR_DEFENSA_DIPL", "nombre": "Matrícula vigente para defensa", "descripcion": "Recibo de matrícula vigente al momento de la defensa.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "BOLETA_DEFENSA_DIPL", "nombre": "Boleta de programación para defensa", "descripcion": "Boleta vigente de programación de la modalidad.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "TIMBRE_DEFENSA_DIPL", "nombre": "Timbre universitario para defensa", "descripcion": "Timbre por el valor universitario de la defensa pública.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "SOLV_POSGRADO_DIPL", "nombre": "Solvencia económica de Posgrado", "descripcion": "Solvencia económica por el costo total del Diplomado.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "ACTA_DEFENSA_DIPL", "nombre": "Acta de Defensa de Diplomado", "descripcion": "Acta con calificación final y observaciones.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx"},
+    {"codigo": "MONOGRAFIA_EMPAST_D", "nombre": "Monografía empastada de Diplomado", "descripcion": "Cuatro ejemplares físicos para distribución institucional.", "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 20, "extensiones_permitidas": "pdf,doc,docx"},
 ]
 
 OFFICIAL_ETAPAS_MODALIDAD = {
@@ -310,6 +327,18 @@ OFFICIAL_ETAPAS_MODALIDAD = {
         {"codigo": "EVALUACION_TRIBUNAL", "nombre": "Evaluación del tribunal", "orden": 3, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Graduación por Excelencia Académica CIS-Ver 2013, Capítulo II."},
         {"codigo": "REGISTRO_ACTA", "nombre": "Registro del acta", "orden": 4, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Graduación por Excelencia Académica CIS-Ver 2013, Capítulo II."},
         {"codigo": "CONCLUSION_ACADEMICA", "nombre": "Conclusión académica", "orden": 5, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento de Graduación por Excelencia Académica CIS-Ver 2013, Capítulos I y III."},
+    ],
+    "GRADUACION_VIA_DIPLOMADO": [
+        {"codigo": "INSCRIPCION", "nombre": "Inscripción", "orden": 1, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículo 12."},
+        {"codigo": "MODULO_1", "nombre": "Módulo 1", "orden": 2, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículos 9 y 15."},
+        {"codigo": "MODULO_2", "nombre": "Módulo 2", "orden": 3, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículos 9 y 15."},
+        {"codigo": "MODULO_3", "nombre": "Módulo 3", "orden": 4, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículos 9 y 15."},
+        {"codigo": "MODULO_4", "nombre": "Módulo 4", "orden": 5, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículos 9 y 15."},
+        {"codigo": "TALLER_INVESTIGACION", "nombre": "Taller de Investigación", "orden": 6, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículos 9 y 15."},
+        {"codigo": "REVISION_MONOGRAFIA", "nombre": "Revisión de Monografía", "orden": 7, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículo 15."},
+        {"codigo": "DEFENSA_PUBLICA", "nombre": "Defensa Pública", "orden": 8, "obligatoria": True, "permite_repeticion": True, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículos 18 al 28."},
+        {"codigo": "CIERRE_DOCUMENTAL", "nombre": "Cierre documental", "orden": 9, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículos 29 y 30."},
+        {"codigo": "CONCLUSION_ACADEMICA", "nombre": "Conclusión académica", "orden": 10, "obligatoria": True, "permite_repeticion": False, "origen_normativo": "Reglamento Vía Diplomado 2026, Artículo 30."},
     ],
 }
 

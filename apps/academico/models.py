@@ -69,7 +69,7 @@ class Modalidad(BaseModel):
     """Modalidad académica del sistema."""
 
     codigo = models.CharField(
-        max_length=20,
+        max_length=40,
         unique=True,
         verbose_name="Código",
     )

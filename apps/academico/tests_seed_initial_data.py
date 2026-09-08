@@ -56,11 +56,11 @@ class SeedInitialDataCommandTest(TestCase):
         self.assertEqual(Modalidad.objects.count(), 6)
         self.assertEqual(EstadoPostulacion.objects.count(), 8)
         self.assertEqual(EstadoDocumento.objects.count(), 5)
-        self.assertEqual(EtapaModalidad.objects.count(), 29)
-        self.assertEqual(TipoDocumento.objects.count(), 21)
+        self.assertEqual(EtapaModalidad.objects.count(), 39)
+        self.assertEqual(TipoDocumento.objects.count(), 38)
         self.assertEqual(Requisito.objects.count(), 0)
         self.assertEqual(ModalidadRequisito.objects.count(), 0)
-        self.assertIn("Creados: 69", stdout)
+        self.assertIn("Creados: 96", stdout)
         self.assertIn("No existen requisitos oficiales validados para cargar.", stdout)
 
     def test_json_mal_formado_produce_command_error(self) -> None:
@@ -226,8 +226,8 @@ class SeedInitialDataCommandTest(TestCase):
         self.assertEqual(Modalidad.objects.count(), 6)
         self.assertEqual(EstadoPostulacion.objects.count(), 8)
         self.assertEqual(EstadoDocumento.objects.count(), 5)
-        self.assertEqual(EtapaModalidad.objects.count(), 29)
-        self.assertEqual(TipoDocumento.objects.count(), 23)
+        self.assertEqual(EtapaModalidad.objects.count(), 39)
+        self.assertEqual(TipoDocumento.objects.count(), 40)
         self.assertEqual(Requisito.objects.count(), 2)
         self.assertEqual(ModalidadRequisito.objects.count(), 2)
         self.assertTrue(TipoDocumento.objects.filter(codigo="PG-FORM-01", nombre="Formulario de Proyecto").exists())
@@ -239,7 +239,7 @@ class SeedInitialDataCommandTest(TestCase):
                 orden=1,
             ).exists()
         )
-        self.assertIn("Creados: 75", stdout)
+        self.assertIn("Creados: 102", stdout)
 
     def test_segunda_ejecucion_con_datos_validos_no_duplica(self) -> None:
         self.write_json(
@@ -271,12 +271,12 @@ class SeedInitialDataCommandTest(TestCase):
 
         stdout, _ = self.run_seed_command()
 
-        self.assertEqual(TipoDocumento.objects.count(), 22)
+        self.assertEqual(TipoDocumento.objects.count(), 39)
         self.assertEqual(Requisito.objects.count(), 1)
         self.assertEqual(ModalidadRequisito.objects.count(), 1)
         self.assertEqual(EstadoPostulacion.objects.filter(codigo="EN_PROCESO").count(), 1)
         self.assertIn("Creados: 0", stdout)
-        self.assertIn("Existentes: 72", stdout)
+        self.assertIn("Existentes: 99", stdout)
 
     def test_mantiene_intactas_modalidades_y_estados_existentes(self) -> None:
         self.write_json(
@@ -310,7 +310,7 @@ class SeedInitialDataCommandTest(TestCase):
         self.assertEqual(Modalidad.objects.count(), 6)
         self.assertEqual(EstadoPostulacion.objects.count(), 8)
         self.assertEqual(EstadoDocumento.objects.count(), 5)
-        self.assertEqual(EtapaModalidad.objects.count(), 29)
+        self.assertEqual(EtapaModalidad.objects.count(), 39)
         self.assertTrue(Modalidad.objects.filter(codigo="TRABAJO_DIRIGIDO").exists())
         self.assertTrue(EstadoPostulacion.objects.filter(codigo="REGISTRADA").exists())
         self.assertTrue(EstadoPostulacion.objects.filter(codigo="EN_PROCESO", activo=True).exists())
@@ -424,13 +424,13 @@ class OfficialProyectoGradoDocumentTypesSeedTest(TestCase):
         self.assertFalse(tipos.filter(activo=False).exists())
         self.assertFalse(tipos.exclude(tamano_maximo_mb=10).exists())
         self.assertFalse(tipos.exclude(extensiones_permitidas="pdf,doc,docx").exists())
-        self.assertIn("Creados: 109", first_stdout)
+        self.assertIn("Creados: 170", first_stdout)
 
         second_stdout = self.run_official_seed()
 
         self.assertEqual(TipoDocumento.objects.filter(codigo__in=self.EXPECTED_CODES).count(), 5)
         self.assertIn("Creados: 0", second_stdout)
-        self.assertIn("Existentes: 120", second_stdout)
+        self.assertIn("Existentes: 198", second_stdout)
 
 
 class OfficialTesisGradoSeedTest(TestCase):

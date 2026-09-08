@@ -356,6 +356,9 @@ class AsignacionPostulacion(BaseModel):
         PRESIDENTE = "PRESIDENTE", "Presidente"
         SECRETARIO = "SECRETARIO", "Secretario"
         DIRECTOR_INSTITUTO_INVESTIGACION = "DIRECTOR_INSTITUTO_INVESTIGACION", "Director del Instituto de Investigación"
+        VICERRECTOR_POSGRADO = "VICERRECTOR_POSGRADO", "Vicerrector de Posgrado"
+        DECANO_FACULTAD = "DECANO_FACULTAD", "Decano de Facultad"
+        DIRECTOR_CARRERA = "DIRECTOR_CARRERA", "Director de Carrera"
 
     postulacion = models.ForeignKey(
         Postulacion,
@@ -624,7 +627,7 @@ class EventoDefensa(BaseModel):
 
 class ParticipanteEvento(BaseModel):
     class Rol(models.TextChoices):
-        TUTOR="TUTOR", "Tutor"; TRIBUNAL="TRIBUNAL", "Tribunal"; DOCENTE_MODALIDAD="DOCENTE_MODALIDAD", "Docente de modalidad"; PRESIDENTE="PRESIDENTE", "Presidente"; SECRETARIO="SECRETARIO", "Secretario"
+        TUTOR="TUTOR", "Tutor"; TRIBUNAL="TRIBUNAL", "Tribunal"; DOCENTE_MODALIDAD="DOCENTE_MODALIDAD", "Docente de modalidad"; PRESIDENTE="PRESIDENTE", "Presidente"; SECRETARIO="SECRETARIO", "Secretario"; VICERRECTOR_POSGRADO="VICERRECTOR_POSGRADO", "Vicerrector de Posgrado"; DECANO_FACULTAD="DECANO_FACULTAD", "Decano de Facultad"; DIRECTOR_CARRERA="DIRECTOR_CARRERA", "Director de Carrera"
     evento = models.ForeignKey(EventoDefensa, models.CASCADE, related_name="participantes")
     asignacion = models.ForeignKey(AsignacionPostulacion, models.PROTECT, related_name="participaciones_evento")
     rol_evento = models.CharField(max_length=30, choices=Rol.choices)
