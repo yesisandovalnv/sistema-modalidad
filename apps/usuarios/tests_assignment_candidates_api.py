@@ -13,12 +13,12 @@ class AssignmentCandidateApiTests(APITestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.admin_role = Role.objects.create(codigo="ADMIN", nombre="Administracion")
-        cls.teacher_role = Role.objects.create(codigo="DOC", nombre="Docente")
+        cls.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administracion")
+        cls.teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
         cls.staff_role = Role.objects.create(codigo="PERSONAL", nombre="Personal academico")
         cls.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
         cls.staff = User.objects.create_user(username="catalogo_staff", role=cls.admin_role, is_staff=True)
-        cls.superuser = User.objects.create_user(username="catalogo_super", is_superuser=True)
+        cls.superuser = User.objects.create_user(username="catalogo_super", role=cls.admin_role, is_superuser=True)
         cls.teacher = User.objects.create_user(
             username="docente_seguro", role=cls.teacher_role, ru="DOC-001",
             nombres="Ana", apellido_paterno="Rojas",
@@ -52,7 +52,7 @@ class AssignmentCandidateApiTests(APITestCase):
             "username": "docente_seguro",
             "nombre_completo": "Ana Rojas",
             "codigo": "DOC-001",
-            "rol_codigo": "DOC",
+            "rol_codigo": "DOCENTE",
             "rol_nombre": "Docente",
             "activo": True,
         })
@@ -104,8 +104,8 @@ class AssignmentCandidateApiTests(APITestCase):
             )
         self.authenticate(self.staff)
 
-        first = self.client.get(f"{self.endpoint}?rol=DOC&ordering=username")
-        second = self.client.get(f"{self.endpoint}?rol=DOC&ordering=username&page=2")
+        first = self.client.get(f"{self.endpoint}?rol=DOCENTE&ordering=username")
+        second = self.client.get(f"{self.endpoint}?rol=DOCENTE&ordering=username&page=2")
 
         self.assertEqual(first.data["count"], 23)
         self.assertEqual(len(first.data["results"]), 20)

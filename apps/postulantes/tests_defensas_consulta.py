@@ -26,7 +26,7 @@ User = get_user_model()
 
 class ConsultaDefensasContractTests(APITestCase):
     def setUp(self):
-        role = Role.objects.create(codigo="HT004", nombre="HT-004")
+        role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
         self.staff = User.objects.create_user("ht004-staff", role=role, is_staff=True)
         self.superuser = User.objects.create_superuser("ht004-super")
         self.owner = User.objects.create_user("ht004-owner", role=role)
@@ -35,6 +35,15 @@ class ConsultaDefensasContractTests(APITestCase):
         self.historical_actor = User.objects.create_user("ht004-history", role=role)
         self.participant_user = User.objects.create_user("ht004-participant", role=role, nombres="María", apellido_paterno="Tribunal")
         self.unrelated = User.objects.create_user("ht004-unrelated", role=role)
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
+        student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
+        self.staff.role = admin_role
+        self.staff.save(update_fields=["role"])
+        self.superuser.role = admin_role
+        self.superuser.save(update_fields=["role"])
+        for user in (self.owner, self.other_owner):
+            user.role = student_role
+            user.save(update_fields=["role"])
         self.modality = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto de Grado")
         self.period = Periodo.objects.create(
             nombre="2026-HT004", gestion=2026, semestre="II",

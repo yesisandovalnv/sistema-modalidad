@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APITestCase
-from apps.usuarios.models import CustomUser
+from apps.usuarios.models import CustomUser, Role
 
 from apps.academico.models import EtapaModalidad, Modalidad, ModalidadRequisito, Periodo, Requisito
 
@@ -26,7 +26,8 @@ class PeriodoModelTest(TestCase):
 
 class PeriodoApiTest(APITestCase):
     def setUp(self):
-        self.client.force_authenticate(CustomUser.objects.create_user(username="period-admin", is_staff=True))
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
+        self.client.force_authenticate(CustomUser.objects.create_user(username="period-admin", role=admin_role, is_staff=True))
 
     def test_periodo_exposes_gestion_semestre_and_filters_active(self):
         Periodo.objects.create(nombre="2026-II", gestion=2026, semestre="II", fecha_inicio="2026-07-01", fecha_fin="2026-12-31")

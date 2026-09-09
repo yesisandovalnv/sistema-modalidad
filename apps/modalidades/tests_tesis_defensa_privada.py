@@ -16,9 +16,10 @@ from apps.usuarios.models import CustomUser, Role
 class TesisDefensaPrivadaTest(TestCase):
     def setUp(self):
         call_command('seed_initial_data', verbosity=0)
-        role = Role.objects.create(codigo='TDP-R', nombre='TDP')
-        self.admin = CustomUser.objects.create_user('tdp-admin', role=role, is_staff=True, ci='99001', ru='R99001')
-        self.people = [CustomUser.objects.create_user(f'tdp-{n}', role=role, ci=f'9901{n}', ru=f'R9901{n}') for n in range(5)]
+        admin_role = Role.objects.create(codigo='ADMINISTRADOR', nombre='Administrador')
+        teacher_role = Role.objects.create(codigo='DOCENTE', nombre='Docente')
+        self.admin = CustomUser.objects.create_user('tdp-admin', role=admin_role, is_staff=True, ci='99001', ru='R99001')
+        self.people = [CustomUser.objects.create_user(f'tdp-{n}', role=teacher_role, ci=f'9901{n}', ru=f'R9901{n}') for n in range(5)]
         self.post = Postulacion.objects.create(codigo='TDP-1', estudiante=self.people[0], modalidad=Modalidad.objects.get(codigo='TESIS_GRADO'), periodo=Periodo.objects.create(nombre='TDP', gestion=2026, semestre='II', fecha_inicio='2026-01-01', fecha_fin='2026-12-31'), estado_actual=EstadoPostulacion.objects.get(codigo='REGISTRADA'))
         self.s = {x.etapa.codigo: x for x in WorkflowService.inicializar_flujo(self.post, self.admin)}
         SeguimientoEtapa.objects.filter(postulacion=self.post, etapa__orden__lte=self.s['REVISION_TRIBUNAL'].etapa.orden).update(estado='APROBADA')

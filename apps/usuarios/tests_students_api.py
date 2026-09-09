@@ -6,7 +6,7 @@ from apps.usuarios.models import CustomUser, Role
 class StudentOptionApiTests(APITestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.admin_role = Role.objects.create(codigo="ADMIN", nombre="Administración")
+        cls.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administración")
         cls.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
         cls.admin = CustomUser.objects.create_user(username="selector-admin", role=cls.admin_role, is_staff=True)
         cls.student = CustomUser.objects.create_user(

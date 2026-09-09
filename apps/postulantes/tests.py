@@ -8,10 +8,14 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.modalidades.policies import ModalidadPolicyRegistry
 from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Observacion, Postulacion
-from apps.usuarios.models import AuditLog
+from apps.usuarios.models import AuditLog, Role
 
 
 User = get_user_model()
+
+
+def canonical_role(code):
+    return Role.objects.get_or_create(codigo=code, defaults={"nombre": code.title()})[0]
 
 
 class TestCrearPostulacion(APITestCase):
@@ -28,6 +32,7 @@ class TestCrearPostulacion(APITestCase):
             ci="1234567",
             ru="RU1234567",
             is_staff=True,
+            role=canonical_role("ADMINISTRADOR"),
         )
         self.periodo = Periodo.objects.create(
             nombre="2025-I",
@@ -163,11 +168,13 @@ class TestBusquedaPostulacion(APITestCase):
             apellido_materno="Mamani",
             ci="9900001",
             ru="20260001",
+            role=canonical_role("ESTUDIANTE"),
         )
         self.admin = User.objects.create_user(
             username="admin_busqueda",
             password="segura123",
             is_staff=True,
+            role=canonical_role("ADMINISTRADOR"),
         )
         periodo = Periodo.objects.create(
             nombre="2026-II",
@@ -231,6 +238,7 @@ class TestCambioEstado(APITestCase):
             ci="7654321",
             ru="RU7654321",
             is_staff=True,
+            role=canonical_role("ADMINISTRADOR"),
         )
         self.periodo = Periodo.objects.create(
             nombre="2025-II",
@@ -316,6 +324,7 @@ class TestObservaciones(APITestCase):
             ci="1122334",
             ru="RU1122334",
             is_staff=True,
+            role=canonical_role("ADMINISTRADOR"),
         )
         self.periodo = Periodo.objects.create(
             nombre="2026-I",
@@ -419,6 +428,7 @@ class TestErrores(APITestCase):
             ci="5555555",
             ru="RU5555555",
             is_staff=True,
+            role=canonical_role("ADMINISTRADOR"),
         )
         self.periodo = Periodo.objects.create(
             nombre="2026-II",
@@ -531,12 +541,14 @@ class TestSeguridadPropietario(APITestCase):
             password="segura123",
             ci="7777771",
             ru="RU7777771",
+            role=canonical_role("ESTUDIANTE"),
         )
         self.other_student = User.objects.create_user(
             username="other_postulacion",
             password="segura123",
             ci="7777772",
             ru="RU7777772",
+            role=canonical_role("ESTUDIANTE"),
         )
         self.admin = User.objects.create_user(
             username="admin_postulacion",
@@ -545,6 +557,7 @@ class TestSeguridadPropietario(APITestCase):
             ru="RU7777773",
             is_staff=True,
             is_superuser=True,
+            role=canonical_role("ADMINISTRADOR"),
         )
         self.periodo = Periodo.objects.create(
             nombre="2027-I",

@@ -4,6 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 
 from apps.usuarios.models import CustomUser, Role
 from apps.usuarios.services import UserCapabilitiesService
+from core.permissions import ADMIN_ROLE_CODE, KNOWN_ROLE_CODES
 
 
 class AuthenticatedRoleSerializer(serializers.Serializer):
@@ -155,6 +156,19 @@ class UserAdminSerializer(serializers.ModelSerializer):
         for field in ("ci", "ru"):
             if attrs.get(field) == "":
                 attrs[field] = None
+        role = attrs.get("role", getattr(self.instance, "role", None))
+        role_code = (getattr(role, "codigo", "") or "").strip().upper()
+        if role_code and role_code not in KNOWN_ROLE_CODES:
+            raise serializers.ValidationError({"role_id": "El rol debe ser ADMINISTRADOR, DOCENTE o ESTUDIANTE."})
+        expected_staff = role_code == ADMIN_ROLE_CODE
+        requested_staff = attrs.get("is_staff", getattr(self.instance, "is_staff", False))
+        if "is_staff" in attrs and bool(requested_staff) != expected_staff:
+            raise serializers.ValidationError({
+                "is_staff": "ADMINISTRADOR debe ser staff; DOCENTE y ESTUDIANTE no pueden ser staff."
+            })
+        attrs["is_staff"] = expected_staff
+        if self.instance and self.instance.is_superuser and not expected_staff:
+            raise serializers.ValidationError({"role_id": "Un superusuario debe conservar el rol ADMINISTRADOR."})
         return attrs
 
     def create(self, validated_data):

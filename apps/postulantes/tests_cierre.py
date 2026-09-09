@@ -16,7 +16,7 @@ User=get_user_model()
 
 class Base:
     def setUp(self):
-        super().setUp(); ar=Role.objects.create(codigo="ADMCIE",nombre="Admin cierre"); sr=Role.objects.create(codigo="ESTCIE",nombre="Estudiante cierre"); dr=Role.objects.create(codigo="DOCCIE",nombre="Docente cierre")
+        super().setUp(); ar=Role.objects.create(codigo="ADMINISTRADOR",nombre="Admin cierre"); sr=Role.objects.create(codigo="ESTUDIANTE",nombre="Estudiante cierre"); dr=Role.objects.create(codigo="DOCENTE",nombre="Docente cierre")
         self.admin=User.objects.create_user(username="admincie",role=ar,is_staff=True); self.student=User.objects.create_user(username="estcie",role=sr); self.other=User.objects.create_user(username="othercie",role=sr); self.doc=User.objects.create_user(username="doccie",role=dr)
         mod=Modalidad.objects.create(codigo="PROYECTO_GRADO",nombre="Proyecto grado cierre"); period=Periodo.objects.create(nombre="2026-CIE",gestion=2026,semestre="I",fecha_inicio="2026-01-01",fecha_fin="2026-12-31")
         self.registered=EstadoPostulacion.objects.create(codigo="REGISTRADA",nombre="Registrada cierre"); self.concluded=EstadoPostulacion.objects.create(codigo="CONCLUIDA",nombre="Concluida cierre")

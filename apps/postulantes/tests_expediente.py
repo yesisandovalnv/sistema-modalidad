@@ -15,7 +15,7 @@ from apps.postulantes.models import (
     SeguimientoEtapa,
 )
 from apps.postulantes.serializers import HistorialEstadoSerializer
-from apps.usuarios.models import AuditLog, CustomUser
+from apps.usuarios.models import AuditLog, CustomUser, Role
 
 
 class ExpedienteAccessContractTests(TestCase):
@@ -30,6 +30,19 @@ class ExpedienteAccessContractTests(TestCase):
         cls.assigned = CustomUser.objects.create_user("exp-assigned")
         cls.historical = CustomUser.objects.create_user("exp-historical")
         cls.unassigned = CustomUser.objects.create_user("exp-unassigned")
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
+        student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
+        teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
+        cls.staff.role = admin_role
+        cls.staff.save(update_fields=["role"])
+        cls.superuser.role = admin_role
+        cls.superuser.save(update_fields=["role"])
+        for user in (cls.owner, cls.other):
+            user.role = student_role
+            user.save(update_fields=["role"])
+        for user in (cls.assigned, cls.historical, cls.unassigned):
+            user.role = teacher_role
+            user.save(update_fields=["role"])
         cls.modalidad = Modalidad.objects.create(
             codigo="PROYECTO_GRADO", nombre="Proyecto de Grado"
         )

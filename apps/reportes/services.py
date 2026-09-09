@@ -5,6 +5,7 @@ from apps.postulantes.models import Postulacion,SeguimientoEtapa,EventoDefensa,E
 from apps.documentos.models import DocumentoPostulacion
 from apps.notificaciones.models import Notificacion
 from apps.modalidades.policies import ModalidadPolicyRegistry
+from core.permissions import is_staff_user, is_student_user, is_teacher_user
 
 
 class ReportFilters:
@@ -27,10 +28,10 @@ class ScopeService:
     @staticmethod
     def postulaciones(usuario):
         qs=Postulacion.objects.all()
-        if usuario.is_staff or usuario.is_superuser: return qs
-        role=getattr(getattr(usuario,"role",None),"codigo","")
-        if role in {"EST","ESTUDIANTE"}: return qs.filter(estudiante=usuario)
-        return qs.filter(asignaciones__usuario=usuario).distinct()
+        if is_staff_user(usuario): return qs
+        if is_student_user(usuario): return qs.filter(estudiante=usuario)
+        if is_teacher_user(usuario): return qs.filter(asignaciones__usuario=usuario).distinct()
+        return qs.none()
 
 
 class ReportePostulacionesService:

@@ -7,7 +7,7 @@ from apps.usuarios.models import CustomUser, Role
 class AuthMeContractTests(APITestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.admin_role = Role.objects.create(codigo="ADMIN", nombre="Administración")
+        cls.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administración")
         cls.teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docencia")
         cls.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
 
@@ -19,7 +19,7 @@ class AuthMeContractTests(APITestCase):
     def test_admin_contract_has_stable_role_permissions_and_compatibility(self):
         _, response = self.request_as(username="contract-admin", role=self.admin_role, is_staff=True)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["rol"], {"codigo": "ADMIN", "nombre": "Administración"})
+        self.assertEqual(response.data["rol"], {"codigo": "ADMINISTRADOR", "nombre": "Administración"})
         self.assertTrue(response.data["permisos"]["puede_ver_dashboard"])
         self.assertTrue(response.data["permisos"]["puede_exportar_reportes"])
         self.assertEqual(response.data["role"], "Administración")
@@ -38,14 +38,14 @@ class AuthMeContractTests(APITestCase):
 
     def test_defense_management_capability_matches_effective_admin_authority(self):
         _, staff = self.request_as(username="contract-defense-staff", role=self.teacher_role, is_staff=True)
-        self.assertTrue(staff.data["permisos"]["puede_gestionar_defensas"])
+        self.assertFalse(staff.data["permisos"]["puede_gestionar_defensas"])
         self.client.force_authenticate(user=None)
         _, superuser = self.request_as(
             username="contract-defense-superuser",
             role=self.teacher_role,
             is_superuser=True,
         )
-        self.assertTrue(superuser.data["permisos"]["puede_gestionar_defensas"])
+        self.assertFalse(superuser.data["permisos"]["puede_gestionar_defensas"])
 
     def test_contract_does_not_expose_sensitive_fields(self):
         _, response = self.request_as(username="contract-safe", role=self.teacher_role)

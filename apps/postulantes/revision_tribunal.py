@@ -10,6 +10,7 @@ from apps.postulantes.models import (
 )
 from apps.usuarios.models import AuditLog
 from apps.modalidades.policies import ModalidadPolicyRegistry
+from core.permissions import is_staff_user
 
 
 class RevisionTribunalPreviaService:
@@ -98,7 +99,7 @@ class RevisionTribunalPreviaService:
 
     @staticmethod
     def _validar_administrador(usuario):
-        if not usuario or not usuario.is_active or not (usuario.is_staff or usuario.is_superuser):
+        if not usuario or not usuario.is_active or not is_staff_user(usuario):
             raise ValidationError("Se requiere un usuario administrativo activo para registrar el informe.")
 
     @classmethod

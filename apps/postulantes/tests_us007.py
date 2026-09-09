@@ -14,7 +14,7 @@ from apps.usuarios.models import AuditLog, CustomUser, Role
 class BasicApplicationDataContractTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.admin_role = Role.objects.create(codigo="ADMIN", nombre="Administrador")
+        cls.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
         cls.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
         cls.teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
         cls.staff = CustomUser.objects.create_user(

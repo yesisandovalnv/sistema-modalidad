@@ -17,9 +17,10 @@ class DiplomadoTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_initial_data", verbosity=0)
-        role = Role.objects.create(codigo="DIP-ADMIN", nombre="Diplomado admin")
-        cls.admin = CustomUser.objects.create_user("diplomado-admin", password="x", role=role, is_staff=True, ci="DIP-1", ru="DIP-R1")
-        cls.student = CustomUser.objects.create_user("diplomado-student", password="x", role=role, ci="DIP-2", ru="DIP-R2")
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Diplomado admin")
+        student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
+        cls.admin = CustomUser.objects.create_user("diplomado-admin", password="x", role=admin_role, is_staff=True, ci="DIP-1", ru="DIP-R1")
+        cls.student = CustomUser.objects.create_user("diplomado-student", password="x", role=student_role, ci="DIP-2", ru="DIP-R2")
         cls.post = Postulacion.objects.create(
             codigo="DIP-TEST-001", estudiante=cls.student,
             modalidad=Modalidad.objects.get(codigo="GRADUACION_VIA_DIPLOMADO"),

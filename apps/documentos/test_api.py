@@ -39,8 +39,9 @@ class DocumentoAPITestCase(APITestCase):
         self.override_media = override_settings(MEDIA_ROOT=str(self._tmp_media))
         self.override_media.enable()
 
-        self.admin_role = Role.objects.create(codigo="ADMIN", nombre="Administrador")
-        self.student_role = Role.objects.create(codigo="EST", nombre="Estudiante")
+        self.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
+        self.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
+        self.teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
 
         self.admin_user = User.objects.create_user(
             username="admin_documentos",
@@ -164,7 +165,7 @@ class TestVersionDocumentoDownload(DocumentoAPITestCase):
 
     def test_actor_asignado_descarga_dentro_de_su_alcance(self) -> None:
         version = self._create_version()
-        actor = User.objects.create_user(username="actor-descarga")
+        actor = User.objects.create_user(username="actor-descarga", role=self.teacher_role)
         AsignacionPostulacion.objects.create(
             postulacion=self.postulacion,
             usuario=actor,
@@ -280,14 +281,14 @@ class TestDocumentoUpload(DocumentoAPITestCase):
         self.assertEqual(list(self._tmp_media.rglob("*.pdf")), [])
 
     def test_staff_puede_subir_y_actor_asignado_no_staff_no_puede(self) -> None:
-        staff = User.objects.create_user(username="staff-carga", is_staff=True)
+        staff = User.objects.create_user(username="staff-carga", is_staff=True, role=self.admin_role)
         response = self.upload_document(staff, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         tipo_otro = TipoDocumento.objects.create(
             codigo="PDF2", nombre="Segundo PDF", extensiones_permitidas="pdf", tamano_maximo_mb=1,
         )
-        actor = User.objects.create_user(username="actor-asignado")
+        actor = User.objects.create_user(username="actor-asignado", role=self.teacher_role)
         AsignacionPostulacion.objects.create(
             postulacion=self.postulacion, usuario=actor,
             tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TUTOR,
@@ -446,8 +447,8 @@ class TestDocumentoSeguridad(DocumentoAPITestCase):
         self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
         documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion)
         version = VersionDocumento.objects.get(documento=documento)
-        active = User.objects.create_user(username="revisor-activo")
-        historical = User.objects.create_user(username="revisor-historico")
+        active = User.objects.create_user(username="revisor-activo", role=self.teacher_role)
+        historical = User.objects.create_user(username="revisor-historico", role=self.teacher_role)
         AsignacionPostulacion.objects.create(
             postulacion=self.postulacion, usuario=active,
             tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
@@ -473,7 +474,7 @@ class TestDocumentoSeguridad(DocumentoAPITestCase):
 
     def test_staff_y_anonimo_conservan_alcance_de_consulta(self) -> None:
         self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
-        staff = User.objects.create_user(username="staff-documentos", is_staff=True)
+        staff = User.objects.create_user(username="staff-documentos", is_staff=True, role=self.admin_role)
         self.authenticate_user(staff)
         self.assertEqual(
             self.client.get("/api/v1/documentos/documentos/", {"postulacion": self.postulacion.id}).data["count"],
@@ -919,7 +920,7 @@ class TestDocumentoRevision(DocumentoAPITestCase):
 
     def test_staff_y_superuser_pueden_revisar_pero_actor_asignado_no(self) -> None:
         documento = self._create_documento_con_version()
-        staff = User.objects.create_user(username="staff-revisor", is_staff=True)
+        staff = User.objects.create_user(username="staff-revisor", is_staff=True, role=self.admin_role)
         self.authenticate_user(staff)
         aprobado = self.client.post(f"/api/v1/documentos/documentos/{documento.id}/aprobar/", {}, format="json")
         self.assertEqual(aprobado.status_code, status.HTTP_200_OK)
@@ -927,7 +928,7 @@ class TestDocumentoRevision(DocumentoAPITestCase):
         self.upload_document(
             self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(name="documento-v2.pdf"),
         )
-        actor = User.objects.create_user(username="actor-revisor")
+        actor = User.objects.create_user(username="actor-revisor", role=self.teacher_role)
         AsignacionPostulacion.objects.create(
             postulacion=self.postulacion,
             usuario=actor,
@@ -940,7 +941,7 @@ class TestDocumentoRevision(DocumentoAPITestCase):
         )
         self.assertEqual(denegado.status_code, status.HTTP_403_FORBIDDEN)
 
-        superuser = User.objects.create_user(username="super-revisor", is_superuser=True)
+        superuser = User.objects.create_user(username="super-revisor", is_superuser=True, role=self.admin_role)
         self.authenticate_user(superuser)
         observado = self.client.post(
             f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": "Revisión autorizada"}, format="json",

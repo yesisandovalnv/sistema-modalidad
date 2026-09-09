@@ -7,6 +7,7 @@ from rest_framework import filters, serializers, status, viewsets
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from core.permissions import is_staff_user
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -176,7 +177,7 @@ class EventoDefensaViewSet(viewsets.ReadOnlyModelViewSet):
         if getattr(self, "swagger_fake_view", False):
             return qs.none()
         u=self.request.user
-        if u.is_staff or u.is_superuser: return qs
+        if is_staff_user(u): return qs
         postulaciones_asignadas = AsignacionPostulacion.all_objects.filter(usuario=u).values("postulacion_id")
         return qs.filter(
             Q(postulacion__estudiante=u)
@@ -184,7 +185,7 @@ class EventoDefensaViewSet(viewsets.ReadOnlyModelViewSet):
             | Q(participantes__asignacion__usuario=u)
         ).distinct()
     def _admin(self):
-        if not (self.request.user.is_staff or self.request.user.is_superuser): raise PermissionDenied("Se requiere permiso administrativo.")
+        if not is_staff_user(self.request.user): raise PermissionDenied("Se requiere permiso administrativo.")
     def _call(self,fn,*args,**kwargs):
         try: return fn(*args,**kwargs)
         except DjangoValidationError as e: raise ValidationError(e.message_dict if hasattr(e,"message_dict") else e.messages) from e
@@ -266,7 +267,7 @@ class PostulacionEventosView(APIView):
         ).order_by("-fecha_programada", "-id")
         return Response(EventoDefensaSerializer(queryset,many=True,context={"request": request}).data)
     def post(self,request,pk):
-        if not (request.user.is_staff or request.user.is_superuser): raise PermissionDenied("Se requiere permiso administrativo.")
+        if not is_staff_user(request.user): raise PermissionDenied("Se requiere permiso administrativo.")
         post=self._post(request,pk); s=ProgramarSerializer(data=request.data); s.is_valid(raise_exception=True)
         try: evento=EventoDefensaService.programar_evento(postulacion=post,usuario=request.user,**s.validated_data)
         except DjangoValidationError as e: raise ValidationError(e.message_dict if hasattr(e,"message_dict") else e.messages) from e
@@ -283,5 +284,5 @@ class ResultadoFinalView(APIView):
     def get(self,request,pk):
         return self._resultado(request,pk,auditar=False)
     def post(self,request,pk):
-        if not (request.user.is_staff or request.user.is_superuser): raise PermissionDenied("Se requiere permiso administrativo.")
+        if not is_staff_user(request.user): raise PermissionDenied("Se requiere permiso administrativo.")
         return self._resultado(request,pk,auditar=True)

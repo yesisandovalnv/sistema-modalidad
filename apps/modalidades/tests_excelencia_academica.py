@@ -20,9 +20,11 @@ class ExcelenciaAcademicaTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_initial_data", verbosity=0)
-        role = Role.objects.create(codigo="EXC-ADMIN", nombre="Excelencia admin")
-        cls.admin = CustomUser.objects.create_user("excelencia-admin", password="x", role=role, is_staff=True, ci="EXC-1", ru="EXC-R1")
-        cls.student = CustomUser.objects.create_user("excelencia-student", password="x", role=role, ci="EXC-2", ru="EXC-R2")
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Excelencia admin")
+        cls.teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
+        student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
+        cls.admin = CustomUser.objects.create_user("excelencia-admin", password="x", role=admin_role, is_staff=True, ci="EXC-1", ru="EXC-R1")
+        cls.student = CustomUser.objects.create_user("excelencia-student", password="x", role=student_role, ci="EXC-2", ru="EXC-R2")
         cls.post = Postulacion.objects.create(
             codigo="EXC-TEST-001", estudiante=cls.student,
             modalidad=Modalidad.objects.get(codigo="EXCELENCIA_ACADEMICA"),
@@ -36,7 +38,7 @@ class ExcelenciaAcademicaTest(TestCase):
         for index, role in enumerate(("PRESIDENTE", "SECRETARIO", "TRIBUNAL", "TRIBUNAL", "DIRECTOR_INSTITUTO_INVESTIGACION"), start=1):
             user = CustomUser.objects.create_user(
                 f"excelencia-actor-{self._testMethodName}-{index}", password="x",
-                role=Role.objects.get(codigo="EXC-ADMIN"), ci=f"EXC-{self._testMethodName[:4]}{index}", ru=f"EXC-R{self._testMethodName[:4]}{index}",
+                role=self.teacher_role, ci=f"EXC-{self._testMethodName[:4]}{index}", ru=f"EXC-R{self._testMethodName[:4]}{index}",
             )
             self.actor_users.append(user)
             AsignacionService.asignar_actor(

@@ -10,9 +10,9 @@ class UsuarioService:
 class UserCapabilitiesService:
     """Construye capacidades informativas; no sustituye permisos de API."""
 
-    STUDENT_CODES = {"EST", "ESTUDIANTE"}
-    TEACHER_CODES = {"DOC", "DOCENTE"}
-    ADMIN_CODES = {"ADM", "ADMIN", "ADMINISTRACION", "ADMINISTRADOR"}
+    STUDENT_CODES = {"ESTUDIANTE"}
+    TEACHER_CODES = {"DOCENTE"}
+    ADMIN_CODES = {"ADMINISTRADOR"}
     NAMES = (
         "puede_ver_dashboard",
         "puede_ver_reportes",
@@ -36,22 +36,26 @@ class UserCapabilitiesService:
 
     @classmethod
     def resolve(cls, user):
+        from core.permissions import is_staff_user
+
         code = (getattr(getattr(user, "role", None), "codigo", "") or "").strip().upper()
-        is_admin = bool(user.is_staff or user.is_superuser)
+        is_admin = is_staff_user(user)
         is_student = code in cls.STUDENT_CODES
+        is_teacher = code in cls.TEACHER_CODES
         values = {name: False for name in cls.NAMES}
-        values["puede_ver_notificaciones"] = True
-        values.update(
-            puede_ver_postulaciones=True,
-            puede_ver_documentos=True,
-            puede_cargar_documentos=is_student,
-            puede_ver_seguimiento=True,
-        )
+        if code in cls.ADMIN_CODES | cls.TEACHER_CODES | cls.STUDENT_CODES:
+            values["puede_ver_notificaciones"] = True
+            values.update(
+                puede_ver_postulaciones=True,
+                puede_ver_documentos=True,
+                puede_cargar_documentos=is_student,
+                puede_ver_seguimiento=True,
+            )
         if is_admin:
             values = {name: True for name in cls.NAMES}
-            values["puede_exportar_reportes"] = bool(user.is_staff or user.is_superuser)
+            values["puede_exportar_reportes"] = True
             return values
-        if not is_student:
+        if is_teacher:
             values.update(
                 puede_ver_dashboard=True,
                 puede_ver_reportes=True,

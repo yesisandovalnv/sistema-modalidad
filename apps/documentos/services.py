@@ -18,6 +18,7 @@ from apps.documentos.models import (
 from apps.postulantes.models import Postulacion
 from apps.usuarios.models import AuditLog
 from apps.notificaciones.events import EventTypes, publish_domain_event
+from core.permissions import is_staff_user
 
 
 class DocumentoService:
@@ -55,9 +56,7 @@ class DocumentoService:
         self._validar_archivo(archivo, tipo_documento)
         self._validar_usuario_activo(usuario)
 
-        if usuario != postulacion.estudiante and not (
-            getattr(usuario, "is_staff", False) or getattr(usuario, "is_superuser", False)
-        ):
+        if usuario != postulacion.estudiante and not is_staff_user(usuario):
             raise PermissionDenied("El usuario no tiene permisos para subir este documento.")
 
         with transaction.atomic():
@@ -540,7 +539,7 @@ class DocumentoService:
 
     def _validar_usuario_administrativo(self, usuario: Any) -> Any:
         self._validar_usuario_activo(usuario)
-        if not (getattr(usuario, "is_staff", False) or getattr(usuario, "is_superuser", False)):
+        if not is_staff_user(usuario):
             raise PermissionDenied("El usuario no tiene permisos administrativos para esta acción.")
         return usuario
 

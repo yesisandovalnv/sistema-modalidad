@@ -30,9 +30,9 @@ User = get_user_model()
 class AssignmentBaseMixin:
     def setUp(self) -> None:
         super().setUp()
-        self.admin_role = Role.objects.create(codigo="ADMIN", nombre="Administrador")
-        self.student_role = Role.objects.create(codigo="EST", nombre="Estudiante")
-        self.docente_role = Role.objects.create(codigo="DOC", nombre="Docente")
+        self.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
+        self.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
+        self.docente_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
 
         self.admin = User.objects.create_user(
             username="admin_asignaciones",
@@ -884,8 +884,11 @@ class AsignacionApiTest(AssignmentBaseMixin, APITestCase):
         tipos = [choice for choice, _label in AsignacionPostulacion.TipoParticipacionChoices.choices]
         asignaciones = []
         docentes = [self.docente_1, self.docente_2, self.docente_3, self.docente_4]
-        extra = User.objects.create_user(username="docente_cinco", role=self.docente_role)
-        for indice, (tipo, docente) in enumerate(zip(tipos, [*docentes, extra]), start=1):
+        docentes.extend(
+            User.objects.create_user(username=f"docente_tipo_{indice}", role=self.docente_role)
+            for indice in range(len(docentes), len(tipos))
+        )
+        for indice, (tipo, docente) in enumerate(zip(tipos, docentes), start=1):
             asignaciones.append(AsignacionService.asignar_actor(
                 self.postulacion, docente, tipo, self.admin,
                 orden_cargo=indice if tipo == "TRIBUNAL" else None,
@@ -896,7 +899,7 @@ class AsignacionApiTest(AssignmentBaseMixin, APITestCase):
         activas = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}&activo=true")
         historicas = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}&activo=false")
 
-        self.assertEqual(activas.data["count"], 4)
+        self.assertEqual(activas.data["count"], len(tipos) - 1)
         self.assertEqual(historicas.data["count"], 1)
         self.assertEqual(historicas.data["results"][0]["tipo_participacion"], tipos[-1])
         self.assertEqual(
@@ -954,8 +957,8 @@ class AsignacionApiTest(AssignmentBaseMixin, APITestCase):
         )
         audit_count = AuditLog.objects.count()
         original = (asignacion.activo, asignacion.fecha_finalizacion, asignacion.observaciones)
-        staff = User.objects.create_user(username="staff-consulta", is_staff=True)
-        superuser = User.objects.create_user(username="super-consulta", is_superuser=True)
+        staff = User.objects.create_user(username="staff-consulta", role=self.admin_role, is_staff=True)
+        superuser = User.objects.create_user(username="super-consulta", role=self.admin_role, is_superuser=True)
         for usuario in (staff, superuser):
             self.authenticate(usuario)
             response = self.client.get(f"/api/v1/asignaciones/?postulacion={self.postulacion.id}")

@@ -6,6 +6,7 @@ from apps.notificaciones.events import EventTypes, publish_domain_event
 from apps.postulantes.models import DictamenRevisionDocumento, SeguimientoEtapa
 from apps.documentos.models import VersionDocumento
 from apps.usuarios.models import AuditLog
+from core.permissions import is_staff_user
 
 
 class DictamenRevisionDocumentoService:
@@ -16,7 +17,7 @@ class DictamenRevisionDocumentoService:
     def registrar(cls, *, seguimiento, version_documento_revisada, tipo_revision,
                   resultado, evidencia_version, usuario, asignacion_emisora=None,
                   observaciones=""):
-        if not usuario or not usuario.is_active or not (usuario.is_staff or usuario.is_superuser):
+        if not usuario or not usuario.is_active or not is_staff_user(usuario):
             raise ValidationError("Se requiere un usuario administrativo activo para registrar el dictamen.")
         seguimiento = SeguimientoEtapa.objects.select_for_update().select_related("postulacion__modalidad", "etapa").get(pk=seguimiento.pk)
         version_documento_revisada = VersionDocumento.all_objects.select_for_update().select_related("documento__postulacion", "documento__tipo_documento").get(pk=version_documento_revisada.pk)

@@ -12,7 +12,7 @@ User=get_user_model()
 
 class Base:
     def setUp(self):
-        super().setUp(); ar=Role.objects.create(codigo="ADMC",nombre="Admin C"); sr=Role.objects.create(codigo="ESTC",nombre="Est C"); dr=Role.objects.create(codigo="DOCC",nombre="Doc C")
+        super().setUp(); ar=Role.objects.create(codigo="ADMINISTRADOR",nombre="Admin C"); sr=Role.objects.create(codigo="ESTUDIANTE",nombre="Est C"); dr=Role.objects.create(codigo="DOCENTE",nombre="Doc C")
         self.admin=User.objects.create_user(username="adminc",role=ar,is_staff=True); self.student=User.objects.create_user(username="estc",role=sr); self.other=User.objects.create_user(username="otherc",role=sr); self.doc=User.objects.create_user(username="docc",role=dr)
         mod=Modalidad.objects.create(codigo="PGC",nombre="PG C"); period=Periodo.objects.create(nombre="PC",gestion=2026,semestre="I",fecha_inicio="2026-01-01",fecha_fin="2026-12-31"); state=EstadoPostulacion.objects.create(codigo="RC",nombre="Registrada C")
         self.post=Postulacion.objects.create(codigo="POST-C",estudiante=self.student,modalidad=mod,periodo=period,estado_actual=state)

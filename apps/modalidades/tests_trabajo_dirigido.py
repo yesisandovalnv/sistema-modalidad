@@ -22,15 +22,16 @@ class TrabajoDirigidoTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_initial_data", verbosity=0)
-        role = Role.objects.create(codigo="TD-ADMIN", nombre="Trabajo Dirigido admin")
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Trabajo Dirigido admin")
+        student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
         cls.admin = CustomUser.objects.create_user(
-            "td-admin", password="x", role=role, is_staff=True, ci="TD-1", ru="TD-R1",
+            "td-admin", password="x", role=admin_role, is_staff=True, ci="TD-1", ru="TD-R1",
         )
         cls.student = CustomUser.objects.create_user(
-            "td-student", password="x", role=role, ci="TD-2", ru="TD-R2",
+            "td-student", password="x", role=student_role, ci="TD-2", ru="TD-R2",
         )
         cls.other = CustomUser.objects.create_user(
-            "td-other", password="x", role=role, ci="TD-3", ru="TD-R3",
+            "td-other", password="x", role=student_role, ci="TD-3", ru="TD-R3",
         )
         cls.post = Postulacion.objects.create(
             codigo="TD-TEST-001", estudiante=cls.student,
@@ -141,7 +142,7 @@ class TrabajoDirigidoTest(TestCase):
         self.assertEqual(client.get(f"/api/v1/postulaciones/{self.post.id}/trabajo-dirigido/").status_code, 200)
         self.assertEqual(client.post(f"/api/v1/postulaciones/{self.post.id}/trabajo-dirigido/institucion/", self.institution_data(), format="json").status_code, 403)
         client.force_authenticate(self.other)
-        self.assertEqual(client.get(f"/api/v1/postulaciones/{self.post.id}/trabajo-dirigido/").status_code, 403)
+        self.assertEqual(client.get(f"/api/v1/postulaciones/{self.post.id}/trabajo-dirigido/").status_code, 404)
 
     def test_modelo_no_admite_otra_modalidad(self):
         project_post = Postulacion.objects.create(

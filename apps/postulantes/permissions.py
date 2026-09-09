@@ -1,15 +1,18 @@
-from django.db.models import Q
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
-from core.permissions import is_staff_user
+from core.permissions import is_staff_user, is_student_user, is_teacher_user
 
 
 def postulaciones_in_scope(queryset, user):
     """Aplica el alcance tecnico vigente del expediente a un queryset."""
     if is_staff_user(user):
         return queryset
-    return queryset.filter(Q(estudiante=user) | Q(asignaciones__usuario=user)).distinct()
+    if is_student_user(user):
+        return queryset.filter(estudiante=user)
+    if is_teacher_user(user):
+        return queryset.filter(asignaciones__usuario=user).distinct()
+    return queryset.none()
 
 
 def get_postulacion_in_scope(queryset, user, pk):

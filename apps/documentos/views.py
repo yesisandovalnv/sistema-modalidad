@@ -27,6 +27,7 @@ from apps.documentos.serializers import (
 from apps.documentos.services import ConfirmacionCorreccionDocumentoService, DocumentoService
 from apps.postulantes.models import EventoDefensa, Postulacion
 from core.permissions import IsStaffOrReadOnly
+from core.permissions import is_staff_user
 
 
 class EstadoDocumentoViewSet(viewsets.ModelViewSet):
@@ -84,7 +85,7 @@ class DocumentoPostulacionViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not getattr(user, "is_authenticated", False):
             return queryset.none()
-        if user.is_authenticated and (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
+        if is_staff_user(user):
             return queryset
         return queryset.filter(
             Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user)
@@ -244,7 +245,7 @@ class VersionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         if not getattr(user, "is_authenticated", False):
             return queryset.none()
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        if is_staff_user(user):
             return queryset
         return queryset.filter(
             Q(documento__postulacion__estudiante=user)
@@ -296,7 +297,7 @@ class ObservacionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         if not getattr(user, "is_authenticated", False):
             return queryset.none()
-        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+        if is_staff_user(user):
             return queryset
         return queryset.filter(
             Q(version_documento__documento__postulacion__estudiante=user)
@@ -328,7 +329,7 @@ class ConfirmacionCorreccionDocumentoViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = ConfirmacionCorreccionDocumento.objects.select_related("postulacion", "evento_origen", "version_observada", "version_corregida", "confirmado_por", "asignacion_confirmante__usuario")
-        if getattr(self.request.user, "is_staff", False) or getattr(self.request.user, "is_superuser", False): return qs
+        if is_staff_user(self.request.user): return qs
         return qs.filter(Q(postulacion__estudiante=self.request.user) | Q(postulacion__asignaciones__usuario=self.request.user)).distinct()
 
     def create(self, request, *args, **kwargs):

@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied,ValidationError
+from core.permissions import is_staff_user
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -24,7 +25,7 @@ class CierreAccessMixin:
         qs=Postulacion.objects.select_related("modalidad","estado_actual")
         return get_postulacion_in_scope(qs,request.user,pk)
     def _admin(self,request):
-        if not (request.user.is_staff or request.user.is_superuser): raise PermissionDenied("Se requiere permiso administrativo.")
+        if not is_staff_user(request.user): raise PermissionDenied("Se requiere permiso administrativo.")
     def _call(self,fn,*args):
         try:return fn(*args)
         except DjangoValidationError as exc: raise ValidationError(exc.message_dict if hasattr(exc,"message_dict") else exc.messages) from exc

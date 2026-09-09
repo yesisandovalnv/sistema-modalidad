@@ -11,6 +11,7 @@ from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDo
 from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, HistorialEstado, Postulacion, SeguimientoEtapa
 from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.workflow import WorkflowService
+from apps.usuarios.models import Role
 
 
 User = get_user_model()
@@ -39,6 +40,11 @@ class WorkflowBaseMixin:
             ci="9000003",
             ru="RU9000003",
         )
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
+        student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
+        self.admin.role = admin_role
+        self.admin.save(update_fields=["role"])
+        User.objects.filter(pk__in=[self.student.pk, self.other_student.pk]).update(role=student_role)
         self.modalidad = Modalidad.objects.create(
             codigo="PROYECTO_GRADO",
             nombre="Proyecto de Grado",

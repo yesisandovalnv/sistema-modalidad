@@ -19,7 +19,7 @@ from apps.postulantes.models import (
 )
 from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
 from apps.postulantes.workflow import WorkflowService
-from apps.usuarios.models import AuditLog
+from apps.usuarios.models import AuditLog, Role
 
 
 User = get_user_model()
@@ -51,6 +51,13 @@ class RevisionTribunalFixtureMixin:
             )
             for order in (1, 2, 3)
         ]
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
+        student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
+        teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
+        self.admin.role = admin_role
+        self.admin.save(update_fields=["role"])
+        User.objects.filter(pk__in=[self.student.pk, self.stranger.pk]).update(role=student_role)
+        User.objects.filter(pk__in=[user.pk for user in self.tribunales]).update(role=teacher_role)
         self.modalidad = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto de Grado")
         self.periodo = Periodo.objects.create(
             nombre="2026-II", gestion=2026, semestre="II",

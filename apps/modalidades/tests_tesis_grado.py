@@ -26,9 +26,9 @@ from apps.usuarios.models import CustomUser, Role
 class TesisGradoPolicyTest(TestCase):
     def setUp(self):
         call_command("seed_initial_data", verbosity=0)
-        self.admin_role = Role.objects.create(codigo="ADMIN", nombre="Administrador")
-        self.doc_role = Role.objects.create(codigo="DOC", nombre="Docente")
-        self.student_role = Role.objects.create(codigo="EST", nombre="Estudiante")
+        self.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
+        self.doc_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
+        self.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
         self.admin = CustomUser.objects.create_user(username="tesis-admin", password="x", ci="7100001", ru="RU7100001", role=self.admin_role, is_staff=True)
         self.student = CustomUser.objects.create_user(username="tesis-estudiante", password="x", ci="7100002", ru="RU7100002", role=self.student_role)
         self.docentes = [CustomUser.objects.create_user(username=f"tesis-docente-{n}", password="x", ci=f"710001{n}", ru=f"RU710001{n}", role=self.doc_role) for n in range(1, 5)]

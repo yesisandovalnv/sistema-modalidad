@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 
 from apps.modalidades.diplomado_service import DiplomadoService
 from apps.postulantes.models import Postulacion
+from apps.postulantes.permissions import get_postulacion_in_scope
 from core.permissions import is_staff_user
 
 
@@ -13,10 +14,13 @@ class DiplomadoOverviewView(APIView):
     permission_classes = [IsAuthenticated]
 
     def _postulacion(self, request, pk):
-        item = Postulacion.objects.filter(pk=pk).select_related("modalidad", "estudiante").first()
+        item = get_postulacion_in_scope(
+            Postulacion.objects.select_related("modalidad", "estudiante"), request.user, pk
+        )
         if not item:
             raise ValidationError("La postulación no existe.")
-        if not is_staff_user(request.user) and item.estudiante_id != request.user.id:
+        if (not is_staff_user(request.user) and item.estudiante_id != request.user.id
+                and not item.asignaciones.filter(usuario=request.user).exists()):
             raise PermissionDenied("No tiene permisos para consultar este Diplomado.")
         return item
 

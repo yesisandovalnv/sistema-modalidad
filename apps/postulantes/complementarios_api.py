@@ -4,6 +4,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from core.permissions import is_staff_user
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -32,12 +33,12 @@ class RelatedViewSet(viewsets.ModelViewSet):
     permission_classes=[IsAuthenticated]; http_method_names=["get","post","head","options"]
     filter_backends=[DjangoFilterBackend]; filterset_fields=["postulacion","estado"]
     def _admin(self):
-        if not (self.request.user.is_staff or self.request.user.is_superuser): raise PermissionDenied("Se requiere permiso administrativo.")
+        if not is_staff_user(self.request.user): raise PermissionDenied("Se requiere permiso administrativo.")
     def perform_create(self,serializer): self._admin(); serializer.save()
     def create(self,request,*args,**kwargs): self._admin(); return super().create(request,*args,**kwargs)
     def get_queryset(self):
         qs=super().get_queryset(); u=self.request.user
-        if u.is_staff or u.is_superuser: return qs
+        if is_staff_user(u): return qs
         return qs.filter(Q(postulacion__estudiante=u)|Q(postulacion__asignaciones__usuario=u)).distinct()
     def _call(self,fn,*args):
         try: return fn(*args)

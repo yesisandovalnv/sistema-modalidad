@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from django.core.exceptions import ValidationError
+from core.permissions import is_staff_user
 from django.db import transaction
 from django.utils import timezone
 
@@ -409,6 +410,5 @@ class AsignacionService:
             raise ValidationError("El usuario responsable es obligatorio.")
         if not usuario.is_active:
             raise ValidationError("El usuario responsable no está activo.")
-        role_code = ((getattr(usuario.role, "codigo", "") or "")).strip().upper()
-        if not (usuario.is_staff or usuario.is_superuser or role_code in AsignacionService.ADMIN_ROLE_CODES):
+        if not is_staff_user(usuario):
             raise ValidationError("El usuario responsable no tiene permisos administrativos para designar actores.")

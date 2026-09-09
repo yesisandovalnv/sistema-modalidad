@@ -44,7 +44,6 @@ urlpatterns = [
     path('api/v1/postulaciones/<int:pk>/trabajo-dirigido/informes/', TrabajoDirigidoOverviewView.as_view(), {'action': 'informe'}),
     path('api/v1/postulaciones/<int:pk>/trabajo-dirigido/concluir/', TrabajoDirigidoOverviewView.as_view(), {'action': 'concluir'}),
     path('api/v1/documentos/', include('apps.documentos.urls')),
-    path('api/v1/seguimiento/', include('apps.seguimiento.urls')),
     path('api/v1/reportes/', include('apps.reportes.urls')),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

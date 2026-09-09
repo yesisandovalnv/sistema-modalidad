@@ -24,7 +24,7 @@ User = get_user_model()
 class DefensaMixin:
     def setUp(self):
         super().setUp()
-        ar=Role.objects.create(codigo="ADMDEF",nombre="Admin defensa"); sr=Role.objects.create(codigo="ESTDEF",nombre="Estudiante defensa"); dr=Role.objects.create(codigo="DOCDEF",nombre="Docente defensa")
+        ar=Role.objects.create(codigo="ADMINISTRADOR",nombre="Admin defensa"); sr=Role.objects.create(codigo="ESTUDIANTE",nombre="Estudiante defensa"); dr=Role.objects.create(codigo="DOCENTE",nombre="Docente defensa")
         self.admin=User.objects.create_user(username="admdef",role=ar,is_staff=True)
         self.student=User.objects.create_user(username="estdef",role=sr)
         self.other=User.objects.create_user(username="otrodef",role=sr)
@@ -455,7 +455,7 @@ class ApiDefensaTests(DefensaMixin,APITestCase):
         self.client.force_authenticate(self.admin); self.assertEqual(self.client.post(url+"iniciar/").status_code,200)
 
     def test_acciones_administrativas_aceptan_staff_y_superusuario(self):
-        superuser=User.objects.create_superuser(username="superdef",password="secret")
+        superuser=User.objects.create_superuser(username="superdef",password="secret",role=self.admin.role)
         for user in (self.admin,superuser):
             ev=self.event(); self.client.force_authenticate(user)
             self.assertEqual(self.client.post(f"/api/v1/eventos-defensa/{ev.pk}/iniciar/",{}).status_code,200)

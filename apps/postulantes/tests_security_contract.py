@@ -12,12 +12,11 @@ class SprintZeroSecurityContractTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        admin_role = Role.objects.create(codigo="ADMIN", nombre="Administrador")
-        staff_role = Role.objects.create(codigo="ADM", nombre="Personal administrativo")
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
         teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
         student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
         cls.admin = CustomUser.objects.create_superuser("sec-admin", password="x", role=admin_role)
-        cls.staff = CustomUser.objects.create_user("sec-staff", password="x", role=staff_role, is_staff=True)
+        cls.staff = CustomUser.objects.create_user("sec-staff", password="x", role=admin_role, is_staff=True)
         cls.role_only_admin = CustomUser.objects.create_user("sec-role-admin", password="x", role=admin_role)
         cls.teacher = CustomUser.objects.create_user("sec-teacher", password="x", role=teacher_role)
         cls.student = CustomUser.objects.create_user("sec-student", password="x", role=student_role)
@@ -80,4 +79,3 @@ class SprintZeroSecurityContractTests(TestCase):
     def test_workflow_transition_rejects_teacher_before_object_lookup(self):
         response = self.request_as(self.teacher).post("/api/v1/seguimientos-etapa/999999/iniciar/", {})
         self.assertEqual(response.status_code, 403)
-

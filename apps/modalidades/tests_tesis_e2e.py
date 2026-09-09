@@ -22,9 +22,9 @@ from apps.usuarios.models import CustomUser, Role
 class TesisHastaRevisionTribunalE2ETest(TestCase):
     def setUp(self):
         call_command("seed_initial_data", verbosity=0)
-        admin_role, _ = Role.objects.get_or_create(codigo="ADMIN_E2E", defaults={"nombre": "Admin E2E"})
-        teacher_role, _ = Role.objects.get_or_create(codigo="DOC_E2E", defaults={"nombre": "Docente E2E"})
-        student_role, _ = Role.objects.get_or_create(codigo="EST_E2E", defaults={"nombre": "Estudiante E2E"})
+        admin_role, _ = Role.objects.get_or_create(codigo="ADMINISTRADOR", defaults={"nombre": "Admin E2E"})
+        teacher_role, _ = Role.objects.get_or_create(codigo="DOCENTE", defaults={"nombre": "Docente E2E"})
+        student_role, _ = Role.objects.get_or_create(codigo="ESTUDIANTE", defaults={"nombre": "Estudiante E2E"})
         self.admin = CustomUser.objects.create_user(username="e2e-admin", password="x", ci="8800001", ru="RU8800001", role=admin_role, is_staff=True)
         student = CustomUser.objects.create_user(username="e2e-student", password="x", ci="8800002", ru="RU8800002", role=student_role)
         self.teachers = [CustomUser.objects.create_user(username=f"e2e-doc-{n}", password="x", ci=f"880001{n}", ru=f"RU880001{n}", role=teacher_role) for n in range(1, 6)]

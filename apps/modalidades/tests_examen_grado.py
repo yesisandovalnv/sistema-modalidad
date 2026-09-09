@@ -22,9 +22,11 @@ class ExamenGradoContenidosTest(TestCase):
     @classmethod
     def setUpTestData(cls):
         call_command("seed_initial_data", verbosity=0)
-        role = Role.objects.create(codigo="EXAM-ADMIN", nombre="Examen admin")
-        cls.admin = CustomUser.objects.create_user("examen-admin", password="x", role=role, is_staff=True, ci="EXA-1", ru="EXA-R1")
-        cls.student = CustomUser.objects.create_user("examen-student", password="x", role=role, ci="EXA-2", ru="EXA-R2")
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Examen admin")
+        cls.teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
+        student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
+        cls.admin = CustomUser.objects.create_user("examen-admin", password="x", role=admin_role, is_staff=True, ci="EXA-1", ru="EXA-R1")
+        cls.student = CustomUser.objects.create_user("examen-student", password="x", role=student_role, ci="EXA-2", ru="EXA-R2")
         cls.post = Postulacion.objects.create(
             codigo="EXAM-TEST-001", estudiante=cls.student,
             modalidad=Modalidad.objects.get(codigo="EXAMEN_GRADO"),
@@ -38,7 +40,7 @@ class ExamenGradoContenidosTest(TestCase):
         ExamenGradoService.ensure_areas(self.post)
         self.tribunal_users = []
         for index, role in enumerate(("TRIBUNAL", "TRIBUNAL", "TRIBUNAL", "PRESIDENTE", "SECRETARIO"), start=1):
-            user = CustomUser.objects.create_user(f"examen-actor-{self._testMethodName}-{index}", password="x", role=Role.objects.get(codigo="EXAM-ADMIN"), ci=f"{self._testMethodName[:5]}{index}", ru=f"{self._testMethodName[:5]}R{index}")
+            user = CustomUser.objects.create_user(f"examen-actor-{self._testMethodName}-{index}", password="x", role=self.teacher_role, ci=f"{self._testMethodName[:5]}{index}", ru=f"{self._testMethodName[:5]}R{index}")
             if role == "TRIBUNAL":
                 self.tribunal_users.append(user)
             AsignacionPostulacion.objects.create(postulacion=self.post, usuario=user, tipo_participacion=role, orden_cargo=index if role == "TRIBUNAL" else None, designado_por=self.admin)
