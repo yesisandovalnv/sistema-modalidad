@@ -12,6 +12,7 @@ from apps.modalidades.models import TrabajoDirigidoExpediente
 from apps.modalidades.policies import ModalidadPolicyRegistry
 from apps.modalidades.trabajo_dirigido import TrabajoDirigidoPolicy
 from apps.modalidades.trabajo_dirigido_service import TrabajoDirigidoService
+from apps.modalidades.validators import ModalidadConfigurationValidator
 from apps.postulantes.models import EstadoPostulacion, Postulacion, SeguimientoEtapa
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import CustomUser, Role
@@ -58,6 +59,11 @@ class TrabajoDirigidoTest(TestCase):
     def test_registry_identifica_modalidad_y_mantiene_aislamiento(self):
         self.assertIsInstance(ModalidadPolicyRegistry.get(self.post), TrabajoDirigidoPolicy)
         self.assertNotIsInstance(ModalidadPolicyRegistry.get("PROYECTO_GRADO"), TrabajoDirigidoPolicy)
+
+    def test_capacidades_y_configuracion_estan_habilitadas(self):
+        policy = ModalidadPolicyRegistry.get(self.post)
+        self.assertTrue(policy.get_capabilities(self.post.modalidad).soportada)
+        self.assertTrue(ModalidadConfigurationValidator.validate_modalidad(self.post.modalidad).valida)
 
     def test_etapas_normativas_y_reintentos(self):
         policy = ModalidadPolicyRegistry.get(self.post)

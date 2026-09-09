@@ -22,13 +22,14 @@ const ana = { id: 39, codigo: '20260001', ru: '20260001', ci: '9900001', nombre_
 const period = { id: 8, nombre: '2026-II', gestion: 2026, semestre: 'II', activo: true }
 const modality = { id: 3, codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado', activo: true }
 const examenModality = { id: 6, codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado', activo: true }
+const trabajoDirigidoModality = { id: 2, codigo: 'TRABAJO_DIRIGIDO', nombre: 'Trabajo Dirigido', activo: true }
 const auth = { hasPermission: (name) => name === 'puede_gestionar_postulaciones' }
 
 function setup({ periods = [period], rows = [], students = [student], modalities = [modality], listImplementation } = {}) {
   crudService.list.mockImplementation(listImplementation || (() => Promise.resolve({ count: rows.length, next: null, previous: null, results: rows })))
   listAll.mockImplementation((path) => Promise.resolve(path === endpoints.modalidades ? modalities : path === endpoints.periodos ? periods : students))
   postulacionesService.obtenerCapacidadesModalidad.mockImplementation((id) => Promise.resolve(
-    id === modality.id || id === examenModality.id
+    id === modality.id || id === examenModality.id || id === trabajoDirigidoModality.id
       ? { soportada: true, configuracion_valida: true }
       : { soportada: false, configuracion_valida: false },
   ))
@@ -59,6 +60,14 @@ describe('Nueva postulación', () => {
     expect(screen.getByRole('option', { name: 'Examen de Grado' })).toBeEnabled()
     expect(postulacionesService.obtenerCapacidadesModalidad).toHaveBeenCalledWith(3, expect.any(AbortSignal))
     expect(postulacionesService.obtenerCapacidadesModalidad).toHaveBeenCalledWith(6, expect.any(AbortSignal))
+  })
+
+  it('mantiene Trabajo Dirigido seleccionable cuando su configuración es válida', async () => {
+    setup({ modalities: [trabajoDirigidoModality] })
+    await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+
+    expect(screen.getByRole('option', { name: 'Trabajo Dirigido' })).toBeEnabled()
+    expect(screen.queryByRole('option', { name: /Trabajo Dirigido — Próximamente/ })).not.toBeInTheDocument()
   })
 
   it('consulta estudiantes elegibles por modalidad y periodo', async () => {

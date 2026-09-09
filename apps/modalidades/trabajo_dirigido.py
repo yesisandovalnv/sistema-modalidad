@@ -91,6 +91,9 @@ class TrabajoDirigidoPolicy(ProyectoGradoPolicy):
     evaluacion_policy = ProyectoGradoEvaluacionPolicy()
     requisitos_policy = TrabajoDirigidoRequisitosPolicy()
 
+    def usa_conclusion_academica_propia(self):
+        return True
+
     def get_revision_tribunal_previa_policy(self):
         return TrabajoDirigidoRevisionPolicy()
 
