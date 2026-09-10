@@ -1,5 +1,7 @@
 from uuid import uuid4
-from django.test import TestCase
+from io import BytesIO
+from django.test import TestCase, override_settings
+from openpyxl import load_workbook
 from rest_framework.test import APIClient
 from apps.academico.models import Modalidad,Periodo,EtapaModalidad
 from apps.postulantes.models import Postulacion,EstadoPostulacion,SeguimientoEtapa,AsignacionPostulacion
@@ -64,6 +66,16 @@ class ExportTests(ReportBase):
             with self.subTest(value=value): self.assertTrue(safe_csv(value).startswith("'"))
         self.assertEqual(safe_csv('texto, "seguro" ñ'), 'texto, "seguro" ñ')
     def test_csv_y_auditoria(self):
-        r=self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=csv"); self.assertEqual(r.status_code,200); self.assertTrue(r.content.startswith(b"\xef\xbb\xbf")); self.assertEqual(AuditLog.objects.filter(accion="EXPORT_APPLICATION_REPORT").count(),1)
-    def test_formato_no_soportado(self): self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx").status_code,400)
+        r=self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=csv"); self.assertEqual(r.status_code,200); self.assertTrue(r.content.startswith(b"\xef\xbb\xbf")); self.assertIn(b";", r.content.splitlines()[1]); self.assertEqual(AuditLog.objects.filter(accion="EXPORT_APPLICATION_REPORT_CSV").count(),1)
+    def test_xlsx_profesional_filtrado_y_auditoria(self):
+        r=self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx&gestion=2026"); self.assertEqual(r.status_code,200)
+        self.assertEqual(r["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); self.assertIn("reporte_postulaciones.xlsx", r["Content-Disposition"])
+        sheet=load_workbook(BytesIO(r.content), data_only=False).active
+        self.assertEqual(sheet["A1"].value, "SISTEMA DE GRADUACIÓN"); self.assertEqual(sheet["A2"].value, "REPORTE DE POSTULACIONES")
+        self.assertEqual([sheet.cell(7, column).value for column in range(1, 13)], ["Postulación", "Postulante", "Modalidad", "Gestión", "Semestre", "Tutor", "Etapa actual", "Estado general", "Avance (%)", "Documentos pendientes", "Próxima defensa", "Concluida"])
+        self.assertEqual(sheet.max_row, 9); self.assertEqual(sheet.freeze_panes, "A8"); self.assertTrue(sheet.auto_filter.ref); self.assertEqual(sheet.cell(8, 9).value, 0); self.assertEqual(sheet.cell(8, 9).number_format, "0.00%")
+        self.assertEqual(AuditLog.objects.filter(accion="EXPORT_APPLICATION_REPORT_XLSX").count(),1)
+    @override_settings(REPORT_EXPORT_MAX_ROWS=1)
+    def test_xlsx_respeta_limite(self): self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx").status_code,400)
+    def test_formato_no_soportado(self): self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=pdf").status_code,400)
     def test_estudiante_no_exporta(self): self.client.force_authenticate(self.student); self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/exportar/").status_code,403)

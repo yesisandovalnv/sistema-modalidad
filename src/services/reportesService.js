@@ -40,6 +40,19 @@ export const reportesService = {
       throw messageFrom(error)
     }
   },
+  async exportarPostulacionesXLSX(filtros = {}, signal) {
+    try {
+      const response = await apiClient.get(`/api/v1/reportes/postulaciones/exportar/?${serializeParams({ ...filtros, formato: 'xlsx' })}`, { signal, responseType: 'blob' })
+      const disposition = response.headers['content-disposition'] || ''
+      const match = disposition.match(/filename="?([^";]+)"?/i)
+      return { blob: response.data, filename: match?.[1] || 'reporte_postulaciones.xlsx' }
+    } catch (error) {
+      if (error?.response?.data instanceof Blob) {
+        try { error.response.data = JSON.parse(await error.response.data.text()) } catch { /* respuesta no JSON */ }
+      }
+      throw messageFrom(error)
+    }
+  },
   obtenerModalidades(signal) { return request('/api/v1/academico/modalidades/?page_size=100', { signal }).then((r) => r.data.results || r.data) },
   obtenerCapacidades(id, signal) { return request(`/api/v1/modalidades/${id}/capacidades/`, { signal }).then((r) => r.data) },
 }

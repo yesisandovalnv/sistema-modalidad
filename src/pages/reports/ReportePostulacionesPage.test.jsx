@@ -1,13 +1,15 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import ReportePostulacionesPage from './ReportePostulacionesPage'
 import { reportesService } from '../../services/reportesService'
 
-vi.mock('../../services/reportesService', () => ({ reportesService: { obtenerPostulaciones: vi.fn() } }))
-vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ hasPermission: () => false }) }))
+const authState = vi.hoisted(() => ({ canExport: false }))
+vi.mock('../../services/reportesService', () => ({ reportesService: { obtenerPostulaciones: vi.fn(), exportarPostulacionesCSV: vi.fn(), exportarPostulacionesXLSX: vi.fn() } }))
+vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ hasPermission: () => authState.canExport }) }))
 vi.mock('../../components/reports/ReportFilters', () => ({ ReportFilters: () => null }))
 
 describe('ReportePostulacionesPage', () => {
+  beforeEach(() => { authState.canExport = false; vi.clearAllMocks() })
   it('muestra etiquetas legibles para los códigos de etapa y estado recibidos de la API', async () => {
     reportesService.obtenerPostulaciones.mockResolvedValue({
       count: 1,
@@ -50,5 +52,16 @@ describe('ReportePostulacionesPage', () => {
     }] })
     render(<ReportePostulacionesPage />)
     expect(await screen.findByText('No aplica')).toBeInTheDocument()
+  })
+
+  it('muestra Exportar Excel y descarga el archivo XLSX', async () => {
+    authState.canExport = true
+    reportesService.obtenerPostulaciones.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+    reportesService.exportarPostulacionesXLSX.mockResolvedValue({ blob: new Blob(['xlsx']), filename: 'reporte_postulaciones.xlsx' })
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:xlsx'), revokeObjectURL: vi.fn() })
+    render(<ReportePostulacionesPage />)
+    expect(await screen.findByRole('button', { name: 'Exportar Excel' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar Excel' }))
+    await waitFor(() => expect(reportesService.exportarPostulacionesXLSX).toHaveBeenCalledWith({}))
   })
 })
