@@ -96,6 +96,33 @@ it('oculta el acceso a Django Admin para un operador sin rol ADMINISTRADOR', asy
   expect(screen.queryByLabelText('Acceso a Django Admin (staff)')).not.toBeInTheDocument()
 })
 
+it('muestra staff usando el rol real del usuario autenticado', async () => {
+  render(<AuthContext.Provider value={{ user: { rol: { codigo: 'ADMINISTRADOR', nombre: 'Administrador' } }, roleCode: '' }}><UsuariosPage /></AuthContext.Provider>)
+  await screen.findByText('Ana Pérez')
+  fireEvent.click(screen.getByRole('button', { name: 'Nuevo usuario' }))
+  expect(screen.getByLabelText('Acceso a Django Admin (staff)')).toBeInTheDocument()
+  expect(screen.getByLabelText('Acceso a Django Admin (staff)')).toBeDisabled()
+  fireEvent.change(screen.getAllByLabelText('Rol')[1], { target: { value: '3' } })
+  expect(screen.getByLabelText('Acceso a Django Admin (staff)')).toBeEnabled()
+})
+
+it('oculta acciones peligrosas para un superusuario frente a un administrador normal', async () => {
+  usuariosService.listUsers.mockResolvedValue({ count: 1, next: null, previous: null, results: [{ ...user, is_superuser: true, role: adminRole }] })
+  renderPage()
+  await screen.findByText('Ana Pérez')
+  expect(screen.getByRole('button', { name: 'Detalle' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Inactivar' })).not.toBeInTheDocument()
+})
+
+it('mantiene acciones controladas para el operador superusuario', async () => {
+  usuariosService.listUsers.mockResolvedValue({ count: 1, next: null, previous: null, results: [{ ...user, is_superuser: true, role: adminRole }] })
+  render(<AuthContext.Provider value={{ user: { is_superuser: true, rol: { codigo: 'ADMINISTRADOR' } }, roleCode: 'ADMINISTRADOR' }}><UsuariosPage /></AuthContext.Provider>)
+  await screen.findByText('Ana Pérez')
+  expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Inactivar' })).toBeInTheDocument()
+})
+
 it('limpia el error anterior al volver a abrir el formulario de nuevo usuario', async () => {
   usuariosService.createUser.mockRejectedValueOnce({ message: 'Error del intento anterior.' })
   renderPage()

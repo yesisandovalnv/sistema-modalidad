@@ -86,6 +86,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "ci",
             "role",
             "rol",
+            "is_superuser",
             "permisos",
             "correo_personal",
             "correo_institucional",
@@ -169,8 +170,12 @@ class UserAdminSerializer(serializers.ModelSerializer):
         if self.instance and self.instance.is_superuser:
             if role_code != ADMIN_ROLE_CODE:
                 raise serializers.ValidationError({"role_id": "Un superusuario debe conservar el rol ADMINISTRADOR."})
-            if not attrs["is_staff"]:
+            if "is_staff" in attrs and not attrs["is_staff"]:
                 raise serializers.ValidationError({"is_staff": "Un superusuario debe conservar el acceso a Django Admin."})
+            if "is_active" in attrs and not attrs["is_active"]:
+                raise serializers.ValidationError({"is_active": "Un superusuario debe conservarse activo."})
+            attrs["is_staff"] = True
+            attrs["is_active"] = True
         return attrs
 
     def create(self, validated_data):
@@ -199,6 +204,6 @@ class UserAdminSerializer(serializers.ModelSerializer):
             "id", "username", "nombres", "apellido_paterno", "apellido_materno",
             "nombre_completo", "ci", "expedido", "fecha_nacimiento", "telefono",
             "ru", "correo_personal", "correo_institucional", "role", "role_id",
-            "is_active", "is_staff", "password", "permisos",
+            "is_active", "is_staff", "is_superuser", "password", "permisos",
         )
-        read_only_fields = ("id", "nombre_completo", "role", "permisos")
+        read_only_fields = ("id", "nombre_completo", "role", "is_superuser", "permisos")

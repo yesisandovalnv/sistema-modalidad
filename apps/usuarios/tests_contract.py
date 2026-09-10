@@ -48,8 +48,9 @@ class AuthMeContractTests(APITestCase):
 
     def test_contract_does_not_expose_sensitive_fields(self):
         _, response = self.request_as(username="contract-safe", role=self.teacher_role)
-        for field in ("password", "access", "refresh", "is_staff", "is_superuser"):
+        for field in ("password", "access", "refresh", "is_staff"):
             self.assertNotIn(field, response.data)
+        self.assertFalse(response.data["is_superuser"])
 
     def test_anonymous_is_unauthorized(self):
         self.assertEqual(self.client.get(reverse("auth_me")).status_code, 401)

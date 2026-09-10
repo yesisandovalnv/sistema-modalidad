@@ -104,6 +104,11 @@ class CanManageUsers(BasePermission):
             and UserCapabilitiesService.resolve(request.user)["puede_gestionar_usuarios"]
         )
 
+    def has_object_permission(self, request, view, obj):
+        if getattr(obj, "is_superuser", False) and not getattr(request.user, "is_superuser", False):
+            return False
+        return True
+
 
 class UserAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):
     serializer_class = UserAdminSerializer
