@@ -42,10 +42,9 @@ class AuthMeContractTests(APITestCase):
         self.client.force_authenticate(user=None)
         _, superuser = self.request_as(
             username="contract-defense-superuser",
-            role=self.teacher_role,
             is_superuser=True,
         )
-        self.assertFalse(superuser.data["permisos"]["puede_gestionar_defensas"])
+        self.assertTrue(superuser.data["permisos"]["puede_gestionar_defensas"])
 
     def test_contract_does_not_expose_sensitive_fields(self):
         _, response = self.request_as(username="contract-safe", role=self.teacher_role)

@@ -21,6 +21,7 @@ class CanonicalRoleAuthorityTests(TestCase):
         cls.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
         cls.unknown_role = Role.objects.create(codigo="OTRO", nombre="Otro")
         cls.admin = CustomUser.objects.create_user("role-admin", role=cls.admin_role, is_staff=True)
+        cls.technical_superuser = CustomUser.objects.create_superuser("technical-superuser")
         cls.admin_without_staff = CustomUser.objects.create_user("role-admin-bad", role=cls.admin_role)
         cls.teacher = CustomUser.objects.create_user("role-teacher", role=cls.teacher_role)
         cls.teacher_with_staff = CustomUser.objects.create_user("role-teacher-bad", role=cls.teacher_role, is_staff=True)
@@ -53,12 +54,36 @@ class CanonicalRoleAuthorityTests(TestCase):
 
     def test_only_coherent_administrator_has_administrative_authority(self):
         self.assertTrue(is_staff_user(self.admin))
+        self.assertTrue(is_staff_user(self.technical_superuser))
         for user in (self.admin_without_staff, self.teacher, self.teacher_with_staff, self.student, self.unknown):
             self.assertFalse(is_staff_user(user))
         self.assertTrue(UserCapabilitiesService.resolve(self.admin)["puede_gestionar_usuarios"])
+        self.assertTrue(UserCapabilitiesService.resolve(self.technical_superuser)["puede_gestionar_usuarios"])
         self.assertFalse(UserCapabilitiesService.resolve(self.teacher_with_staff)["puede_gestionar_usuarios"])
         self.assertFalse(UserCapabilitiesService.resolve(self.admin_without_staff)["puede_gestionar_usuarios"])
         self.assertFalse(UserCapabilitiesService.resolve(self.unknown)["puede_ver_dashboard"])
+
+    def test_superuser_without_role_has_administrative_endpoint_access(self):
+        paths = (
+            "/api/v1/reportes/dashboard/",
+            "/api/v1/usuarios/roles/",
+            "/api/v1/academico/modalidades/",
+            "/api/v1/academico/periodos/",
+            "/api/v1/academico/requisitos/",
+            "/api/v1/documentos/tipos-documento/",
+        )
+        client = self.client_as(self.technical_superuser)
+        self.assertEqual(self.technical_superuser.role, None)
+        for path in paths:
+            self.assertEqual(client.get(path).status_code, 200, path)
+
+    def test_staff_flag_does_not_grant_teacher_or_student_administration(self):
+        for role in (self.teacher_role, self.student_role):
+            user = CustomUser.objects.create_user(
+                f"staff-{role.codigo.lower()}", role=role, is_staff=True,
+            )
+            self.assertFalse(is_staff_user(user))
+            self.assertFalse(UserCapabilitiesService.resolve(user)["puede_gestionar_usuarios"])
 
     def test_user_serializer_enforces_role_staff_coherence(self):
         teacher = UserAdminSerializer(

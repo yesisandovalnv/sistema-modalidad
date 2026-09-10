@@ -41,13 +41,15 @@ class IsOwnerOrAdmin(BasePermission):
 
 
 def is_staff_user(user) -> bool:
-    """Require both the ADMINISTRADOR role and a Django authority flag."""
+    """Indica autoridad administrativa técnica o funcional."""
 
     return bool(
         user
         and getattr(user, "is_authenticated", False)
-        and is_admin_role(user)
-        and (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False))
+        and (
+            getattr(user, "is_superuser", False)
+            or (is_admin_role(user) and getattr(user, "is_staff", False))
+        )
     )
 
 
