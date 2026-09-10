@@ -96,6 +96,20 @@ it('oculta el acceso a Django Admin para un operador sin rol ADMINISTRADOR', asy
   expect(screen.queryByLabelText('Acceso a Django Admin (staff)')).not.toBeInTheDocument()
 })
 
+it('limpia el error anterior al volver a abrir el formulario de nuevo usuario', async () => {
+  usuariosService.createUser.mockRejectedValueOnce({ message: 'Error del intento anterior.' })
+  renderPage()
+  await screen.findByText('Ana Pérez')
+  fireEvent.click(screen.getByRole('button', { name: 'Nuevo usuario' }))
+  fireEvent.change(screen.getByLabelText('Usuario'), { target: { value: 'fallido' } })
+  fireEvent.change(screen.getByLabelText('Contraseña inicial'), { target: { value: 'StrongPass-2026' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar usuario' }))
+  expect(await screen.findAllByText('Error del intento anterior.')).toHaveLength(2)
+  fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Nuevo usuario' }))
+  expect(screen.queryByText('Error del intento anterior.')).not.toBeInTheDocument()
+})
+
 it('administra roles sin convertir capacidades en controles editables', async () => {
   renderPage()
   fireEvent.click(screen.getByRole('button', { name: 'Roles' }))
