@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import UsuariosPage from './UsuariosPage'
 import { usuariosService } from '../../services/usuariosService'
+import { AuthContext } from '../../context/AuthContext'
 
 vi.mock('../../services/usuariosService', () => ({ usuariosService: { listUsers: vi.fn(), listRoles: vi.fn(), createUser: vi.fn(), updateUser: vi.fn(), createRole: vi.fn(), updateRole: vi.fn() } }))
 
@@ -9,6 +10,7 @@ const role = { id: 1, codigo: 'ESTUDIANTE', nombre: 'Estudiante', activo: true, 
 const teacherRole = { id: 2, codigo: 'DOCENTE', nombre: 'Docente', activo: true, usuarios_count: 1 }
 const adminRole = { id: 3, codigo: 'ADMINISTRADOR', nombre: 'Administrador', activo: true, usuarios_count: 1 }
 const user = { id: 2, username: 'ana', nombre_completo: 'Ana Pérez', ru: 'RU-1', ci: 'CI-1', correo_institucional: 'ana@uab.edu.bo', correo_personal: '', role, is_active: true, is_staff: false, permisos: { puede_ver_dashboard: false } }
+const renderPage = (roleCode = 'ADMINISTRADOR') => render(<AuthContext.Provider value={{ roleCode }}><UsuariosPage /></AuthContext.Provider>)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -18,7 +20,7 @@ beforeEach(() => {
 
 it('lista, busca, muestra detalle y activa/inactiva usuarios', async () => {
   usuariosService.updateUser.mockResolvedValue({ ...user, is_active: false })
-  render(<UsuariosPage />)
+  renderPage()
   expect(await screen.findByText('Ana Pérez')).toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'ana' } })
   fireEvent.click(screen.getByRole('button', { name: 'Buscar' }))
@@ -32,45 +34,70 @@ it('lista, busca, muestra detalle y activa/inactiva usuarios', async () => {
 
 it('crea usuario usando selector de rol y contraseña inicial', async () => {
   usuariosService.createUser.mockResolvedValue({})
-  render(<UsuariosPage />)
+  renderPage()
   await screen.findByText('Ana Pérez')
   fireEvent.click(screen.getByRole('button', { name: 'Nuevo usuario' }))
-  expect(screen.queryByLabelText('Acceso a Django Admin (staff)')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Acceso a Django Admin (staff)')).toBeDisabled()
   expect(screen.getAllByRole('option', { name: 'Estudiante' })).toHaveLength(2)
   expect(screen.getAllByRole('option', { name: 'Estudiante' }).every((option) => option.value === '1')).toBe(true)
   expect(screen.queryByRole('option', { name: 'Estudiante (EST)' })).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Usuario'), { target: { value: 'nuevo' } })
   fireEvent.change(screen.getAllByLabelText('Rol')[1], { target: { value: '3' } })
+  expect(screen.getByLabelText('Acceso a Django Admin (staff)')).not.toBeChecked()
+  fireEvent.click(screen.getByLabelText('Acceso a Django Admin (staff)'))
   fireEvent.change(screen.getByLabelText('Contraseña inicial'), { target: { value: 'StrongPass-2026' } })
   fireEvent.click(screen.getByRole('button', { name: 'Guardar usuario' }))
   await waitFor(() => expect(usuariosService.createUser).toHaveBeenCalledWith(expect.objectContaining({ username: 'nuevo', role_id: '3', is_staff: true, password: 'StrongPass-2026' })))
 })
 
-it('sincroniza staff al editar de DOCENTE a ADMINISTRADOR', async () => {
+it('permite seleccionar staff al editar de DOCENTE a ADMINISTRADOR', async () => {
   usuariosService.listUsers.mockResolvedValue({ count: 1, next: null, previous: null, results: [{ ...user, role: teacherRole }] })
   usuariosService.updateUser.mockResolvedValue({})
-  render(<UsuariosPage />)
+  renderPage()
   await screen.findByText('Ana Pérez')
   fireEvent.click(screen.getByRole('button', { name: 'Editar' }))
-  expect(screen.queryByLabelText('Acceso a Django Admin (staff)')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Acceso a Django Admin (staff)')).toBeDisabled()
   fireEvent.change(screen.getAllByLabelText('Rol')[1], { target: { value: '3' } })
+  expect(screen.getByLabelText('Acceso a Django Admin (staff)')).not.toBeChecked()
+  fireEvent.click(screen.getByLabelText('Acceso a Django Admin (staff)'))
   fireEvent.click(screen.getByRole('button', { name: 'Guardar usuario' }))
   await waitFor(() => expect(usuariosService.updateUser).toHaveBeenCalledWith(2, expect.objectContaining({ role_id: '3', is_staff: true })))
 })
 
-it('sincroniza staff al editar de ADMINISTRADOR a DOCENTE', async () => {
+it('carga staff y permite desmarcarlo al editar un ADMINISTRADOR', async () => {
   usuariosService.listUsers.mockResolvedValue({ count: 1, next: null, previous: null, results: [{ ...user, role: adminRole, is_staff: true }] })
   usuariosService.updateUser.mockResolvedValue({})
-  render(<UsuariosPage />)
+  renderPage()
+  await screen.findByText('Ana Pérez')
+  fireEvent.click(screen.getByRole('button', { name: 'Editar' }))
+  expect(screen.getByLabelText('Acceso a Django Admin (staff)')).toBeChecked()
+  fireEvent.click(screen.getByLabelText('Acceso a Django Admin (staff)'))
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar usuario' }))
+  await waitFor(() => expect(usuariosService.updateUser).toHaveBeenCalledWith(2, expect.objectContaining({ role_id: 3, is_staff: false })))
+})
+
+it('pone staff en false inmediatamente al cambiar de ADMINISTRADOR a DOCENTE', async () => {
+  usuariosService.listUsers.mockResolvedValue({ count: 1, next: null, previous: null, results: [{ ...user, role: adminRole, is_staff: true }] })
+  usuariosService.updateUser.mockResolvedValue({})
+  renderPage()
   await screen.findByText('Ana Pérez')
   fireEvent.click(screen.getByRole('button', { name: 'Editar' }))
   fireEvent.change(screen.getAllByLabelText('Rol')[1], { target: { value: '2' } })
+  expect(screen.getByLabelText('Acceso a Django Admin (staff)')).not.toBeChecked()
+  expect(screen.getByLabelText('Acceso a Django Admin (staff)')).toBeDisabled()
   fireEvent.click(screen.getByRole('button', { name: 'Guardar usuario' }))
   await waitFor(() => expect(usuariosService.updateUser).toHaveBeenCalledWith(2, expect.objectContaining({ role_id: '2', is_staff: false })))
 })
 
+it('oculta el acceso a Django Admin para un operador sin rol ADMINISTRADOR', async () => {
+  renderPage('DOCENTE')
+  await screen.findByText('Ana Pérez')
+  fireEvent.click(screen.getByRole('button', { name: 'Editar' }))
+  expect(screen.queryByLabelText('Acceso a Django Admin (staff)')).not.toBeInTheDocument()
+})
+
 it('administra roles sin convertir capacidades en controles editables', async () => {
-  render(<UsuariosPage />)
+  renderPage()
   fireEvent.click(screen.getByRole('button', { name: 'Roles' }))
   expect(await screen.findByText('Estudiante')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Nuevo rol' })).toBeInTheDocument()

@@ -87,7 +87,7 @@ class BasicApplicationDataContractTests(TestCase):
         return f"/api/v1/postulaciones/{self.postulacion.pk}/"
 
     def test_authorized_users_read_basic_labels(self):
-        for user in (self.staff, self.owner, self.assigned):
+        for user in (self.staff, self.role_only_admin, self.owner, self.assigned):
             with self.subTest(user=user.username):
                 response = self.client_for(user).get(self.url)
                 self.assertEqual(response.status_code, 200)
@@ -97,20 +97,24 @@ class BasicApplicationDataContractTests(TestCase):
                 self.assertEqual(response.data["estado_actual_detalle"]["nombre"], "Registrada")
 
     def test_unrelated_users_do_not_read_application(self):
-        for user in (self.other_student, self.unassigned, self.role_only_admin):
+        for user in (self.other_student, self.unassigned):
             with self.subTest(user=user.username):
                 self.assertEqual(self.client_for(user).get(self.url).status_code, 404)
 
     def test_anonymous_receives_401(self):
         self.assertEqual(self.client_for().get(self.url).status_code, 401)
 
-    def test_only_staff_can_patch(self):
-        for user in (self.owner, self.assigned, self.role_only_admin):
+    def test_only_administrators_can_patch(self):
+        for user in (self.owner, self.assigned):
             with self.subTest(user=user.username):
                 response = self.client_for(user).patch(
                     self.url, {"codigo": "FORBIDDEN"}, format="json"
                 )
                 self.assertEqual(response.status_code, 403)
+        response = self.client_for(self.role_only_admin).patch(
+            self.url, {"codigo": "ADMIN-ROLE-UPDATE"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
 
     def test_staff_partial_patch_updates_only_sent_basic_fields_and_labels(self):
         response = self.client_for(self.staff).patch(

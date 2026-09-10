@@ -17,12 +17,14 @@ class CanonicalRoleAuthorityTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador")
+        cls.administration_role = Role.objects.create(codigo="ADMINISTRACION", nombre="Administración")
         cls.teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
         cls.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
         cls.unknown_role = Role.objects.create(codigo="OTRO", nombre="Otro")
         cls.admin = CustomUser.objects.create_user("role-admin", role=cls.admin_role, is_staff=True)
         cls.technical_superuser = CustomUser.objects.create_superuser("technical-superuser")
         cls.admin_without_staff = CustomUser.objects.create_user("role-admin-bad", role=cls.admin_role)
+        cls.administration = CustomUser.objects.create_user("role-administration", role=cls.administration_role)
         cls.teacher = CustomUser.objects.create_user("role-teacher", role=cls.teacher_role)
         cls.teacher_with_staff = CustomUser.objects.create_user("role-teacher-bad", role=cls.teacher_role, is_staff=True)
         cls.student = CustomUser.objects.create_user("role-student", role=cls.student_role)
@@ -52,15 +54,16 @@ class CanonicalRoleAuthorityTests(TestCase):
         client.force_authenticate(user)
         return client
 
-    def test_only_coherent_administrator_has_administrative_authority(self):
+    def test_administrator_role_has_internal_authority_independently_of_staff(self):
         self.assertTrue(is_staff_user(self.admin))
         self.assertTrue(is_staff_user(self.technical_superuser))
-        for user in (self.admin_without_staff, self.teacher, self.teacher_with_staff, self.student, self.unknown):
+        self.assertTrue(is_staff_user(self.admin_without_staff))
+        for user in (self.administration, self.teacher, self.teacher_with_staff, self.student, self.unknown):
             self.assertFalse(is_staff_user(user))
         self.assertTrue(UserCapabilitiesService.resolve(self.admin)["puede_gestionar_usuarios"])
         self.assertTrue(UserCapabilitiesService.resolve(self.technical_superuser)["puede_gestionar_usuarios"])
         self.assertFalse(UserCapabilitiesService.resolve(self.teacher_with_staff)["puede_gestionar_usuarios"])
-        self.assertFalse(UserCapabilitiesService.resolve(self.admin_without_staff)["puede_gestionar_usuarios"])
+        self.assertTrue(UserCapabilitiesService.resolve(self.admin_without_staff)["puede_gestionar_usuarios"])
         self.assertFalse(UserCapabilitiesService.resolve(self.unknown)["puede_ver_dashboard"])
 
     def test_superuser_without_role_has_administrative_endpoint_access(self):
@@ -98,7 +101,43 @@ class CanonicalRoleAuthorityTests(TestCase):
             partial=True,
         )
         self.assertTrue(admin.is_valid(), admin.errors)
-        self.assertTrue(admin.validated_data["is_staff"])
+        self.assertFalse(admin.validated_data["is_staff"])
+        admin_with_staff = UserAdminSerializer(
+            instance=self.admin_without_staff,
+            data={"role_id": self.admin_role.pk, "is_staff": True},
+            partial=True,
+        )
+        self.assertTrue(admin_with_staff.is_valid(), admin_with_staff.errors)
+        self.assertTrue(admin_with_staff.validated_data["is_staff"])
+        demoted_admin = UserAdminSerializer(
+            instance=self.admin,
+            data={"role_id": self.teacher_role.pk},
+            partial=True,
+        )
+        self.assertTrue(demoted_admin.is_valid(), demoted_admin.errors)
+        self.assertFalse(demoted_admin.validated_data["is_staff"])
+        administration = UserAdminSerializer(
+            instance=self.administration,
+            data={"role_id": self.administration_role.pk, "is_staff": True},
+            partial=True,
+        )
+        self.assertFalse(administration.is_valid())
+
+    def test_technical_superuser_keeps_admin_role_and_django_staff_access(self):
+        self.technical_superuser.role = self.admin_role
+        self.technical_superuser.is_staff = True
+        role_change = UserAdminSerializer(
+            instance=self.technical_superuser,
+            data={"role_id": self.teacher_role.pk},
+            partial=True,
+        )
+        self.assertFalse(role_change.is_valid())
+        staff_change = UserAdminSerializer(
+            instance=self.technical_superuser,
+            data={"role_id": self.admin_role.pk, "is_staff": False},
+            partial=True,
+        )
+        self.assertFalse(staff_change.is_valid())
 
     def test_direct_api_access_preserves_role_matrix(self):
         url = "/api/v1/academico/modalidades/"

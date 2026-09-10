@@ -49,12 +49,11 @@ class SprintZeroSecurityContractTests(TestCase):
         client.force_authenticate(user)
         return client
 
-    def test_catalog_reads_are_authenticated_but_writes_require_staff(self):
-        payload = {"codigo": "NEW", "nombre": "Nueva modalidad"}
+    def test_catalog_reads_are_authenticated_but_writes_require_admin_role(self):
         self.assertEqual(self.request_as(self.student).get("/api/v1/academico/modalidades/").status_code, 200)
-        self.assertEqual(self.request_as(self.teacher).post("/api/v1/academico/modalidades/", payload).status_code, 403)
-        self.assertEqual(self.request_as(self.role_only_admin).post("/api/v1/academico/modalidades/", payload).status_code, 403)
-        self.assertEqual(self.request_as(self.staff).post("/api/v1/academico/modalidades/", payload).status_code, 201)
+        self.assertEqual(self.request_as(self.teacher).post("/api/v1/academico/modalidades/", {"codigo": "NO", "nombre": "No"}).status_code, 403)
+        self.assertEqual(self.request_as(self.role_only_admin).post("/api/v1/academico/modalidades/", {"codigo": "ROLE", "nombre": "Por rol"}).status_code, 201)
+        self.assertEqual(self.request_as(self.staff).post("/api/v1/academico/modalidades/", {"codigo": "STAFF", "nombre": "Con staff"}).status_code, 201)
 
     def test_student_only_lists_and_retrieves_owned_resources(self):
         client = self.request_as(self.student)

@@ -1,9 +1,10 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 ADMIN_ROLE_CODE = "ADMINISTRADOR"
+ADMINISTRATION_ROLE_CODE = "ADMINISTRACION"
 TEACHER_ROLE_CODE = "DOCENTE"
 STUDENT_ROLE_CODE = "ESTUDIANTE"
-KNOWN_ROLE_CODES = {ADMIN_ROLE_CODE, TEACHER_ROLE_CODE, STUDENT_ROLE_CODE}
+KNOWN_ROLE_CODES = {ADMIN_ROLE_CODE, ADMINISTRATION_ROLE_CODE, TEACHER_ROLE_CODE, STUDENT_ROLE_CODE}
 
 
 def get_role_code(user) -> str:
@@ -41,14 +42,14 @@ class IsOwnerOrAdmin(BasePermission):
 
 
 def is_staff_user(user) -> bool:
-    """Indica autoridad administrativa técnica o funcional."""
+    """Indica autoridad interna por rol; ``is_staff`` queda reservado a Django Admin."""
 
     return bool(
         user
         and getattr(user, "is_authenticated", False)
         and (
             getattr(user, "is_superuser", False)
-            or (is_admin_role(user) and getattr(user, "is_staff", False))
+            or is_admin_role(user)
         )
     )
 

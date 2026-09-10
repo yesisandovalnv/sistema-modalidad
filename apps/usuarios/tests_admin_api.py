@@ -43,6 +43,38 @@ class UserRoleAdminApiTests(APITestCase):
         self.assertFalse(self.student.activo)
         self.assertEqual(self.client.delete(reverse("user-admin-detail", args=[self.student.id])).status_code, 405)
 
+    def test_admin_staff_access_is_optional_and_does_not_control_app_authority(self):
+        without_staff = self.client.post(reverse("user-admin-list"), {
+            "username": "admin-without-django", "role_id": self.admin_role.id,
+            "password": "StrongPass-2026", "is_staff": False,
+        }, format="json")
+        self.assertEqual(without_staff.status_code, 201, without_staff.data)
+        app_admin = User.all_objects.get(username="admin-without-django")
+        self.assertFalse(app_admin.is_staff)
+        self.client.force_authenticate(app_admin)
+        self.assertEqual(self.client.get(reverse("user-admin-list")).status_code, 200)
+
+        self.client.force_authenticate(self.admin)
+        with_staff = self.client.post(reverse("user-admin-list"), {
+            "username": "admin-with-django", "role_id": self.admin_role.id,
+            "password": "StrongPass-2026", "is_staff": True,
+        }, format="json")
+        self.assertEqual(with_staff.status_code, 201, with_staff.data)
+        self.assertTrue(User.all_objects.get(username="admin-with-django").is_staff)
+
+    def test_non_administrator_cannot_keep_django_staff_access(self):
+        invalid = self.client.patch(reverse("user-admin-detail", args=[self.student.id]), {
+            "is_staff": True,
+        }, format="json")
+        self.assertEqual(invalid.status_code, 400)
+
+        demoted = self.client.patch(reverse("user-admin-detail", args=[self.admin.id]), {
+            "role_id": self.student_role.id,
+        }, format="json")
+        self.assertEqual(demoted.status_code, 200, demoted.data)
+        self.admin.refresh_from_db()
+        self.assertFalse(self.admin.is_staff)
+
     def test_roles_crud_and_used_role_protection(self):
         created = self.client.post(reverse("role-admin-list"), {"codigo": "TUTOR-API", "nombre": "Tutor API"}, format="json")
         self.assertEqual(created.status_code, 201)

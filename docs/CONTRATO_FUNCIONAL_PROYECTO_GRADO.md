@@ -64,9 +64,9 @@ Permanecen pendientes las cantidades de ejemplares, el máximo de integrantes, l
 | IIISyP o unidad equivalente | Registrar temas, controlar duplicidad/originalidad y revisar pertinencia/suficiencia. [RG-MG; DF-MG] | Registro de tema, dictamen o acta de revisión | Registro del tema y revisión previa | No existe modelo, servicio ni endpoint específico. |
 | Consejo Científico | Considerar pertinencia, sugerir tribunal y emitir actas de suficiencia conforme al diagrama. [DF-MG] | Acta de sesión o dictamen | Tema, perfil y revisión previa | No está representado como órgano ni como acto colegiado. |
 | Decanato | Designar tribunal o emitir memorandos; presidir o delegar la presidencia. [RE-PG, caps. V–VI; RG-MG; DF-MG] | Resolución/memorando, delegación | Designación y defensa pública | No existe cargo o acto formal específico; `PRESIDENTE` solo expresa participación temporal. |
-| Personal administrativo | Recibir, verificar, registrar, programar y custodiar evidencias dentro de sus competencias. | Registros de verificación, recepción y auditoría | Transversal | Usuarios `is_staff`/`is_superuser` y permisos DRF actuales. Es una capacidad técnica amplia, no prueba un cargo institucional. |
+| Personal administrativo | Recibir, verificar, registrar, programar y custodiar evidencias dentro de sus competencias. | Registros de verificación, recepción y auditoría | Transversal | Usuarios con rol `ADMINISTRADOR` o `is_superuser` y permisos DRF actuales. Es una capacidad técnica amplia, no prueba un cargo institucional. |
 
-**Inferencia explícita:** cuando el sistema permite actuar a `is_staff`, ello se interpreta únicamente como autorización técnica vigente. No demuestra que la persona ocupe el cargo institucional competente.
+**Inferencia explícita:** cuando el sistema permite actuar al rol `ADMINISTRADOR` o a `is_superuser`, ello se interpreta únicamente como autorización técnica vigente. No demuestra que la persona ocupe el cargo institucional competente. `is_staff` se limita al acceso al Django Admin.
 
 ### 4.1 Correspondencia técnica de identidad y autorización vigente
 
@@ -75,8 +75,9 @@ Permanecen pendientes las cantidades de ejemplares, el máximo de integrantes, l
 | `CustomUser` | Identidad autenticada | Puede representar a cualquier actor, pero por sí sola no acredita cargo ni participación. |
 | `Role` con códigos de estudiante (`EST`, `ESTUDIANTE`) | Clasificación funcional y capacidades de estudiante | Corresponde al estudiante. La lectura se limita a recursos propios por los querysets/permisos aplicables. |
 | `Role` con códigos docentes (`DOC`, `DOCENTE`) | Clasificación funcional docente | Puede corresponder a Tutor, Tribunal o Docente de Modalidad solo cuando además existe asignación activa en esa postulación. El texto del rol no autoriza escrituras por sí solo. |
-| `Role` con códigos administrativos (`ADM`, `ADMIN`, `ADMINISTRACION`, `ADMINISTRADOR`) | Clasificación funcional administrativa | No reemplaza `is_staff`, permisos DRF ni cargo de Dirección, Jefatura o Decanato. |
-| `is_staff` / `is_superuser` | Autoridad administrativa técnica usada por los endpoints actuales | Habilita operaciones de gestión. Es más amplia que los cargos normativos y exige futura especialización si la Universidad separa competencias. |
+| `Role` con código canónico `ADMINISTRADOR` | Autoridad administrativa funcional dentro de la aplicación | Habilita las capacidades internas calculadas por el sistema; no acredita por sí solo un cargo de Dirección, Jefatura o Decanato. |
+| `is_staff` | Acceso al sitio Django Admin | Solo puede habilitarse para un usuario con rol `ADMINISTRADOR`; no concede ni revoca capacidades dentro de la aplicación React. |
+| `is_superuser` | Excepción técnica con autoridad total | Conserva acceso y autoridad independientemente de las capacidades ordinarias. |
 | `AsignacionPostulacion` | Participación temporal e histórica | Códigos vigentes: `TUTOR`, `TRIBUNAL`, `DOCENTE_MODALIDAD`, `PRESIDENTE`, `SECRETARIO`; puede vincularse a una etapa y finalizarse/reemplazarse. |
 | `ParticipanteEvento` | Convocatoria y presencia en una defensa concreta | Deriva de una asignación activa y registra rol, convocatoria, asistencia y observaciones. No constituye memorando de designación. |
 | Permisos DRF y servicios | Barrera efectiva de lectura/escritura | Son la autorización contractual del API. Las etiquetas del frontend y el nombre de un rol no agregan capacidades. |
