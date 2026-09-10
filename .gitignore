@@ -11,13 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
-.env
 .env.*
-!.env.example
-media/
 staticfiles/
 .tmp_test_media/
 .tmp_test_seed/
+backups/*.dump
 
 # Editor directories and files
 .vscode/*
