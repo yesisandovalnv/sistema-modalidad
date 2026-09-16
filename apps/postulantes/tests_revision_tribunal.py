@@ -216,7 +216,7 @@ class RevisionTribunalServiceTest(RevisionTribunalFixtureMixin, TestCase):
         """Caso 7: Verifica que tribunal de diferente postulación no cuenta."""
         # Crear otra postulación con su propio tribunal
         otra_postulacion = Postulacion.objects.create(
-            codigo="PG-TEST-OTRO", estudiante=self.student,
+            codigo="PG-TEST-OTRO", estudiante=self.stranger,
             modalidad=self.modalidad, periodo=self.periodo,
             estado_actual=self.estado_postulacion,
         )

@@ -1,7 +1,9 @@
 from typing import Any
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Observacion, Postulacion
 from apps.usuarios.models import AuditLog, CustomUser
@@ -43,6 +45,14 @@ class PostulacionService:
         )
 
     @staticmethod
+    def _es_conflicto_postulacion_vigente(error: IntegrityError) -> bool:
+        causa = error.__cause__
+        diagnostico = getattr(causa, "diag", None)
+        return getattr(diagnostico, "constraint_name", None) == (
+            "unique_postulacion_vigente_por_estudiante"
+        )
+
+    @staticmethod
     def crear_postulacion(*args: Any, **kwargs: Any) -> Postulacion:
         """Crea una nueva postulación con estado inicial y trazabilidad.
 
@@ -67,29 +77,31 @@ class PostulacionService:
             raise ValidationError("Faltan datos obligatorios para crear la postulación.")
 
         with transaction.atomic():
+            estudiante = CustomUser.objects.select_for_update().get(pk=estudiante.pk)
             estado_inicial = EstadoPostulacion.objects.filter(codigo="REGISTRADA").first()
             if not estado_inicial:
                 raise ValidationError("No existe el estado inicial REGISTRADA.")
 
-            postulacion_existente = Postulacion.objects.filter(
-                estudiante=estudiante,
-                modalidad=modalidad,
-                periodo=periodo,
-                activo=True,
-            ).exists()
+            postulacion_existente = Postulacion.vigentes().filter(estudiante=estudiante).exists()
             if postulacion_existente:
-                raise ValidationError(
-                    "El estudiante ya tiene una postulación activa para la misma modalidad y período."
-                )
+                raise ValidationError("El estudiante ya tiene una postulación vigente.")
 
-            postulacion = Postulacion.objects.create(
-                codigo=codigo,
-                estudiante=estudiante,
-                modalidad=modalidad,
-                periodo=periodo,
-                observaciones_generales=observaciones_generales,
-                estado_actual=estado_inicial,
-            )
+            try:
+                with transaction.atomic():
+                    postulacion = Postulacion.objects.create(
+                        codigo=codigo,
+                        estudiante=estudiante,
+                        modalidad=modalidad,
+                        periodo=periodo,
+                        observaciones_generales=observaciones_generales,
+                        estado_actual=estado_inicial,
+                    )
+            except IntegrityError as exc:
+                if not PostulacionService._es_conflicto_postulacion_vigente(exc):
+                    raise
+                raise ValidationError(
+                    "El estudiante ya tiene una postulación vigente."
+                ) from exc
 
             PostulacionService.registrar_historial(
                 {
@@ -108,6 +120,59 @@ class PostulacionService:
             )
 
             return postulacion
+
+    @staticmethod
+    def dar_de_baja(*args: Any, **kwargs: Any) -> Postulacion:
+        """Da de baja una postulación con trazabilidad de dominio completa."""
+        if not args:
+            raise ValueError("Se requieren datos para dar de baja la postulación.")
+
+        datos = args[0]
+        postulacion = datos.get("postulacion")
+        motivo_baja = (datos.get("motivo_baja") or "").strip()
+        baja_por = datos.get("baja_por")
+        fecha_baja = datos.get("fecha_baja")
+
+        if not isinstance(postulacion, Postulacion):
+            raise ValidationError("La postulación es obligatoria.")
+        if postulacion.vigencia == Postulacion.VigenciaChoices.DADA_DE_BAJA:
+            raise ValidationError("La postulación ya se encuentra dada de baja.")
+        if not motivo_baja:
+            raise ValidationError("El motivo de baja es obligatorio.")
+        if not isinstance(baja_por, CustomUser):
+            raise ValidationError("El usuario responsable de la baja es obligatorio.")
+        if not fecha_baja:
+            raise ValidationError("La fecha de baja es obligatoria.")
+        if isinstance(fecha_baja, str):
+            fecha_baja = parse_datetime(fecha_baja)
+        if not fecha_baja:
+            raise ValidationError("La fecha de baja no es válida.")
+        if timezone.is_naive(fecha_baja):
+            fecha_baja = timezone.make_aware(fecha_baja)
+
+        with transaction.atomic():
+            postulacion.vigencia = Postulacion.VigenciaChoices.DADA_DE_BAJA
+            postulacion.fecha_baja = fecha_baja
+            postulacion.motivo_baja = motivo_baja
+            postulacion.baja_por = baja_por
+            postulacion.save(update_fields=[
+                "vigencia",
+                "fecha_baja",
+                "motivo_baja",
+                "baja_por",
+                "updated_at",
+            ])
+            PostulacionService._registrar_auditoria(
+                usuario=baja_por,
+                accion="dar_de_baja",
+                modulo="postulaciones",
+                descripcion=(
+                    f"Se dio de baja la postulación {postulacion.codigo}. "
+                    f"Motivo: {motivo_baja}. Fecha de baja: {fecha_baja.isoformat()}."
+                ),
+            )
+
+        return postulacion
 
     @staticmethod
     def cambiar_estado(*args: Any, **kwargs: Any) -> Postulacion:

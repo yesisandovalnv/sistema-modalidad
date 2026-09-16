@@ -1,13 +1,28 @@
 """Pruebas de API para el módulo de postulaciones usando APITestCase."""
 
 from django.contrib.auth import get_user_model
+from concurrent.futures import ThreadPoolExecutor
+
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, close_old_connections, transaction
+from django.test import TransactionTestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
+from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento
 from apps.modalidades.policies import ModalidadPolicyRegistry
-from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Observacion, Postulacion
+from apps.postulantes.models import (
+    AsignacionPostulacion,
+    EstadoPostulacion,
+    EventoDefensa,
+    HistorialEstado,
+    Observacion,
+    Postulacion,
+    SeguimientoEtapa,
+)
+from apps.postulantes.services import PostulacionService
 from apps.usuarios.models import AuditLog, Role
 
 
@@ -77,6 +92,24 @@ class TestCrearPostulacion(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["codigo"], "POST-001")
+        self.assertEqual(response.data["vigencia"], Postulacion.VigenciaChoices.VIGENTE)
+
+    def test_vigencia_read_only_en_post(self) -> None:
+        """POST no debe aceptar una vigencia distinta de la inicial."""
+        response = self.client.post(
+            "/api/v1/postulaciones/",
+            {
+                "codigo": "POST-READONLY-VIGENCIA",
+                "estudiante": self.estudiante.id,
+                "modalidad": self.modalidad.id,
+                "periodo": self.periodo.id,
+                "vigencia": Postulacion.VigenciaChoices.DADA_DE_BAJA,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["vigencia"], Postulacion.VigenciaChoices.VIGENTE)
 
     def test_estado_inicial_es_registrada(self) -> None:
         """El estado_actual debe ser REGISTRADA al crear."""
@@ -472,6 +505,188 @@ class TestErrores(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_rechazar_modalidad_diferente_para_estudiante_vigente(self) -> None:
+        """La vigencia debe impedir simultaneidad entre modalidades distintas."""
+        Postulacion.objects.create(
+            codigo="POST-MODALIDAD-01",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+        otra_modalidad = Modalidad.objects.create(codigo="OTRA_MODALIDAD", nombre="Otra modalidad")
+
+        with self.assertRaisesMessage(ValidationError, "postulación vigente"):
+            PostulacionService.crear_postulacion({
+                "usuario": self.estudiante,
+                "estudiante": self.estudiante,
+                "modalidad": otra_modalidad,
+                "periodo": self.periodo,
+                "codigo": "POST-MODALIDAD-02",
+            })
+
+    def test_rechazar_periodo_diferente_para_estudiante_vigente(self) -> None:
+        """La vigencia debe impedir simultaneidad aunque cambie el periodo."""
+        Postulacion.objects.create(
+            codigo="POST-PERIODO-01",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+        otro_periodo = Periodo.objects.create(
+            nombre="2025-II", gestion=2025, semestre="II",
+            fecha_inicio="2025-07-01", fecha_fin="2025-12-31",
+        )
+
+        with self.assertRaisesMessage(ValidationError, "postulación vigente"):
+            PostulacionService.crear_postulacion({
+                "usuario": self.estudiante,
+                "estudiante": self.estudiante,
+                "modalidad": self.modalidad,
+                "periodo": otro_periodo,
+                "codigo": "POST-PERIODO-02",
+            })
+
+    def test_concluida_sigue_visible_historicamente(self) -> None:
+        """Una postulación concluida debe continuar consultable por la API."""
+        postulacion = Postulacion.objects.create(
+            codigo="POST-CONCLUIDA",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=EstadoPostulacion.objects.create(codigo="CONCLUIDA", nombre="Concluida"),
+        )
+        response = self.client.get(f"/api/v1/postulaciones/{postulacion.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["estado_actual_detalle"]["codigo"], "CONCLUIDA")
+
+    def test_concluida_vigente_bloquea_nueva_postulacion(self) -> None:
+        """CONCLUIDA no cambia la vigencia por sí sola y sigue bloqueando."""
+        Postulacion.objects.create(
+            codigo="POST-CONCLUIDA-VIGENTE",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=EstadoPostulacion.objects.create(codigo="CONCLUIDA_V", nombre="Concluida vigente"),
+        )
+
+        with self.assertRaisesMessage(ValidationError, "postulación vigente"):
+            PostulacionService.crear_postulacion({
+                "usuario": self.estudiante,
+                "estudiante": self.estudiante,
+                "modalidad": self.modalidad,
+                "periodo": self.periodo,
+                "codigo": "POST-CONCLUIDA-NUEVA",
+            })
+
+    def test_vigencias_no_vigentes_no_bloquean_nueva_postulacion(self) -> None:
+        """Los estados de inscripción no vigentes liberan la creación."""
+        for index, vigencia in enumerate((
+            Postulacion.VigenciaChoices.DADA_DE_BAJA,
+            Postulacion.VigenciaChoices.CANCELADA,
+            Postulacion.VigenciaChoices.CERRADA,
+        ), start=1):
+            Postulacion.objects.create(
+                codigo=f"POST-NO-VIGENTE-{index}",
+                estudiante=self.estudiante,
+                modalidad=self.modalidad,
+                periodo=self.periodo,
+                estado_actual=self.estado_registrada,
+                vigencia=vigencia,
+            )
+
+        nueva = PostulacionService.crear_postulacion({
+            "usuario": self.estudiante,
+            "estudiante": self.estudiante,
+            "modalidad": self.modalidad,
+            "periodo": self.periodo,
+            "codigo": "POST-VIGENTE-DESPUES",
+        })
+
+        self.assertEqual(nueva.vigencia, Postulacion.VigenciaChoices.VIGENTE)
+
+    def test_activo_y_vigencia_son_independientes(self) -> None:
+        """La vigencia no deriva automáticamente del flag técnico activo."""
+        postulacion = Postulacion.objects.create(
+            codigo="POST-INDEPENDENCIA",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+            activo=False,
+            vigencia=Postulacion.VigenciaChoices.VIGENTE,
+        )
+
+        self.assertFalse(postulacion.activo)
+        self.assertEqual(postulacion.vigencia, Postulacion.VigenciaChoices.VIGENTE)
+
+    def test_patch_estudiante_no_debe_modificarlo(self) -> None:
+        """La identidad estructural de una postulación debe ser inmutable."""
+        otro_estudiante = User.objects.create_user(username="otro_estudiante", role=canonical_role("ESTUDIANTE"))
+        postulacion = Postulacion.objects.create(
+            codigo="POST-INMUTABLE-EST",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+        response = self.client.patch(f"/api/v1/postulaciones/{postulacion.id}/", {"estudiante": otro_estudiante.id}, format="json")
+
+        postulacion.refresh_from_db()
+        self.assertNotEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(postulacion.estudiante_id, self.estudiante.id)
+
+    def test_patch_modalidad_no_debe_modificarla(self) -> None:
+        """La modalidad estructural de una postulación debe ser inmutable."""
+        otra_modalidad = Modalidad.objects.create(codigo="MODALIDAD_INMUTABLE", nombre="Modalidad inmutable")
+        postulacion = Postulacion.objects.create(
+            codigo="POST-INMUTABLE-MOD",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+        response = self.client.patch(f"/api/v1/postulaciones/{postulacion.id}/", {"modalidad": otra_modalidad.id}, format="json")
+
+        postulacion.refresh_from_db()
+        self.assertNotEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(postulacion.modalidad_id, self.modalidad.id)
+
+    def test_patch_periodo_no_debe_modificarlo(self) -> None:
+        """El periodo estructural de una postulación debe ser inmutable."""
+        otro_periodo = Periodo.objects.create(
+            nombre="2025-II", gestion=2025, semestre="II",
+            fecha_inicio="2025-07-01", fecha_fin="2025-12-31",
+        )
+        postulacion = Postulacion.objects.create(
+            codigo="POST-INMUTABLE-PER",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+        response = self.client.patch(f"/api/v1/postulaciones/{postulacion.id}/", {"periodo": otro_periodo.id}, format="json")
+
+        postulacion.refresh_from_db()
+        self.assertNotEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(postulacion.periodo_id, self.periodo.id)
+
+    def test_delete_no_debe_eliminar_fisicamente_la_postulacion(self) -> None:
+        """La API normal debe conservar la postulación y su trazabilidad."""
+        postulacion = Postulacion.objects.create(
+            codigo="POST-NO-DELETE",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+        response = self.client.delete(f"/api/v1/postulaciones/{postulacion.id}/")
+
+        self.assertNotEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertTrue(Postulacion.all_objects.filter(pk=postulacion.id).exists())
+
     def test_rechazar_cambio_al_mismo_estado(self) -> None:
         """Debe rechazar cambio de estado al mismo valor."""
         postulacion = Postulacion.objects.create(
@@ -530,6 +745,271 @@ class TestErrores(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_baja_exige_motivo_usuario_y_fecha(self) -> None:
+        """La baja debe exigir todos sus metadatos de trazabilidad."""
+        postulacion = Postulacion.objects.create(
+            codigo="POST-BAJA-REQUISITOS",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+
+        for datos_incompletos in (
+            {"baja_por": self.estudiante, "fecha_baja": "2026-09-16T01:00:00Z"},
+            {"motivo_baja": "Cambio de modalidad", "fecha_baja": "2026-09-16T01:00:00Z"},
+            {"motivo_baja": "Cambio de modalidad", "baja_por": self.estudiante},
+        ):
+            with self.subTest(datos=datos_incompletos):
+                with self.assertRaises(ValidationError):
+                    PostulacionService.dar_de_baja({
+                        "postulacion": postulacion,
+                        **datos_incompletos,
+                    })
+
+    def test_baja_valida_cambia_solo_vigencia_y_registra_trazabilidad(self) -> None:
+        """Una baja válida debe cambiar vigencia y guardar sus metadatos."""
+        postulacion = Postulacion.objects.create(
+            codigo="POST-BAJA-VALIDA",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+        valores_originales = {
+            "estudiante_id": postulacion.estudiante_id,
+            "modalidad_id": postulacion.modalidad_id,
+            "periodo_id": postulacion.periodo_id,
+            "estado_actual_id": postulacion.estado_actual_id,
+            "activo": postulacion.activo,
+        }
+        HistorialEstado.objects.create(
+            postulacion=postulacion,
+            estado_nuevo=self.estado_registrada,
+            usuario=self.estudiante,
+            comentario="Historial previo a la baja.",
+        )
+        etapa = EtapaModalidad.objects.create(
+            modalidad=self.modalidad,
+            codigo="ETAPA-BAJA",
+            nombre="Etapa de baja",
+            orden=1,
+            origen_normativo="Prueba RED",
+        )
+        seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=postulacion,
+            etapa=etapa,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+        )
+        tipo_documento = TipoDocumento.objects.create(
+            codigo="DOC-BAJA",
+            nombre="Documento de baja",
+        )
+        estado_documento = EstadoDocumento.objects.create(
+            codigo="PEN",
+            nombre="Pendiente",
+        )
+        DocumentoPostulacion.objects.create(
+            postulacion=postulacion,
+            tipo_documento=tipo_documento,
+            estado=estado_documento,
+        )
+        AsignacionPostulacion.objects.create(
+            postulacion=postulacion,
+            usuario=self.estudiante,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TUTOR,
+            seguimiento_etapa=seguimiento,
+        )
+        EventoDefensa.objects.bulk_create([
+            EventoDefensa(
+                postulacion=postulacion,
+                seguimiento_etapa=seguimiento,
+                tipo_evento=EventoDefensa.Tipo.DEFENSA_PRIVADA,
+                fecha_programada="2026-09-20T01:00:00Z",
+                programado_por=self.estudiante,
+            ),
+        ])
+        relacionados_antes = {
+            "historial": HistorialEstado.objects.filter(postulacion=postulacion).count(),
+            "etapas": SeguimientoEtapa.objects.filter(postulacion=postulacion).count(),
+            "documentos": DocumentoPostulacion.objects.filter(postulacion=postulacion).count(),
+            "asignaciones": AsignacionPostulacion.objects.filter(postulacion=postulacion).count(),
+            "eventos": EventoDefensa.objects.filter(postulacion=postulacion).count(),
+        }
+
+        PostulacionService.dar_de_baja({
+            "postulacion": postulacion,
+            "motivo_baja": "Cambio de modalidad autorizado",
+            "baja_por": self.estudiante,
+            "fecha_baja": "2026-09-16T01:00:00Z",
+        })
+
+        postulacion.refresh_from_db()
+        self.assertEqual(postulacion.vigencia, Postulacion.VigenciaChoices.DADA_DE_BAJA)
+        self.assertEqual(postulacion.motivo_baja, "Cambio de modalidad autorizado")
+        self.assertEqual(postulacion.baja_por_id, self.estudiante.id)
+        self.assertIsNotNone(postulacion.fecha_baja)
+        self.assertEqual(
+            {campo: getattr(postulacion, campo) for campo in valores_originales},
+            valores_originales,
+        )
+        self.assertTrue(HistorialEstado.objects.filter(postulacion=postulacion).exists())
+        self.assertEqual(
+            {
+                "historial": HistorialEstado.objects.filter(postulacion=postulacion).count(),
+                "etapas": SeguimientoEtapa.objects.filter(postulacion=postulacion).count(),
+                "documentos": DocumentoPostulacion.objects.filter(postulacion=postulacion).count(),
+                "asignaciones": AsignacionPostulacion.objects.filter(postulacion=postulacion).count(),
+                "eventos": EventoDefensa.objects.filter(postulacion=postulacion).count(),
+            },
+            relacionados_antes,
+        )
+        self.assertTrue(AuditLog.objects.filter(
+            accion="dar_de_baja",
+            modulo="postulaciones",
+            descripcion__icontains=postulacion.codigo,
+        ).exists())
+
+    def test_baja_repetida_es_error_de_dominio_explicito(self) -> None:
+        """Una postulación dada de baja no debe aceptar una segunda baja silenciosa."""
+        postulacion = Postulacion.objects.create(
+            codigo="POST-BAJA-REPETIDA",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+            vigencia=Postulacion.VigenciaChoices.DADA_DE_BAJA,
+        )
+
+        with self.assertRaises(ValidationError):
+            PostulacionService.dar_de_baja({
+                "postulacion": postulacion,
+                "motivo_baja": "Segundo intento",
+                "baja_por": self.estudiante,
+                "fecha_baja": "2026-09-16T01:00:00Z",
+            })
+
+    def test_vigencia_es_read_only_en_patch_y_put(self) -> None:
+        """PATCH y PUT normales no deben permitir cambiar vigencia."""
+        postulacion = Postulacion.objects.create(
+            codigo="POST-BAJA-READONLY",
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+
+        patch_response = self.client.patch(
+            f"/api/v1/postulaciones/{postulacion.id}/",
+            {"vigencia": Postulacion.VigenciaChoices.DADA_DE_BAJA},
+            format="json",
+        )
+        put_response = self.client.put(
+            f"/api/v1/postulaciones/{postulacion.id}/",
+            {
+                "codigo": postulacion.codigo,
+                "estudiante": postulacion.estudiante_id,
+                "modalidad": postulacion.modalidad_id,
+                "periodo": postulacion.periodo_id,
+                "estado_actual": postulacion.estado_actual_id,
+                "vigencia": Postulacion.VigenciaChoices.DADA_DE_BAJA,
+            },
+            format="json",
+        )
+
+        self.assertIn(patch_response.status_code, (status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST))
+        self.assertIn(
+            put_response.status_code,
+            (status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST, status.HTTP_405_METHOD_NOT_ALLOWED),
+        )
+        postulacion.refresh_from_db()
+        self.assertEqual(postulacion.vigencia, Postulacion.VigenciaChoices.VIGENTE)
+
+
+class TestVigenciaConstraint(TransactionTestCase):
+    """RED de exclusividad persistida y carrera de creación."""
+
+    reset_sequences = True
+
+    def setUp(self) -> None:
+        self.estudiante = User.objects.create_user(
+            username="estudiante_constraint",
+            password="segura123",
+            ci="8888888",
+            ru="RU8888888",
+        )
+        self.periodo = Periodo.objects.create(
+            nombre="2027-I",
+            gestion=2027,
+            semestre="I",
+            fecha_inicio="2027-01-01",
+            fecha_fin="2027-06-30",
+        )
+        self.modalidad = Modalidad.objects.create(codigo="CONSTRAINT", nombre="Constraint")
+        self.estado = EstadoPostulacion.objects.create(codigo="REGISTRADA", nombre="Registrada")
+
+    def _postulacion(self, codigo: str, vigencia: str = Postulacion.VigenciaChoices.VIGENTE) -> Postulacion:
+        return Postulacion.objects.create(
+            codigo=codigo,
+            estudiante=self.estudiante,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado,
+            vigencia=vigencia,
+        )
+
+    def test_dos_vigentes_del_mismo_estudiante_son_invalidas(self) -> None:
+        """La base debe rechazar dos postulaciones VIGENTE del mismo estudiante."""
+        self._postulacion("CONSTRAINT-VIGENTE-1")
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                self._postulacion("CONSTRAINT-VIGENTE-2")
+
+    def test_vigente_y_no_vigentes_son_validas(self) -> None:
+        """Una VIGENTE puede coexistir con DADA_DE_BAJA, CANCELADA y CERRADA."""
+        self._postulacion("CONSTRAINT-BAJA", Postulacion.VigenciaChoices.DADA_DE_BAJA)
+        self._postulacion("CONSTRAINT-CANCELADA", Postulacion.VigenciaChoices.CANCELADA)
+        self._postulacion("CONSTRAINT-CERRADA", Postulacion.VigenciaChoices.CERRADA)
+        vigente = self._postulacion("CONSTRAINT-VIGENTE")
+
+        self.assertEqual(vigente.vigencia, Postulacion.VigenciaChoices.VIGENTE)
+        self.assertEqual(Postulacion.all_objects.filter(estudiante=self.estudiante).count(), 4)
+
+    def test_creacion_concurrente_no_debe_crear_dos_vigentes(self) -> None:
+        """La garantía transaccional debe resolver una carrera real de creación."""
+        from apps.usuarios.models import CustomUser
+
+        def crear(codigo: str) -> str:
+            close_old_connections()
+            try:
+                usuario = CustomUser.objects.get(pk=self.estudiante.pk)
+                PostulacionService.crear_postulacion({
+                    "usuario": usuario,
+                    "estudiante": usuario,
+                    "modalidad": self.modalidad,
+                    "periodo": self.periodo,
+                    "codigo": codigo,
+                })
+                return "creada"
+            except ValidationError as exc:
+                self.assertEqual(
+                    exc.messages,
+                    ["El estudiante ya tiene una postulación vigente."],
+                )
+                return "rechazada"
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            resultados = list(executor.map(crear, ("CONCURRENTE-1", "CONCURRENTE-2")))
+
+        self.assertEqual(resultados.count("creada"), 1)
+        self.assertEqual(
+            Postulacion.vigentes().filter(estudiante=self.estudiante).count(),
+            1,
+        )
 
 
 class TestSeguridadPropietario(APITestCase):

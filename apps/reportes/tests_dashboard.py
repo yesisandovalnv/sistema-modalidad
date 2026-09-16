@@ -50,7 +50,8 @@ class ReportListPermissionTests(ReportBase):
         row=next(x for x in self.client.get("/api/v1/reportes/postulaciones/").data["results"] if x["postulacion_id"]==self.p.pk); self.assertEqual(row["tutor_activo"],self.doc.username); self.assertEqual(row["etapa_actual"],"INSCRIPCION")
     def test_tesis_no_hereda_semantica_de_cierre_de_proyecto(self):
         tesis=Modalidad.objects.create(codigo="TESIS_GRADO",nombre="Tesis R")
-        post=Postulacion.objects.create(codigo="REP-TESIS",estudiante=self.student,modalidad=tesis,periodo=self.period,estado_actual=self.reg)
+        estudiante_tesis = CustomUser.objects.create_user(username="rep-tesis", role=self.student.role)
+        post=Postulacion.objects.create(codigo="REP-TESIS",estudiante=estudiante_tesis,modalidad=tesis,periodo=self.period,estado_actual=self.reg)
         row=next(x for x in self.client.get("/api/v1/reportes/postulaciones/").data["results"] if x["postulacion_id"]==post.pk)
         self.assertFalse(row["cierre_aplicable"])
     def test_busqueda(self): self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/?buscar=Ana").data["count"],1)

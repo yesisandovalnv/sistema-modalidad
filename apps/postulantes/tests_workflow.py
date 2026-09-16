@@ -197,9 +197,15 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
         self.assertEqual(len(repetido), 4)
 
     def test_inicializar_flujo_falla_si_modalidad_no_tiene_etapas(self):
+        estudiante_sin_etapas = User.objects.create_user(
+            username="estudiante_flujo_sin_etapas",
+            password="segura123",
+            ci="9000099",
+            ru="RU9000099",
+        )
         postulacion_sin_etapas = Postulacion.objects.create(
             codigo="POST-SIN-ETAPAS",
-            estudiante=self.student,
+            estudiante=estudiante_sin_etapas,
             modalidad=self.otra_modalidad,
             periodo=self.periodo,
             estado_actual=self.estado_registrada,

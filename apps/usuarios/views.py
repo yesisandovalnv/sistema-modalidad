@@ -170,9 +170,7 @@ class StudentOptionViewSet(viewsets.ReadOnlyModelViewSet):
         periodo = self.request.query_params.get("periodo")
         modalidad = self.request.query_params.get("modalidad")
         if periodo and modalidad:
-            occupied = Postulacion.objects.filter(
-                periodo_id=periodo, modalidad_id=modalidad, activo=True,
-            ).values("estudiante_id")
+            occupied = Postulacion.vigentes().values("estudiante_id")
             queryset = queryset.exclude(id__in=occupied)
         return queryset
 

@@ -165,6 +165,12 @@ class Postulacion(BaseModel):
     momento de crear la solicitud.
     """
 
+    class VigenciaChoices(models.TextChoices):
+        VIGENTE = "VIGENTE", "Vigente"
+        DADA_DE_BAJA = "DADA_DE_BAJA", "Dada de baja"
+        CANCELADA = "CANCELADA", "Cancelada"
+        CERRADA = "CERRADA", "Cerrada"
+
     codigo = models.CharField(
         max_length=30,
         unique=True,
@@ -205,9 +211,37 @@ class Postulacion(BaseModel):
         null=True,
         blank=True,
     )
+    vigencia = models.CharField(
+        max_length=20,
+        choices=VigenciaChoices.choices,
+        default=VigenciaChoices.VIGENTE,
+        verbose_name="Vigencia de la inscripción",
+    )
+    fecha_baja = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Fecha de baja",
+    )
+    motivo_baja = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Motivo de baja",
+    )
+    baja_por = models.ForeignKey(
+        CustomUser,
+        on_delete=models.PROTECT,
+        related_name="postulaciones_dadas_de_baja",
+        null=True,
+        blank=True,
+        verbose_name="Responsable de la baja",
+    )
 
     objects = ActiveManager()
     all_objects = models.Manager()
+
+    @classmethod
+    def vigentes(cls):
+        return cls.all_objects.filter(vigencia=cls.VigenciaChoices.VIGENTE)
 
     class Meta:
         """Configuración del modelo para administración y consultas."""
@@ -216,6 +250,13 @@ class Postulacion(BaseModel):
         verbose_name_plural = "Postulaciones"
         ordering = ["-fecha_postulacion"]
         app_label = "postulantes"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["estudiante"],
+                condition=models.Q(vigencia="VIGENTE"),
+                name="unique_postulacion_vigente_por_estudiante",
+            ),
+        ]
 
     def __str__(self) -> str:
         """Retorna una representación legible de la postulación."""

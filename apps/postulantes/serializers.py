@@ -64,6 +64,10 @@ class PostulacionSerializer(serializers.ModelSerializer):
             "modalidad",
             "periodo",
             "estado_actual",
+            "vigencia",
+            "fecha_baja",
+            "motivo_baja",
+            "baja_por",
             "estudiante_detalle",
             "modalidad_detalle",
             "periodo_detalle",
@@ -74,7 +78,17 @@ class PostulacionSerializer(serializers.ModelSerializer):
             "updated_at",
             "activo",
         )
-        read_only_fields = ("id", "fecha_postulacion", "created_at", "updated_at", "activo")
+        read_only_fields = (
+            "id",
+            "fecha_postulacion",
+            "created_at",
+            "updated_at",
+            "activo",
+            "vigencia",
+            "fecha_baja",
+            "motivo_baja",
+            "baja_por",
+        )
 
     def get_estudiante_detalle(self, obj: Postulacion) -> dict:
         return {
@@ -116,6 +130,13 @@ class PostulacionSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs: dict) -> dict:
         """Valida que la postulación cuente con los datos base necesarios."""
+        if self.instance:
+            estructurales = {"estudiante", "modalidad", "periodo"} & set(self.initial_data)
+            if estructurales:
+                raise serializers.ValidationError({
+                    campo: "Este campo no puede modificarse después de crear la postulación."
+                    for campo in sorted(estructurales)
+                })
         estudiante = attrs.get("estudiante", getattr(self.instance, "estudiante", None))
         modalidad = attrs.get("modalidad", getattr(self.instance, "modalidad", None))
         periodo = attrs.get("periodo", getattr(self.instance, "periodo", None))
