@@ -109,6 +109,12 @@ class ProyectoGradoEventoPolicy(BaseEventoPolicy):
         if incompatibles.exists():
             raise ValidationError("La persona ya tiene un cargo incompatible para la misma Defensa Pública. Presidente, Secretario y tribunales deben ser personas distintas.")
     def validar_vinculo_documento(self, *, postulacion, tipo_documento, evento_defensa):
+        if tipo_documento.codigo == "OBSERVACIONES_DEFENSA_PERFIL":
+            if not evento_defensa or evento_defensa.postulacion_id != postulacion.pk:
+                raise ValidationError("La hoja de observaciones debe vincularse a una Defensa de Perfil de la misma postulación.")
+            if evento_defensa.tipo_evento != "DEFENSA_PERFIL" or evento_defensa.estado != "FINALIZADA" or not evento_defensa.activo:
+                raise ValidationError("La hoja de observaciones solo puede vincularse a una Defensa de Perfil finalizada y activa.")
+            return
         if tipo_documento.codigo != "ACTA_DEFENSA":
             if evento_defensa is not None:
                 raise ValidationError("Solo ACTA_DEFENSA puede vincularse a una defensa.")
@@ -118,7 +124,7 @@ class ProyectoGradoEventoPolicy(BaseEventoPolicy):
         if (evento_defensa.postulacion_id != postulacion.pk or evento_defensa.tipo_evento != "DEFENSA_PUBLICA"
                 or evento_defensa.estado != "FINALIZADA" or not evento_defensa.activo):
             raise ValidationError("ACTA_DEFENSA debe vincularse a una Defensa Pública activa y finalizada de la misma postulación.")
-    def requiere_vinculo_evento_documento(self, tipo_documento): return tipo_documento.codigo == "ACTA_DEFENSA"
+    def requiere_vinculo_evento_documento(self, tipo_documento): return tipo_documento.codigo in {"ACTA_DEFENSA", "OBSERVACIONES_DEFENSA_PERFIL"}
     def validar_correspondencia_evento_etapa(self, evento):
         if self.get_etapa_asociada(evento.tipo_evento) != evento.seguimiento_etapa.etapa.codigo:
             raise ValidationError("El tipo de evento no corresponde a la etapa.")
@@ -233,7 +239,92 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
     evaluacion_policy = ProyectoGradoEvaluacionPolicy()
     requisitos_policy = ProyectoGradoRequisitosPolicy()
     def get_reglas_asignacion(self): return self.evento_policy.ASSIGNMENTS
+    def get_documentos_aplicables_en_etapa(self, codigo_etapa: str) -> tuple:
+        documentos = super().get_documentos_aplicables_en_etapa(codigo_etapa)
+        if codigo_etapa == "DOCUMENTO_FINAL":
+            return (*documentos, "OBSERVACIONES_DEFENSA_PERFIL")
+        return documentos
     def get_revision_tribunal_previa_policy(self): return ProyectoGradoRevisionTribunalPreviaPolicy()
+    def _documento_final_y_version_actual(self, seguimiento):
+        from apps.documentos.models import DocumentoPostulacion, VersionDocumento
+
+        documento = DocumentoPostulacion.objects.filter(
+            postulacion=seguimiento.postulacion,
+            tipo_documento__codigo=self.requisitos_policy.DOCUMENTS[0],
+            activo=True,
+        ).first()
+        version_actual = VersionDocumento.objects.filter(
+            documento=documento,
+            es_version_actual=True,
+            activo=True,
+        ).first() if documento else None
+        return documento, version_actual
+
+    def _documento_final_aprobable(self, seguimiento):
+        documento, version_actual = self._documento_final_y_version_actual(seguimiento)
+        return bool(
+            documento
+            and documento.estado.codigo == "APR"
+            and not documento.requiere_correccion
+            and version_actual
+        )
+
+    def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
+        if not seguimiento or seguimiento.etapa.codigo != "DOCUMENTO_FINAL":
+            return None
+
+        documento, version_actual = self._documento_final_y_version_actual(seguimiento)
+        if not documento:
+            action = {
+                "codigo": "COMPLETAR_DOCUMENTOS",
+                "titulo": "Cargar Documento Final",
+                "descripcion": "Carga el Documento Final para que pueda ser revisado por la administración.",
+                "estado": "PENDIENTE",
+                "estado_display": "Pendiente",
+                "destino": "#documentos",
+                "accion_label": "Ir a documentos",
+            }
+            message = "Carga el Documento Final requerido para esta etapa."
+        elif documento.requiere_correccion or documento.estado.codigo in {"OBS", "REC"} or (documento.estado.codigo == "APR" and not version_actual):
+            action = {
+                "codigo": "COMPLETAR_DOCUMENTOS",
+                "titulo": "Corregir Documento Final",
+                "descripcion": "Carga una nueva versión del Documento Final para continuar la revisión.",
+                "estado": "PENDIENTE",
+                "estado_display": "Pendiente",
+                "destino": "#documentos",
+                "accion_label": "Ir a documentos",
+            }
+            message = "El Documento Final requiere una corrección o una versión actual válida."
+        elif documento.estado.codigo != "APR":
+            action = {
+                "codigo": "GESTIONAR_DOCUMENTOS",
+                "titulo": "Documento Final pendiente de revisión",
+                "descripcion": "La administración debe revisar y aprobar el Documento Final.",
+                "estado": "PENDIENTE",
+                "estado_display": "Pendiente",
+                "destino": "#documentos",
+                "accion_label": "Ir a documentos",
+            }
+            message = "El Documento Final fue enviado y está pendiente de revisión administrativa."
+        else:
+            action = {
+                "codigo": "APROBAR_ETAPA",
+                "titulo": "Aprobar Documento Final",
+                "descripcion": "El Documento Final está aprobado y cumple las condiciones para aprobar esta etapa.",
+                "estado": "DISPONIBLE",
+                "estado_display": "Disponible",
+                "destino": "#resumen",
+                "accion_label": "Ir a aprobar etapa",
+            }
+            message = "El Documento Final está aprobado y la etapa está lista para aprobarse."
+        return {
+            "operacion": "ORIENTAR_ETAPA",
+            "mensaje": message,
+            "requisitos": [],
+            "siguiente_accion": action,
+            "conflictos_identidad": [],
+        }
     def validar_asignacion(self, *, queryset_contexto, tipo_participacion, seguimiento_etapa, orden_cargo, queryset_activas, usuario_asignado, **kwargs):
         self.evento_policy.validar_asignacion_publica(
             queryset_activas=queryset_activas, usuario_asignado=usuario_asignado,
@@ -243,6 +334,22 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
             if queryset_contexto.count() >= 3: raise ValidationError("Proyecto de Grado admite como m\u00e1ximo tres miembros activos de tribunal en el perfil.")
             if orden_cargo is not None and queryset_contexto.filter(orden_cargo=orden_cargo).exists(): raise ValidationError("Ya existe un miembro activo del tribunal con ese orden de cargo.")
     def validar_aprobacion_etapa(self, seguimiento):
+        if seguimiento.etapa.codigo == "PERFIL_PROYECTO":
+            evento = seguimiento.eventos_defensa.filter(
+                tipo_evento="DEFENSA_PERFIL",
+                estado="FINALIZADA",
+                activo=True,
+                evaluaciones__tipo_evaluacion="RESULTADO_FINAL",
+                evaluaciones__es_resultado_final_evento=True,
+                evaluaciones__resultado_cualitativo="SUFICIENTE",
+                evaluaciones__activo=True,
+            ).first()
+            if not evento:
+                raise ValidationError(
+                    "No se puede aprobar PERFIL_PROYECTO sin una Defensa de Perfil "
+                    "finalizada y un resultado consolidado SUFICIENTE."
+                )
+            return None
         if seguimiento.etapa.codigo == "CIERRE_DOCUMENTAL":
             from apps.postulantes.cierre import ProyectoGradoCierrePolicy
             resultado = ProyectoGradoCierrePolicy.evaluar_cierre_documental(seguimiento.postulacion)
@@ -297,32 +404,7 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
         if seguimiento.etapa.codigo != "DOCUMENTO_FINAL":
             return None
 
-        from apps.documentos.models import DocumentoPostulacion, VersionDocumento
-
-        documento = (
-            DocumentoPostulacion.objects.select_for_update()
-            .select_related("estado")
-            .filter(
-                postulacion=seguimiento.postulacion,
-                tipo_documento__codigo="DOCUMENTO_FINAL",
-                activo=True,
-            )
-            .first()
-        )
-        version_actual_activa = bool(
-            documento
-            and VersionDocumento.objects.select_for_update().filter(
-                documento=documento,
-                es_version_actual=True,
-                activo=True,
-            ).exists()
-        )
-        if not (
-            documento
-            and documento.estado.codigo == "APR"
-            and not documento.requiere_correccion
-            and version_actual_activa
-        ):
+        if not self._documento_final_aprobable(seguimiento):
             raise ValidationError(
                 "No se puede aprobar la etapa DOCUMENTO_FINAL: se requiere un Documento Final activo, "
                 "aprobado, sin correcciones pendientes y con una versión actual activa."

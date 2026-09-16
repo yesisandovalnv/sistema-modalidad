@@ -12,7 +12,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.academico.models import Modalidad, Periodo
+from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import (
     DocumentoPostulacion,
     EstadoDocumento,
@@ -20,7 +20,7 @@ from apps.documentos.models import (
     TipoDocumento,
     VersionDocumento,
 )
-from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, Postulacion
+from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, EventoDefensa, Postulacion, SeguimientoEtapa
 from apps.usuarios.models import AuditLog, Role
 
 
@@ -129,6 +129,110 @@ class DocumentoAPITestCase(APITestCase):
             },
             format="multipart",
         )
+
+
+class TestPerfilObservationDocument(DocumentoAPITestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.modalidad.codigo = "PROYECTO_GRADO"
+        self.modalidad.nombre = "Proyecto de Grado"
+        self.modalidad.save(update_fields=["codigo", "nombre"])
+        profile_stage = EtapaModalidad.objects.create(
+            modalidad=self.modalidad, codigo="PERFIL_PROYECTO", nombre="Perfil de Proyecto", orden=1, origen_normativo="Prueba",
+        )
+        private_stage = EtapaModalidad.objects.create(
+            modalidad=self.modalidad, codigo="DEFENSA_PRIVADA", nombre="Defensa Privada", orden=3, origen_normativo="Prueba",
+        )
+        public_stage = EtapaModalidad.objects.create(
+            modalidad=self.modalidad, codigo="DEFENSA_PUBLICA", nombre="Defensa Pública", orden=4, origen_normativo="Prueba",
+        )
+        document_stage = EtapaModalidad.objects.create(
+            modalidad=self.modalidad, codigo="DOCUMENTO_FINAL", nombre="Documento Final", orden=2, origen_normativo="Prueba",
+        )
+        self.profile_follow = SeguimientoEtapa.objects.create(postulacion=self.postulacion, etapa=profile_stage, estado="APROBADA")
+        other_profile_follow = SeguimientoEtapa.objects.create(postulacion=self.other_postulacion, etapa=profile_stage, estado="APROBADA")
+        SeguimientoEtapa.objects.create(postulacion=self.postulacion, etapa=document_stage, estado="EN_PROCESO")
+        private_follow = SeguimientoEtapa.objects.create(postulacion=self.postulacion, etapa=private_stage, estado="PENDIENTE")
+        public_follow = SeguimientoEtapa.objects.create(postulacion=self.postulacion, etapa=public_stage, estado="PENDIENTE")
+        self.profile_event = EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=self.profile_follow,
+            tipo_evento="DEFENSA_PERFIL", estado="FINALIZADA", fecha_programada="2026-06-01T10:00:00Z",
+            fecha_fin_real="2026-06-01T11:00:00Z", lugar="Sala", programado_por=self.admin_user,
+        )
+        self.private_event = EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=private_follow,
+            tipo_evento="DEFENSA_PRIVADA", estado="FINALIZADA", fecha_programada="2026-06-02T10:00:00Z",
+            fecha_fin_real="2026-06-02T11:00:00Z", lugar="Sala", programado_por=self.admin_user,
+        )
+        self.public_event = EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=public_follow,
+            tipo_evento="DEFENSA_PUBLICA", estado="FINALIZADA", fecha_programada="2026-06-03T10:00:00Z",
+            fecha_fin_real="2026-06-03T11:00:00Z", lugar="Sala", programado_por=self.admin_user,
+        )
+        self.other_profile_event = EventoDefensa.objects.create(
+            postulacion=self.other_postulacion, seguimiento_etapa=other_profile_follow,
+            tipo_evento="DEFENSA_PERFIL", estado="FINALIZADA", fecha_programada="2026-06-04T10:00:00Z",
+            fecha_fin_real="2026-06-04T11:00:00Z", lugar="Sala", programado_por=self.admin_user,
+        )
+        self.observation_type = TipoDocumento.objects.create(
+            codigo="OBSERVACIONES_DEFENSA_PERFIL", nombre="Hoja de observaciones de Defensa de Perfil",
+            extensiones_permitidas="pdf", permite_multiple_version=True,
+        )
+
+    def upload_observation(self, event_id, user=None, post_id=None, name="observaciones.pdf"):
+        self.authenticate_user(user or self.admin_user)
+        return self.client.post(
+            "/api/v1/documentos/documentos/subir/",
+            {
+                "postulacion_id": post_id or self.postulacion.id,
+                "tipo_documento_id": self.observation_type.id,
+                "evento_defensa_id": event_id,
+                "archivo": self.create_pdf_file(name=name),
+            },
+            format="multipart",
+        )
+
+    def test_admin_carga_hoja_vinculada_a_perfil_finalizado_y_versiona(self) -> None:
+        response = self.upload_observation(self.profile_event.id)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(tipo_documento=self.observation_type)
+        self.assertEqual(documento.evento_defensa_id, self.profile_event.id)
+        self.assertEqual(VersionDocumento.objects.filter(documento=documento).count(), 1)
+        self.assertTrue(AuditLog.objects.filter(accion="UPLOAD", modulo="DOCUMENTOS", usuario=self.admin_user).exists())
+
+        second = self.upload_observation(self.profile_event.id, name="observaciones-v2.pdf")
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(VersionDocumento.objects.filter(documento=documento).count(), 2)
+        self.assertEqual(VersionDocumento.objects.filter(documento=documento, es_version_actual=True).count(), 1)
+
+    def test_rechaza_vinculos_de_privada_publica_y_otra_postulacion(self) -> None:
+        for event_id in (self.private_event.id, self.public_event.id, self.other_profile_event.id):
+            with self.subTest(event_id=event_id):
+                response = self.upload_observation(event_id)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_estudiante_no_carga_pero_propietario_descarga_y_ajeno_no_accede(self) -> None:
+        denied = self.upload_observation(self.profile_event.id, user=self.student_user)
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+        self.upload_observation(self.profile_event.id)
+        version = VersionDocumento.objects.get(documento__tipo_documento=self.observation_type)
+
+        self.authenticate_user(self.student_user)
+        downloaded = self.client.get(f"/api/v1/documentos/versiones/{version.id}/descargar/")
+        self.assertEqual(downloaded.status_code, status.HTTP_200_OK)
+
+        self.authenticate_user(self.other_student)
+        self.assertEqual(self.client.get(f"/api/v1/documentos/versiones/{version.id}/descargar/").status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_acta_defensa_conserva_restriccion_a_defensa_publica(self) -> None:
+        acta_type = TipoDocumento.objects.create(codigo="ACTA_DEFENSA", nombre="Acta de Defensa")
+        self.authenticate_user(self.admin_user)
+        response = self.client.post(
+            "/api/v1/documentos/documentos/subir/",
+            {"postulacion_id": self.postulacion.id, "tipo_documento_id": acta_type.id, "evento_defensa_id": self.profile_event.id, "archivo": self.create_pdf_file("acta.pdf")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class TestVersionDocumentoDownload(DocumentoAPITestCase):

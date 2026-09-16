@@ -94,6 +94,15 @@ OFFICIAL_TIPOS_DOCUMENTO = [
         "extensiones_permitidas": "pdf,doc,docx",
     },
     {
+        "codigo": "OBSERVACIONES_DEFENSA_PERFIL",
+        "nombre": "Hoja de observaciones de Defensa de Perfil",
+        "descripcion": "Documento oficial de observaciones entregado por la universidad después de la Defensa de Perfil.",
+        "obligatorio": False,
+        "permite_multiple_version": True,
+        "tamano_maximo_mb": 10,
+        "extensiones_permitidas": "pdf",
+    },
+    {
         "codigo": "HOJA_APROBACION",
         "nombre": "Hoja de Aprobación",
         "descripcion": "Hoja académico-legal que acredita la aprobación posterior a la defensa de Proyecto de Grado.",

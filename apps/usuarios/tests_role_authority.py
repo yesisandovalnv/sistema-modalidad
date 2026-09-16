@@ -62,6 +62,8 @@ class CanonicalRoleAuthorityTests(TestCase):
             self.assertFalse(is_staff_user(user))
         self.assertTrue(UserCapabilitiesService.resolve(self.admin)["puede_gestionar_usuarios"])
         self.assertTrue(UserCapabilitiesService.resolve(self.technical_superuser)["puede_gestionar_usuarios"])
+        self.assertTrue(UserCapabilitiesService.resolve(self.admin)["puede_ver_modalidades"])
+        self.assertTrue(UserCapabilitiesService.resolve(self.student)["puede_ver_modalidades"])
         self.assertFalse(UserCapabilitiesService.resolve(self.teacher_with_staff)["puede_gestionar_usuarios"])
         self.assertTrue(UserCapabilitiesService.resolve(self.admin_without_staff)["puede_gestionar_usuarios"])
         self.assertFalse(UserCapabilitiesService.resolve(self.unknown)["puede_ver_dashboard"])

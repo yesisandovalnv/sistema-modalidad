@@ -110,6 +110,54 @@ class ModelosDefensaTests(DefensaMixin,TestCase):
 
 
 class ServiciosDefensaTests(DefensaMixin,TestCase):
+    def test_aprobacion_manual_perfil_exige_defensa_finalizada_y_resultado_suficiente(self):
+        with self.assertRaisesMessage(ValidationError, "Defensa de Perfil finalizada"):
+            WorkflowService.aprobar_etapa(self.follow["PERFIL_PROYECTO"], self.admin)
+
+        evento = self.event("DEFENSA_PERFIL", "PROGRAMADA")
+        with self.assertRaisesMessage(ValidationError, "Defensa de Perfil finalizada"):
+            WorkflowService.aprobar_etapa(self.follow["PERFIL_PROYECTO"], self.admin)
+
+        evento.estado = "FINALIZADA"
+        evento.fecha_fin_real = timezone.now()
+        evento.save()
+        with self.assertRaisesMessage(ValidationError, "resultado consolidado SUFICIENTE"):
+            WorkflowService.aprobar_etapa(self.follow["PERFIL_PROYECTO"], self.admin)
+
+        EvaluacionDefensa.objects.create(
+            evento=evento, tipo_evaluacion="RESULTADO_FINAL", modalidad_registro="CONSENSO",
+            resultado_cualitativo="INSUFICIENTE", es_resultado_final_evento=True,
+            registrado_por=self.admin,
+        )
+        with self.assertRaisesMessage(ValidationError, "resultado consolidado SUFICIENTE"):
+            WorkflowService.aprobar_etapa(self.follow["PERFIL_PROYECTO"], self.admin)
+
+    def test_consolidacion_suficiente_aprueba_perfil_y_deja_documento_final_pendiente(self):
+        otros = [self.follow[codigo] for codigo in ("DEFENSA_PRIVADA", "DEFENSA_PUBLICA", "REVISION_FINAL_POST_PUBLICA")]
+        etapas_otras = [seguimiento.etapa for seguimiento in otros]
+        SeguimientoEtapa.objects.filter(pk__in=[seguimiento.pk for seguimiento in otros]).delete()
+        EtapaModalidad.objects.filter(pk__in=[etapa.pk for etapa in etapas_otras]).delete()
+        etapa_documento = EtapaModalidad.objects.create(
+            modalidad=self.mod, codigo="DOCUMENTO_FINAL", nombre="Documento Final", orden=2,
+            origen_normativo="Reglamento",
+        )
+        documento = SeguimientoEtapa.objects.create(
+            postulacion=self.post, etapa=etapa_documento, estado="PENDIENTE",
+        )
+        evento = self.event("DEFENSA_PERFIL", "EN_CURSO")
+        self.add(evento, ["TRIBUNAL", "TRIBUNAL"])
+        EvaluacionDefensaService.registrar_evaluacion_perfil(evento, self.admin, "SUFICIENTE")
+        EventoDefensaService.finalizar_evento(evento, self.admin)
+
+        EvaluacionDefensaService.consolidar_evaluacion_evento(evento, self.admin)
+
+        self.follow["PERFIL_PROYECTO"].refresh_from_db()
+        documento.refresh_from_db()
+        self.assertEqual(self.follow["PERFIL_PROYECTO"].estado, "APROBADA")
+        self.assertIsNotNone(self.follow["PERFIL_PROYECTO"].fecha_fin)
+        self.assertEqual(self.follow["PERFIL_PROYECTO"].cerrada_por, self.admin)
+        self.assertEqual(documento.estado, "PENDIENTE")
+
     def test_programacion_y_auditoria(self):
         ev=EventoDefensaService.programar_evento(self.post,self.follow["PERFIL_PROYECTO"],"DEFENSA_PERFIL",timezone.now(),self.admin,lugar="Sala")
         self.assertEqual(ev.tipo_evento,"DEFENSA_PERFIL"); self.assertTrue(AuditLog.objects.filter(accion="PROGRAM",modulo="DEFENSAS").exists())

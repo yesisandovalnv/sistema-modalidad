@@ -153,4 +153,4 @@ class ProyectoGradoRequisitosTests(TestCase):
     def test_documentos_aplicables_en_etapa_documento_final(self):
         """Verificar que DOCUMENTO_FINAL sigue siendo aplicable en su etapa."""
         resultado = self.policy.get_documentos_aplicables_en_etapa("DOCUMENTO_FINAL")
-        self.assertEqual(resultado, ("DOCUMENTO_FINAL",))
+        self.assertEqual(resultado, ("DOCUMENTO_FINAL", "OBSERVACIONES_DEFENSA_PERFIL"))

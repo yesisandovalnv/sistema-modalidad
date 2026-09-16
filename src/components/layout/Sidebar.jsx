@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { LayoutDashboard, FileText, Users, FolderKanban, MonitorPlay, Settings, LogOut, Menu, Bell, GraduationCap } from 'lucide-react'
 import { Button } from '../ui/button'
 import { useAuth } from '../../hooks/useAuth'
@@ -9,16 +9,25 @@ const links = [
   { to: '/notificaciones', label: 'Notificaciones', icon: Bell, permission: 'puede_ver_notificaciones' },
   { to: '/postulantes', label: 'Postulantes', icon: Users, permission: 'puede_ver_postulaciones' },
   { to: '/documentos', label: 'Documentos', icon: FileText, permission: 'puede_ver_documentos' },
-  { to: '/modalidades', label: 'Modalidades', icon: FolderKanban, permission: 'puede_gestionar_catalogos' },
+  { to: '/modalidades', label: 'Modalidades', icon: FolderKanban, permission: 'puede_ver_modalidades' },
   { to: '/seguimiento', label: 'Seguimiento', icon: MonitorPlay, permission: 'puede_ver_seguimiento' },
   { to: '/usuarios', label: 'Usuarios', icon: Users, permission: 'puede_gestionar_usuarios' },
   { to: '/reportes/postulaciones', label: 'Reportes', icon: FileText, permission: 'puede_ver_reportes' },
   { to: '/configuracion', label: 'Configuración', icon: Settings, permission: 'puede_ver_configuracion' },
 ]
+const studentMenuPaths = new Set(['/notificaciones', '/postulantes', '/documentos', '/modalidades'])
 
 export function Sidebar({ open, collapsed = false, onMobileToggle }) {
-  const { hasPermission, logout } = useAuth()
+  const { hasPermission, roleCode, logout } = useAuth()
   const { unreadCount } = useNotifications()
+  const { pathname } = useLocation()
+  const studentMode = roleCode === 'ESTUDIANTE'
+  const processActive = studentMode && (pathname === '/' || pathname === '/postulantes' || pathname.startsWith('/postulaciones/'))
+  const menuLinks = (studentMode ? links.filter((link) => studentMenuPaths.has(link.to)) : links).map((link) => studentMode && link.to === '/postulantes'
+    ? { ...link, to: '/', label: 'Mi proceso' }
+    : studentMode && link.to === '/documentos'
+      ? { ...link, label: 'Mis documentos' }
+      : link)
 
   return (
     <aside id="main-sidebar" data-collapsed={collapsed} className={`sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r p-3 ${collapsed ? 'sidebar--collapsed' : ''} ${open ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
@@ -36,13 +45,13 @@ export function Sidebar({ open, collapsed = false, onMobileToggle }) {
       </div>
 
       <nav aria-label="Navegación principal" className="mt-7 flex-1 space-y-1">
-        {links.filter((link) => !link.permission || hasPermission(link.permission)).map(({ to, label, icon: Icon }) => (
+        {menuLinks.filter((link) => !link.permission || hasPermission(link.permission)).map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             aria-label={collapsed ? label : undefined}
             title={collapsed ? label : undefined}
-            className={({ isActive }) => `sidebar-link flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium ${isActive ? 'sidebar-link--active' : ''}`}
+            className={({ isActive }) => `sidebar-link flex min-h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium ${isActive || (studentMode && to === '/' && processActive) ? 'sidebar-link--active' : ''}`}
           >
             <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
             <span className="sidebar-label">{label}</span>

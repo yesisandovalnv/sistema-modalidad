@@ -241,17 +241,28 @@ class RevisionTribunalServiceTest(RevisionTribunalFixtureMixin, TestCase):
 
     def test_acepta_tribunal_aunque_asignado_en_distinta_etapa(self):
         """Caso 8: Verifica que tribunal vigente de PERFIL se acepta en REVISION (comportamiento correcto)."""
-        # Todos los tribunales tienen seguimiento_etapa=PERFIL_PROYECTO
-        # Pero deben aceptarse en REVISION_TRIBUNAL_PREVIA si están activos
-        self.assertTrue(
-            any(
-                AsignacionPostulacion.objects.filter(
-                    postulacion=self.postulacion,
-                    tipo_participacion="TRIBUNAL",
-                    activo=True,
-                    orden_cargo__in=[1, 2, 3],
-                )
-            )
+        etapa_perfil = EtapaModalidad.objects.create(
+            modalidad=self.modalidad, codigo="PERFIL_PROYECTO",
+            nombre="Perfil de Proyecto", orden=2, origen_normativo="Reglamento PG",
+        )
+        seguimiento_perfil = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion, etapa=etapa_perfil,
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA,
+        )
+        AsignacionPostulacion.objects.filter(
+            postulacion=self.postulacion,
+            tipo_participacion="TRIBUNAL",
+            activo=True,
+        ).update(seguimiento_etapa=seguimiento_perfil)
+
+        self.assertEqual(
+            AsignacionPostulacion.objects.filter(
+                postulacion=self.postulacion,
+                tipo_participacion="TRIBUNAL",
+                activo=True,
+                seguimiento_etapa=seguimiento_perfil,
+            ).count(),
+            3,
         )
         informe = self.registrar()
         self.assertEqual(informe.resultado, InformeRevisionTribunalPrevia.Resultado.SUFICIENTE)

@@ -55,6 +55,21 @@ class SprintZeroSecurityContractTests(TestCase):
         self.assertEqual(self.request_as(self.role_only_admin).post("/api/v1/academico/modalidades/", {"codigo": "ROLE", "nombre": "Por rol"}).status_code, 201)
         self.assertEqual(self.request_as(self.staff).post("/api/v1/academico/modalidades/", {"codigo": "STAFF", "nombre": "Con staff"}).status_code, 201)
 
+    def test_student_cannot_mutate_modalities(self):
+        url = f"/api/v1/academico/modalidades/{self.modality.pk}/"
+        client = self.request_as(self.student)
+        self.assertEqual(client.post("/api/v1/academico/modalidades/", {"codigo": "STUDENT", "nombre": "No"}).status_code, 403)
+        self.assertEqual(client.patch(url, {"nombre": "No"}, format="json").status_code, 403)
+        self.assertEqual(client.delete(url).status_code, 403)
+
+    def test_admin_keeps_modality_crud(self):
+        client = self.request_as(self.staff)
+        created = client.post("/api/v1/academico/modalidades/", {"codigo": "CRUD", "nombre": "CRUD"})
+        self.assertEqual(created.status_code, 201)
+        url = f"/api/v1/academico/modalidades/{created.data['id']}/"
+        self.assertEqual(client.patch(url, {"descripcion": "Actualizada"}, format="json").status_code, 200)
+        self.assertEqual(client.delete(url).status_code, 204)
+
     def test_student_only_lists_and_retrieves_owned_resources(self):
         client = self.request_as(self.student)
         response = client.get("/api/v1/postulaciones/")

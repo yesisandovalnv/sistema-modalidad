@@ -58,6 +58,8 @@ class DocumentoService:
 
         if usuario != postulacion.estudiante and not is_staff_user(usuario):
             raise PermissionDenied("El usuario no tiene permisos para subir este documento.")
+        if tipo_documento.codigo == "OBSERVACIONES_DEFENSA_PERFIL" and not is_staff_user(usuario):
+            raise PermissionDenied("La hoja de observaciones de Defensa de Perfil solo puede cargarla un usuario administrativo.")
 
         with transaction.atomic():
             # Bloquear la postulación serializa también la primera carga, cuando
@@ -104,6 +106,12 @@ class DocumentoService:
                 )
             else:
                 self._validar_documento_activo(documento)
+                if (
+                    tipo_documento.codigo == "OBSERVACIONES_DEFENSA_PERFIL"
+                    and evento_defensa is not None
+                    and documento.evento_defensa_id not in (None, evento_defensa.pk)
+                ):
+                    raise ValidationError("La hoja de observaciones ya está vinculada a otra Defensa de Perfil.")
                 if evento_defensa is not None and documento.evento_defensa_id != evento_defensa.pk:
                     documento.evento_defensa = evento_defensa
                     documento.save(update_fields=["evento_defensa", "updated_at"])

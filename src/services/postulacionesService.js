@@ -279,6 +279,36 @@ export const postulacionesService = {
       throw normalizeAssignments(error)
     }
   },
+  async obtenerTribunalesActivos(postulacion, { signal } = {}) {
+    try {
+      const tribunales = []
+      const visitedPages = new Set()
+      const filters = {
+        postulacion: String(postulacion),
+        activo: 'true',
+        tipo_participacion: 'TRIBUNAL',
+      }
+      let next = '/api/v1/asignaciones/?page=1'
+      let currentRequestUrl = '/api/v1/asignaciones/'
+
+      while (next) {
+        const pageUrl = new URL(next, new URL(currentRequestUrl, 'http://pagination.local'))
+        for (const [name, value] of Object.entries(filters)) pageUrl.searchParams.set(name, value)
+        const requestUrl = `${pageUrl.pathname}${pageUrl.search}`
+        if (visitedPages.has(requestUrl)) throw new Error('Repeated active tribunal page')
+        visitedPages.add(requestUrl)
+        currentRequestUrl = requestUrl
+
+        const { data } = await apiClient.get(requestUrl, { signal })
+        tribunales.push(...(data?.results || []))
+        next = data?.next || null
+      }
+
+      return tribunales
+    } catch (error) {
+      throw normalizeAssignments(error)
+    }
+  },
   async obtenerCandidatosAsignacion({ search = '', rol = '', ordering = 'apellido_paterno', page = 1 } = {}, signal) {
     try {
       return (await apiClient.get('/api/v1/usuarios/candidatos-asignacion/', {
@@ -512,7 +542,29 @@ export const postulacionesService = {
   },
   async obtenerTiposDocumento(signal) {
     try {
-      return (await apiClient.get('/api/v1/documentos/tipos-documento/', { params: { activo: true, page_size: 100, ordering: 'nombre' }, signal })).data
+      const types = []
+      const visitedPages = new Set()
+      let url = '/api/v1/documentos/tipos-documento/'
+      let config = { params: { activo: true, ordering: 'nombre' }, signal }
+
+      while (url) {
+        const pageUrl = new URL(url, 'http://pagination.local')
+        const requestUrl = `${pageUrl.pathname}${pageUrl.search}`
+        if (visitedPages.has(requestUrl)) throw new Error('Repeated document type page')
+        visitedPages.add(requestUrl)
+
+        const { data } = await apiClient.get(requestUrl, config)
+        if (Array.isArray(data)) {
+          types.push(...data)
+          url = null
+        } else {
+          types.push(...(data?.results || []))
+          url = data?.next || null
+        }
+        config = { signal }
+      }
+
+      return types
     } catch (error) {
       throw normalizeDocuments(error, 'los tipos documentales')
     }

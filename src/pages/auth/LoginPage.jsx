@@ -25,7 +25,7 @@ export default function LoginPage() {
       localStorage.setItem('auth_access_token', response.data.access)
       localStorage.setItem('auth_refresh_token', response.data.refresh)
       window.dispatchEvent(new Event('auth-authenticated'))
-      navigate('/dashboard')
+      navigate('/', { replace: true })
     } catch (requestError) {
       if (!requestError.response) {
         setError('No se pudo conectar con el servidor.')

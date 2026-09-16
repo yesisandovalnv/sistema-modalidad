@@ -7,6 +7,107 @@ vi.mock('./api', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 describe('postulacionesService', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('obtiene todos los tribunales activos de una sola página con filtros canónicos', async () => {
+    const signal = new AbortController().signal
+    const tribunals = [{ id: 1, tipo_participacion: 'TRIBUNAL', orden_cargo: 1 }]
+    apiClient.get.mockResolvedValue({ data: { next: null, results: tribunals } })
+
+    await expect(postulacionesService.obtenerTribunalesActivos(7, { signal })).resolves.toEqual(tribunals)
+    const [url, config] = apiClient.get.mock.calls[0]
+    expect(url).toContain('/api/v1/asignaciones/?')
+    expect(url).toContain('page=1')
+    expect(url).toContain('postulacion=7')
+    expect(url).toContain('activo=true')
+    expect(url).toContain('tipo_participacion=TRIBUNAL')
+    expect(config.signal).toBe(signal)
+  })
+
+  it('recorre next absoluto, relativo y relativo a la query hasta completar la colección', async () => {
+    apiClient.get
+      .mockResolvedValueOnce({ data: { next: 'https://backend.test/api/v1/asignaciones/?page=2', results: [{ id: 1, orden_cargo: 1 }] } })
+      .mockResolvedValueOnce({ data: { next: '?page=3', results: [{ id: 2, orden_cargo: 2 }] } })
+      .mockResolvedValueOnce({ data: { next: null, results: [{ id: 3, orden_cargo: 3 }] } })
+
+    await expect(postulacionesService.obtenerTribunalesActivos(9)).resolves.toEqual([
+      { id: 1, orden_cargo: 1 }, { id: 2, orden_cargo: 2 }, { id: 3, orden_cargo: 3 },
+    ])
+    expect(apiClient.get).toHaveBeenCalledTimes(3)
+    for (const [url] of apiClient.get.mock.calls) {
+      expect(url).toContain('postulacion=9')
+      expect(url).toContain('activo=true')
+      expect(url).toContain('tipo_participacion=TRIBUNAL')
+    }
+    expect(apiClient.get.mock.calls[1][0]).toContain('page=2')
+    expect(apiClient.get.mock.calls[2][0]).toContain('page=3')
+  })
+
+  it('rechaza toda la carga si falla una página intermedia', async () => {
+    apiClient.get
+      .mockResolvedValueOnce({ data: { next: '/api/v1/asignaciones/?page=2', results: [{ id: 1 }] } })
+      .mockRejectedValueOnce({ response: { status: 500 } })
+
+    await expect(postulacionesService.obtenerTribunalesActivos(7)).rejects.toEqual({
+      status: 500,
+      message: 'No se pudieron cargar los actores. Comprueba tu conexión e intenta nuevamente.',
+    })
+  })
+
+  it('rechaza ciclos de next sin continuar indefinidamente', async () => {
+    apiClient.get.mockResolvedValue({ data: { next: '/api/v1/asignaciones/?page=1', results: [{ id: 1 }] } })
+
+    await expect(postulacionesService.obtenerTribunalesActivos(7)).rejects.toEqual({
+      status: undefined,
+      message: 'No se pudieron cargar los actores. Comprueba tu conexión e intenta nuevamente.',
+    })
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('normaliza una sola página de tipos documentales como un array completo', async () => {
+    const signal = new AbortController().signal
+    const types = [{ id: 1, codigo: 'ACTA_DEFENSA' }]
+    apiClient.get.mockResolvedValue({ data: { count: 1, next: null, previous: null, results: types } })
+
+    await expect(postulacionesService.obtenerTiposDocumento(signal)).resolves.toEqual(types)
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/documentos/tipos-documento/', {
+      params: { activo: true, ordering: 'nombre' }, signal,
+    })
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('recorre next absoluto o relativo y acumula todas las páginas sin depender de page_size', async () => {
+    const signal = new AbortController().signal
+    apiClient.get
+      .mockResolvedValueOnce({ data: { count: 3, next: 'http://backend.test/api/v1/documentos/tipos-documento/?activo=true&ordering=nombre&page=2', results: [{ id: 1 }] } })
+      .mockResolvedValueOnce({ data: { count: 3, next: '/api/v1/documentos/tipos-documento/?activo=true&ordering=nombre&page=3', results: [{ id: 2 }] } })
+      .mockResolvedValueOnce({ data: { count: 3, next: null, results: [{ id: 3 }] } })
+
+    await expect(postulacionesService.obtenerTiposDocumento(signal)).resolves.toEqual([{ id: 1 }, { id: 2 }, { id: 3 }])
+    expect(apiClient.get).toHaveBeenNthCalledWith(2, '/api/v1/documentos/tipos-documento/?activo=true&ordering=nombre&page=2', { signal })
+    expect(apiClient.get).toHaveBeenNthCalledWith(3, '/api/v1/documentos/tipos-documento/?activo=true&ordering=nombre&page=3', { signal })
+    expect(apiClient.get.mock.calls.flatMap((call) => [call[0], JSON.stringify(call[1])]).join(' ')).not.toContain('page_size')
+  })
+
+  it('propaga el error de una página posterior sin devolver resultados parciales', async () => {
+    apiClient.get
+      .mockResolvedValueOnce({ data: { count: 2, next: '/api/v1/documentos/tipos-documento/?page=2', results: [{ id: 1 }] } })
+      .mockRejectedValueOnce({ response: { status: 500 } })
+
+    await expect(postulacionesService.obtenerTiposDocumento()).rejects.toEqual({
+      status: 500,
+      message: 'No se pudieron cargar los tipos documentales. Intenta nuevamente.',
+    })
+  })
+
+  it('interrumpe una referencia next repetida en lugar de entrar en un ciclo', async () => {
+    apiClient.get.mockResolvedValue({ data: { next: '/api/v1/documentos/tipos-documento/', results: [{ id: 1 }] } })
+
+    await expect(postulacionesService.obtenerTiposDocumento()).rejects.toEqual({
+      status: undefined,
+      message: 'No se pudieron cargar los tipos documentales. Intenta nuevamente.',
+    })
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+  })
+
   it('consulta las capacidades académicas de una modalidad', async () => {
     const signal = new AbortController().signal
     apiClient.get.mockResolvedValue({ data: { soportada: true, configuracion_valida: true } })

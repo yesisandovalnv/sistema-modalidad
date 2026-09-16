@@ -27,6 +27,7 @@ class UserCapabilitiesService:
         "puede_ver_postulaciones",
         "puede_ver_documentos",
         "puede_cargar_documentos",
+        "puede_ver_modalidades",
         "puede_ver_seguimiento",
         "puede_gestionar_seguimiento",
         "puede_gestionar_catalogos",
@@ -49,6 +50,7 @@ class UserCapabilitiesService:
                 puede_ver_postulaciones=True,
                 puede_ver_documentos=True,
                 puede_cargar_documentos=is_student,
+                puede_ver_modalidades=is_student,
                 puede_ver_seguimiento=True,
             )
         if is_admin:

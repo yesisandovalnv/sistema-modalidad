@@ -2,13 +2,15 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import Resolver404, resolve
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
-from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, HistorialEstado, Postulacion, SeguimientoEtapa
+from apps.postulantes.models import (AsignacionPostulacion, EstadoPostulacion, EvaluacionDefensa,
+                                     EventoDefensa, HistorialEstado, Postulacion, SeguimientoEtapa)
 from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import Role
@@ -116,6 +118,28 @@ class WorkflowBaseMixin:
             nombre="Cierre Documental",
             orden=4,
             origen_normativo="Capítulo VII",
+        )
+
+    def habilitar_aprobacion_perfil(self, seguimiento):
+        ahora = timezone.now()
+        evento = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=seguimiento,
+            tipo_evento="DEFENSA_PERFIL",
+            estado="FINALIZADA",
+            fecha_programada=ahora,
+            fecha_inicio_real=ahora,
+            fecha_fin_real=ahora,
+            lugar="Sala",
+            programado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=evento,
+            tipo_evaluacion="RESULTADO_FINAL",
+            modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",
+            es_resultado_final_evento=True,
+            registrado_por=self.admin,
         )
 
 
@@ -238,6 +262,8 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
                 self.assertIn("ENTREGA:CD_RESPALDO", str(error.exception))
                 self.assertIn("DOCUMENTO:DOCUMENTO_FINAL", str(error.exception))
             else:
+                if etapa == self.etapa_perfil:
+                    self.habilitar_aprobacion_perfil(seguimiento)
                 WorkflowService.aprobar_etapa(seguimiento, self.admin)
 
         self.postulacion.refresh_from_db()
@@ -301,7 +327,9 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
             "Debe corregir",
         )
         nuevo_intento = WorkflowService.crear_nuevo_intento(self.postulacion, self.etapa_perfil, self.admin)
-        WorkflowService.aprobar_etapa(WorkflowService.iniciar_etapa(nuevo_intento, self.admin), self.admin)
+        nuevo_intento = WorkflowService.iniciar_etapa(nuevo_intento, self.admin)
+        self.habilitar_aprobacion_perfil(nuevo_intento)
+        WorkflowService.aprobar_etapa(nuevo_intento, self.admin)
 
         serializer = FlujoPostulacionSerializer(
             self.postulacion,
@@ -436,6 +464,40 @@ class DocumentoFinalApprovalPreconditionTest(WorkflowBaseMixin, TestCase):
         self.assertEqual(self.seguimiento.estado, SeguimientoEtapa.EstadoChoices.EN_PROCESO)
         self.assertIsNone(self.seguimiento.fecha_fin)
         self.assertIsNone(self.seguimiento.cerrada_por_id)
+
+    def _orientation(self):
+        return FlujoPostulacionSerializer(self.postulacion, context={}).data["orientacion_etapa_actual"]
+
+    def test_orientation_requests_document_when_missing(self):
+        orientation = self._orientation()
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        self.assertEqual(orientation["siguiente_accion"]["destino"], "#documentos")
+
+    def test_orientation_waits_for_administrative_review_when_document_is_sent(self):
+        documento = self._documento(estado=self.estado_env)
+        self._version(documento)
+        orientation = self._orientation()
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "GESTIONAR_DOCUMENTOS")
+        self.assertNotEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+
+    def test_orientation_requests_correction_when_document_is_observed(self):
+        documento = self._documento(requiere_correccion=True)
+        self._version(documento)
+        orientation = self._orientation()
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        self.assertIn("corrección", orientation["mensaje"])
+
+    def test_orientation_does_not_approve_without_current_active_version(self):
+        documento = self._documento()
+        self._version(documento, activo=False)
+        orientation = self._orientation()
+        self.assertNotEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+
+    def test_orientation_allows_stage_approval_only_when_document_is_valid(self):
+        documento = self._documento()
+        self._version(documento)
+        orientation = self._orientation()
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
 
     def test_rechaza_si_no_existe_documento_final_activo(self):
         self._documento(activo=False)

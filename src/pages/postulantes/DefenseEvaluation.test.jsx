@@ -16,6 +16,10 @@ const privateDefense = (modalidad = 'TESIS_GRADO') => ({
   ...defense(modalidad), tipo_evento: 'DEFENSA_PRIVADA', estado: 'FINALIZADA',
 })
 
+const profileDefense = (modalidad = 'PROYECTO_GRADO') => ({
+  ...defense(modalidad), tipo_evento: 'DEFENSA_PERFIL',
+})
+
 describe('DefenseEvaluation por modalidad', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -82,5 +86,66 @@ describe('DefenseEvaluation por modalidad', () => {
     render(<DefenseEvaluation defense={privateDefense('PROYECTO_GRADO')} quorum={quorum} canManage onChanged={vi.fn()} />)
     await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
     expect(screen.getByLabelText('Nota privada (0–30)')).toHaveAttribute('name', 'nota_privada')
+  })
+
+  it('explica que Perfil de Proyecto registra un único consenso sin evaluador individual', async () => {
+    postulacionesService.registrarEvaluacionDefensa.mockResolvedValue({})
+    render(<DefenseEvaluation defense={profileDefense()} quorum={quorum} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+
+    expect(screen.getByText('Evaluación consensuada del Tribunal')).toBeInTheDocument()
+    expect(screen.getByText(/Registra una única decisión conjunta de los tribunales presentes/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Tribunal evaluador')).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Suficiente' })).toHaveValue('SUFICIENTE')
+    expect(screen.getByRole('option', { name: 'Insuficiente' })).toHaveValue('INSUFICIENTE')
+
+    await userEvent.selectOptions(screen.getByLabelText('Resultado'), 'INSUFICIENTE')
+    await userEvent.type(screen.getByLabelText('Observaciones'), 'Decisión conjunta')
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(9, 'perfil', {
+      observaciones: 'Decisión conjunta', modalidad_registro: 'CONSENSO', resultado: 'INSUFICIENTE',
+    }, expect.any(AbortSignal))
+  })
+
+  it.each([
+    ['SUFICIENTE', 'Suficiente'],
+    ['INSUFICIENTE', 'Insuficiente'],
+  ])('muestra el estado de evaluación Perfil consensuada existente (%s)', async (resultado, resultadoVisible) => {
+    render(<DefenseEvaluation defense={{ ...profileDefense(), evaluaciones: [{ id: 30, tipo_evaluacion: 'PERFIL', modalidad_registro: 'CONSENSO', es_resultado_final_evento: false, resultado_cualitativo: resultado }] }} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: 'Registrar evaluación consensuada' })).not.toBeInTheDocument()
+    expect(screen.getByText('Evaluación consensuada registrada')).toBeInTheDocument()
+    expect(screen.getByText(`Resultado académico: ${resultadoVisible}`)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['SUFICIENTE', 'Suficiente'],
+    ['INSUFICIENTE', 'Insuficiente'],
+  ])('oculta la acción cuando ya existe una evaluación privada consensuada (%s)', async (resultado, resultadoVisible) => {
+    render(<DefenseEvaluation defense={{ ...privateDefense(), evaluaciones: [{ id: 40, tipo_evaluacion: 'PRIVADA', modalidad_registro: 'CONSENSO', es_resultado_final_evento: false, resultado_cualitativo: resultado, nota_numerica: 28 }] }} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: 'Registrar evaluación consensuada' })).not.toBeInTheDocument()
+    expect(screen.getByText('Evaluación consensuada registrada')).toBeInTheDocument()
+    expect(screen.getByText(`Resultado académico: ${resultadoVisible}`)).toBeInTheDocument()
+  })
+
+  it('no confunde un RESULTADO_FINAL con la evaluación ordinaria de Perfil', async () => {
+    render(<DefenseEvaluation defense={{ ...profileDefense(), evaluaciones: [{ id: 31, tipo_evaluacion: 'RESULTADO_FINAL', modalidad_registro: 'CONSENSO', es_resultado_final_evento: true, resultado_cualitativo: 'SUFICIENTE' }] }} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Registrar evaluación consensuada' })).toBeInTheDocument()
+    expect(screen.queryByText('Evaluación consensuada registrada')).not.toBeInTheDocument()
+  })
+
+  it('no confunde un RESULTADO_FINAL con la evaluación ordinaria de Privada', async () => {
+    render(<DefenseEvaluation defense={{ ...privateDefense(), evaluaciones: [{ id: 32, tipo_evaluacion: 'RESULTADO_FINAL', modalidad_registro: 'CONSENSO', es_resultado_final_evento: true, resultado_cualitativo: 'SUFICIENTE' }] }} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: 'Registrar evaluación consensuada' })).toBeInTheDocument()
+    expect(screen.queryByText('Evaluación consensuada registrada')).not.toBeInTheDocument()
+  })
+
+  it('no muestra la explicación contextual de Proyecto en otras modalidades', async () => {
+    render(<DefenseEvaluation defense={profileDefense('TESIS_GRADO')} quorum={quorum} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    expect(screen.queryByText('Evaluación consensuada del Tribunal')).not.toBeInTheDocument()
   })
 })

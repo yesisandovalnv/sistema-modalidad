@@ -15,6 +15,8 @@ from apps.postulantes.defensas import EventoDefensaService, EvaluacionDefensaSer
 from apps.postulantes.models import AsignacionPostulacion, EventoDefensa, ParticipanteEvento, EvaluacionDefensa, SeguimientoEtapa
 from apps.postulantes.models import Postulacion
 from apps.postulantes.permissions import get_postulacion_in_scope
+from apps.documentos.models import DocumentoPostulacion
+from apps.documentos.serializers import DocumentoPostulacionSerializer
 
 
 def _nombre_usuario(usuario):
@@ -82,6 +84,11 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
     postulacion_modalidad_codigo = serializers.CharField(source="postulacion.modalidad.codigo", read_only=True)
     etapa_codigo = serializers.CharField(source="seguimiento_etapa.etapa.codigo", read_only=True)
     etapa_nombre = serializers.CharField(source="seguimiento_etapa.etapa.nombre", read_only=True)
+    hoja_observaciones = serializers.SerializerMethodField()
+
+    def get_hoja_observaciones(self, obj):
+        documento = next((item for item in obj.documentos_vinculados.all() if item.tipo_documento.codigo == "OBSERVACIONES_DEFENSA_PERFIL" and item.activo), None)
+        return DocumentoPostulacionSerializer(documento, context=self.context).data if documento else None
 
     @extend_schema_field(EvaluacionDefensaSerializer(allow_null=True))
     def get_resultado_consolidado(self, obj):
@@ -99,6 +106,7 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
             "estado_display", "fecha_programada", "fecha_inicio_real", "fecha_fin_real", "lugar",
             "modalidad_evento", "modalidad_display", "enlace_virtual", "observaciones", "activo",
             "participantes", "evaluaciones", "resultado_consolidado",
+            "hoja_observaciones",
         )
         read_only_fields = fields
 
@@ -173,6 +181,8 @@ class EventoDefensaViewSet(viewsets.ReadOnlyModelViewSet):
         ).prefetch_related(
             "participantes__asignacion__usuario",
             "evaluaciones__evaluador__asignacion__usuario",
+            "documentos_vinculados__tipo_documento",
+            "documentos_vinculados__versiones__subido_por",
         )
         if getattr(self, "swagger_fake_view", False):
             return qs.none()
@@ -264,6 +274,8 @@ class PostulacionEventosView(APIView):
         ).prefetch_related(
             "participantes__asignacion__usuario",
             "evaluaciones__evaluador__asignacion__usuario",
+            "documentos_vinculados__tipo_documento",
+            "documentos_vinculados__versiones__subido_por",
         ).order_by("-fecha_programada", "-id")
         return Response(EventoDefensaSerializer(queryset,many=True,context={"request": request}).data)
     def post(self,request,pk):

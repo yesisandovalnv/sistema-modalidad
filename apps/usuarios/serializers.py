@@ -26,6 +26,7 @@ class UserPermissionsSerializer(serializers.Serializer):
     puede_ver_postulaciones = serializers.BooleanField()
     puede_ver_documentos = serializers.BooleanField()
     puede_cargar_documentos = serializers.BooleanField()
+    puede_ver_modalidades = serializers.BooleanField()
     puede_ver_seguimiento = serializers.BooleanField()
     puede_gestionar_seguimiento = serializers.BooleanField()
     puede_gestionar_catalogos = serializers.BooleanField()
