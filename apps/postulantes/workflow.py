@@ -61,18 +61,7 @@ class WorkflowService:
 
         with transaction.atomic():
             seguimiento = WorkflowService._bloquear_seguimiento(seguimiento.pk)
-            if seguimiento.estado != SeguimientoEtapa.EstadoChoices.PENDIENTE:
-                raise ValidationError("Solo se pueden iniciar etapas pendientes.")
-
-            existe_en_proceso = SeguimientoEtapa.objects.select_for_update().filter(
-                postulacion=seguimiento.postulacion,
-                estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
-            ).exclude(pk=seguimiento.pk)
-            if existe_en_proceso.exists():
-                raise ValidationError("La postulacion ya tiene una etapa en proceso.")
-
-            WorkflowService._validar_etapas_anteriores_aprobadas(seguimiento)
-            ModalidadPolicyRegistry.get(seguimiento.postulacion).validar_inicio_etapa(seguimiento)
+            WorkflowService._validar_inicio_etapa(seguimiento, lock=True)
 
             seguimiento.estado = SeguimientoEtapa.EstadoChoices.EN_PROCESO
             seguimiento.fecha_inicio = seguimiento.fecha_inicio or timezone.now()
@@ -107,9 +96,7 @@ class WorkflowService:
 
         with transaction.atomic():
             seguimiento = WorkflowService._bloquear_seguimiento(seguimiento.pk)
-            WorkflowService._validar_estado_editable(seguimiento)
-            if seguimiento.estado != SeguimientoEtapa.EstadoChoices.EN_PROCESO:
-                raise ValidationError("Solo se pueden observar etapas en proceso.")
+            WorkflowService._validar_observacion_etapa(seguimiento)
 
             seguimiento.estado = SeguimientoEtapa.EstadoChoices.OBSERVADA
             seguimiento.observaciones = WorkflowService._combinar_observaciones(
@@ -131,15 +118,8 @@ class WorkflowService:
 
         with transaction.atomic():
             seguimiento = WorkflowService._bloquear_seguimiento(seguimiento.pk)
-            WorkflowService._validar_estado_editable(seguimiento)
-            if seguimiento.estado not in (
-                SeguimientoEtapa.EstadoChoices.EN_PROCESO,
-                SeguimientoEtapa.EstadoChoices.OBSERVADA,
-            ):
-                raise ValidationError("Solo se pueden aprobar etapas en proceso u observadas.")
-
+            WorkflowService._validar_aprobacion_etapa(seguimiento)
             policy = ModalidadPolicyRegistry.get(seguimiento.postulacion)
-            policy.validar_aprobacion_etapa(seguimiento)
 
             seguimiento.estado = SeguimientoEtapa.EstadoChoices.APROBADA
             seguimiento.fecha_fin = timezone.now()
@@ -180,12 +160,7 @@ class WorkflowService:
 
         with transaction.atomic():
             seguimiento = WorkflowService._bloquear_seguimiento(seguimiento.pk)
-            WorkflowService._validar_estado_editable(seguimiento)
-            if seguimiento.estado not in (
-                SeguimientoEtapa.EstadoChoices.EN_PROCESO,
-                SeguimientoEtapa.EstadoChoices.OBSERVADA,
-            ):
-                raise ValidationError("Solo se pueden rechazar etapas en proceso u observadas.")
+            WorkflowService._validar_rechazo_etapa(seguimiento)
 
             seguimiento.estado = SeguimientoEtapa.EstadoChoices.RECHAZADA
             seguimiento.fecha_fin = timezone.now()
@@ -213,9 +188,7 @@ class WorkflowService:
 
         with transaction.atomic():
             seguimiento = WorkflowService._bloquear_seguimiento(seguimiento.pk)
-            WorkflowService._validar_estado_editable(seguimiento)
-            if seguimiento.etapa.obligatoria:
-                raise ValidationError("No se pueden omitir etapas obligatorias.")
+            WorkflowService._validar_omision_etapa(seguimiento)
 
             seguimiento.estado = SeguimientoEtapa.EstadoChoices.OMITIDA
             seguimiento.fecha_fin = timezone.now()
@@ -294,6 +267,70 @@ class WorkflowService:
             "abierta_por",
             "cerrada_por",
         ).order_by("etapa__orden", "numero_intento")
+
+    @staticmethod
+    def obtener_acciones_permitidas(seguimiento: SeguimientoEtapa) -> list[str]:
+        """Consulta capacidades operativas sin ejecutar ni persistir una transición."""
+        validadores = (
+            ("iniciar", lambda: WorkflowService._validar_inicio_etapa(seguimiento)),
+            ("aprobar", lambda: WorkflowService._validar_aprobacion_etapa(seguimiento)),
+            ("observar", lambda: WorkflowService._validar_observacion_etapa(seguimiento)),
+            ("rechazar", lambda: WorkflowService._validar_rechazo_etapa(seguimiento)),
+            ("omitir", lambda: WorkflowService._validar_omision_etapa(seguimiento)),
+        )
+        acciones = []
+        for accion, validar in validadores:
+            try:
+                validar()
+            except ValidationError:
+                continue
+            acciones.append(accion)
+        return acciones
+
+    @staticmethod
+    def _validar_inicio_etapa(seguimiento: SeguimientoEtapa, lock: bool = False) -> None:
+        if seguimiento.estado != SeguimientoEtapa.EstadoChoices.PENDIENTE:
+            raise ValidationError("Solo se pueden iniciar etapas pendientes.")
+        queryset = SeguimientoEtapa.objects.select_for_update() if lock else SeguimientoEtapa.objects
+        existe_en_proceso = queryset.filter(
+            postulacion=seguimiento.postulacion,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+        ).exclude(pk=seguimiento.pk)
+        if existe_en_proceso.exists():
+            raise ValidationError("La postulacion ya tiene una etapa en proceso.")
+        WorkflowService._validar_etapas_anteriores_aprobadas(seguimiento)
+        ModalidadPolicyRegistry.get(seguimiento.postulacion).validar_inicio_etapa(seguimiento)
+
+    @staticmethod
+    def _validar_observacion_etapa(seguimiento: SeguimientoEtapa) -> None:
+        WorkflowService._validar_estado_editable(seguimiento)
+        if seguimiento.estado != SeguimientoEtapa.EstadoChoices.EN_PROCESO:
+            raise ValidationError("Solo se pueden observar etapas en proceso.")
+
+    @staticmethod
+    def _validar_aprobacion_etapa(seguimiento: SeguimientoEtapa) -> None:
+        WorkflowService._validar_estado_editable(seguimiento)
+        if seguimiento.estado not in (
+            SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+            SeguimientoEtapa.EstadoChoices.OBSERVADA,
+        ):
+            raise ValidationError("Solo se pueden aprobar etapas en proceso u observadas.")
+        ModalidadPolicyRegistry.get(seguimiento.postulacion).validar_aprobacion_etapa(seguimiento)
+
+    @staticmethod
+    def _validar_rechazo_etapa(seguimiento: SeguimientoEtapa) -> None:
+        WorkflowService._validar_estado_editable(seguimiento)
+        if seguimiento.estado not in (
+            SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+            SeguimientoEtapa.EstadoChoices.OBSERVADA,
+        ):
+            raise ValidationError("Solo se pueden rechazar etapas en proceso u observadas.")
+
+    @staticmethod
+    def _validar_omision_etapa(seguimiento: SeguimientoEtapa) -> None:
+        WorkflowService._validar_estado_editable(seguimiento)
+        if seguimiento.etapa.obligatoria:
+            raise ValidationError("No se pueden omitir etapas obligatorias.")
 
     @staticmethod
     def _validar_etapas_anteriores_aprobadas(seguimiento: SeguimientoEtapa) -> None:

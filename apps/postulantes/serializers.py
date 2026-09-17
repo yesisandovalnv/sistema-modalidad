@@ -13,6 +13,8 @@ from apps.postulantes.models import (
 )
 from apps.documentos.models import VersionDocumento
 from apps.usuarios.models import CustomUser
+from core.permissions import is_staff_user
+from apps.postulantes.workflow import WorkflowService
 
 
 class EstadoPostulacionSerializer(serializers.ModelSerializer):
@@ -271,6 +273,10 @@ class EtapaModalidadSerializer(serializers.ModelSerializer):
 class SeguimientoEtapaSerializer(serializers.ModelSerializer):
     """Serializer de solo lectura para el seguimiento de etapas."""
 
+    codigo_postulacion = serializers.CharField(source="postulacion.codigo", read_only=True)
+    estudiante_nombre = serializers.CharField(source="postulacion.estudiante.nombre_completo", read_only=True)
+    modalidad_nombre = serializers.CharField(source="postulacion.modalidad.nombre", read_only=True)
+    acciones_permitidas = serializers.SerializerMethodField()
     etapa_id = serializers.IntegerField(source="etapa.id", read_only=True)
     codigo = serializers.CharField(source="etapa.codigo", read_only=True)
     nombre = serializers.CharField(source="etapa.nombre", read_only=True)
@@ -289,6 +295,10 @@ class SeguimientoEtapaSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "postulacion",
+            "codigo_postulacion",
+            "estudiante_nombre",
+            "modalidad_nombre",
+            "acciones_permitidas",
             "etapa_id",
             "codigo",
             "nombre",
@@ -310,6 +320,12 @@ class SeguimientoEtapaSerializer(serializers.ModelSerializer):
             "activo",
         )
         read_only_fields = fields
+
+    def get_acciones_permitidas(self, obj: SeguimientoEtapa) -> list[str]:
+        request = self.context.get("request")
+        if not request or not is_staff_user(request.user):
+            return []
+        return WorkflowService.obtener_acciones_permitidas(obj)
 
 
 class FlujoPostulacionSerializer(serializers.ModelSerializer):

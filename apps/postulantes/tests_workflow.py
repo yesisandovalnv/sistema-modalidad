@@ -556,6 +556,54 @@ class WorkflowApiTest(WorkflowBaseMixin, APITestCase):
         token = RefreshToken.for_user(user).access_token
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
+    def test_serializer_expone_capacidades_reales_por_estado(self):
+        seguimiento = WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0]
+        self.authenticate(self.admin)
+
+        expected_by_state = {
+            SeguimientoEtapa.EstadoChoices.PENDIENTE: ["iniciar"],
+            SeguimientoEtapa.EstadoChoices.EN_PROCESO: ["aprobar", "observar", "rechazar"],
+            SeguimientoEtapa.EstadoChoices.OBSERVADA: ["aprobar", "rechazar"],
+            SeguimientoEtapa.EstadoChoices.APROBADA: [],
+            SeguimientoEtapa.EstadoChoices.RECHAZADA: [],
+        }
+        for state, expected in expected_by_state.items():
+            with self.subTest(state=state):
+                seguimiento.estado = state
+                seguimiento.save(update_fields=["estado"])
+                response = self.client.get("/api/v1/seguimientos-etapa/")
+                payload = next(item for item in response.data["results"] if item["id"] == seguimiento.id)
+                self.assertEqual(payload["acciones_permitidas"], expected)
+
+    def test_serializer_no_expone_capacidades_operativas_a_usuario_no_admin(self):
+        seguimiento = WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0]
+        self.authenticate(self.student)
+
+        response = self.client.get("/api/v1/seguimientos-etapa/")
+
+        payload = next(item for item in response.data["results"] if item["id"] == seguimiento.id)
+        self.assertEqual(payload["acciones_permitidas"], [])
+
+    def test_listado_de_seguimiento_expone_datos_humanos_y_conserva_contrato(self):
+        self.student.nombres = "Ana Maria"
+        self.student.apellido_paterno = "Quispe"
+        self.student.apellido_materno = "Mamani"
+        self.student.save(update_fields=["nombres", "apellido_paterno", "apellido_materno"])
+        seguimiento = WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0]
+        self.authenticate(self.admin)
+
+        response = self.client.get("/api/v1/seguimientos-etapa/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = next(item for item in response.data["results"] if item["id"] == seguimiento.id)
+        self.assertEqual(payload["postulacion"], self.postulacion.id)
+        self.assertEqual(payload["codigo_postulacion"], "POST-FLUJO-001")
+        self.assertEqual(payload["estudiante_nombre"], "Ana Maria Quispe Mamani")
+        self.assertEqual(payload["modalidad_nombre"], "Proyecto de Grado")
+        self.assertEqual(payload["codigo"], "INSCRIPCION")
+        self.assertEqual(payload["estado"], SeguimientoEtapa.EstadoChoices.PENDIENTE)
+        self.assertEqual(payload["numero_intento"], 1)
+
     def test_rutas_de_acciones_resuelven_al_viewset_de_seguimiento(self):
         for action in ("aprobar", "rechazar", "omitir"):
             with self.subTest(action=action):
