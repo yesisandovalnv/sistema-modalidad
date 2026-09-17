@@ -1,13 +1,138 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui/button'
 import { DataState, Modal, PageHeader, Pager, SearchBar } from '../../components/crud/CrudShell'
 import { crudService, endpoints, listAll } from '../../services/crudService'
+import { postulacionesService } from '../../services/postulacionesService'
 import { useAuth } from '../../hooks/useAuth'
 
-export default function DocumentosPage(){const {hasPermission}=useAuth();const canManage=hasPermission('puede_cargar_documentos');const [query,setQuery]=useState(''),[search,setSearch]=useState(''),[page,setPage]=useState(1),[data,setData]=useState({results:[]}),[types,setTypes]=useState([]),[applications,setApplications]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[selected,setSelected]=useState(null),[upload,setUpload]=useState(null),[revision,setRevision]=useState(0)
- const load=useCallback(async signal=>{setLoading(true);setError('');try{const [rows,catalog,availableApplications]=await Promise.all([crudService.list(endpoints.documentos,{search,page},signal),crudService.list(endpoints.tiposDocumento,{page_size:100},signal),listAll(endpoints.postulaciones,{ordering:'-created_at'},signal)]);setData(rows);setTypes(catalog.results||catalog);setApplications(availableApplications)}catch(e){if(!e.canceled)setError(e.message)}finally{if(!signal?.aborted)setLoading(false)}},[search,page]);useEffect(()=>{const c=new AbortController();load(c.signal);return()=>c.abort()},[load,revision])
- const submit=async e=>{e.preventDefault();const body=new FormData(e.currentTarget);try{await crudService.create(`${endpoints.documentos}subir/`,body);setUpload(null);setRevision(v=>v+1)}catch(err){setError(err.message)}}
- return <section className="mx-auto max-w-6xl space-y-5"><PageHeader title="Documentos" description="Consulta documentos y carga versiones permitidas para tus postulaciones." action={canManage?<Button onClick={()=>setUpload(true)}>Subir documento</Button>:null}/><SearchBar value={query} onChange={setQuery} onSearch={()=>{setSearch(query.trim());setPage(1)}}/><DataState loading={loading} error={error} empty={!data.results?.length} onRetry={()=>setRevision(v=>v+1)}><div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[750px] text-left text-sm"><thead className="bg-slate-100 dark:bg-slate-800"><tr><th className="p-3">Postulación</th><th className="p-3">Tipo</th><th className="p-3">Estado</th><th className="p-3">Fecha</th><th className="p-3">Corrección</th><th className="p-3">Acciones</th></tr></thead><tbody>{data.results?.map(item=><tr key={item.id} className="border-t dark:border-slate-800"><td className="p-3">{item.postulacion}</td><td className="p-3">{types.find(x=>x.id===item.tipo_documento)?.nombre||item.tipo_documento}</td><td className="p-3">{item.estado||'Sin estado'}</td><td className="p-3">{format(item.fecha_subida)}</td><td className="p-3">{item.requiere_correccion?'Sí':'No'}</td><td className="p-3"><Button variant="secondary" onClick={()=>setSelected(item)}>Detalle</Button></td></tr>)}</tbody></table><Pager data={data} page={page} onPage={setPage}/></div></DataState>{selected&&<Modal title="Detalle del documento" onClose={()=>setSelected(null)}><dl className="mt-4 grid gap-3 sm:grid-cols-2"><Info label="Postulación" value={selected.postulacion}/><Info label="Tipo" value={types.find(x=>x.id===selected.tipo_documento)?.nombre||selected.tipo_documento}/><Info label="Estado" value={selected.estado}/><Info label="Subido" value={format(selected.fecha_subida)}/><Info label="Revisión" value={format(selected.fecha_revision)}/><Info label="Versiones" value={selected.versiones?.length||0}/></dl>{selected.observacion_general&&<p className="mt-4 rounded-lg bg-amber-50 p-3">{selected.observacion_general}</p>}</Modal>}{upload&&<Modal title="Subir documento" onClose={()=>setUpload(null)}><form className="mt-4 grid gap-4" onSubmit={submit}><label className="text-sm">Postulación<select name="postulacion_id" required className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione</option>{applications.map(application=><option key={application.id} value={application.id}>{formatApplicationLabel(application)}</option>)}</select></label><label className="text-sm">Tipo de documento<select name="tipo_documento_id" required className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione</option>{types.map(t=><option key={t.id} value={t.id}>{t.nombre}</option>)}</select></label><label className="text-sm">Archivo<input name="archivo" type="file" required className="mt-1 block w-full rounded-lg border p-2"/></label>{error&&<p role="alert" className="text-red-600">{error}</p>}<Button>Subir</Button></form></Modal>}</section>}
-const format=value=>{if(!value)return '—';const d=new Date(value);return Number.isNaN(d.valueOf())?'—':new Intl.DateTimeFormat('es-BO',{dateStyle:'medium',timeStyle:'short'}).format(d)}
-function Info({label,value}){return <div><dt className="font-semibold">{label}</dt><dd>{String(value??'—')}</dd></div>}
-function formatApplicationLabel(application){const student=application.estudiante_detalle||{};return [application.codigo,student.ru,student.nombre_completo].filter(Boolean).join(' - ')}
+const format = (value) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.valueOf()) ? '—' : new Intl.DateTimeFormat('es-BO', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
+
+function Info({ label, value }) {
+  return <div><dt className="font-semibold">{label}</dt><dd>{String(value ?? '—')}</dd></div>
+}
+
+function formatApplicationLabel(application) {
+  const student = application.estudiante_detalle || {}
+  return [application.codigo, student.ru, student.nombre_completo].filter(Boolean).join(' - ')
+}
+
+export default function DocumentosPage() {
+  const { hasPermission, roleCode } = useAuth()
+  const isStudent = roleCode === 'ESTUDIANTE'
+  const canManage = hasPermission('puede_cargar_documentos')
+  const [query, setQuery] = useState('')
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [data, setData] = useState({ results: [] })
+  const [types, setTypes] = useState([])
+  const [applications, setApplications] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [selected, setSelected] = useState(null)
+  const [upload, setUpload] = useState(false)
+  const [revision, setRevision] = useState(0)
+  const [applicationId, setApplicationId] = useState('')
+  const [applicableTypes, setApplicableTypes] = useState([])
+  const [applicableLoading, setApplicableLoading] = useState(false)
+  const [applicableError, setApplicableError] = useState('')
+  const [typeId, setTypeId] = useState('')
+  const applicableController = useRef(null)
+
+  const load = useCallback(async (signal) => {
+    setLoading(true)
+    setError('')
+    try {
+      const [rows, catalog, availableApplications] = await Promise.all([
+        crudService.list(endpoints.documentos, { search, page }, signal),
+        crudService.list(endpoints.tiposDocumento, { page_size: 100 }, signal),
+        listAll(endpoints.postulaciones, { ordering: '-created_at' }, signal),
+      ])
+      setData(rows)
+      setTypes(catalog.results || catalog)
+      setApplications(availableApplications)
+    } catch (requestError) {
+      if (!requestError.canceled) setError(requestError.message)
+    } finally {
+      if (!signal?.aborted) setLoading(false)
+    }
+  }, [search, page])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    load(controller.signal)
+    return () => controller.abort()
+  }, [load, revision])
+
+  const openUpload = () => {
+    applicableController.current?.abort()
+    setApplicationId('')
+    setApplicableTypes([])
+    setApplicableLoading(false)
+    setApplicableError('')
+    setTypeId('')
+    setUpload(true)
+  }
+
+  const closeUpload = () => {
+    applicableController.current?.abort()
+    applicableController.current = null
+    setUpload(false)
+  }
+
+  const selectApplication = async (event) => {
+    const selectedId = event.target.value
+    applicableController.current?.abort()
+    setApplicationId(selectedId)
+    setTypeId('')
+    setApplicableTypes([])
+    setApplicableError('')
+    if (!selectedId) return
+
+    const controller = new AbortController()
+    applicableController.current = controller
+    setApplicableLoading(true)
+    try {
+      const response = await postulacionesService.obtenerDocumentosAplicables(selectedId, controller.signal)
+      if (!controller.signal.aborted) setApplicableTypes(response.documentos_aplicables || [])
+    } catch (requestError) {
+      if (!requestError.canceled && !controller.signal.aborted) setApplicableError(requestError.message || 'No se pudieron cargar los documentos aplicables.')
+    } finally {
+      if (!controller.signal.aborted) setApplicableLoading(false)
+    }
+  }
+
+  const submit = async (event) => {
+    event.preventDefault()
+    if (!applicationId || !typeId || applicableLoading || applicableError || !applicableTypes.length) return
+    const body = new FormData(event.currentTarget)
+    try {
+      await crudService.create(`${endpoints.documentos}subir/`, body)
+      closeUpload()
+      setRevision((value) => value + 1)
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
+  const typeName = (item) => item.tipo_documento_nombre || types.find((type) => type.id === item.tipo_documento)?.nombre || item.tipo_documento
+  const applicationsById = Object.fromEntries(applications.map((application) => [application.id, application]))
+  const applicationFor = (item) => applicationsById[item.postulacion]
+  const applicationCode = (item) => applicationFor(item)?.codigo || 'Postulación no disponible'
+  const applicationModality = (item) => applicationFor(item)?.modalidad_detalle?.nombre || 'Modalidad no disponible'
+  const applicationStudent = (item) => applicationFor(item)?.estudiante_detalle?.nombre_completo || 'Estudiante no disponible'
+  const submitDisabled = !applicationId || !typeId || applicableLoading || Boolean(applicableError) || applicableTypes.length === 0
+
+  return <section className="mx-auto max-w-6xl space-y-5">
+    <PageHeader title={isStudent ? 'Mis documentos' : 'Documentos'} description={isStudent ? 'Consulta el estado, las observaciones y las versiones de los documentos de tu proceso académico.' : 'Consulta y gestiona los documentos de las postulaciones.'} action={canManage ? <Button onClick={openUpload}>Subir documento</Button> : null} />
+    <SearchBar value={query} onChange={setQuery} onSearch={() => { setSearch(query.trim()); setPage(1) }} />
+    <DataState loading={loading} error={error} empty={!data.results?.length} onRetry={() => setRevision((value) => value + 1)}>
+      <div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[750px] text-left text-sm"><thead className="bg-slate-100 dark:bg-slate-800"><tr><th className="p-3">Postulación</th><th className="p-3">Documento</th><th className="p-3">Estado</th><th className="p-3">Fecha</th><th className="p-3">Corrección</th><th className="p-3">Acciones</th></tr></thead><tbody>{data.results?.map((item) => <tr key={item.id} className="border-t align-top dark:border-slate-800"><td className="p-3"><p className="font-semibold">{applicationCode(item)}</p>{!isStudent && <p className="text-slate-600 dark:text-slate-300">{applicationStudent(item)}</p>}<p className="text-xs text-slate-500">{applicationModality(item)}</p></td><td className="p-3 font-medium">{typeName(item)}</td><td className="p-3">{item.estado_nombre || 'Estado no disponible'}</td><td className="p-3">{format(item.fecha_subida)}</td><td className="p-3">{item.requiere_correccion ? 'Requiere corrección' : 'No requerida'}</td><td className="p-3"><Button variant="secondary" onClick={() => setSelected(item)}>Detalle</Button></td></tr>)}</tbody></table><Pager data={data} page={page} onPage={setPage} /></div>
+    </DataState>
+    {selected && <Modal title="Detalle del documento" onClose={() => setSelected(null)}><dl className="mt-4 grid gap-3 sm:grid-cols-2"><Info label="Postulación" value={applicationCode(selected)} />{!isStudent && <Info label="Estudiante" value={applicationStudent(selected)} />}<Info label="Modalidad" value={applicationModality(selected)} /><Info label="Tipo" value={typeName(selected)} /><Info label="Estado" value={selected.estado_nombre || 'Estado no disponible'} /><Info label="Subido" value={format(selected.fecha_subida)} /><Info label="Revisión" value={format(selected.fecha_revision)} /><Info label="Versiones" value={selected.versiones?.length || 0} /><Info label="Corrección" value={selected.requiere_correccion ? 'Requiere corrección' : 'No requerida'} /></dl>{typeof selected.observacion_general === 'string' && selected.observacion_general.trim() && <div className="mt-4 rounded-lg bg-amber-50 p-3"><p className="font-semibold">Observación</p><p className="mt-1">{selected.observacion_general}</p></div>}</Modal>}
+    {upload && <Modal title="Subir documento" onClose={closeUpload}><form className="mt-4 grid gap-4" onSubmit={submit}><label className="text-sm">Postulación<select name="postulacion_id" required value={applicationId} onChange={selectApplication} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione</option>{applications.map((application) => <option key={application.id} value={application.id}>{formatApplicationLabel(application)}</option>)}</select></label><label className="text-sm">Tipo de documento<select name="tipo_documento_id" required value={typeId} disabled={!applicationId || applicableLoading || Boolean(applicableError) || applicableTypes.length === 0} onChange={(event) => setTypeId(event.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">{applicableLoading ? 'Cargando tipos...' : 'Seleccione'}</option>{applicableTypes.map((type) => <option key={type.id} value={type.id}>{type.nombre}</option>)}</select></label>{applicableError && <p role="alert" className="text-red-600">{applicableError}</p>}{!applicableLoading && !applicableError && applicationId && applicableTypes.length === 0 && <p className="text-sm text-slate-500">No hay tipos documentales disponibles para cargar en la etapa actual.</p>}<label className="text-sm">Archivo<input name="archivo" type="file" required disabled={submitDisabled} className="mt-1 block w-full rounded-lg border p-2" /></label><Button type="submit" disabled={submitDisabled}>Subir</Button></form></Modal>}
+  </section>
+}
