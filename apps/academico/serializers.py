@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.academico.models import Modalidad, ModalidadRequisito, Periodo, Requisito
+from apps.academico.models import DocumentoOficialModalidad, Modalidad, ModalidadRequisito, Periodo, Requisito
 from apps.modalidades.policies import ModalidadCapabilities
 
 
@@ -35,7 +35,50 @@ class ModalidadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Modalidad
         fields = ("id", "codigo", "nombre", "descripcion", "created_at", "updated_at", "activo")
-        read_only_fields = ("created_at", "updated_at", "activo")
+        read_only_fields = ("id", "codigo", "nombre", "created_at", "updated_at", "activo")
+
+    def validate(self, attrs):
+        if self.instance:
+            for field in ("codigo", "nombre"):
+                if field in self.initial_data and self.initial_data[field] != getattr(self.instance, field):
+                    raise serializers.ValidationError({field: "Este campo no puede modificarse."})
+        return attrs
+
+
+class DocumentoOficialModalidadSerializer(serializers.ModelSerializer):
+    modalidad = serializers.PrimaryKeyRelatedField(read_only=True)
+    actualizado_por = serializers.PrimaryKeyRelatedField(read_only=True)
+    actualizado_por_nombre = serializers.CharField(source="actualizado_por.nombre_completo", read_only=True)
+
+    class Meta:
+        model = DocumentoOficialModalidad
+        fields = (
+            "id", "modalidad", "nombre", "archivo", "actualizado_por",
+            "actualizado_por_nombre", "created_at", "updated_at",
+        )
+        read_only_fields = (
+            "id", "modalidad", "actualizado_por", "actualizado_por_nombre",
+            "created_at", "updated_at",
+        )
+
+    def validate_archivo(self, value):
+        if not value or not value.name.lower().endswith(".pdf"):
+            raise serializers.ValidationError("El documento oficial debe ser un archivo PDF.")
+        if value.size == 0:
+            raise serializers.ValidationError("El documento oficial no puede estar vacío.")
+        if value.size > 10 * 1024 * 1024:
+            raise serializers.ValidationError("El documento oficial no puede superar 10 MB.")
+        header = value.read(5)
+        value.seek(0)
+        if header != b"%PDF-":
+            raise serializers.ValidationError("El contenido del archivo no corresponde a un PDF válido.")
+        return value
+
+    def validate_nombre(self, value):
+        nombre = value.strip()
+        if not nombre:
+            raise serializers.ValidationError("El nombre del documento es obligatorio.")
+        return nombre
 
 
 class EtapaCapabilitiesSerializer(serializers.Serializer):

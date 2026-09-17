@@ -100,6 +100,46 @@ class Modalidad(BaseModel):
         return self.nombre
 
 
+def documento_oficial_modalidad_upload_to(instance, filename):
+    return f"modalidades/requisitos_oficiales/{instance.modalidad_id}/{filename}"
+
+
+class DocumentoOficialModalidad(BaseModel):
+    """Documento informativo vigente de requisitos oficiales de una modalidad."""
+
+    modalidad = models.ForeignKey(
+        Modalidad,
+        on_delete=models.PROTECT,
+        related_name="documentos_oficiales",
+        verbose_name="Modalidad",
+    )
+    archivo = models.FileField(
+        upload_to=documento_oficial_modalidad_upload_to,
+        verbose_name="Archivo PDF",
+    )
+    nombre = models.CharField(
+        max_length=200,
+        verbose_name="Nombre del documento",
+    )
+    actualizado_por = models.ForeignKey(
+        "usuarios.CustomUser",
+        on_delete=models.PROTECT,
+        related_name="documentos_oficiales_modalidad_actualizados",
+        verbose_name="Última actualización por",
+    )
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        verbose_name = "Documento oficial de modalidad"
+        verbose_name_plural = "Documentos oficiales de modalidad"
+        app_label = "academico"
+
+    def __str__(self) -> str:
+        return f"{self.modalidad} - {self.nombre}"
+
+
 class EtapaModalidad(BaseModel):
     """Configuración reutilizable de etapas por modalidad de graduación."""
 

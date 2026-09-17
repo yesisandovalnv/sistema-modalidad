@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 import apiClient from './api'
-import { crudService, listAll } from './crudService'
+import { crudService, listAll, modalidadesService } from './crudService'
 
 vi.mock('./api',()=>({default:{get:vi.fn(),post:vi.fn(),patch:vi.fn(),delete:vi.fn()}}))
 describe('crudService',()=>{
@@ -10,4 +10,8 @@ describe('crudService',()=>{
   it('elimina cuando el endpoint lo admite',async()=>{apiClient.delete.mockResolvedValue({data:null});await crudService.remove('/items/',3);expect(apiClient.delete).toHaveBeenCalledWith('/items/3/')})
   it('preserva estado y validaciones del backend',async()=>{apiClient.get.mockRejectedValue({response:{status:400,data:{nombre:['Obligatorio.']}}});await expect(crudService.list('/items/')).rejects.toMatchObject({status:400,message:'nombre: Obligatorio.'})})
   it('recorre todas las páginas del catálogo',async()=>{apiClient.get.mockResolvedValueOnce({data:{results:[{id:1}],next:'next'}}).mockResolvedValueOnce({data:{results:[{id:2}],next:null}});await expect(listAll('/items/')).resolves.toEqual([{id:1},{id:2}]);expect(apiClient.get).toHaveBeenCalledTimes(2)})
+  it('consulta la colección y convierte 404 en lista vacía',async()=>{const signal=new AbortController().signal;apiClient.get.mockRejectedValue({response:{status:404}});await expect(modalidadesService.obtenerDocumentosOficiales(4,signal)).resolves.toEqual([]);expect(apiClient.get).toHaveBeenCalledWith('/api/v1/academico/modalidades/4/documentos-oficiales/',{signal})})
+  it('agrega y actualiza PDFs mediante endpoints anidados',async()=>{const file=new File(['%PDF-'], 'requisitos.pdf',{type:'application/pdf'});apiClient.post.mockResolvedValue({data:{id:1}});apiClient.patch.mockResolvedValue({data:{id:1}});await modalidadesService.publicarDocumentoOficial(4,{archivo:file,nombre:'Reglamento'},undefined);const published=apiClient.post.mock.calls[0][1];expect(apiClient.post).toHaveBeenCalledWith('/api/v1/academico/modalidades/4/documentos-oficiales/',expect.any(FormData),{signal:undefined});expect(published.get('archivo')).toBe(file);expect(published.get('nombre')).toBe('Reglamento');await modalidadesService.actualizarDocumentoOficial(4,9,{archivo:file},undefined);expect(apiClient.patch).toHaveBeenCalledWith('/api/v1/academico/modalidades/4/documentos-oficiales/9/',expect.any(FormData),{signal:undefined})})
+  it('actualiza solo metadata sin enviar un archivo artificial',async()=>{apiClient.patch.mockResolvedValue({data:{id:9}});await modalidadesService.actualizarDocumentoOficial(4,9,{archivo:null,nombre:'Nombre corregido'},undefined);const body=apiClient.patch.mock.calls[0][1];expect(body.get('archivo')).toBeNull();expect(body.get('nombre')).toBe('Nombre corregido')})
+  it('descarga un documento específico mediante endpoint protegido',async()=>{const signal=new AbortController().signal;const blob=new Blob(['pdf']);apiClient.get.mockResolvedValue({data:blob,headers:{'content-disposition':'attachment; filename="requisitos.pdf"'}});await expect(modalidadesService.descargarDocumentoOficial(4,9,'fallback.pdf',signal)).resolves.toEqual({blob,filename:'requisitos.pdf'});expect(apiClient.get).toHaveBeenCalledWith('/api/v1/academico/modalidades/4/documentos-oficiales/9/descargar/',{signal,responseType:'blob'})})
 })
