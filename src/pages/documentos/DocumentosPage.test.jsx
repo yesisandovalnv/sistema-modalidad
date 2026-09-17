@@ -176,6 +176,36 @@ describe('Subir documento', () => {
     expect(screen.queryByRole('option', { name: documentType.nombre })).not.toBeInTheDocument()
   })
 
+  it('estudiante con una postulación la selecciona automáticamente y oculta el selector', async () => {
+    const user = userEvent.setup()
+    setup({ pageAuth: { ...auth, roleCode: 'ESTUDIANTE' } })
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+
+    expect(screen.queryByLabelText('Postulación')).not.toBeInTheDocument()
+    await waitFor(() => expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledWith('2', expect.any(AbortSignal)))
+    expect(screen.getByLabelText('Tipo de documento')).toBeEnabled()
+  })
+
+  it('estudiante sin postulación ve un estado vacío y no puede subir', async () => {
+    const user = userEvent.setup()
+    setup({ availableApplications: [], pageAuth: { ...auth, roleCode: 'ESTUDIANTE' } })
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+
+    expect(await screen.findByText('No existe una postulación disponible para subir documentos.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Postulación')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Subir' })).toBeDisabled()
+    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+  })
+
+  it('estudiante con varias postulaciones conserva el selector', async () => {
+    const user = userEvent.setup()
+    setup({ availableApplications: [application, secondApplication], pageAuth: { ...auth, roleCode: 'ESTUDIANTE' } })
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+
+    expect(screen.getByLabelText('Postulación')).toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+  })
+
   it('muestra estado vacío y bloquea la carga cuando no hay tipos aplicables', async () => {
     const user = userEvent.setup()
     setup({ applicableResponse: { documentos_aplicables: [] } })
