@@ -13,6 +13,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
+from apps.modalidades.policies import BaseModalidadPolicy, BaseRequisitosPolicy, EtapaDefinition, ModalidadPolicyRegistry
 from apps.documentos.models import (
     DocumentoPostulacion,
     EstadoDocumento,
@@ -25,6 +26,20 @@ from apps.usuarios.models import AuditLog, Role
 
 
 User = get_user_model()
+
+
+class TestDocumentRequirementsPolicy(BaseRequisitosPolicy):
+    def get_documentos_requeridos(self, fase=None):
+        return ("PDF",) if fase == "TEST_DOCUMENTAL" else ()
+
+
+class TestDocumentPolicy(BaseModalidadPolicy):
+    codigo = "MOD1"
+    etapas = (EtapaDefinition("TEST_DOCUMENTAL", "Etapa documental de prueba", 1, inicial=True),)
+    requisitos_policy = TestDocumentRequirementsPolicy()
+
+
+ModalidadPolicyRegistry.register("MOD1", TestDocumentPolicy)
 
 
 class DocumentoAPITestCase(APITestCase):
@@ -69,6 +84,13 @@ class DocumentoAPITestCase(APITestCase):
             fecha_fin="2026-06-30",
         )
         self.modalidad = Modalidad.objects.create(codigo="MOD1", nombre="Modalidad Test")
+        self.test_stage = EtapaModalidad.objects.create(
+            modalidad=self.modalidad,
+            codigo="TEST_DOCUMENTAL",
+            nombre="Etapa documental de prueba",
+            orden=1,
+            origen_normativo="Fixture de pruebas",
+        )
 
         self.estado_registrada = EstadoPostulacion.objects.create(
             codigo="REGISTRADA",
@@ -88,6 +110,16 @@ class DocumentoAPITestCase(APITestCase):
             modalidad=self.modalidad,
             periodo=self.periodo,
             estado_actual=self.estado_registrada,
+        )
+        self.test_follow = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=self.test_stage,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+        )
+        self.other_test_follow = SeguimientoEtapa.objects.create(
+            postulacion=self.other_postulacion,
+            etapa=self.test_stage,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
         )
 
         self.estado_env = EstadoDocumento.objects.create(codigo="ENV", nombre="Enviado")
@@ -134,9 +166,17 @@ class DocumentoAPITestCase(APITestCase):
 class TestPerfilObservationDocument(DocumentoAPITestCase):
     def setUp(self) -> None:
         super().setUp()
-        self.modalidad.codigo = "PROYECTO_GRADO"
-        self.modalidad.nombre = "Proyecto de Grado"
-        self.modalidad.save(update_fields=["codigo", "nombre"])
+        self.test_follow.activo = False
+        self.test_follow.save(update_fields=["activo"])
+        self.other_test_follow.activo = False
+        self.other_test_follow.save(update_fields=["activo"])
+
+        self.modalidad = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto de Grado")
+        self.postulacion.modalidad = self.modalidad
+        self.postulacion.save(update_fields=["modalidad"])
+        self.other_postulacion.modalidad = self.modalidad
+        self.other_postulacion.save(update_fields=["modalidad"])
+
         profile_stage = EtapaModalidad.objects.create(
             modalidad=self.modalidad, codigo="PERFIL_PROYECTO", nombre="Perfil de Proyecto", orden=1, origen_normativo="Prueba",
         )
@@ -313,6 +353,43 @@ class TestVersionDocumentoDownload(DocumentoAPITestCase):
 
 class TestDocumentoUpload(DocumentoAPITestCase):
     """Pruebas de carga de documentos y validaciones de subida."""
+
+    def test_subida_ordinaria_rechaza_modalidad_sin_policy(self) -> None:
+        self.modalidad.codigo = "MOD_SIN_POLICY"
+        self.modalidad.save(update_fields=["codigo"])
+        response = self.upload_document(
+            self.student_user,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            self.create_pdf_file(),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(
+            DocumentoPostulacion.all_objects.filter(
+                postulacion=self.postulacion,
+                tipo_documento=self.tipo_pdf,
+            ).exists()
+        )
+
+    def test_subida_ordinaria_rechaza_postulacion_sin_contexto_de_etapa(self) -> None:
+        self.test_follow.activo = False
+        self.test_follow.save(update_fields=["activo"])
+
+        response = self.upload_document(
+            self.student_user,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            self.create_pdf_file(),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(
+            DocumentoPostulacion.all_objects.filter(
+                postulacion=self.postulacion,
+                tipo_documento=self.tipo_pdf,
+            ).exists()
+        )
 
     def test_subida_inicial_crea_documento_version_y_auditlog(self) -> None:
         """La subida inicial debe crear el documento y la primera versión."""

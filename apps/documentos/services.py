@@ -74,21 +74,22 @@ class DocumentoService:
             from apps.modalidades.policies import ModalidadPolicyRegistry
             if ModalidadPolicyRegistry.has_policy(postulacion):
                 policy = ModalidadPolicyRegistry.get(postulacion)
-                if policy.evento_policy and (
+                es_carga_especial = bool(policy.evento_policy and (
                     evento_defensa is not None
                     or policy.evento_policy.requiere_vinculo_evento_documento(tipo_documento)
-                ):
+                ))
+                if es_carga_especial:
                     policy.evento_policy.validar_vinculo_documento(
                         postulacion=postulacion, tipo_documento=tipo_documento,
                         evento_defensa=evento_defensa,
                     )
-                
-                # Validar que el tipo de documento sea aplicable en la etapa actual
-                etapa_actual_codigo = policy.resolver_contexto_documental(postulacion)
-                if etapa_actual_codigo:
+                if not es_carga_especial:
+                    etapa_actual_codigo = policy.resolver_contexto_documental(postulacion)
+                    if not etapa_actual_codigo:
+                        raise ValidationError(
+                            "No se puede cargar un documento ordinario sin un contexto académico válido."
+                        )
                     documentos_permitidos = policy.get_documentos_aplicables_en_etapa(etapa_actual_codigo)
-                    # Fail-closed: Si documentos_permitidos está vacío, rechaza cualquier documento.
-                    # Si no está vacío, solo permite los de la lista.
                     if tipo_documento.codigo not in documentos_permitidos:
                         raise ValidationError(
                             f"El tipo '{tipo_documento.nombre}' no puede cargarse en la etapa '{etapa_actual_codigo}'. "
@@ -96,6 +97,10 @@ class DocumentoService:
                         )
             elif evento_defensa is not None:
                 raise ValidationError("La modalidad no admite vincular documentos a eventos.")
+            else:
+                raise ValidationError(
+                    "La modalidad no tiene una policy académica configurada para cargar documentos."
+                )
             if documento is None:
                 documento = DocumentoPostulacion.objects.create(
                     postulacion=postulacion,
