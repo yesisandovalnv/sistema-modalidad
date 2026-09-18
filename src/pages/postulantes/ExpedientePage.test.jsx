@@ -10,7 +10,7 @@ import { AuthContext } from '../../context/AuthContext'
 vi.mock('../../services/postulacionesService', () => ({
   postulacionesService: {
     obtenerExpediente: vi.fn(), obtenerCapacidadesModalidad: vi.fn(), inicializarFlujo: vi.fn(), iniciarEtapa: vi.fn(), aprobarEtapa: vi.fn(), obtenerHistorial: vi.fn(), obtenerActores: vi.fn(), obtenerDocumentos: vi.fn(),
-    obtenerVersiones: vi.fn(), descargarVersion: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), cargarDocumento: vi.fn(),
+    obtenerVersiones: vi.fn(), descargarVersion: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), obtenerTiposDocumentosHistoricos: vi.fn(), cargarDocumento: vi.fn(), subirDocumentoHistorico: vi.fn(),
     aprobarDocumento: vi.fn(), rechazarDocumento: vi.fn(), observarDocumento: vi.fn(), marcarObservacionCorregida: vi.fn(),
     obtenerDefensas: vi.fn(), obtenerQuorumDefensa: vi.fn(), programarDefensa: vi.fn(), iniciarDefensa: vi.fn(),
     finalizarDefensa: vi.fn(), suspenderDefensa: vi.fn(), cancelarDefensa: vi.fn(), reprogramarDefensa: vi.fn(),
@@ -274,6 +274,10 @@ describe('ExpedientePage US-008', () => {
       { id: 4, codigo: 'INFORME_FINAL', nombre: 'Informe final' },
       { id: 5, codigo: 'ACTA_DEFENSA', nombre: 'Acta de Defensa' },
     ] })
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([
+      { id: 21, codigo: 'ACTA_DEFENSA', nombre: 'Acta de defensa histórica' },
+    ])
+    postulacionesService.subirDocumentoHistorico.mockResolvedValue({ id: 303, numero_version: 1, es_version_actual: true })
     postulacionesService.registrarInformeRevisionTribunal.mockResolvedValue({ id: 501, resultado: 'SUFICIENTE' })
     postulacionesService.obtenerDocumentos.mockResolvedValue(documentsResponse)
     postulacionesService.obtenerVersiones.mockResolvedValue(versionsResponse)
@@ -308,6 +312,249 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.suspenderDefensa.mockResolvedValue({ ...defenseRows[1], estado: 'SUSPENDIDA', estado_display: 'Suspendida' })
     postulacionesService.cancelarDefensa.mockResolvedValue({ ...defenseRows[1], estado: 'CANCELADA', estado_display: 'Cancelada' })
     postulacionesService.reprogramarDefensa.mockResolvedValue({ ...defenseRows[1], fecha_programada: '2026-09-01T10:00:00Z' })
+  })
+
+  it('renderiza un expediente histórico como registro histórico y no como workflow operativo', async () => {
+    const historicalDetail = {
+      ...response,
+      detalle: {
+        ...response.detalle,
+        tipo_registro: 'HISTORICO',
+        vigencia: 'CERRADA',
+        estado_actual_detalle: { id: 9, codigo: 'CONCLUIDA', nombre: 'Concluida' },
+      },
+      flujo: {
+        ...response.flujo,
+        etapa_actual: null,
+        porcentaje_avance: 0,
+        etapas: [],
+        orientacion_etapa_actual: null,
+      },
+      resultado: { data: null, error: '' },
+      cierre: { data: null, error: 'Estado de cierre técnico todavía no disponible' },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(historicalDetail)
+    postulacionesService.obtenerDocumentos.mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 99, tipo_documento_nombre: 'Acta de defensa histórica', requiere_correccion: false, versiones: [{ id: 991, numero_version: 1, es_version_actual: true, activo: true }] }] })
+
+    renderPage()
+
+    expect(await screen.findByText('Registro histórico')).toBeInTheDocument()
+    expect(screen.getByText(/Concluida/i)).toBeInTheDocument()
+    expect(screen.queryByText('Avance de tu proceso')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Iniciar proceso de Proyecto de Grado/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Inicializar flujo académico/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/El flujo académico todavía no fue inicializado/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Resultado académico técnico/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Cierre técnico/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Condiciones técnicas/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Entregas técnicas/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Etapas del flujo académico/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Participación actual/i })).not.toBeInTheDocument()
+  })
+
+  it('usa los endpoints históricos para cargar documentos en una postulación histórica', async () => {
+    const historicalDetail = {
+      ...response,
+      detalle: { ...response.detalle, tipo_registro: 'HISTORICO', vigencia: 'CERRADA', estado_actual_detalle: { id: 9, codigo: 'CONCLUIDA', nombre: 'Concluida' } },
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [], orientacion_etapa_actual: null },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(historicalDetail)
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([{ id: 21, codigo: 'ACTA_DEFENSA', nombre: 'Acta de defensa histórica' }])
+    const auth = { user: { id: 9 }, hasPermission: (name) => ['puede_cargar_documentos', 'puede_gestionar_documentos'].includes(name) }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+
+    await screen.findByText('Registro histórico')
+    await userEvent.click(screen.getByRole('button', { name: /Cargar documento/i }))
+
+    expect(postulacionesService.obtenerTiposDocumentosHistoricos).toHaveBeenCalledWith('7', expect.any(AbortSignal))
+    expect(postulacionesService.cargarDocumento).not.toHaveBeenCalled()
+  })
+
+  it('muestra la carga múltiple histórica con filas por tipo y CTA por cantidad', async () => {
+    const historicalDetail = {
+      ...response,
+      detalle: { ...response.detalle, tipo_registro: 'HISTORICO', vigencia: 'CERRADA', estado_actual_detalle: { id: 9, codigo: 'CONCLUIDA', nombre: 'Concluida' } },
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [], orientacion_etapa_actual: null },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(historicalDetail)
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([
+      { id: 101, nombre: 'Carta de Solicitud para Tesis' },
+      { id: 102, nombre: 'Comprobante de Matrícula Vigente' },
+      { id: 103, nombre: 'Historial Académico de Prerrequisitos' },
+      { id: 104, nombre: 'Perfil de Tesis' },
+      { id: 105, nombre: 'Informe del Tutor de Tesis' },
+      { id: 106, nombre: 'Informe del Tribunal de Tesis' },
+    ])
+    const auth = { user: { id: 9 }, hasPermission: (name) => ['puede_cargar_documentos', 'puede_gestionar_documentos'].includes(name) }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+
+    await screen.findByText('Registro histórico')
+    await userEvent.click(screen.getByRole('button', { name: /Cargar documento/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /Cargar documentación histórica/i })
+    expect(within(dialog).getByText('Carta de Solicitud para Tesis')).toBeInTheDocument()
+    expect(within(dialog).getByText('Comprobante de Matrícula Vigente')).toBeInTheDocument()
+    expect(within(dialog).getByText('Historial Académico de Prerrequisitos')).toBeInTheDocument()
+    expect(within(dialog).getByText('Perfil de Tesis')).toBeInTheDocument()
+    expect(within(dialog).getByText('Informe del Tutor de Tesis')).toBeInTheDocument()
+    expect(within(dialog).getByText('Informe del Tribunal de Tesis')).toBeInTheDocument()
+
+    const file1 = new File(['a'], 'carta.pdf', { type: 'application/pdf' })
+    const file2 = new File(['b'], 'matricula.pdf', { type: 'application/pdf' })
+    await userEvent.upload(within(dialog).getByLabelText('Carta de Solicitud para Tesis'), file1)
+    await userEvent.upload(within(dialog).getByLabelText('Comprobante de Matrícula Vigente'), file2)
+
+    expect(within(dialog).getByText('2 documentos seleccionados')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Cargar 2 documentos/i })).toBeEnabled()
+    expect(within(dialog).getAllByRole('button', { name: /Quitar/i }).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('deshabilita la carga cuando no hay archivos seleccionados y usa el último archivo correcto en el reintento', async () => {
+    const historicalDetail = {
+      ...response,
+      detalle: { ...response.detalle, tipo_registro: 'HISTORICO', vigencia: 'CERRADA', estado_actual_detalle: { id: 9, codigo: 'CONCLUIDA', nombre: 'Concluida' } },
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [], orientacion_etapa_actual: null },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(historicalDetail)
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([
+      { id: 201, nombre: 'Documento 1' },
+      { id: 202, nombre: 'Documento 2' },
+    ])
+    const auth = { user: { id: 9 }, hasPermission: (name) => ['puede_cargar_documentos', 'puede_gestionar_documentos'].includes(name) }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+
+    await screen.findByText('Registro histórico')
+    await userEvent.click(screen.getByRole('button', { name: /Cargar documento/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /Cargar documentación histórica/i })
+    expect(within(dialog).getByRole('button', { name: /Cargar 0 documentos/i })).toBeDisabled()
+
+    const file = new File(['x'], 'documento-1.pdf', { type: 'application/pdf' })
+    await userEvent.upload(within(dialog).getByLabelText('Documento 1'), file)
+    expect(within(dialog).getByRole('button', { name: /Cargar 1 documento/i })).toBeEnabled()
+
+    await userEvent.click(within(dialog).getAllByRole('button', { name: /Quitar/i })[0])
+    expect(within(dialog).getByRole('button', { name: /Cargar 0 documentos/i })).toBeDisabled()
+  })
+
+  it('ejecuta uploads históricos secuencialmente con los tipos y archivos correctos', async () => {
+    const historicalDetail = {
+      ...response,
+      detalle: { ...response.detalle, tipo_registro: 'HISTORICO', vigencia: 'CERRADA', estado_actual_detalle: { id: 9, codigo: 'CONCLUIDA', nombre: 'Concluida' } },
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [], orientacion_etapa_actual: null },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(historicalDetail)
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([
+      { id: 301, nombre: 'Carta de Solicitud para Tesis' },
+      { id: 302, nombre: 'Comprobante de Matrícula Vigente' },
+      { id: 303, nombre: 'Perfil de Tesis' },
+    ])
+    const auth = { user: { id: 9 }, hasPermission: (name) => ['puede_cargar_documentos', 'puede_gestionar_documentos'].includes(name) }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+
+    await screen.findByText('Registro histórico')
+    await userEvent.click(screen.getByRole('button', { name: /Cargar documento/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /Cargar documentación histórica/i })
+    const first = new File(['uno'], 'carta.pdf', { type: 'application/pdf' })
+    const second = new File(['dos'], 'matricula.pdf', { type: 'application/pdf' })
+    const third = new File(['tres'], 'perfil.pdf', { type: 'application/pdf' })
+    await userEvent.upload(within(dialog).getByLabelText('Carta de Solicitud para Tesis'), first)
+    await userEvent.upload(within(dialog).getByLabelText('Comprobante de Matrícula Vigente'), second)
+    await userEvent.upload(within(dialog).getByLabelText('Perfil de Tesis'), third)
+    await userEvent.click(within(dialog).getByRole('button', { name: /Cargar 3 documentos/i }))
+
+    await waitFor(() => expect(postulacionesService.subirDocumentoHistorico).toHaveBeenCalledTimes(3))
+    const calls = postulacionesService.subirDocumentoHistorico.mock.calls
+    expect(calls[0][0]).toBe(7)
+    expect(calls[0][1].get('tipo_documento_id')).toBe('301')
+    expect(calls[0][1].get('archivo').name).toBe('carta.pdf')
+    expect(calls[1][1].get('tipo_documento_id')).toBe('302')
+    expect(calls[1][1].get('archivo').name).toBe('matricula.pdf')
+    expect(calls[2][1].get('tipo_documento_id')).toBe('303')
+    expect(calls[2][1].get('archivo').name).toBe('perfil.pdf')
+    expect(postulacionesService.cargarDocumento).not.toHaveBeenCalled()
+  })
+
+  it('muestra fallo parcial sin anunciar éxito global ni cancelar los fallidos', async () => {
+    const historicalDetail = {
+      ...response,
+      detalle: { ...response.detalle, tipo_registro: 'HISTORICO', vigencia: 'CERRADA', estado_actual_detalle: { id: 9, codigo: 'CONCLUIDA', nombre: 'Concluida' } },
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [], orientacion_etapa_actual: null },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(historicalDetail)
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([
+      { id: 401, nombre: 'Carta de Solicitud para Tesis' },
+      { id: 402, nombre: 'Comprobante de Matrícula Vigente' },
+      { id: 403, nombre: 'Perfil de Tesis' },
+    ])
+    postulacionesService.subirDocumentoHistorico.mockImplementation(async (_id, formData) => {
+      const typeId = formData.get('tipo_documento_id')
+      if (typeId === '402') throw new Error('Falla simulada del archivo')
+      return { id: 900 + Number(typeId) }
+    })
+    const auth = { user: { id: 9 }, hasPermission: (name) => ['puede_cargar_documentos', 'puede_gestionar_documentos'].includes(name) }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+
+    await screen.findByText('Registro histórico')
+    await userEvent.click(screen.getByRole('button', { name: /Cargar documento/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /Cargar documentación histórica/i })
+    await userEvent.upload(within(dialog).getByLabelText('Carta de Solicitud para Tesis'), new File(['a'], 'a.pdf', { type: 'application/pdf' }))
+    await userEvent.upload(within(dialog).getByLabelText('Comprobante de Matrícula Vigente'), new File(['b'], 'b.pdf', { type: 'application/pdf' }))
+    await userEvent.upload(within(dialog).getByLabelText('Perfil de Tesis'), new File(['c'], 'c.pdf', { type: 'application/pdf' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: /Cargar 3 documentos/i }))
+
+    await waitFor(() => expect(within(dialog).getByText(/2 documentos cargados. 1 documento no pudo cargarse./i)).toBeInTheDocument())
+    expect(within(dialog).queryByText(/3 documentos cargados/i)).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Comprobante de Matrícula Vigente')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Reintentar/i })).toBeInTheDocument()
+  })
+
+  it('muestra el mensaje de éxito y limpia la selección cuando todos los históricos cargan bien', async () => {
+    const historicalDetail = {
+      ...response,
+      detalle: { ...response.detalle, tipo_registro: 'HISTORICO', vigencia: 'CERRADA', estado_actual_detalle: { id: 9, codigo: 'CONCLUIDA', nombre: 'Concluida' } },
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [], orientacion_etapa_actual: null },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(historicalDetail)
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([
+      { id: 501, nombre: 'Documento A' },
+      { id: 502, nombre: 'Documento B' },
+    ])
+    const auth = { user: { id: 9 }, hasPermission: (name) => ['puede_cargar_documentos', 'puede_gestionar_documentos'].includes(name) }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+
+    await screen.findByText('Registro histórico')
+    await userEvent.click(screen.getByRole('button', { name: /Cargar documento/i }))
+    const dialog = await screen.findByRole('dialog', { name: /Cargar documentación histórica/i })
+    await userEvent.upload(within(dialog).getByLabelText('Documento A'), new File(['a'], 'a.pdf', { type: 'application/pdf' }))
+    await userEvent.upload(within(dialog).getByLabelText('Documento B'), new File(['b'], 'b.pdf', { type: 'application/pdf' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: /Cargar 2 documentos/i }))
+
+    await waitFor(() => expect(within(dialog).getByText(/2 documentos cargados correctamente/i)).toBeInTheDocument())
+    expect(within(dialog).getByRole('button', { name: /Cargar 0 documentos/i })).toBeDisabled()
+    expect(postulacionesService.obtenerDocumentos).toHaveBeenCalled()
+  })
+
+  it('no muestra fallback cuando el backend histórico devuelve []', async () => {
+    const historicalDetail = {
+      ...response,
+      detalle: { ...response.detalle, tipo_registro: 'HISTORICO', vigencia: 'CERRADA', estado_actual_detalle: { id: 9, codigo: 'CONCLUIDA', nombre: 'Concluida' } },
+      flujo: { ...response.flujo, etapa_actual: null, porcentaje_avance: 0, etapas: [], orientacion_etapa_actual: null },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(historicalDetail)
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([])
+    const auth = { user: { id: 9 }, hasPermission: (name) => ['puede_cargar_documentos', 'puede_gestionar_documentos'].includes(name) }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+
+    await screen.findByText('Registro histórico')
+    await userEvent.click(screen.getByRole('button', { name: /Cargar documento/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /Cargar documentación histórica/i })
+    expect(within(dialog).getByText('No hay tipos documentales activos disponibles.')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Cargar 0 documentos/i })).toBeDisabled()
+    expect(postulacionesService.cargarDocumento).not.toHaveBeenCalled()
   })
 
   it('no muestra la acción de finalización si el usuario no puede gestionar asignaciones', async () => {

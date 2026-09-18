@@ -420,6 +420,7 @@ export default function ExpedientePage() {
   }
 
   const { detalle, flujo, resultado, cierre } = data
+  const isHistorical = String(detalle?.tipo_registro || '').toUpperCase() === 'HISTORICO'
   const cierreSoportado = data.capacidades?.cierre_soportado ?? detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO'
   const student = detalle.estudiante_detalle
   const period = detalle.periodo_detalle
@@ -698,6 +699,11 @@ export default function ExpedientePage() {
     if (document) return
     setDocumentTypes((current) => ({ ...current, loading: true, error: '' }))
     try {
+      if (isHistorical) {
+        const rows = await postulacionesService.obtenerTiposDocumentosHistoricos(id, controller.signal)
+        setDocumentTypes({ data: rows, loading: false, error: '' })
+        return
+      }
       const response = await postulacionesService.obtenerDocumentosAplicables(id, controller.signal)
       const rows = response.documentos_aplicables || []
       setDocumentTypes({ data: rows, loading: false, error: '' })
@@ -816,6 +822,15 @@ export default function ExpedientePage() {
         setUpload((current) => ({ ...current, submitting: false, fields: { evento_defensa_id: ['Selecciona la Defensa Pública finalizada.'] }, error: '' }))
         return
       }
+      if (isHistorical) {
+        const body = new FormData()
+        body.append('tipo_documento_id', String(typeId))
+        body.append('archivo', file)
+        await postulacionesService.subirDocumentoHistorico(detalle.id, body, controller.signal)
+        setUpload((current) => ({ ...current, submitting: false, success: current.document ? 'Nueva versión cargada' : 'Documento cargado' }))
+        setDocumentsRevision((value) => value + 1)
+        return
+      }
       const uploadPayload = { postulacionId: detalle.id, tipoDocumentoId: typeId, archivo: file }
       if (eventoDefensaId) uploadPayload.eventoDefensaId = eventoDefensaId
       await postulacionesService.cargarDocumento(uploadPayload, controller.signal)
@@ -829,6 +844,54 @@ export default function ExpedientePage() {
     } catch (requestError) {
       if (!requestError.canceled) setUpload((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
     }
+  }
+
+  const submitHistoricalUpload = async (entries) => {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return { total: 0, successCount: 0, failureCount: 0, items: [], summary: 'No hay documentos seleccionados.' }
+    }
+    const results = []
+    const controller = new AbortController()
+    uploadController.current?.abort()
+    uploadController.current = controller
+    setUpload((current) => ({ ...current, submitting: true, fields: {}, error: '', success: '', progress: { current: 0, total: entries.length } }))
+
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index]
+      const formData = new FormData()
+      formData.append('tipo_documento_id', String(entry.tipo_documento_id))
+      formData.append('archivo', entry.archivo)
+      setUpload((current) => ({ ...current, progress: { current: index + 1, total: entries.length }, error: '', success: `Cargando ${index + 1} de ${entries.length}...` }))
+      try {
+        await postulacionesService.subirDocumentoHistorico(detalle.id, formData, controller.signal)
+        results.push({ ...entry, status: 'success', message: 'Cargado' })
+      } catch (requestError) {
+        results.push({ ...entry, status: 'error', message: requestError.message || 'No se pudo cargar este documento.' })
+      }
+    }
+
+    if (controller.signal.aborted) {
+      return { total: entries.length, successCount: 0, failureCount: entries.length, items: results, summary: 'Carga cancelada.' }
+    }
+
+    const successCount = results.filter((item) => item.status === 'success').length
+    const failureCount = results.length - successCount
+    const summary = failureCount === 0
+      ? `${successCount} documento${successCount === 1 ? '' : 's'} cargado${successCount === 1 ? '' : 's'} correctamente.`
+      : `${successCount} documento${successCount === 1 ? '' : 's'} cargado${successCount === 1 ? '' : 's'}. ${failureCount} documento${failureCount === 1 ? '' : 's'} no pudo${failureCount === 1 ? '' : 'ieron'} cargarse.`
+
+    setUpload((current) => ({
+      ...current,
+      submitting: false,
+      progress: null,
+      success: summary,
+      error: '',
+      results,
+      failedTypeIds: results.filter((item) => item.status === 'error').map((item) => item.tipo_documento_id),
+    }))
+    if (successCount > 0) setDocumentsRevision((value) => value + 1)
+
+    return { total: entries.length, successCount, failureCount, items: results, summary }
   }
 
   const openReview = (action, observation = null) => {
@@ -1155,67 +1218,76 @@ export default function ExpedientePage() {
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{detalle.modalidad_detalle?.nombre || flujo.modalidad?.nombre || 'Postulación'}</p>
+            {isHistorical && <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">Registro histórico</p>}
             <h1 className="mt-2 break-words text-3xl font-bold tracking-tight">{detalle.codigo || EMPTY}</h1>
             <p className="mt-2 break-words text-base font-medium">{student ? formatStudentLabel(student) : EMPTY}</p>
             <p className="mt-1 text-sm text-slate-500">{period ? formatPeriodoLabel(period) : EMPTY}</p>
           </div>
           <StatusBadge value={detalle.estado_actual_detalle?.nombre || detalle.estado_actual_detalle?.codigo} positive={isConcluded} />
         </div>
-        <h2 className="sr-only">Estado actual de tu proceso académico</h2>
-        <dl className="mt-6 grid gap-4 border-t border-slate-200 pt-5 dark:border-slate-800">
-          <Info label="Etapa actual" value={currentStage?.nombre || 'Sin etapa pendiente'} />
-        </dl>
-
-        <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
-          <div className="flex items-center justify-between gap-4 text-sm">
-            <span className="font-semibold">Avance de tu proceso</span>
-            <span>{safeProgress === null ? EMPTY : `${safeProgress}%`}</span>
+        {isHistorical ? (
+          <div className="mt-6 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
+            Este expediente corresponde a un registro histórico y no representa un flujo operativo activo.
           </div>
-          {safeProgress !== null && (
-            <progress className="mt-2 h-3 w-full" max="100" value={safeProgress} aria-label="Avance de tu proceso">
-              {safeProgress}%
-            </progress>
-          )}
-          {canInitializeFlow && (
-            <div className="mt-5">
-              <Button disabled={flowInitialization.submitting} onClick={initializeFlow}>
-                {flowInitialization.submitting
-                  ? (isProjectGrade ? 'Iniciando proceso...' : 'Inicializando…')
-                  : (isProjectGrade ? 'Iniciar proceso de Proyecto de Grado' : 'Inicializar flujo académico')}
-              </Button>
-              <p className="mt-2 text-sm text-slate-500">{isProjectGrade
-                ? 'Registra la Inscripción y deja Perfil de Proyecto listo como siguiente etapa.'
-                : 'Crea las etapas pendientes configuradas por el backend; no inicia ni aprueba ninguna etapa.'}</p>
-            </div>
-          )}
-          {flowInitialization.error && <p role="alert" className="mt-3 text-sm text-red-600">{flowInitialization.error}</p>}
-          {canManageApplications && currentStage?.id && currentStage.estado === 'PENDIENTE' && !isConcluded && (
-            <div className="mt-5">
-              <Button disabled={stageInitialization.submitting} onClick={startCurrentStage}>
-                {stageInitialization.submitting ? 'Iniciando…' : `Iniciar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
-              </Button>
-              {stageInitialization.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageInitialization.error}</p>}
-            </div>
-          )}
-          {canManageApplications && projectDocumentApprovalReady && currentStage?.id && ['EN_PROCESO', 'OBSERVADA'].includes(currentStage.estado) && !['PERFIL_PROYECTO', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(currentStage.codigo) && !isConcluded && (
-            <div className="mt-5">
-              <Button variant={pendingCurrentRequirements > 0 ? 'secondary' : 'default'} aria-describedby={pendingCurrentRequirements > 0 ? 'stage-approval-guidance' : undefined} disabled={stageApproval.submitting} onClick={approveCurrentStage}>
-                {stageApproval.submitting ? 'Procesando...' : `Aprobar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
-              </Button>
-              {pendingCurrentRequirements > 0 && <p id="stage-approval-guidance" className="mt-2 text-sm text-amber-700 dark:text-amber-300">Hay {pendingCurrentRequirements} {pendingCurrentRequirements === 1 ? 'requisito pendiente' : 'requisitos pendientes'}. Puedes intentar la aprobación; el backend realizará la validación definitiva.</p>}
-              {stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
-              {Array.isArray(stageApproval.fields?.faltantes) && stageApproval.fields.faltantes.length > 0 && (
-                <p role="alert" className="mt-2 text-sm text-red-600">Faltantes: {stageApproval.fields.faltantes.map(formatCode).join(', ')}</p>
+        ) : (
+          <>
+            <h2 className="sr-only">Estado actual de tu proceso académico</h2>
+            <dl className="mt-6 grid gap-4 border-t border-slate-200 pt-5 dark:border-slate-800">
+              <Info label="Etapa actual" value={currentStage?.nombre || 'Sin etapa pendiente'} />
+            </dl>
+
+            <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
+              <div className="flex items-center justify-between gap-4 text-sm">
+                <span className="font-semibold">Avance de tu proceso</span>
+                <span>{safeProgress === null ? EMPTY : `${safeProgress}%`}</span>
+              </div>
+              {safeProgress !== null && (
+                <progress className="mt-2 h-3 w-full" max="100" value={safeProgress} aria-label="Avance de tu proceso">
+                  {safeProgress}%
+                </progress>
+              )}
+              {canInitializeFlow && (
+                <div className="mt-5">
+                  <Button disabled={flowInitialization.submitting} onClick={initializeFlow}>
+                    {flowInitialization.submitting
+                      ? (isProjectGrade ? 'Iniciando proceso...' : 'Inicializando…')
+                      : (isProjectGrade ? 'Iniciar proceso de Proyecto de Grado' : 'Inicializar flujo académico')}
+                  </Button>
+                  <p className="mt-2 text-sm text-slate-500">{isProjectGrade
+                    ? 'Registra la Inscripción y deja Perfil de Proyecto listo como siguiente etapa.'
+                    : 'Crea las etapas pendientes configuradas por el backend; no inicia ni aprueba ninguna etapa.'}</p>
+                </div>
+              )}
+              {flowInitialization.error && <p role="alert" className="mt-3 text-sm text-red-600">{flowInitialization.error}</p>}
+              {canManageApplications && currentStage?.id && currentStage.estado === 'PENDIENTE' && !isConcluded && (
+                <div className="mt-5">
+                  <Button disabled={stageInitialization.submitting} onClick={startCurrentStage}>
+                    {stageInitialization.submitting ? 'Iniciando…' : `Iniciar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
+                  </Button>
+                  {stageInitialization.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageInitialization.error}</p>}
+                </div>
+              )}
+              {canManageApplications && projectDocumentApprovalReady && currentStage?.id && ['EN_PROCESO', 'OBSERVADA'].includes(currentStage.estado) && !['PERFIL_PROYECTO', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(currentStage.codigo) && !isConcluded && (
+                <div className="mt-5">
+                  <Button variant={pendingCurrentRequirements > 0 ? 'secondary' : 'default'} aria-describedby={pendingCurrentRequirements > 0 ? 'stage-approval-guidance' : undefined} disabled={stageApproval.submitting} onClick={approveCurrentStage}>
+                    {stageApproval.submitting ? 'Procesando...' : `Aprobar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
+                  </Button>
+                  {pendingCurrentRequirements > 0 && <p id="stage-approval-guidance" className="mt-2 text-sm text-amber-700 dark:text-amber-300">Hay {pendingCurrentRequirements} {pendingCurrentRequirements === 1 ? 'requisito pendiente' : 'requisitos pendientes'}. Puedes intentar la aprobación; el backend realizará la validación definitiva.</p>}
+                  {stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
+                  {Array.isArray(stageApproval.fields?.faltantes) && stageApproval.fields.faltantes.length > 0 && (
+                    <p role="alert" className="mt-2 text-sm text-red-600">Faltantes: {stageApproval.fields.faltantes.map(formatCode).join(', ')}</p>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </Card>
 
-      <ExpedienteNav />
-      <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} assignments={activeActors.data?.results || []} documents={documents.data?.results || []} defenses={defenses.data?.results || []} reports={tribunalReports.data} stageReportsAvailable={Boolean(tribunalReviewStage)} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>
+      {!isHistorical && <ExpedienteNav />}
+      {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} assignments={activeActors.data?.results || []} documents={documents.data?.results || []} defenses={defenses.data?.results || []} reports={tribunalReports.data} stageReportsAvailable={Boolean(tribunalReviewStage)} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
 
-      {currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA' && reviewSection}
+      {!isHistorical && currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA' && reviewSection}
 
       <div id="documentos" className="scroll-mt-24"><DocumentsCard
         documents={documents}
@@ -1232,7 +1304,7 @@ export default function ExpedientePage() {
         }}
       /></div>
 
-      <div id="defensas" className="scroll-mt-24"><DefensesCard
+      {!isHistorical && <div id="defensas" className="scroll-mt-24"><DefensesCard
         defenses={defenses}
         page={defensesPage}
         onPage={(page) => { closeDefense(); setDefensesView({ id, page }) }}
@@ -1242,9 +1314,9 @@ export default function ExpedientePage() {
         canProgram={canProgramDefense}
         programmingContext={defenseProgrammingContext}
         onProgram={() => openDefenseOperation('programar', null, defenseProgrammingContext)}
-      /></div>
+      /></div>}
 
-      <div id="actores" className="scroll-mt-24"><ActorsCard
+      {!isHistorical && <div id="actores" className="scroll-mt-24"><ActorsCard
         active={activeActors}
         historical={historicalActors}
         activePage={activeActorsPage}
@@ -1257,8 +1329,8 @@ export default function ExpedientePage() {
         tribunalContext={tribunalContext}
         onAssign={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '' }) }}
         onFinish={(actor) => setFinalization({ actor, submitting: false, error: '' })}
-      /></div>
-      <Card id="etapas" className="scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
+      /></div>}
+      {!isHistorical && <Card id="etapas" className="scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
         <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
         {(flujo.etapas || []).length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">El flujo académico todavía no fue inicializado.</p>
@@ -1279,7 +1351,7 @@ export default function ExpedientePage() {
             ))}
           </ol>
         )}
-      </Card>
+      </Card>}
 
       <div id="historial" className="scroll-mt-24"><HistoryCard
         history={history}
@@ -1288,25 +1360,25 @@ export default function ExpedientePage() {
         onRetry={() => setHistoryRevision((value) => value + 1)}
       /></div>
 
-      {detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' && <ExamenGradoAreas postulacion={detalle.id} examen={examen} etapaCodigo={currentStage?.codigo} canManage={canManageEvaluations} onChanged={() => { setExamenRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
-      {detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' && <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
-      {detalle.modalidad_detalle?.codigo === 'GRADUACION_VIA_DIPLOMADO' && <Diplomado postulacion={detalle.id} diplomado={diplomado} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setDiplomadoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
-      {detalle.modalidad_detalle?.codigo === 'TRABAJO_DIRIGIDO' && <TrabajoDirigido postulacion={detalle.id} trabajo={trabajoDirigido} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setTrabajoDirigidoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+      {!isHistorical && detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' && <ExamenGradoAreas postulacion={detalle.id} examen={examen} etapaCodigo={currentStage?.codigo} canManage={canManageEvaluations} onChanged={() => { setExamenRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+      {!isHistorical && detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' && <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+      {!isHistorical && detalle.modalidad_detalle?.codigo === 'GRADUACION_VIA_DIPLOMADO' && <Diplomado postulacion={detalle.id} diplomado={diplomado} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setDiplomadoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+      {!isHistorical && detalle.modalidad_detalle?.codigo === 'TRABAJO_DIRIGIDO' && <TrabajoDirigido postulacion={detalle.id} trabajo={trabajoDirigido} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setTrabajoDirigidoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
 
-      {(flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo)).map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
-      {stageUi.corrections && correctionSection}
-      {stageUi.academicResult && academicResultSection}
+      {!isHistorical && (flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo)).map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
+      {!isHistorical && stageUi.corrections && correctionSection}
+      {!isHistorical && stageUi.academicResult && academicResultSection}
 
-      <details role="note" aria-label="Límites normativos" className="overflow-hidden rounded-xl border border-amber-300 bg-amber-50 p-5 dark:bg-amber-950">
+      {!isHistorical && <details role="note" aria-label="Límites normativos" className="overflow-hidden rounded-xl border border-amber-300 bg-amber-50 p-5 dark:bg-amber-950">
         <summary className="cursor-pointer list-none font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">Información y límites normativos ({(cierreSoportado ? CONTRACT_WARNINGS : TESIS_WARNINGS).length + (cierreSoportado ? (cierre.data?.advertencias_normativas || []).length : 0)}) <span className="ml-2 text-sm font-normal">Ver detalles</span></summary>
         <ul className="mt-4 list-disc space-y-2 pl-5 text-sm">
           {(cierreSoportado ? CONTRACT_WARNINGS : TESIS_WARNINGS).map((warning) => <li key={warning}>{warning}</li>)}
           {cierreSoportado && (cierre.data?.advertencias_normativas || []).map((warning) => <li key={`backend-${warning}`}>{warning}</li>)}
         </ul>
-      </details>
+      </details>}
 
-      {stageUi.closure && closureSection}
-      {futureSections}
+      {!isHistorical && stageUi.closure && closureSection}
+      {!isHistorical && futureSections}
 
       {finalization && <Modal title="Finalizar asignación" onClose={closeFinalization}>
         <form className="mt-4 grid gap-4" onSubmit={submitFinalization} noValidate>
@@ -1326,7 +1398,7 @@ export default function ExpedientePage() {
         </form>
       </Modal>}
 
-      {upload && <UploadDialog upload={upload} types={documentTypes} postulacion={detalle.id} onSubmit={submitUpload} onClose={closeUpload} />}
+      {upload && <UploadDialog upload={upload} types={documentTypes} postulacion={detalle.id} isHistorical={isHistorical} onSubmit={submitUpload} onHistoricalSubmit={submitHistoricalUpload} onClose={closeUpload} />}
 
       {selectedDocument && (
         <DocumentDetail
@@ -2287,13 +2359,34 @@ function DownloadVersionButton({ version, label = 'Descargar' }) {
   return <div><Button variant="outline" disabled={downloading} onClick={download}>{downloading ? 'Descargando…' : label}</Button>{error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}</div>
 }
 
-function UploadDialog({ upload, types, postulacion, onSubmit, onClose }) {
+function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHistoricalSubmit, onClose }) {
   const fixedType = upload.document
   const [selectedTypeId, setSelectedTypeId] = useState('')
   const [selectedEventId, setSelectedEventId] = useState('')
   const [publicDefenses, setPublicDefenses] = useState({ data: [], loading: false, error: '' })
+  const [historicalSelections, setHistoricalSelections] = useState([])
+  const [historicalStatus, setHistoricalStatus] = useState({ submitting: false, summary: '', items: [] })
   const selectedType = fixedType || types.data.find((type) => String(type.id) === String(selectedTypeId))
   const isDefenseRecord = selectedType?.codigo === 'ACTA_DEFENSA' || selectedType?.tipo_documento_codigo === 'ACTA_DEFENSA'
+
+  useEffect(() => {
+    if (!fixedType && isHistorical && types.data.length > 0) {
+      setHistoricalSelections((current) => {
+        const currentMap = new Map((current || []).map((entry) => [entry.typeId, entry]))
+        return types.data.map((type) => {
+          const currentEntry = currentMap.get(type.id)
+          return {
+            typeId: type.id,
+            typeName: type.nombre,
+            file: currentEntry?.file || null,
+            status: currentEntry?.status || 'idle',
+            error: currentEntry?.error || '',
+          }
+        })
+      })
+    }
+  }, [fixedType, isHistorical, types.data])
+
   useEffect(() => {
     setSelectedEventId('')
     if (!isDefenseRecord) {
@@ -2331,20 +2424,149 @@ function UploadDialog({ upload, types, postulacion, onSubmit, onClose }) {
     load()
     return () => controller.abort()
   }, [isDefenseRecord, postulacion])
+
   const fieldMessage = (name) => {
     const value = upload.fields?.[name]
     return Array.isArray(value) ? value.join(' ') : value
   }
-  return <Modal title={fixedType ? 'Cargar nueva versión' : 'Cargar documento'} onClose={onClose}>
-    {upload.success ? <div className="mt-4"><p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-800">{upload.success}</p><Button className="mt-4" onClick={onClose}>Cerrar</Button></div> : <form className="mt-4 grid gap-4" onSubmit={onSubmit} noValidate>
-      {fixedType ? <div><p className="text-sm text-slate-500">Tipo documental</p><p className="break-words font-medium">{fixedType.tipo_documento_nombre}</p></div> : <label className="text-sm">Tipo documental
+
+  const selectedHistoryCount = historicalSelections.filter((item) => item.file).length
+
+  const handleHistoricalFileChange = (typeId, file) => {
+    setHistoricalSelections((current) => current.map((item) => (
+      item.typeId === typeId ? { ...item, file, status: file ? 'selected' : 'idle', error: '' } : item
+    )))
+    setHistoricalStatus((current) => ({ ...current, summary: '', items: [] }))
+  }
+
+  const handleHistoricalRemove = (typeId) => {
+    setHistoricalSelections((current) => current.map((item) => (
+      item.typeId === typeId ? { ...item, file: null, status: 'idle', error: '' } : item
+    )))
+    setHistoricalStatus((current) => ({ ...current, summary: '', items: [] }))
+  }
+
+  const handleHistoricalSubmit = async (event) => {
+    event.preventDefault()
+    const selectedEntries = historicalSelections
+      .filter((item) => item.file)
+      .map((item) => ({ tipo_documento_id: item.typeId, archivo: item.file, typeId: item.typeId, typeName: item.typeName }))
+    if (selectedEntries.length === 0) return
+
+    setHistoricalStatus({ submitting: true, summary: '', items: [] })
+    try {
+      const result = await onHistoricalSubmit(selectedEntries)
+      const nextItems = result.items || []
+      setHistoricalSelections((current) => current.map((item) => {
+        const matching = nextItems.find((entry) => String(entry.tipo_documento_id) === String(item.typeId))
+        if (!matching) return item
+        if (matching.status === 'success') {
+          return { ...item, file: null, status: 'uploaded', error: '' }
+        }
+        return { ...item, status: 'error', error: matching.message || 'No se pudo cargar este documento.', file: item.file }
+      }))
+      setHistoricalStatus({ submitting: false, summary: result.summary, items: nextItems })
+      if (result.successCount === selectedEntries.length) {
+        setHistoricalSelections((current) => current.map((item) => ({ ...item, file: null, status: 'idle', error: '' })))
+      }
+    } catch (requestError) {
+      setHistoricalStatus({ submitting: false, summary: requestError.message || 'No se pudo completar la carga.', items: [] })
+    }
+  }
+
+  const retryFailedHistoricalUpload = async () => {
+    const retryEntries = historicalSelections
+      .filter((item) => item.file && item.status === 'error')
+      .map((item) => ({ tipo_documento_id: item.typeId, archivo: item.file, typeId: item.typeId, typeName: item.typeName }))
+    if (retryEntries.length === 0) return
+    setHistoricalStatus({ submitting: true, summary: '', items: [] })
+    try {
+      const result = await onHistoricalSubmit(retryEntries)
+      const nextItems = result.items || []
+      setHistoricalSelections((current) => current.map((item) => {
+        const matching = nextItems.find((entry) => String(entry.tipo_documento_id) === String(item.typeId))
+        if (!matching) return item
+        if (matching.status === 'success') {
+          return { ...item, file: null, status: 'uploaded', error: '' }
+        }
+        return { ...item, status: 'error', error: matching.message || 'No se pudo cargar este documento.', file: item.file }
+      }))
+      setHistoricalStatus({ submitting: false, summary: result.summary, items: nextItems })
+      if (result.successCount === retryEntries.length) {
+        setHistoricalSelections((current) => current.map((item) => ({ ...item, file: null, status: 'idle', error: '' })))
+      }
+    } catch (requestError) {
+      setHistoricalStatus({ submitting: false, summary: requestError.message || 'No se pudo completar la carga.', items: [] })
+    }
+  }
+
+  const renderHistoryBody = () => {
+    if (!isHistorical || fixedType) return null
+
+    return (
+      <div className="grid gap-3">
+        {historicalSelections.length > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            <p className="text-xs text-slate-500">Adjunta los documentos disponibles del expediente. No es obligatorio cargar todos en una sola operación.</p>
+          </div>
+        )}
+        {historicalSelections.length === 0 ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+            <span>0 documentos seleccionados</span>
+            <Button type="submit" disabled className="min-w-[180px]">Cargar 0 documentos</Button>
+          </div>
+        ) : historicalSelections.map((entry) => (
+          <div key={entry.typeId} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <label htmlFor={`historical-file-${entry.typeId}`} className="min-w-0 flex-1 text-sm font-medium text-slate-800 dark:text-slate-100">
+                {entry.typeName}
+              </label>
+              {entry.file && (
+                <button type="button" className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => handleHistoricalRemove(entry.typeId)}>
+                  Quitar
+                </button>
+              )}
+            </div>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input id={`historical-file-${entry.typeId}`} aria-label={entry.typeName} type="file" disabled={upload.submitting || historicalStatus.submitting} className="block w-full rounded-lg border border-slate-300 p-2 text-sm dark:border-slate-700 dark:bg-slate-950" onChange={(event) => handleHistoricalFileChange(entry.typeId, event.target.files?.[0] || null)} />
+              {entry.file && <span className="truncate text-xs text-slate-500">{entry.file.name}</span>}
+            </div>
+            {entry.error && <p className="mt-2 text-xs text-red-600">{entry.error}</p>}
+          </div>
+        ))}
+        {historicalSelections.length > 0 && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+            <span>{selectedHistoryCount} documento{selectedHistoryCount === 1 ? '' : 's'} seleccionado{selectedHistoryCount === 1 ? '' : 's'}</span>
+            <Button type="submit" disabled={historicalStatus.submitting || selectedHistoryCount === 0} className="min-w-[180px]">
+              {historicalStatus.submitting ? `Cargando ${selectedHistoryCount} de ${selectedHistoryCount}...` : `Cargar ${selectedHistoryCount} documento${selectedHistoryCount === 1 ? '' : 's'}`}
+            </Button>
+          </div>
+        )}
+        {historicalStatus.summary && (
+          <div className="space-y-3">
+            <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{historicalStatus.summary}</p>
+            {historicalStatus.items.some((item) => item.status === 'error') && (
+              <Button type="button" variant="secondary" onClick={retryFailedHistoricalUpload} disabled={historicalStatus.submitting}>
+                Reintentar
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return <Modal title={fixedType ? 'Cargar nueva versión' : isHistorical ? 'Cargar documentación histórica' : 'Cargar documento'} onClose={onClose}>
+    {upload.success && !isHistorical ? <div className="mt-4"><p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-800">{upload.success}</p><Button className="mt-4" onClick={onClose}>Cerrar</Button></div> : <form className="mt-4 grid gap-4" onSubmit={isHistorical ? handleHistoricalSubmit : onSubmit} noValidate>
+      {fixedType ? <div><p className="text-sm text-slate-500">Tipo documental</p><p className="break-words font-medium">{fixedType.tipo_documento_nombre}</p></div> : !isHistorical && <label className="text-sm">Tipo documental
         <select name="tipo_documento_id" required disabled={types.loading || upload.submitting} onChange={(event) => setSelectedTypeId(event.target.value)} aria-describedby={fieldMessage('tipo_documento_id') ? 'tipo-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
           <option value="">Seleccione un tipo documental</option>{types.data.map((type) => <option key={type.id} value={type.id}>{type.nombre}</option>)}
         </select>{fieldMessage('tipo_documento_id') && <span id="tipo-error" className="mt-1 block text-red-600">{fieldMessage('tipo_documento_id')}</span>}
       </label>}
       {types.loading && <p role="status">Cargando tipos documentales…</p>}
       {types.error && <p role="alert" className="text-red-600">{types.error}</p>}
-      {!fixedType && !types.loading && !types.error && types.data.length === 0 && <p role="status">No hay tipos documentales activos disponibles.</p>}
+      {!fixedType && !isHistorical && !types.loading && !types.error && types.data.length === 0 && <p role="status">No hay tipos documentales activos disponibles.</p>}
+      {!fixedType && isHistorical && !types.loading && !types.error && types.data.length === 0 && <p role="status">No hay tipos documentales activos disponibles.</p>}
       {isDefenseRecord && publicDefenses.loading && <p role="status">Buscando Defensas Públicas finalizadas…</p>}
       {isDefenseRecord && publicDefenses.error && <p role="alert" className="text-red-600">{publicDefenses.error}</p>}
       {isDefenseRecord && !publicDefenses.loading && !publicDefenses.error && publicDefenses.data.length === 0 && <p role="alert" className="text-amber-700">No existen Defensas Públicas finalizadas disponibles para vincular el Acta de Defensa.</p>}
@@ -2353,13 +2575,15 @@ function UploadDialog({ upload, types, postulacion, onSubmit, onClose }) {
           <option value="">Seleccione la Defensa Pública</option>{publicDefenses.data.map((defense) => <option key={defense.id} value={defense.id}>{formatDefenseDate(defense.fecha_fin_real || defense.fecha_programada)} — {defense.lugar || 'Sin lugar'}</option>)}
         </select>{fieldMessage('evento_defensa_id') && <span id="defensa-error" className="mt-1 block text-red-600">{fieldMessage('evento_defensa_id')}</span>}
       </label>}
-      <label className="text-sm">Archivo
+      {!isHistorical && <label className="text-sm">Archivo
         <input name="archivo" type="file" required disabled={upload.submitting} aria-describedby={fieldMessage('archivo') ? 'archivo-error' : undefined} className="mt-1 block w-full rounded-lg border p-2" />
         {fieldMessage('archivo') && <span id="archivo-error" className="mt-1 block text-red-600">{fieldMessage('archivo')}</span>}
-      </label>
+      </label>}
+      {isHistorical && renderHistoryBody()}
       {fieldMessage('non_field_errors') && <p role="alert" className="text-red-600">{fieldMessage('non_field_errors')}</p>}
       {upload.error && <p role="alert" className="text-red-600">{upload.error}</p>}
-      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={upload.submitting || types.loading || Boolean(types.error) || (!fixedType && types.data.length === 0) || (isDefenseRecord && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))}>{upload.submitting ? 'Enviando…' : fixedType ? 'Cargar nueva versión' : 'Cargar documento'}</Button><Button type="button" variant="secondary" disabled={upload.submitting} onClick={onClose}>Cancelar</Button></div>
+      {!isHistorical && <div className="flex flex-wrap gap-3"><Button type="submit" disabled={upload.submitting || types.loading || Boolean(types.error) || (!fixedType && types.data.length === 0) || (isDefenseRecord && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))}>{upload.submitting ? 'Enviando…' : fixedType ? 'Cargar nueva versión' : 'Cargar documento'}</Button><Button type="button" variant="secondary" disabled={upload.submitting} onClick={onClose}>Cancelar</Button></div>}
+      {isHistorical && <div className="flex flex-wrap gap-3"><Button type="button" variant="secondary" disabled={historicalStatus.submitting} onClick={onClose}>Cancelar</Button></div>}
     </form>}
   </Modal>
 }
