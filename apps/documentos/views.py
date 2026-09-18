@@ -20,6 +20,7 @@ from apps.documentos.serializers import (
     RechazarDocumentoSerializer,
     RegistrarObservacionDocumentoSerializer,
     SubirDocumentoSerializer,
+    SubirDocumentoHistoricoSerializer,
     TipoDocumentoSerializer,
     VersionDocumentoSerializer,
     EstadoDocumentoSerializer,

@@ -24,6 +24,25 @@ from core.permissions import is_staff_user
 class DocumentoService:
     """Servicio centralizado para la lógica de negocio del módulo Documentos."""
 
+    @staticmethod
+    def obtener_tipos_documentales_historicos(modalidad):
+        """Resuelve los tipos activos de la matriz documental de una modalidad."""
+        from apps.academico.models import ModalidadRequisito
+
+        relaciones = list(
+            ModalidadRequisito.objects.filter(
+                modalidad=modalidad,
+                activo=True,
+                requisito__activo=True,
+            ).select_related("requisito").order_by("orden", "requisito__nombre")
+        )
+        codigos = [relacion.requisito.codigo for relacion in relaciones]
+        tipos = {
+            tipo.codigo: tipo
+            for tipo in TipoDocumento.objects.filter(codigo__in=codigos, activo=True)
+        }
+        return [tipos[codigo] for codigo in codigos if codigo in tipos]
+
     def subir_documento(
         self,
         postulacion: Postulacion,
@@ -128,12 +147,57 @@ class DocumentoService:
                 request=request,
             )
 
+    def subir_documento_historico(
+        self,
+        postulacion: Postulacion,
+        tipo_documento: TipoDocumento,
+        archivo: Any,
+        usuario: Any,
+        request: Optional[Any] = None,
+    ) -> VersionDocumento:
+        """Carga un documento permitido por la matriz de modalidad histórica."""
+        postulacion = self._validar_postulacion_activa(postulacion)
+        if postulacion.tipo_registro != Postulacion.TipoRegistroChoices.HISTORICO:
+            raise ValidationError("La ruta histórica solo admite postulaciones HISTORICO.")
+        self._validar_usuario_administrativo(usuario)
+        if not isinstance(tipo_documento, TipoDocumento) or not tipo_documento.pk or not tipo_documento.activo:
+            raise NotFound("El tipo de documento no existe o no está activo.")
+        self._validar_archivo(archivo, tipo_documento)
+
+        permitido = tipo_documento in self.obtener_tipos_documentales_historicos(postulacion.modalidad)
+        if not permitido:
+            raise ValidationError("El tipo de documento no está permitido para la modalidad histórica.")
+
+        with transaction.atomic():
+            postulacion = Postulacion.objects.select_for_update().get(pk=postulacion.pk)
+            documento = DocumentoPostulacion.all_objects.select_for_update().filter(
+                postulacion=postulacion,
+                tipo_documento=tipo_documento,
+            ).first()
+            if documento is None:
+                documento = DocumentoPostulacion.objects.create(
+                    postulacion=postulacion,
+                    tipo_documento=tipo_documento,
+                    estado=self._obtener_estado_documento("ENV"),
+                    requiere_correccion=False,
+                )
+            else:
+                self._validar_documento_activo(documento)
+            return self.crear_nueva_version(
+                documento=documento,
+                archivo=archivo,
+                usuario=usuario,
+                request=request,
+                allow_historic=True,
+            )
+
     def crear_nueva_version(
         self,
         documento: DocumentoPostulacion,
         archivo: Any,
         usuario: Any,
         request: Optional[Any] = None,
+        allow_historic: bool = False,
     ) -> VersionDocumento:
         """Crea una nueva versión para un documento existente.
 
@@ -153,7 +217,7 @@ class DocumentoService:
         """
         self._validar_documento_activo(documento)
         self._validar_usuario_activo(usuario)
-        self._validar_postulacion_editable(documento.postulacion)
+        self._validar_postulacion_para_documento(documento.postulacion, allow_historic)
         nombre_original = self._validar_archivo(archivo, documento.tipo_documento)
 
         archivo_guardado = None
@@ -162,7 +226,7 @@ class DocumentoService:
             with transaction.atomic():
                 documento = DocumentoPostulacion.objects.select_for_update().get(pk=documento.pk)
                 self._validar_documento_activo(documento)
-                self._validar_postulacion_editable(documento.postulacion)
+                self._validar_postulacion_para_documento(documento.postulacion, allow_historic)
 
                 estado_env = self._obtener_estado_documento("ENV")
 
@@ -574,6 +638,11 @@ class DocumentoService:
         if estado_actual and getattr(estado_actual, "codigo", None) in ("CONCLUIDA", "RECHAZADA"):
             raise ValidationError("La postulación está concluida o rechazada.")
         return postulacion
+
+    def _validar_postulacion_para_documento(self, postulacion: Postulacion, allow_historic: bool = False) -> Postulacion:
+        if allow_historic and postulacion.tipo_registro == Postulacion.TipoRegistroChoices.HISTORICO:
+            return self._validar_postulacion_activa(postulacion)
+        return self._validar_postulacion_editable(postulacion)
 
     def _validar_archivo(self, archivo: Any, tipo_documento: TipoDocumento) -> str:
         if archivo is None:

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../../components/ui/button'
 import { DataState, Field, Modal, PageHeader, Pager, SearchBar } from '../../components/crud/CrudShell'
@@ -7,7 +7,12 @@ import { useAuth } from '../../hooks/useAuth'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { postulacionesService } from '../../services/postulacionesService'
 
-const emptyForm = { codigo: '', estudiante: '', modalidad: '', periodo: '', observaciones_generales: '' }
+const emptyForm = { codigo: '', estudiante: '', modalidad: '', periodo: '', observaciones_generales: '', tipo_registro: 'SEGUIMIENTO' }
+
+const humanizeTipoRegistro = (value) => {
+  if (value === 'HISTORICO') return 'Registro histórico'
+  return 'Proceso con seguimiento'
+}
 
 export default function PostulantesPage() {
   const { hasPermission } = useAuth()
@@ -30,6 +35,17 @@ export default function PostulantesPage() {
   const [saving, setSaving] = useState(false)
   const [studentQuery, setStudentQuery] = useState('')
   const [revision, setRevision] = useState(0)
+  const historicalTypesController = useRef(null)
+  const [historicalProfile, setHistoricalProfile] = useState(null)
+  const [historicalUploadOpen, setHistoricalUploadOpen] = useState(false)
+  const [historicalTypes, setHistoricalTypes] = useState([])
+  const [historicalTypeId, setHistoricalTypeId] = useState('')
+  const [historicalTypeLoading, setHistoricalTypeLoading] = useState(false)
+  const [historicalTypeError, setHistoricalTypeError] = useState('')
+  const [historicalUploadError, setHistoricalUploadError] = useState('')
+  const [historicalUploading, setHistoricalUploading] = useState(false)
+  const [historicalFile, setHistoricalFile] = useState(null)
+  const [historicalSuccessMessage, setHistoricalSuccessMessage] = useState('')
 
   const load = useCallback(async (signal) => {
     setLoading(true)
@@ -176,14 +192,37 @@ export default function PostulantesPage() {
       codigo: form.codigo,
       observaciones_generales: form.observaciones_generales,
     } : {
-      ...form,
+      codigo: form.codigo,
       estudiante: Number(form.estudiante),
       modalidad: Number(form.modalidad),
       periodo: Number(form.periodo),
+      observaciones_generales: form.observaciones_generales || '',
     }
     try {
-      if (editing) await crudService.update(endpoints.postulaciones, selected.id, payload)
-      else await crudService.create(endpoints.postulaciones, payload)
+      if (editing) {
+        await crudService.update(endpoints.postulaciones, selected.id, payload)
+      } else {
+        const endpoint = form.tipo_registro === 'HISTORICO' ? '/api/v1/postulaciones/historicas/' : endpoints.postulaciones
+        const response = await crudService.create(endpoint, payload)
+        if (form.tipo_registro === 'HISTORICO') {
+          const created = response || {}
+          setHistoricalProfile({
+            id: created.id,
+            codigo: created.codigo,
+            estudiante_detalle: created.estudiante_detalle || catalogs.estudiantes.find((item) => item.id === Number(form.estudiante)),
+            modalidad_detalle: created.modalidad_detalle || catalogs.modalidades.find((item) => item.id === Number(form.modalidad)),
+            periodo_detalle: created.periodo_detalle || catalogs.periodos.find((item) => item.id === Number(form.periodo)),
+          })
+          setHistoricalSuccessMessage('Puede continuar con la documentación.')
+          setSelected(null)
+          setForm(null)
+          setQuery('')
+          setSearch('')
+          setPage(1)
+          setRevision((value) => value + 1)
+          return
+        }
+      }
       if (!editing) {
         setQuery('')
         setSearch('')
@@ -203,6 +242,73 @@ export default function PostulantesPage() {
     }
   }
 
+  const loadHistoricalTypes = useCallback(async (postulacionId) => {
+    historicalTypesController.current?.abort()
+    const controller = new AbortController()
+    historicalTypesController.current = controller
+    setHistoricalTypeId('')
+    setHistoricalTypes([])
+    setHistoricalTypeError('')
+    setHistoricalTypeLoading(true)
+    try {
+      const response = await postulacionesService.obtenerTiposDocumentosHistoricos(postulacionId, controller.signal)
+      if (!controller.signal.aborted) setHistoricalTypes(Array.isArray(response) ? response : response?.results || [])
+    } catch (requestError) {
+      if (!requestError.canceled && !controller.signal.aborted) {
+        setHistoricalTypeError(requestError.message || 'No se pudieron cargar los tipos documentales históricos.')
+      }
+    } finally {
+      if (!controller.signal.aborted) setHistoricalTypeLoading(false)
+    }
+  }, [])
+
+  const openHistoricalUpload = useCallback(async (postulacion) => {
+    if (!postulacion?.id) return
+    setHistoricalTypeId('')
+    setHistoricalTypes([])
+    setHistoricalUploadError('')
+    setHistoricalSuccessMessage('')
+    setHistoricalFile(null)
+    setHistoricalProfile(postulacion)
+    setHistoricalUploadOpen(true)
+    await loadHistoricalTypes(postulacion.id)
+  }, [loadHistoricalTypes])
+
+  const closeHistoricalUpload = useCallback(() => {
+    historicalTypesController.current?.abort()
+    historicalTypesController.current = null
+    setHistoricalProfile(null)
+    setHistoricalUploadOpen(false)
+    setHistoricalTypes([])
+    setHistoricalTypeId('')
+    setHistoricalTypeError('')
+    setHistoricalUploadError('')
+    setHistoricalFile(null)
+    setHistoricalUploading(false)
+  }, [])
+
+  const handleHistoricalUpload = async (event) => {
+    event.preventDefault()
+    if (!historicalProfile || !historicalTypeId || !historicalFile) return
+    const formData = new FormData()
+    formData.append('tipo_documento_id', String(historicalTypeId))
+    formData.append('archivo', historicalFile)
+    setHistoricalUploading(true)
+    setHistoricalUploadError('')
+    try {
+      await postulacionesService.subirDocumentoHistorico(historicalProfile.id, formData, new AbortController().signal)
+      setHistoricalSuccessMessage('Documento cargado con éxito.')
+      setHistoricalTypeId('')
+      setHistoricalFile(null)
+      setHistoricalTypes([])
+      setRevision((value) => value + 1)
+    } catch (requestError) {
+      setHistoricalUploadError(requestError.message || 'No se pudo cargar el documento histórico.')
+    } finally {
+      setHistoricalUploading(false)
+    }
+  }
+
   const studentName = (id) => catalogs.estudiantes.find((item) => item.id === Number(id))
   const periodName = (id) => catalogs.periodos.find((item) => item.id === Number(id))
   const studentLabel = (item) => item.estudiante_detalle
@@ -215,6 +321,7 @@ export default function PostulantesPage() {
     ? formatPeriodoLabel(item.periodo_detalle)
     : periodName(item.periodo) ? formatPeriodoLabel(periodName(item.periodo)) : 'Periodo registrado'
   const stateLabel = (item) => item.estado_actual_detalle?.nombre || 'Sin estado'
+  const tipoRegistroLabel = (item) => humanizeTipoRegistro(item?.tipo_registro)
 
   return (
     <section className="mx-auto max-w-6xl space-y-5">
@@ -249,6 +356,7 @@ export default function PostulantesPage() {
                     <Info label="Estudiante" value={studentLabel(item)} />
                     <Info label="Modalidad" value={modalityLabel(item)} />
                     <Info label="Periodo" value={periodLabel(item)} />
+                    <Info label="Tipo de registro" value={tipoRegistroLabel(item)} />
                     <Info label="Estado" value={stateLabel(item)} />
                   </dl>
                 </div>
@@ -295,6 +403,64 @@ export default function PostulantesPage() {
           </DataState>
         </Modal>
       )}
+      {historicalProfile && !historicalUploadOpen && (
+        <Modal title="Registro histórico creado" onClose={() => {
+          setHistoricalProfile(null)
+          setHistoricalSuccessMessage('')
+        }}>
+          <div className="mt-4 space-y-4">
+            <p className="text-sm text-slate-600">Estudiante: {studentLabel(historicalProfile)}</p>
+            <p className="text-sm text-slate-600">Modalidad: {modalityLabel(historicalProfile)}</p>
+            <p className="text-sm text-slate-600">Gestión: {periodLabel(historicalProfile)}</p>
+            {historicalSuccessMessage && <p className="text-sm font-medium text-green-700">{historicalSuccessMessage}</p>}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => { setHistoricalProfile(null); setHistoricalSuccessMessage('') }}>Cerrar</Button>
+              <Button type="button" onClick={() => { setHistoricalSuccessMessage(''); setHistoricalUploadOpen(true); void loadHistoricalTypes(historicalProfile.id) }}>Cargar documentación</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {historicalProfile && historicalUploadOpen && (
+        <Modal title="Subir documento histórico" onClose={closeHistoricalUpload}>
+          <form className="mt-4 space-y-4" onSubmit={handleHistoricalUpload}>
+            <p className="text-sm text-slate-600">Postulación: {historicalProfile.codigo}</p>
+            <p className="text-sm text-slate-600">Estudiante: {studentLabel(historicalProfile)}</p>
+            <p className="text-sm text-slate-600">Modalidad: {modalityLabel(historicalProfile)}</p>
+            <label className="block text-sm">
+              Tipo de documento *
+              <select
+                value={historicalTypeId}
+                onChange={(event) => setHistoricalTypeId(event.target.value)}
+                disabled={historicalTypeLoading || Boolean(historicalTypeError) || historicalTypes.length === 0 || historicalUploading}
+                className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"
+              >
+                <option value="">{historicalTypeLoading ? 'Cargando tipos...' : 'Seleccionar...'}</option>
+                {historicalTypes.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}
+              </select>
+            </label>
+            {!historicalTypeLoading && !historicalTypeError && historicalTypes.length === 0 && (
+              <p className="text-sm text-slate-600">No existen tipos de documentos configurados para esta modalidad.</p>
+            )}
+            {historicalTypeError && <p role="alert" className="text-sm text-red-600">{historicalTypeError}</p>}
+            <label className="block text-sm">
+              Archivo *
+              <input
+                name="archivo"
+                type="file"
+                onChange={(event) => setHistoricalFile(event.target.files?.[0] || null)}
+                disabled={historicalTypeLoading || Boolean(historicalTypeError) || historicalTypes.length === 0 || historicalUploading}
+                className="mt-1 block w-full rounded-lg border p-2"
+              />
+            </label>
+            {historicalUploadError && <p role="alert" className="text-sm text-red-600">{historicalUploadError}</p>}
+            {historicalSuccessMessage && <p className="text-sm font-medium text-green-700">{historicalSuccessMessage}</p>}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" disabled={historicalUploading} onClick={closeHistoricalUpload}>Cancelar</Button>
+              <Button type="submit" disabled={historicalUploading || historicalTypeLoading || Boolean(historicalTypeError) || historicalTypes.length === 0 || !historicalTypeId || !historicalFile}>Subir documento</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {form && (
         <Modal
           title={editing ? 'Editar postulación' : 'Nueva postulación'}
@@ -311,6 +477,7 @@ export default function PostulantesPage() {
                   <Info label="Estudiante" value={studentLabel(selected)} />
                   <Info label="Modalidad" value={modalityLabel(selected)} />
                   <Info label="Gestión y semestre" value={periodLabel(selected)} />
+                  <Info label="Tipo de registro" value={tipoRegistroLabel(selected)} />
                   <Info label="Estado técnico" value={stateLabel(selected)} />
                 </dl>
                 <p className="mt-3 text-xs text-slate-500">Estudiante, modalidad, periodo y estado no se modifican desde esta edición básica.</p>
@@ -342,6 +509,19 @@ export default function PostulantesPage() {
                 <p className="mt-1 text-sm text-slate-500">No se encontraron estudiantes activos.</p>
               )}
             </div>}
+            {!editing && canManage && (
+              <label className="text-sm sm:col-span-2">
+                Tipo de registro
+                <select
+                  value={form.tipo_registro || 'SEGUIMIENTO'}
+                  onChange={(event) => change('tipo_registro', event.target.value)}
+                  className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"
+                >
+                  <option value="SEGUIMIENTO">Proceso con seguimiento</option>
+                  <option value="HISTORICO">Registro histórico</option>
+                </select>
+              </label>
+            )}
             {!editing && <Select
               label="Modalidad"
               value={form.modalidad}

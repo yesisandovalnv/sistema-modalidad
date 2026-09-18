@@ -12,7 +12,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.academico.models import EtapaModalidad, Modalidad, Periodo
+from apps.academico.models import EtapaModalidad, Modalidad, ModalidadRequisito, Periodo, Requisito
 from apps.modalidades.policies import BaseModalidadPolicy, BaseRequisitosPolicy, EtapaDefinition, ModalidadPolicyRegistry
 from apps.documentos.models import (
     DocumentoPostulacion,
@@ -161,6 +161,178 @@ class DocumentoAPITestCase(APITestCase):
             },
             format="multipart",
         )
+
+
+class TestHistoricalDocumentUpload(DocumentoAPITestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        requisito = Requisito.objects.create(
+            codigo="PDF",
+            nombre="Documento PDF",
+            obligatorio=True,
+        )
+        ModalidadRequisito.objects.create(
+            modalidad=self.modalidad,
+            requisito=requisito,
+            orden=1,
+        )
+        estado_concluida = EstadoPostulacion.objects.create(codigo="CONCLUIDA", nombre="Concluida")
+        self.historico = Postulacion.objects.create(
+            codigo="HIST-2022-001",
+            estudiante=self.other_student,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=estado_concluida,
+            vigencia=Postulacion.VigenciaChoices.CERRADA,
+            tipo_registro=Postulacion.TipoRegistroChoices.HISTORICO,
+        )
+
+    def historical_upload(self, user, postulacion_id=None, tipo_documento_id=None, file=None):
+        self.authenticate_user(user)
+        return self.client.post(
+            f"/api/v1/postulaciones/{postulacion_id or self.historico.id}/documentos-historicos/subir/",
+            {
+                "tipo_documento_id": tipo_documento_id or self.tipo_pdf.id,
+                "archivo": file or self.create_pdf_file(),
+            },
+            format="multipart",
+        )
+
+    def test_admin_carga_historico_sin_seguimiento_y_reutiliza_versionado(self):
+        file = self.create_pdf_file(content=b"%PDF-historico")
+
+        response = self.historical_upload(self.admin_user, file=file)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(postulacion=self.historico, tipo_documento=self.tipo_pdf)
+        version = documento.versiones.get()
+        self.assertEqual(version.subido_por, self.admin_user)
+        self.assertEqual(version.numero_version, 1)
+        self.assertEqual(version.hash_sha256, __import__("hashlib").sha256(b"%PDF-historico").hexdigest())
+        self.assertFalse(SeguimientoEtapa.objects.filter(postulacion=self.historico).exists())
+        self.assertTrue(AuditLog.objects.filter(accion="UPLOAD", modulo="DOCUMENTOS", usuario=self.admin_user).exists())
+
+    def test_admin_obtiene_tipos_historicos_de_la_modalidad(self):
+        self.authenticate_user(self.admin_user)
+
+        response = self.client.get(f"/api/v1/postulaciones/{self.historico.id}/documentos-historicos/tipos/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [{"id": self.tipo_pdf.id, "codigo": "PDF", "nombre": "Documento PDF"}])
+
+    def test_estudiante_no_puede_consultar_tipos_historicos(self):
+        self.authenticate_user(self.student_user)
+
+        response = self.client.get(f"/api/v1/postulaciones/{self.historico.id}/documentos-historicos/tipos/")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_seguimiento_no_puede_consultar_tipos_historicos(self):
+        self.authenticate_user(self.admin_user)
+
+        response = self.client.get(f"/api/v1/postulaciones/{self.postulacion.id}/documentos-historicos/tipos/")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_postulacion_inexistente_devuelve_404(self):
+        self.authenticate_user(self.admin_user)
+
+        response = self.client.get("/api/v1/postulaciones/999999/documentos-historicos/tipos/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_excluye_tipos_y_requisitos_inactivos(self):
+        requisito_inactivo = Requisito.objects.create(codigo="INACTIVO_REQ", nombre="Requisito inactivo")
+        ModalidadRequisito.objects.create(modalidad=self.modalidad, requisito=requisito_inactivo, orden=2, activo=False)
+        tipo_inactivo = TipoDocumento.objects.create(codigo="INACTIVO_REQ", nombre="Tipo inactivo", activo=False)
+        requisito_activo_tipo_inactivo = Requisito.objects.create(codigo="TIPO_INACTIVO", nombre="Tipo inactivo")
+        ModalidadRequisito.objects.create(modalidad=self.modalidad, requisito=requisito_activo_tipo_inactivo, orden=3)
+        TipoDocumento.objects.create(codigo="TIPO_INACTIVO", nombre="Tipo inactivo catalogo", activo=False)
+        self.authenticate_user(self.admin_user)
+
+        response = self.client.get(f"/api/v1/postulaciones/{self.historico.id}/documentos-historicos/tipos/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["codigo"] for item in response.data], ["PDF"])
+        self.assertNotIn(tipo_inactivo.id, [item["id"] for item in response.data])
+
+    def test_modalidad_sin_configuracion_devuelve_lista_vacia(self):
+        modalidad_sin_requisitos = Modalidad.objects.create(codigo="MOD_SIN_REQ", nombre="Sin requisitos")
+        self.historico.modalidad = modalidad_sin_requisitos
+        self.historico.save(update_fields=["modalidad"])
+        self.authenticate_user(self.admin_user)
+
+        response = self.client.get(f"/api/v1/postulaciones/{self.historico.id}/documentos-historicos/tipos/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
+    def test_tipo_retornado_por_get_es_aceptado_por_upload_historico(self):
+        self.authenticate_user(self.admin_user)
+        tipos = self.client.get(f"/api/v1/postulaciones/{self.historico.id}/documentos-historicos/tipos/")
+        tipo_id = tipos.data[0]["id"]
+
+        response = self.client.post(
+            f"/api/v1/postulaciones/{self.historico.id}/documentos-historicos/subir/",
+            {"tipo_documento_id": tipo_id, "archivo": self.create_pdf_file(content=b"%PDF-consistencia")},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_tipo_ajeno_no_aparece_y_upload_lo_rechaza(self):
+        ajeno = TipoDocumento.objects.create(codigo="AJENO", nombre="Ajeno", extensiones_permitidas="pdf")
+        self.authenticate_user(self.admin_user)
+        tipos = self.client.get(f"/api/v1/postulaciones/{self.historico.id}/documentos-historicos/tipos/")
+        self.assertNotIn(ajeno.id, [item["id"] for item in tipos.data])
+
+        response = self.client.post(
+            f"/api/v1/postulaciones/{self.historico.id}/documentos-historicos/subir/",
+            {"tipo_documento_id": ajeno.id, "archivo": self.create_pdf_file()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_historico_solo_usa_ruta_historica(self):
+        response = self.upload_document(self.admin_user, self.historico.id, self.tipo_pdf.id, self.create_pdf_file())
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(DocumentoPostulacion.objects.filter(postulacion=self.historico).exists())
+
+    def test_estudiante_no_puede_cargar_documento_historico(self):
+        response = self.historical_upload(self.student_user)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_seguimiento_no_puede_usar_ruta_historica(self):
+        response = self.historical_upload(self.admin_user, postulacion_id=self.postulacion.id)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_upload_ordinario_seguimiento_sin_contexto_continua_rechazado(self):
+        self.postulacion.seguimientos_etapa.all().update(activo=False)
+
+        response = self.upload_document(self.admin_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("contexto académico válido", str(response.data))
+
+    def test_tipo_no_asociado_a_modalidad_es_rechazado(self):
+        otro_tipo = TipoDocumento.objects.create(codigo="OTRO", nombre="Otro", extensiones_permitidas="pdf")
+
+        response = self.historical_upload(self.admin_user, tipo_documento_id=otro_tipo.id)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_archivo_invalido_conserva_validacion(self):
+        response = self.historical_upload(
+            self.admin_user,
+            file=SimpleUploadedFile("invalido.pdf", b"NO ES PDF", content_type="application/pdf"),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("PDF", str(response.data))
 
 
 class TestPerfilObservationDocument(DocumentoAPITestCase):

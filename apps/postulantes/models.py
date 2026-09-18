@@ -171,6 +171,10 @@ class Postulacion(BaseModel):
         CANCELADA = "CANCELADA", "Cancelada"
         CERRADA = "CERRADA", "Cerrada"
 
+    class TipoRegistroChoices(models.TextChoices):
+        SEGUIMIENTO = "SEGUIMIENTO", "Proceso con seguimiento"
+        HISTORICO = "HISTORICO", "Registro histórico"
+
     codigo = models.CharField(
         max_length=30,
         unique=True,
@@ -216,6 +220,12 @@ class Postulacion(BaseModel):
         choices=VigenciaChoices.choices,
         default=VigenciaChoices.VIGENTE,
         verbose_name="Vigencia de la inscripción",
+    )
+    tipo_registro = models.CharField(
+        max_length=20,
+        choices=TipoRegistroChoices.choices,
+        default=TipoRegistroChoices.SEGUIMIENTO,
+        verbose_name="Tipo de registro",
     )
     fecha_baja = models.DateTimeField(
         null=True,

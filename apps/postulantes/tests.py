@@ -23,6 +23,7 @@ from apps.postulantes.models import (
     SeguimientoEtapa,
 )
 from apps.postulantes.services import PostulacionService
+from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import AuditLog, Role
 
 
@@ -73,6 +74,16 @@ class TestCrearPostulacion(APITestCase):
             codigo="REGISTRADA",
             nombre="Registrada",
         )
+        self.estado_concluida = EstadoPostulacion.objects.create(
+            codigo="CONCLUIDA",
+            nombre="Concluida",
+        )
+        self.estudiante_sin_admin = User.objects.create_user(
+            username="estudiante_sin_admin",
+            password="segura123",
+            ci="7654321",
+            ru="RU7654321",
+        )
 
         token = RefreshToken.for_user(self.estudiante).access_token
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
@@ -93,6 +104,103 @@ class TestCrearPostulacion(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["codigo"], "POST-001")
         self.assertEqual(response.data["vigencia"], Postulacion.VigenciaChoices.VIGENTE)
+        self.assertEqual(response.data["tipo_registro"], Postulacion.TipoRegistroChoices.SEGUIMIENTO)
+
+    def test_crear_historico_por_via_administrativa_no_inicializa_workflow(self) -> None:
+        response = self.client.post(
+            "/api/v1/postulaciones/historicas/",
+            {
+                "codigo": "HIST-2022-001",
+                "estudiante": self.estudiante_sin_admin.id,
+                "modalidad": self.modalidad.id,
+                "periodo": self.periodo.id,
+                "observaciones_generales": "Proceso concluido en 2022.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        historico = Postulacion.objects.get(pk=response.data["id"])
+        self.assertEqual(historico.tipo_registro, Postulacion.TipoRegistroChoices.HISTORICO)
+        self.assertEqual(historico.vigencia, Postulacion.VigenciaChoices.CERRADA)
+        self.assertEqual(historico.estado_actual, self.estado_concluida)
+        self.assertFalse(SeguimientoEtapa.objects.filter(postulacion=historico).exists())
+        self.assertTrue(AuditLog.objects.filter(accion="crear_postulacion_historica", modulo="postulaciones").exists())
+        self.assertTrue(HistorialEstado.objects.filter(postulacion=historico, estado_nuevo=self.estado_concluida).exists())
+
+    def test_estudiante_no_puede_crear_historico(self) -> None:
+        token = RefreshToken.for_user(self.estudiante_sin_admin).access_token
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        response = self.client.post(
+            "/api/v1/postulaciones/historicas/",
+            {
+                "codigo": "HIST-2022-002",
+                "estudiante": self.estudiante_sin_admin.id,
+                "modalidad": self.modalidad.id,
+                "periodo": self.periodo.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_tipo_registro_es_inmutable_en_patch(self) -> None:
+        response = self.client.post(
+            "/api/v1/postulaciones/",
+            {
+                "codigo": "POST-INMUTABLE-TIPO",
+                "estudiante": self.estudiante_sin_admin.id,
+                "modalidad": self.modalidad.id,
+                "periodo": self.periodo.id,
+            },
+            format="json",
+        )
+        postulacion_id = response.data["id"]
+
+        response = self.client.patch(
+            f"/api/v1/postulaciones/{postulacion_id}/",
+            {"tipo_registro": Postulacion.TipoRegistroChoices.HISTORICO},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Postulacion.objects.get(pk=postulacion_id).tipo_registro, Postulacion.TipoRegistroChoices.SEGUIMIENTO)
+
+    def test_historico_cerrado_y_postulacion_actual_vigente_coexisten(self) -> None:
+        historico = Postulacion.objects.create(
+            codigo="HIST-2022-003",
+            estudiante=self.estudiante_sin_admin,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_concluida,
+            vigencia=Postulacion.VigenciaChoices.CERRADA,
+            tipo_registro=Postulacion.TipoRegistroChoices.HISTORICO,
+        )
+        actual = PostulacionService.crear_postulacion({
+            "codigo": "POST-2026-003",
+            "estudiante": self.estudiante_sin_admin,
+            "modalidad": self.modalidad,
+            "periodo": self.periodo,
+            "usuario": self.estudiante,
+        })
+
+        self.assertEqual(historico.vigencia, Postulacion.VigenciaChoices.CERRADA)
+        self.assertEqual(actual.vigencia, Postulacion.VigenciaChoices.VIGENTE)
+
+    def test_workflow_rechaza_postulacion_historica(self) -> None:
+        historico = Postulacion.objects.create(
+            codigo="HIST-2022-004",
+            estudiante=self.estudiante_sin_admin,
+            modalidad=self.modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_concluida,
+            vigencia=Postulacion.VigenciaChoices.CERRADA,
+            tipo_registro=Postulacion.TipoRegistroChoices.HISTORICO,
+        )
+
+        with self.assertRaises(ValidationError):
+            WorkflowService.inicializar_flujo(historico, self.estudiante)
 
     def test_vigencia_read_only_en_post(self) -> None:
         """POST no debe aceptar una vigencia distinta de la inicial."""
@@ -110,6 +218,22 @@ class TestCrearPostulacion(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["vigencia"], Postulacion.VigenciaChoices.VIGENTE)
+
+    def test_tipo_historico_no_se_acepta_en_endpoint_normal(self) -> None:
+        response = self.client.post(
+            "/api/v1/postulaciones/",
+            {
+                "codigo": "POST-TIPO-READONLY",
+                "estudiante": self.estudiante_sin_admin.id,
+                "modalidad": self.modalidad.id,
+                "periodo": self.periodo.id,
+                "tipo_registro": Postulacion.TipoRegistroChoices.HISTORICO,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["tipo_registro"], Postulacion.TipoRegistroChoices.SEGUIMIENTO)
 
     def test_estado_inicial_es_registrada(self) -> None:
         """El estado_actual debe ser REGISTRADA al crear."""

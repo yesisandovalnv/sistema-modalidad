@@ -49,8 +49,11 @@ from apps.postulantes.services import PostulacionService
 from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
 from apps.postulantes.dictamenes_revision import DictamenRevisionDocumentoService
 from apps.postulantes.workflow import WorkflowService
+from apps.documentos.models import TipoDocumento
+from apps.documentos.serializers import TipoDocumentoHistoricoSerializer, SubirDocumentoHistoricoSerializer, VersionDocumentoSerializer
+from apps.documentos.services import DocumentoService
 from apps.postulantes.models import SeguimientoEtapa
-from core.permissions import is_staff_user
+from core.permissions import IsStaff, is_staff_user
 
 
 def _assignment_validation_error(exc):
@@ -183,6 +186,30 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(response_serializer.data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    @action(detail=False, methods=["post"], url_path="historicas", permission_classes=[IsAuthenticated, IsStaff])
+    def historicas(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        modalidad = serializer.validated_data["modalidad"]
+        configuracion = ModalidadConfigurationValidator.validate_modalidad(modalidad)
+        if not ModalidadPolicyRegistry.has_policy(modalidad) or not configuracion.valida:
+            raise DRFValidationError({
+                "modalidad": [
+                    "La modalidad seleccionada todavía no tiene soporte académico completo configurado."
+                ]
+            })
+
+        try:
+            historico = PostulacionService.crear_postulacion_historica({
+                **serializer.validated_data,
+                "usuario": request.user,
+            })
+        except DjangoValidationError as exc:
+            raise DRFValidationError(str(exc)) from exc
+
+        return Response(self.get_serializer(historico).data, status=status.HTTP_201_CREATED)
+
     def partial_update(self, request, *args, **kwargs):
         """Actualiza el estado de una postulación usando el servicio de negocio."""
         postulacion = self.get_object()
@@ -246,6 +273,53 @@ class PostulacionViewSet(viewsets.ModelViewSet):
             "etapa_actual": etapa_codigo,
             "documentos_aplicables": documentos_aplicables,
         })
+
+    @extend_schema(responses=TipoDocumentoHistoricoSerializer(many=True))
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="documentos-historicos/tipos",
+        serializer_class=TipoDocumentoHistoricoSerializer,
+        permission_classes=[IsAuthenticated, IsStaff],
+    )
+    def tipos_documentos_historicos(self, request, pk=None):
+        postulacion = self.get_object()
+        if postulacion.tipo_registro != Postulacion.TipoRegistroChoices.HISTORICO:
+            raise DRFValidationError("La consulta histórica solo admite postulaciones HISTORICO.")
+        tipos = DocumentoService.obtener_tipos_documentales_historicos(postulacion.modalidad)
+        return Response(TipoDocumentoHistoricoSerializer(tipos, many=True).data)
+
+    @extend_schema(request=SubirDocumentoHistoricoSerializer, responses={201: VersionDocumentoSerializer})
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="documentos-historicos/subir",
+        serializer_class=SubirDocumentoHistoricoSerializer,
+        permission_classes=[IsAuthenticated, IsStaff],
+    )
+    def subir_documento_historico(self, request, pk=None):
+        postulacion = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tipo_documento = TipoDocumento.objects.filter(
+            pk=serializer.validated_data["tipo_documento_id"],
+            activo=True,
+        ).first()
+        if not tipo_documento:
+            raise DRFValidationError({"tipo_documento_id": "El tipo de documento no existe o no está activo."})
+
+        try:
+            version = DocumentoService().subir_documento_historico(
+                postulacion=postulacion,
+                tipo_documento=tipo_documento,
+                archivo=serializer.validated_data["archivo"],
+                usuario=request.user,
+                request=request,
+            )
+        except DjangoValidationError as exc:
+            raise DRFValidationError(str(exc)) from exc
+
+        return Response(VersionDocumentoSerializer(version, context=self.get_serializer_context()).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(request=None, responses={200: PostulacionSerializer})
     @action(detail=True, methods=["post"], url_path="concluir-academicamente")

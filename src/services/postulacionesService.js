@@ -235,6 +235,39 @@ export const postulacionesService = {
       throw { status, message: 'No se pudo cargar el detalle. Intenta nuevamente.' }
     }
   },
+  async obtenerTiposDocumentosHistoricos(id, signal) {
+    try {
+      const response = await apiClient.get(`/api/v1/postulaciones/${id}/documentos-historicos/tipos/`, { signal })
+      return Array.isArray(response.data) ? response.data : response.data?.results || []
+    } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') throw { canceled: true }
+      const status = error?.response?.status
+      if (status === 401) throw { status, message: 'Debes iniciar sesión para consultar los tipos documentales históricos.' }
+      if (status === 403) throw { status, message: 'No tienes autorización para consultar los tipos documentales históricos.' }
+      if (status === 404) throw { status, message: 'La postulación histórica ya no está disponible.' }
+      throw { status, message: 'No se pudieron cargar los tipos documentales históricos. Intenta nuevamente.' }
+    }
+  },
+  async subirDocumentoHistorico(id, formData, signal) {
+    try {
+      return (await apiClient.post(`/api/v1/postulaciones/${id}/documentos-historicos/subir/`, formData, {
+        signal,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })).data
+    } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') throw { canceled: true }
+      const status = error?.response?.status
+      const data = error?.response?.data
+      const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+      const detail = Array.isArray(data) ? data : fields.detail || fields.non_field_errors
+      const backendMessage = Array.isArray(detail) ? detail.join(' ') : detail
+      if (status === 400) throw { status, message: backendMessage || 'Revisa el archivo y el tipo documental.', fields }
+      if (status === 401) throw { status, message: 'Debes iniciar sesión para cargar documentos históricos.' }
+      if (status === 403) throw { status, message: 'No tienes autorización para cargar documentos en esta postulación.' }
+      if (status === 404) throw { status, message: 'La postulación o el tipo documental histórico ya no están disponibles.' }
+      throw { status, message: 'No se pudo cargar el documento histórico. Intenta nuevamente.' }
+    }
+  },
   async obtenerExpediente(id, signal) {
     try {
       const [detalle, flujo, resultado, cierre] = await Promise.allSettled([

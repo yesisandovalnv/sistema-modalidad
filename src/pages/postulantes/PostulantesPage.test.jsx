@@ -14,7 +14,13 @@ vi.mock('../../services/crudService', () => ({
   listAll: vi.fn(),
 }))
 vi.mock('../../services/postulacionesService', () => ({
-  postulacionesService: { obtenerCapacidadesModalidad: vi.fn(), obtenerDetalle: vi.fn() },
+  postulacionesService: {
+    obtenerCapacidadesModalidad: vi.fn(),
+    obtenerDetalle: vi.fn(),
+    inicializarFlujo: vi.fn(),
+    obtenerTiposDocumentosHistoricos: vi.fn(),
+    subirDocumentoHistorico: vi.fn(),
+  },
 }))
 
 const student = { id: 17, codigo: '394090', ru: '394090', nombre_completo: 'Luis Fernando Menacho Melgar' }
@@ -121,6 +127,157 @@ describe('Nueva postulación', () => {
     expect(crudService.create).toHaveBeenCalledTimes(1)
     expect(crudService.create).toHaveBeenCalledWith('/postulaciones/', expect.objectContaining({ estudiante:17, modalidad:3, periodo:8 }))
     resolveRequest({ id: 1 }); await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('muestra el tipo de registro y mantiene Proceso con seguimiento como valor por defecto', async () => {
+    setup()
+    await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    const selector = screen.getByLabelText('Tipo de registro')
+    expect(selector).toHaveValue('SEGUIMIENTO')
+    expect(screen.getByRole('option', { name: 'Proceso con seguimiento' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Registro histórico' })).toBeInTheDocument()
+  })
+
+  it('usa el endpoint normal en el flujo de seguimiento y evita workflow histórico', async () => {
+    setup()
+    await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await userEvent.type(screen.getByRole('dialog').querySelector('input[required]'), 'POST-2026')
+    await userEvent.selectOptions(screen.getByLabelText('Estudiante'), '17')
+    await userEvent.selectOptions(screen.getByLabelText('Modalidad'), '3')
+    await userEvent.selectOptions(screen.getByLabelText(/Semestre/), '8')
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    expect(crudService.create).toHaveBeenCalledWith('/postulaciones/', expect.objectContaining({
+      codigo: 'POST-2026',
+      estudiante: 17,
+      modalidad: 3,
+      periodo: 8,
+    }))
+    expect(postulacionesService.inicializarFlujo).not.toHaveBeenCalled()
+  })
+
+  it('crea la postulación histórica en la ruta adecuada y ofrece continuar a su documentación', async () => {
+    const user = userEvent.setup()
+    crudService.create.mockResolvedValue({ id: 55, codigo: 'HIST-2022', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO', estudiante_detalle: { nombre_completo: 'Luis Fernando Menacho Melgar' }, modalidad_detalle: { nombre: 'Proyecto de Grado' }, periodo_detalle: { gestion: 2022, semestre: 'I' } })
+    setup()
+    await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await user.selectOptions(screen.getByLabelText('Tipo de registro'), 'HISTORICO')
+    await user.type(screen.getByRole('dialog').querySelector('input[required]'), 'HIST-2022')
+    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
+    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
+    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+
+    await waitFor(() => expect(crudService.create).toHaveBeenCalledWith('/api/v1/postulaciones/historicas/', expect.objectContaining({ codigo: 'HIST-2022', estudiante: 17, modalidad: 3, periodo: 8 })))
+    expect(postulacionesService.inicializarFlujo).not.toHaveBeenCalled()
+    expect(await screen.findByText('Registro histórico creado')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cargar documentación' })).toBeInTheDocument()
+  })
+
+  it('consulta los tipos históricos de la postulación y muestra nombres del backend', async () => {
+    const user = userEvent.setup()
+    const historical = { id: 55, codigo: 'HIST-2022', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO', estudiante_detalle: { nombre_completo: 'Luis Fernando Menacho Melgar' }, modalidad_detalle: { nombre: 'Proyecto de Grado' }, periodo_detalle: { gestion: 2022, semestre: 'I' } }
+    crudService.create.mockResolvedValue(historical)
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([
+      { id: 11, codigo: 'ACTA_DEFENSA', nombre: 'Acta de defensa' },
+      { id: 12, codigo: 'CERTIFICADO', nombre: 'Certificado' },
+    ])
+    setup()
+    await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await user.selectOptions(screen.getByLabelText('Tipo de registro'), 'HISTORICO')
+    await user.type(screen.getByRole('dialog').querySelector('input[required]'), 'HIST-2022')
+    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
+    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
+    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+    await user.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
+
+    await waitFor(() => expect(postulacionesService.obtenerTiposDocumentosHistoricos).toHaveBeenCalledWith(55, expect.any(AbortSignal)))
+    expect(screen.getByRole('option', { name: 'Acta de defensa' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Certificado' })).toBeInTheDocument()
+  })
+
+  it('muestra un mensaje humano cuando no hay tipos históricos y bloquea la subida', async () => {
+    const user = userEvent.setup()
+    crudService.create.mockResolvedValue({ id: 55, codigo: 'HIST-2022', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO' })
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([])
+    setup()
+    await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await user.selectOptions(screen.getByLabelText('Tipo de registro'), 'HISTORICO')
+    await user.type(screen.getByRole('dialog').querySelector('input[required]'), 'HIST-2022')
+    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
+    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
+    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+    await user.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
+
+    expect(await screen.findByText('No existen tipos de documentos configurados para esta modalidad.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Subir documento' })).toBeDisabled()
+  })
+
+  it('sube el documento histórico con la ruta correcta y conserva el contrato de FormData', async () => {
+    const user = userEvent.setup()
+    const historical = { id: 55, codigo: 'HIST-2022', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO' }
+    crudService.create.mockResolvedValue(historical)
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([{ id: 11, nombre: 'Acta de defensa' }])
+    postulacionesService.subirDocumentoHistorico.mockResolvedValue({ id: 99 })
+    setup()
+    await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await user.selectOptions(screen.getByLabelText('Tipo de registro'), 'HISTORICO')
+    await user.type(screen.getByRole('dialog').querySelector('input[required]'), 'HIST-2022')
+    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
+    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
+    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+    await user.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
+    await user.selectOptions(screen.getByLabelText('Tipo de documento *'), '11')
+    const file = new File(['archivo'], 'acta.pdf', { type: 'application/pdf' })
+    await user.upload(screen.getByLabelText('Archivo *'), file)
+    await user.click(screen.getByRole('button', { name: 'Subir documento' }))
+
+    expect(postulacionesService.subirDocumentoHistorico).toHaveBeenCalledWith(55, expect.any(FormData), expect.any(AbortSignal))
+    const formData = postulacionesService.subirDocumentoHistorico.mock.calls[0][1]
+    expect(formData.get('tipo_documento_id')).toBe('11')
+    expect(formData.get('archivo')).toBe(file)
+  })
+
+  it('muestra errores humanos del backend para carga histórica con 400 o 403', async () => {
+    const user = userEvent.setup()
+    crudService.create.mockResolvedValue({ id: 55, codigo: 'HIST-2022', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO' })
+    postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([{ id: 11, nombre: 'Acta de defensa' }])
+    postulacionesService.subirDocumentoHistorico.mockRejectedValue({ status: 403, message: 'No tienes autorización para cargar documentos en esta postulación.' })
+    setup()
+    await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await user.selectOptions(screen.getByLabelText('Tipo de registro'), 'HISTORICO')
+    await user.type(screen.getByRole('dialog').querySelector('input[required]'), 'HIST-2022')
+    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
+    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
+    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
+    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+    await user.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
+    await user.selectOptions(screen.getByLabelText('Tipo de documento *'), '11')
+    await user.upload(screen.getByLabelText('Archivo *'), new File(['archivo'], 'acta.pdf', { type: 'application/pdf' }))
+    await user.click(screen.getByRole('button', { name: 'Subir documento' }))
+
+    expect(await screen.findByText('No tienes autorización para cargar documentos en esta postulación.')).toBeInTheDocument()
+  })
+
+  it('oculta los controles de registro histórico para estudiantes sin permisos administrativos', async () => {
+    crudService.list.mockResolvedValue({ count: 0, results: [] })
+    render(<MemoryRouter><AuthContext.Provider value={{ hasPermission: () => false }}><PostulantesPage /></AuthContext.Provider></MemoryRouter>)
+    await waitFor(() => expect(crudService.list).toHaveBeenCalled())
+    expect(screen.queryByLabelText('Tipo de registro')).not.toBeInTheDocument()
+  })
+
+  it('mantiene el listado operativo y etiqueta humanamente el tipo de registro', async () => {
+    setup({
+      rows: [
+        { id: 1, codigo: 'POST-001', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'SEGUIMIENTO' },
+        { id: 2, codigo: 'POST-002', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO' },
+      ],
+    })
+    expect(await screen.findByText('Proceso con seguimiento')).toBeInTheDocument()
+    expect(screen.getByText('Registro histórico')).toBeInTheDocument()
   })
 
   it('limpia la búsqueda, vuelve a la primera página y muestra la nueva postulación tras crear', async () => {

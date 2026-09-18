@@ -21,6 +21,7 @@ class WorkflowService:
     @staticmethod
     def inicializar_flujo(postulacion: Postulacion, usuario: CustomUser) -> list[SeguimientoEtapa]:
         WorkflowService._validar_postulacion(postulacion)
+        WorkflowService._validar_postulacion_operativa(postulacion)
         WorkflowService._validar_usuario(usuario)
 
         with transaction.atomic():
@@ -445,9 +446,15 @@ class WorkflowService:
             raise ValidationError("La postulacion es obligatoria.")
 
     @staticmethod
+    def _validar_postulacion_operativa(postulacion: Postulacion) -> None:
+        if postulacion.tipo_registro == Postulacion.TipoRegistroChoices.HISTORICO:
+            raise ValidationError("Las postulaciones históricas no participan en el workflow operativo.")
+
+    @staticmethod
     def _validar_seguimiento(seguimiento: SeguimientoEtapa) -> None:
         if not isinstance(seguimiento, SeguimientoEtapa) or not seguimiento.pk:
             raise ValidationError("El seguimiento es obligatorio.")
+        WorkflowService._validar_postulacion_operativa(seguimiento.postulacion)
 
     @staticmethod
     def _validar_usuario(usuario: CustomUser) -> None:

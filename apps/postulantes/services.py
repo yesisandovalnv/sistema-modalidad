@@ -7,6 +7,7 @@ from django.utils.dateparse import parse_datetime
 
 from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Observacion, Postulacion
 from apps.usuarios.models import AuditLog, CustomUser
+from core.permissions import is_staff_user
 
 
 class PostulacionService:
@@ -120,6 +121,61 @@ class PostulacionService:
             )
 
             return postulacion
+
+    @staticmethod
+    def crear_postulacion_historica(*args: Any, **kwargs: Any) -> Postulacion:
+        """Incorpora un proceso concluido sin crear seguimiento operativo."""
+        if not args:
+            raise ValueError("Se requieren datos para crear la postulación histórica.")
+
+        datos = args[0]
+        usuario = datos.get("usuario")
+        estudiante = datos.get("estudiante")
+        modalidad = datos.get("modalidad")
+        periodo = datos.get("periodo")
+        codigo = datos.get("codigo")
+        observaciones_generales = datos.get("observaciones_generales")
+
+        if not is_staff_user(usuario):
+            raise ValidationError("Solo un usuario administrativo puede crear postulaciones históricas.")
+        if not estudiante or not modalidad or not periodo or not codigo:
+            raise ValidationError("Faltan datos obligatorios para crear la postulación histórica.")
+
+        with transaction.atomic():
+            estudiante = CustomUser.objects.select_for_update().get(pk=estudiante.pk)
+            estado_final = EstadoPostulacion.objects.filter(codigo="CONCLUIDA").first()
+            if not estado_final:
+                raise ValidationError("No existe el estado final CONCLUIDA.")
+            try:
+                historico = Postulacion.objects.create(
+                    codigo=codigo,
+                    estudiante=estudiante,
+                    modalidad=modalidad,
+                    periodo=periodo,
+                    observaciones_generales=observaciones_generales,
+                    estado_actual=estado_final,
+                    vigencia=Postulacion.VigenciaChoices.CERRADA,
+                    tipo_registro=Postulacion.TipoRegistroChoices.HISTORICO,
+                )
+            except IntegrityError as exc:
+                if not PostulacionService._es_conflicto_postulacion_vigente(exc):
+                    raise
+                raise ValidationError("El estudiante ya tiene una postulación vigente.") from exc
+
+            PostulacionService.registrar_historial({
+                "postulacion": historico,
+                "estado_anterior": None,
+                "estado_nuevo": estado_final,
+                "usuario": usuario,
+                "comentario": "Postulación histórica incorporada como proceso concluido.",
+            })
+            PostulacionService._registrar_auditoria(
+                usuario=usuario,
+                accion="crear_postulacion_historica",
+                modulo="postulaciones",
+                descripcion=f"Se incorporó la postulación histórica {historico.codigo} para el estudiante {estudiante}",
+            )
+            return historico
 
     @staticmethod
     def dar_de_baja(*args: Any, **kwargs: Any) -> Postulacion:

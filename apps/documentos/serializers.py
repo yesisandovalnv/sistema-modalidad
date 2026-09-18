@@ -207,6 +207,28 @@ class SubirDocumentoSerializer(serializers.Serializer):
         return value
 
 
+class SubirDocumentoHistoricoSerializer(serializers.Serializer):
+    """Solicitud administrativa para cargar un documento histórico."""
+
+    tipo_documento_id = serializers.IntegerField(min_value=1)
+    archivo = serializers.FileField()
+
+    def validate_archivo(self, value):
+        if value is None:
+            raise serializers.ValidationError("El archivo es obligatorio.")
+        size = getattr(value, "size", None)
+        if size == 0:
+            raise serializers.ValidationError("El archivo no puede estar vacío.")
+        return value
+
+
+class TipoDocumentoHistoricoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TipoDocumento
+        fields = ("id", "codigo", "nombre")
+        read_only_fields = fields
+
+
 class AprobarDocumentoSerializer(serializers.Serializer):
     """Serializador para la aprobación de un documento."""
 

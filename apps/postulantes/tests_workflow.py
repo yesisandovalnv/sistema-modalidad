@@ -196,6 +196,35 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
         self.assertEqual(SeguimientoEtapa.objects.filter(postulacion=self.postulacion).count(), 4)
         self.assertEqual(len(repetido), 4)
 
+    def test_workflow_rechaza_postulacion_historica(self):
+        self.postulacion.tipo_registro = Postulacion.TipoRegistroChoices.HISTORICO
+        self.postulacion.vigencia = Postulacion.VigenciaChoices.CERRADA
+        self.postulacion.save(update_fields=["tipo_registro", "vigencia"])
+
+        with self.assertRaises(ValidationError):
+            WorkflowService.inicializar_flujo(self.postulacion, self.admin)
+
+    def test_acciones_rechazan_seguimiento_de_postulacion_historica(self):
+        self.postulacion.tipo_registro = Postulacion.TipoRegistroChoices.HISTORICO
+        self.postulacion.vigencia = Postulacion.VigenciaChoices.CERRADA
+        self.postulacion.save(update_fields=["tipo_registro", "vigencia"])
+        seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=self.etapa_inscripcion,
+        )
+        acciones = (
+            lambda: WorkflowService.iniciar_etapa(seguimiento, self.admin),
+            lambda: WorkflowService.aprobar_etapa(seguimiento, self.admin),
+            lambda: WorkflowService.observar_etapa(seguimiento, self.admin, "Observación"),
+            lambda: WorkflowService.rechazar_etapa(seguimiento, self.admin),
+            lambda: WorkflowService.omitir_etapa(seguimiento, self.admin),
+        )
+
+        for accion in acciones:
+            with self.subTest(accion=accion):
+                with self.assertRaises(ValidationError):
+                    accion()
+
     def test_inicializar_flujo_falla_si_modalidad_no_tiene_etapas(self):
         estudiante_sin_etapas = User.objects.create_user(
             username="estudiante_flujo_sin_etapas",

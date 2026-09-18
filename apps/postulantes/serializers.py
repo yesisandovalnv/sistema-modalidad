@@ -67,6 +67,7 @@ class PostulacionSerializer(serializers.ModelSerializer):
             "periodo",
             "estado_actual",
             "vigencia",
+            "tipo_registro",
             "fecha_baja",
             "motivo_baja",
             "baja_por",
@@ -87,6 +88,7 @@ class PostulacionSerializer(serializers.ModelSerializer):
             "updated_at",
             "activo",
             "vigencia",
+            "tipo_registro",
             "fecha_baja",
             "motivo_baja",
             "baja_por",
@@ -138,6 +140,10 @@ class PostulacionSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     campo: "Este campo no puede modificarse después de crear la postulación."
                     for campo in sorted(estructurales)
+                })
+            if "tipo_registro" in self.initial_data:
+                raise serializers.ValidationError({
+                    "tipo_registro": "Este campo no puede modificarse después de crear la postulación."
                 })
         estudiante = attrs.get("estudiante", getattr(self.instance, "estudiante", None))
         modalidad = attrs.get("modalidad", getattr(self.instance, "modalidad", None))
