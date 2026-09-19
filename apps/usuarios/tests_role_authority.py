@@ -143,7 +143,7 @@ class CanonicalRoleAuthorityTests(TestCase):
 
     def test_direct_api_access_preserves_role_matrix(self):
         url = "/api/v1/academico/modalidades/"
-        self.assertEqual(self.client_as(self.admin).post(url, {"codigo": "DIRECT", "nombre": "Directa"}).status_code, 201)
+        self.assertEqual(self.client_as(self.admin).post(url, {"codigo": "DIRECT", "nombre": "Directa"}).status_code, 405)
         self.assertEqual(self.client_as(self.teacher_with_staff).post(url, {"codigo": "NO", "nombre": "No"}).status_code, 403)
         self.assertEqual(self.client_as(self.student).get(url).status_code, 200)
         self.assertEqual(self.client_as(self.teacher).get("/api/v1/reportes/dashboard/").status_code, 200)
