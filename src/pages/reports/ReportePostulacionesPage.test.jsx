@@ -61,7 +61,7 @@ describe('ReportePostulacionesPage', () => {
       previous: null,
       results: [
         { postulacion_id: 1, postulante_nombre: 'Ana Pérez', modalidad: { nombre: 'Proyecto de grado' }, gestion: 2026, semestre: 'I', tutor_activo: 'tutor1', tipo_registro: 'SEGUIMIENTO', etapa_actual: 'DEFENSA_PUBLICA', estado_general: 'EN_PROCESO', porcentaje_etapas_aprobadas: 50, documentos_pendientes: 0, proxima_defensa: null, concluida: false, cierre_documental_aprobado: false, revision_final_aprobada: false, cierre_aplicable: true, fecha_actualizacion: '2026-08-20T12:00:00Z' },
-        { postulacion_id: 2, postulante_nombre: 'Luis', modalidad: { nombre: 'Proyecto de grado' }, gestion: 2026, semestre: 'I', tutor_activo: 'tutor2', tipo_registro: 'HISTORICO', etapa_actual: null, estado_general: 'CONCLUIDA', porcentaje_etapas_aprobadas: null, documentos_pendientes: 0, proxima_defensa: null, concluida: true, cierre_documental_aprobado: false, revision_final_aprobada: false, cierre_aplicable: true, fecha_actualizacion: '2026-08-21T12:00:00Z' },
+        { postulacion_id: 2, postulante_nombre: 'Luis', modalidad: { nombre: 'Proyecto de grado' }, gestion: 2026, semestre: 'I', tutor_activo: 'tutor2', tipo_registro: 'HISTORICO', etapa_actual: null, estado_general: 'CONCLUIDA', porcentaje_etapas_aprobadas: null, documentos_pendientes: 2, proxima_defensa: '2026-09-15T18:00:00Z', concluida: true, cierre_documental_aprobado: false, revision_final_aprobada: false, cierre_aplicable: true, fecha_actualizacion: '2026-08-21T12:00:00Z' },
       ],
     })
 
@@ -73,9 +73,13 @@ describe('ReportePostulacionesPage', () => {
     expect(within(seguimientoRow).getByText('50.00%')).toBeInTheDocument()
 
     const historicoRow = screen.getByText('Luis').closest('tr')
-    expect(within(historicoRow).getByText('Histórico')).toBeInTheDocument()
-    expect(within(historicoRow).getAllByText('No aplica')).toHaveLength(2)
-    expect(within(historicoRow).getAllByText('No aplica')[0]).toBeInTheDocument()
+    const cells = Array.from(historicoRow.querySelectorAll('td'))
+    expect(cells[5].textContent).toContain('Histórico')
+    expect(cells[6].textContent).toContain('No aplica')
+    expect(cells[8].textContent).toContain('No aplica')
+    expect(cells[9].textContent).toContain('No aplica')
+    expect(cells[10].textContent).toContain('No aplica')
+    expect(cells[11].textContent).toContain('No aplica')
   })
 
   it('muestra Exportar Excel y descarga el archivo XLSX', async () => {

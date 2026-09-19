@@ -54,20 +54,25 @@ class ReportePostulacionesService:
         if tipo_registro == Postulacion.TipoRegistroChoices.HISTORICO:
             etapa_actual=None
             pct=None
+            documentos_pendientes=None
+            proxima_defensa=None
+            cierre_aplicable=False
         else:
             etapa_actual=p.etapa_actual_codigo
             if p.total_etapas and p.etapas_aprobadas == 0:
                 pct=Decimal("100.00")
             else:
                 pct=Decimal("0.00") if not p.total_etapas else (Decimal(p.etapas_aprobadas)*100/Decimal(p.total_etapas)).quantize(Decimal("0.01"),ROUND_HALF_UP)
-        cierre_aplicable=(
-            ModalidadPolicyRegistry.has_policy(p.modalidad)
-            and ModalidadPolicyRegistry.get(p.modalidad).get_cierre_policy() is not None
-        )
+            documentos_pendientes=p.documentos_pendientes_count
+            proxima_defensa=p.proxima_defensa
+            cierre_aplicable=(
+                ModalidadPolicyRegistry.has_policy(p.modalidad)
+                and ModalidadPolicyRegistry.get(p.modalidad).get_cierre_policy() is not None
+            )
         return {"postulacion_id":p.pk,"postulante_id":p.estudiante_id,"postulante_nombre":p.estudiante.nombre_completo or p.estudiante.username,
           "modalidad":{"codigo":p.modalidad.codigo,"nombre":p.modalidad.nombre},"gestion":p.periodo.gestion,"semestre":p.periodo.semestre,
           "titulo_trabajo":None,"tutor_activo":p.tutor_nombre,"tipo_registro":tipo_registro,"etapa_actual":etapa_actual,"estado_general":getattr(p.estado_actual,"codigo",None),
-          "porcentaje_etapas_aprobadas":pct,"documentos_pendientes":p.documentos_pendientes_count,"proxima_defensa":p.proxima_defensa,
+          "porcentaje_etapas_aprobadas":pct,"documentos_pendientes":documentos_pendientes,"proxima_defensa":proxima_defensa,
           "revision_final_aprobada":p.revision_final_aprobada,"cierre_documental_aprobado":p.cierre_documental_aprobado,"cierre_aplicable":cierre_aplicable,"concluida":getattr(p.estado_actual,"codigo",None)=="CONCLUIDA",
           "fecha_creacion":p.created_at,"fecha_actualizacion":p.updated_at}
 

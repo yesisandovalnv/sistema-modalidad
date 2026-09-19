@@ -5,6 +5,7 @@ from django.test import TestCase, override_settings
 from openpyxl import load_workbook
 from rest_framework.test import APIClient
 from apps.academico.models import Modalidad,Periodo,EtapaModalidad
+from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento
 from apps.postulantes.models import Postulacion,EstadoPostulacion,SeguimientoEtapa,AsignacionPostulacion
 from apps.notificaciones.models import Notificacion
 from apps.usuarios.models import CustomUser,Role,AuditLog
@@ -74,6 +75,8 @@ class ReportListPermissionTests(ReportBase):
         self.assertTrue(all(row["tipo_registro"] == Postulacion.TipoRegistroChoices.HISTORICO for row in historico.data["results"]))
         self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/?tipo_registro=INVALIDO").status_code, 400)
     def test_historico_sin_etapas_no_inventa_avance(self):
+        tipo_doc = TipoDocumento.objects.create(codigo="DOC_HISTORICO", nombre="Documento histórico", obligatorio=True)
+        estado_doc = EstadoDocumento.objects.create(codigo="ENV", nombre="En validación")
         historico = Postulacion.objects.create(
             codigo="REP-HIST-1",
             estudiante=self.student,
@@ -83,10 +86,14 @@ class ReportListPermissionTests(ReportBase):
             vigencia=Postulacion.VigenciaChoices.CERRADA,
             tipo_registro=Postulacion.TipoRegistroChoices.HISTORICO,
         )
+        DocumentoPostulacion.objects.create(postulacion=historico, tipo_documento=tipo_doc, estado=estado_doc)
         row = next(x for x in self.client.get("/api/v1/reportes/postulaciones/").data["results"] if x["postulacion_id"] == historico.pk)
         self.assertEqual(row["tipo_registro"], Postulacion.TipoRegistroChoices.HISTORICO)
         self.assertIsNone(row["etapa_actual"])
         self.assertIsNone(row["porcentaje_etapas_aprobadas"])
+        self.assertIsNone(row["documentos_pendientes"])
+        self.assertIsNone(row["proxima_defensa"])
+        self.assertFalse(row["cierre_aplicable"])
     def test_seguimiento_conserva_etapa_y_porcentaje(self):
         self.p.tipo_registro = Postulacion.TipoRegistroChoices.SEGUIMIENTO
         self.p.save(update_fields=["tipo_registro"])
@@ -115,19 +122,26 @@ class ExportTests(ReportBase):
     def test_csv_y_auditoria(self):
         r=self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=csv"); self.assertEqual(r.status_code,200); self.assertTrue(r.content.startswith(b"\xef\xbb\xbf")); self.assertIn(b";", r.content.splitlines()[1]); self.assertEqual(AuditLog.objects.filter(accion="EXPORT_APPLICATION_REPORT_CSV").count(),1)
     def test_csv_incluye_tipo_de_registro_y_historico_no_aplica(self):
+        tipo_doc = TipoDocumento.objects.create(codigo="DOC_HISTORICO_CSV", nombre="Documento histórico CSV", obligatorio=True)
+        estado_doc = EstadoDocumento.objects.create(codigo="ENV_CSV", nombre="En validación CSV")
         self.p.tipo_registro = Postulacion.TipoRegistroChoices.SEGUIMIENTO
         self.p.save(update_fields=["tipo_registro"])
         self.p2.tipo_registro = Postulacion.TipoRegistroChoices.HISTORICO
         self.p2.vigencia = Postulacion.VigenciaChoices.CERRADA
         self.p2.save(update_fields=["tipo_registro", "vigencia"])
+        DocumentoPostulacion.objects.create(postulacion=self.p2, tipo_documento=tipo_doc, estado=estado_doc)
         r = self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=csv")
         self.assertEqual(r.status_code, 200)
         rows = list(csv.reader(StringIO(r.content.decode("utf-8-sig")), delimiter=";"))
-        header = rows[0]
-        self.assertIn("Tipo de registro", header)
-        self.assertIn("Seguimiento", [value for row in rows[1:] for value in row])
-        self.assertIn("Histórico", [value for row in rows[1:] for value in row])
-        self.assertIn("No aplica", [value for row in rows[1:] for value in row])
+        headers = rows[0]
+        header_map = {header: index for index, header in enumerate(headers)}
+        historic_row = next(row for row in rows[1:] if f"Postulación #{self.p2.pk}" in row)
+        self.assertEqual(historic_row[header_map["Tipo de registro"]], "Histórico")
+        self.assertEqual(historic_row[header_map["Etapa actual"]], "No aplica")
+        self.assertEqual(historic_row[header_map["Avance (%)"]], "No aplica")
+        self.assertEqual(historic_row[header_map["Documentos pendientes"]], "No aplica")
+        self.assertEqual(historic_row[header_map["Próxima defensa"]], "No aplica")
+        self.assertEqual(historic_row[header_map["Cierre"]], "No aplica")
     def test_export_filtra_por_tipo_registro(self):
         self.p.tipo_registro = Postulacion.TipoRegistroChoices.SEGUIMIENTO
         self.p.save(update_fields=["tipo_registro"])
@@ -142,6 +156,8 @@ class ExportTests(ReportBase):
         self.assertEqual(len(historico_rows), 1)
         self.assertIn("No aplica", historico_rows[0])
     def test_xlsx_historico_no_aplica_no_rompe(self):
+        tipo_doc = TipoDocumento.objects.create(codigo="DOC_HISTORICO_XLSX", nombre="Documento histórico XLSX", obligatorio=True)
+        estado_doc = EstadoDocumento.objects.create(codigo="ENV_XLSX", nombre="En validación XLSX")
         historico = Postulacion.objects.create(
             codigo="XLSX-HIST-1",
             estudiante=self.student,
@@ -151,6 +167,7 @@ class ExportTests(ReportBase):
             vigencia=Postulacion.VigenciaChoices.CERRADA,
             tipo_registro=Postulacion.TipoRegistroChoices.HISTORICO,
         )
+        DocumentoPostulacion.objects.create(postulacion=historico, tipo_documento=tipo_doc, estado=estado_doc)
         r=self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx")
         self.assertEqual(r.status_code,200)
         self.assertEqual(r["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -162,6 +179,9 @@ class ExportTests(ReportBase):
         self.assertEqual(target_row[header_map["Etapa actual"] - 1].value, "No aplica")
         self.assertEqual(target_row[header_map["Avance (%)"] - 1].value, "No aplica")
         self.assertEqual(target_row[header_map["Tipo de registro"] - 1].value, "Histórico")
+        self.assertEqual(target_row[header_map["Documentos pendientes"] - 1].value, "No aplica")
+        self.assertEqual(target_row[header_map["Próxima defensa"] - 1].value, "No aplica")
+        self.assertEqual(target_row[header_map["Cierre"] - 1].value, "No aplica")
 
     def test_xlsx_profesional_filtrado_y_auditoria(self):
         r=self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx&gestion=2026"); self.assertEqual(r.status_code,200)
@@ -169,7 +189,7 @@ class ExportTests(ReportBase):
         sheet=load_workbook(BytesIO(r.content), data_only=False).active
         self.assertEqual(sheet["A1"].value, "SISTEMA DE GRADUACIÓN"); self.assertEqual(sheet["A2"].value, "REPORTE DE POSTULACIONES")
         headers = [sheet.cell(7, column).value for column in range(1, 14)]
-        self.assertEqual(headers, ["Postulación", "Postulante", "Modalidad", "Gestión", "Semestre", "Tutor", "Etapa actual", "Estado general", "Avance (%)", "Documentos pendientes", "Próxima defensa", "Concluida", "Tipo de registro"])
+        self.assertEqual(headers, ["Postulación", "Postulante", "Modalidad", "Gestión", "Semestre", "Tutor", "Etapa actual", "Estado general", "Avance (%)", "Documentos pendientes", "Próxima defensa", "Cierre", "Tipo de registro"])
         self.assertEqual(sheet.max_row, 9); self.assertEqual(sheet.freeze_panes, "A8"); self.assertTrue(sheet.auto_filter.ref)
         header_map = {header: index + 1 for index, header in enumerate(headers)}
         target_row = next(row for row in sheet.iter_rows(min_row=8, max_row=sheet.max_row, values_only=False) if row[0].value == f"Postulación #{self.p.pk}")

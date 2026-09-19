@@ -43,7 +43,7 @@ def safe_csv(v):
     return "'"+text if candidate.startswith(("=","+","-","@")) or text.startswith(("\t","\r","\n")) else text
 
 
-EXPORT_HEADERS = ["Postulación", "Postulante", "Modalidad", "Gestión", "Semestre", "Tutor", "Etapa actual", "Estado general", "Avance (%)", "Documentos pendientes", "Próxima defensa", "Concluida"]
+EXPORT_HEADERS = ["Postulación", "Postulante", "Modalidad", "Gestión", "Semestre", "Tutor", "Etapa actual", "Estado general", "Avance (%)", "Documentos pendientes", "Próxima defensa", "Cierre"]
 CSV_EXPORT_HEADERS = EXPORT_HEADERS + ["Tipo de registro"]
 XLSX_EXPORT_HEADERS = EXPORT_HEADERS + ["Tipo de registro"]
 EXPORT_ACTIONS = {"csv": "EXPORT_APPLICATION_REPORT_CSV", "xlsx": "EXPORT_APPLICATION_REPORT_XLSX"}
@@ -68,9 +68,9 @@ def export_row(report):
         "No aplica" if tipo_registro == "HISTORICO" else readable_code(report["etapa_actual"], "Sin etapa actual"),
         readable_code(report["estado_general"], "Sin estado"),
         "No aplica" if tipo_registro == "HISTORICO" else Decimal(report["porcentaje_etapas_aprobadas"] or 0),
-        report["documentos_pendientes"],
-        report["proxima_defensa"],
-        "Sí" if report["concluida"] else "No",
+        "No aplica" if tipo_registro == "HISTORICO" else report["documentos_pendientes"],
+        "No aplica" if tipo_registro == "HISTORICO" else report["proxima_defensa"],
+        "No aplica" if tipo_registro == "HISTORICO" else ("Sí" if report["concluida"] else "No"),
     ]
     return fila + [tipo_label]
 
