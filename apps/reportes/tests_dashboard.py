@@ -6,7 +6,9 @@ from openpyxl import load_workbook
 from rest_framework.test import APIClient
 from apps.academico.models import Modalidad,Periodo,EtapaModalidad
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento
-from apps.postulantes.models import Postulacion,EstadoPostulacion,SeguimientoEtapa,AsignacionPostulacion
+from apps.postulantes.models import (CondicionPostulacion, EntregaFisica,
+    EventoDefensa, EvaluacionDefensa, Postulacion, EstadoPostulacion,
+    SeguimientoEtapa, AsignacionPostulacion)
 from apps.notificaciones.models import Notificacion
 from apps.usuarios.models import CustomUser,Role,AuditLog
 from apps.reportes.views import safe_csv
@@ -43,6 +45,124 @@ class DashboardTests(ReportBase):
         self.assertEqual(self.client.get("/api/v1/reportes/dashboard/").data["notificaciones"]["no_leidas"],1)
     def test_cero_sin_division(self):
         Postulacion.objects.all().delete(); self.assertEqual(self.client.get("/api/v1/reportes/dashboard/").data["resumen"]["total_postulaciones"],0)
+
+    def test_dashboard_historico_conserva_descriptivas_y_excluye_operativas(self):
+        historico = Postulacion.objects.create(
+            codigo="REP-DASH-HIST",
+            estudiante=self.student,
+            modalidad=self.mod,
+            periodo=self.period,
+            estado_actual=self.con,
+            vigencia=Postulacion.VigenciaChoices.CERRADA,
+            tipo_registro=Postulacion.TipoRegistroChoices.HISTORICO,
+        )
+        etapa = EtapaModalidad.objects.create(
+            modalidad=self.mod,
+            codigo="DEFENSA_PUBLICA",
+            nombre="Defensa Pública",
+            orden=2,
+            origen_normativo="Norma",
+        )
+        seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=historico,
+            etapa=etapa,
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA,
+        )
+        estado_env = EstadoDocumento.objects.create(codigo="ENV_DASH", nombre="Enviado")
+        estado_apr = EstadoDocumento.objects.create(codigo="APR", nombre="Aprobado")
+        estado_rec = EstadoDocumento.objects.create(codigo="REC", nombre="Rechazado")
+        for codigo, estado, requiere_correccion in (
+            ("DASH_ENV", estado_env, True),
+            ("DASH_APR", estado_apr, False),
+            ("DASH_REC", estado_rec, False),
+        ):
+            DocumentoPostulacion.objects.create(
+                postulacion=historico,
+                tipo_documento=TipoDocumento.objects.create(codigo=codigo, nombre=codigo),
+                estado=estado,
+                requiere_correccion=requiere_correccion,
+            )
+        CondicionPostulacion.objects.create(
+            postulacion=historico,
+            codigo="PLAN_ESTUDIOS",
+            tipo="PLAN_ESTUDIOS",
+            nombre="Plan de estudios",
+            estado=CondicionPostulacion.Estado.PENDIENTE,
+        )
+        EntregaFisica.objects.create(
+            postulacion=historico,
+            codigo="CD_RESPALDO",
+            nombre="CD de respaldo",
+            estado=EntregaFisica.Estado.PENDIENTE,
+        )
+        evento = EventoDefensa.objects.create(
+            postulacion=historico,
+            seguimiento_etapa=seguimiento,
+            tipo_evento=EventoDefensa.Tipo.DEFENSA_PUBLICA,
+            fecha_programada="2026-12-01T10:00:00Z",
+            lugar="Sala RED",
+            programado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=evento,
+            tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,
+            modalidad_registro=EvaluacionDefensa.ModalidadRegistro.CONSENSO,
+            es_resultado_final_evento=True,
+            registrado_por=self.admin,
+        )
+
+        response = self.client.get("/api/v1/reportes/dashboard/?tipo_registro=HISTORICO")
+        self.assertEqual(response.status_code, 200)
+        data = response.data
+        expectations = {
+            "total_postulaciones": (data["resumen"]["total_postulaciones"], 1),
+            "concluidas": (data["resumen"]["concluidas"], 1),
+            "sin_etapa_actual": (data["resumen"]["sin_etapa_actual"], 0),
+            "modalidades": (data["modalidades"], [{"codigo": "PROYECTO_GRADO", "nombre": "Proyecto R", "total": 1}]),
+            "estados": (data["estados"], [{"codigo": "CONCLUIDA", "nombre": "Concluida R", "total": 1}]),
+            "tendencia": (data["tendencia"], [{"gestion": 2026, "total": 1}]),
+            "etapas": (data["etapas"], []),
+            "documentos.total": (data["documentos"]["total"], 3),
+            "documentos.pendientes": (data["documentos"]["pendientes"], 0),
+            "documentos.aprobados": (data["documentos"]["aprobados"], 1),
+            "documentos.rechazados": (data["documentos"]["rechazados"], 1),
+            "documentos.observados": (data["documentos"]["observados"], 1),
+            "documentos.sin_version_vigente": (data["documentos"]["sin_version_vigente"], 3),
+            "documentos.postulaciones_con_correcciones": (data["documentos"]["postulaciones_con_correcciones"], 1),
+            "defensas.programadas": (data["defensas"]["programadas"], 0),
+            "defensas.en_curso": (data["defensas"]["en_curso"], 0),
+            "defensas.finalizadas": (data["defensas"]["finalizadas"], 0),
+            "defensas.suspendidas": (data["defensas"]["suspendidas"], 0),
+            "defensas.canceladas": (data["defensas"]["canceladas"], 0),
+            "defensas.proximas": (data["defensas"]["proximas"], 0),
+            "defensas.evaluaciones_consolidadas": (data["defensas"]["evaluaciones_consolidadas"], 0),
+            "cierre.revision_final_aprobada": (data["cierre"]["revision_final_aprobada"], 0),
+            "cierre.cierre_documental_aprobado": (data["cierre"]["cierre_documental_aprobado"], 0),
+            "cierre.condiciones_pendientes": (data["cierre"]["condiciones_pendientes"], 0),
+            "cierre.entregas_pendientes": (data["cierre"]["entregas_pendientes"], 0),
+        }
+        for metric, (actual, expected) in expectations.items():
+            with self.subTest(metric=metric):
+                self.assertEqual(actual, expected)
+
+    def test_dashboard_seguimiento_conserva_metricas_operativas(self):
+        self.p.tipo_registro = Postulacion.TipoRegistroChoices.SEGUIMIENTO
+        self.p.save(update_fields=["tipo_registro"])
+        self.p2.tipo_registro = Postulacion.TipoRegistroChoices.HISTORICO
+        self.p2.vigencia = Postulacion.VigenciaChoices.CERRADA
+        self.p2.save(update_fields=["tipo_registro", "vigencia"])
+        response = self.client.get("/api/v1/reportes/dashboard/?tipo_registro=SEGUIMIENTO")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["resumen"], {
+            "total_postulaciones": 1,
+            "en_proceso": 1,
+            "concluidas": 0,
+            "rechazadas": 0,
+            "sin_etapa_actual": 0,
+        })
+        self.assertEqual(response.data["documentos"]["pendientes"], 0)
+        self.assertEqual(response.data["defensas"]["programadas"], 0)
+        self.assertEqual(response.data["cierre"]["condiciones_pendientes"], 0)
 
 
 class ReportListPermissionTests(ReportBase):
