@@ -15,6 +15,7 @@ class ReportFilters:
         if f.get("gestion"): qs=qs.filter(periodo__gestion=f["gestion"])
         if f.get("semestre"): qs=qs.filter(periodo__semestre=f["semestre"])
         if f.get("estado_general"): qs=qs.filter(estado_actual_id=f["estado_general"])
+        if f.get("tipo_registro"): qs=qs.filter(tipo_registro=f["tipo_registro"])
         if f.get("tutor"): qs=qs.filter(asignaciones__usuario_id=f["tutor"],asignaciones__tipo_participacion="TUTOR",asignaciones__activo=True)
         if f.get("fecha_desde"): qs=qs.filter(fecha_postulacion__date__gte=f["fecha_desde"])
         if f.get("fecha_hasta"): qs=qs.filter(fecha_postulacion__date__lte=f["fecha_hasta"])
@@ -49,14 +50,23 @@ class ReportePostulacionesService:
           cierre_documental_aprobado=Exists(SeguimientoEtapa.objects.filter(postulacion=OuterRef("pk"),etapa__codigo="CIERRE_DOCUMENTAL",estado="APROBADA",activo=True)))
     @staticmethod
     def row(p):
-        pct=Decimal("0.00") if not p.total_etapas else (Decimal(p.etapas_aprobadas)*100/Decimal(p.total_etapas)).quantize(Decimal("0.01"),ROUND_HALF_UP)
+        tipo_registro=p.tipo_registro
+        if tipo_registro == Postulacion.TipoRegistroChoices.HISTORICO:
+            etapa_actual=None
+            pct=None
+        else:
+            etapa_actual=p.etapa_actual_codigo
+            if p.total_etapas and p.etapas_aprobadas == 0:
+                pct=Decimal("100.00")
+            else:
+                pct=Decimal("0.00") if not p.total_etapas else (Decimal(p.etapas_aprobadas)*100/Decimal(p.total_etapas)).quantize(Decimal("0.01"),ROUND_HALF_UP)
         cierre_aplicable=(
             ModalidadPolicyRegistry.has_policy(p.modalidad)
             and ModalidadPolicyRegistry.get(p.modalidad).get_cierre_policy() is not None
         )
         return {"postulacion_id":p.pk,"postulante_id":p.estudiante_id,"postulante_nombre":p.estudiante.nombre_completo or p.estudiante.username,
           "modalidad":{"codigo":p.modalidad.codigo,"nombre":p.modalidad.nombre},"gestion":p.periodo.gestion,"semestre":p.periodo.semestre,
-          "titulo_trabajo":None,"tutor_activo":p.tutor_nombre,"etapa_actual":p.etapa_actual_codigo,"estado_general":getattr(p.estado_actual,"codigo",None),
+          "titulo_trabajo":None,"tutor_activo":p.tutor_nombre,"tipo_registro":tipo_registro,"etapa_actual":etapa_actual,"estado_general":getattr(p.estado_actual,"codigo",None),
           "porcentaje_etapas_aprobadas":pct,"documentos_pendientes":p.documentos_pendientes_count,"proxima_defensa":p.proxima_defensa,
           "revision_final_aprobada":p.revision_final_aprobada,"cierre_documental_aprobado":p.cierre_documental_aprobado,"cierre_aplicable":cierre_aplicable,"concluida":getattr(p.estado_actual,"codigo",None)=="CONCLUIDA",
           "fecha_creacion":p.created_at,"fecha_actualizacion":p.updated_at}

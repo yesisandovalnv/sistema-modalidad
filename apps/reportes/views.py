@@ -44,6 +44,8 @@ def safe_csv(v):
 
 
 EXPORT_HEADERS = ["Postulación", "Postulante", "Modalidad", "Gestión", "Semestre", "Tutor", "Etapa actual", "Estado general", "Avance (%)", "Documentos pendientes", "Próxima defensa", "Concluida"]
+CSV_EXPORT_HEADERS = EXPORT_HEADERS + ["Tipo de registro"]
+XLSX_EXPORT_HEADERS = EXPORT_HEADERS + ["Tipo de registro"]
 EXPORT_ACTIONS = {"csv": "EXPORT_APPLICATION_REPORT_CSV", "xlsx": "EXPORT_APPLICATION_REPORT_XLSX"}
 
 
@@ -54,27 +56,30 @@ def readable_code(value, empty="Sin dato"):
 
 
 def export_row(report):
-    return [
+    tipo_registro = report.get("tipo_registro")
+    tipo_label = "Seguimiento" if tipo_registro == "SEGUIMIENTO" else "Histórico" if tipo_registro == "HISTORICO" else "Sin tipo"
+    fila = [
         f"Postulación #{report['postulacion_id']}",
         report["postulante_nombre"] or "Sin postulante",
         report["modalidad"]["nombre"] if report.get("modalidad") else "Sin modalidad",
         report["gestion"],
         "Primero" if report["semestre"] == "I" else "Segundo",
         report["tutor_activo"] or "Sin tutor",
-        readable_code(report["etapa_actual"], "Sin etapa actual"),
+        "No aplica" if tipo_registro == "HISTORICO" else readable_code(report["etapa_actual"], "Sin etapa actual"),
         readable_code(report["estado_general"], "Sin estado"),
-        Decimal(report["porcentaje_etapas_aprobadas"]),
+        "No aplica" if tipo_registro == "HISTORICO" else Decimal(report["porcentaje_etapas_aprobadas"] or 0),
         report["documentos_pendientes"],
         report["proxima_defensa"],
         "Sí" if report["concluida"] else "No",
     ]
+    return fila + [tipo_label]
 
 
 def export_xlsx(rows, request, filtros):
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Postulaciones"
-    last_column = get_column_letter(len(EXPORT_HEADERS))
+    last_column = get_column_letter(len(XLSX_EXPORT_HEADERS))
     title_fill = PatternFill("solid", fgColor="0F4C5C")
     header_fill = PatternFill("solid", fgColor="1D7874")
     sheet.merge_cells(f"A1:{last_column}1")
@@ -93,7 +98,7 @@ def export_xlsx(rows, request, filtros):
     sheet["A5"] = "Filtros aplicados:"
     sheet["B5"] = ", ".join(f"{key}={value}" for key, value in sorted(filtros.items())) or "Ninguno"
     header_row = 7
-    for column, header in enumerate(EXPORT_HEADERS, 1):
+    for column, header in enumerate(XLSX_EXPORT_HEADERS, 1):
         cell = sheet.cell(header_row, column, header)
         cell.font = Font(color="FFFFFF", bold=True)
         cell.fill = header_fill
@@ -103,14 +108,17 @@ def export_xlsx(rows, request, filtros):
             cell = sheet.cell(row_number, column, value)
             cell.alignment = Alignment(vertical="top", wrap_text=True)
             if column == 9:
-                cell.value = float(value) / 100
-                cell.number_format = "0.00%"
+                if value == "No aplica":
+                    cell.value = "No aplica"
+                else:
+                    cell.value = float(value) / 100
+                    cell.number_format = "0.00%"
             if column == 11 and isinstance(value, datetime):
                 cell.value = value.replace(tzinfo=None)
                 cell.number_format = "dd/mm/yyyy hh:mm"
     sheet.freeze_panes = "A8"
     sheet.auto_filter.ref = f"A{header_row}:{last_column}{max(header_row, header_row + len(rows))}"
-    for index, width in enumerate([18, 28, 28, 10, 12, 24, 24, 20, 14, 22, 24, 12], 1):
+    for index, width in enumerate([18, 28, 28, 10, 12, 24, 24, 20, 14, 22, 24, 12, 18], 1):
         sheet.column_dimensions[get_column_letter(index)].width = width
     output = io.BytesIO()
     workbook.save(output)
@@ -131,6 +139,6 @@ class ExportView(GenericAPIView):
             response = HttpResponse(export_xlsx(rows, request, f), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             response["Content-Disposition"] = 'attachment; filename="reporte_postulaciones.xlsx"'
             return response
-        stream=io.StringIO(); w=csv.writer(stream, delimiter=";", lineterminator="\r\n"); w.writerow(EXPORT_HEADERS)
+        stream=io.StringIO(); w=csv.writer(stream, delimiter=";", lineterminator="\r\n"); w.writerow(CSV_EXPORT_HEADERS)
         for row in rows: w.writerow([safe_csv(value) for value in row])
         response=HttpResponse("\ufeff"+stream.getvalue(),content_type="text/csv; charset=utf-8"); response["Content-Disposition"]='attachment; filename="postulaciones.csv"'; return response

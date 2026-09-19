@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../ui/button'
 import { reportesService } from '../../services/reportesService'
 
-const empty = { modalidad: '', gestion: '', semestre: '', etapa_actual: '', buscar: '', fecha_desde: '', fecha_hasta: '' }
+const empty = { modalidad: '', gestion: '', semestre: '', tipo_registro: '', etapa_actual: '', buscar: '', fecha_desde: '', fecha_hasta: '' }
 export function ReportFilters({ initial = empty, onApply, showSearch = false }) {
   const [draft, setDraft] = useState({ ...empty, ...initial }); const [modalidades, setModalidades] = useState([]); const [etapas, setEtapas] = useState([]); const [advanced, setAdvanced] = useState(false); const [loadingStages, setLoadingStages] = useState(false); const [stageError, setStageError] = useState(''); const [configurationWarning, setConfigurationWarning] = useState('')
   useEffect(() => { const controller = new AbortController(); reportesService.obtenerModalidades(controller.signal).then(setModalidades).catch(() => {}); return () => controller.abort() }, [])
@@ -18,6 +18,7 @@ export function ReportFilters({ initial = empty, onApply, showSearch = false }) 
       <label className="grid gap-1 text-sm">Modalidad<select className={field} value={draft.modalidad} onChange={set('modalidad')}><option value="">Todas</option>{modalidades.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}</select></label>
       <label className="grid gap-1 text-sm">Gestión<input className={field} type="number" min="1900" max="2200" value={draft.gestion} onChange={set('gestion')} placeholder="2026" /></label>
       <label className="grid gap-1 text-sm">Semestre<select className={field} value={draft.semestre} onChange={set('semestre')}><option value="">Todos</option><option value="I">Primero</option><option value="II">Segundo</option></select></label>
+      <label className="grid gap-1 text-sm">Tipo de registro<select aria-label="Tipo de registro" className={field} value={draft.tipo_registro} onChange={set('tipo_registro')}><option value="">Todos</option><option value="SEGUIMIENTO">Seguimiento</option><option value="HISTORICO">Histórico</option></select></label>
       <label className="grid gap-1 text-sm">Etapa actual<select aria-label="Etapa actual" className={field} value={draft.etapa_actual} onChange={set('etapa_actual')} disabled={!draft.modalidad || loadingStages || etapas.length === 0}><option value="">{loadingStages ? 'Cargando etapas…' : etapas.length === 0 && draft.modalidad ? 'Sin etapas disponibles' : 'Todas'}</option>{etapas.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}</select>{stageError && <span role="alert" className="text-xs text-red-700">{stageError}</span>}{configurationWarning && <span role="status" className="text-xs text-amber-700">{configurationWarning}</span>}</label>
       {showSearch && <label className="grid gap-1 text-sm">Buscar<input className={field} value={draft.buscar} onChange={set('buscar')} placeholder="Nombre o código" /></label>}
     </div>

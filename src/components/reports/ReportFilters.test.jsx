@@ -29,6 +29,16 @@ describe('ReportFilters', () => {
     await user.click(screen.getByRole('button', { name: 'Limpiar filtros' })); expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ modalidad: '', etapa_actual: '' }))
   })
 
+  it('muestra el filtro de tipo de registro y envía el valor correcto', async () => {
+    const onApply = vi.fn(); const user = userEvent.setup()
+    render(<ReportFilters onApply={onApply} />)
+    const tipoRegistro = await screen.findByLabelText('Tipo de registro')
+    expect(tipoRegistro).toHaveValue('')
+    await user.selectOptions(tipoRegistro, 'HISTORICO')
+    await user.click(screen.getByRole('button', { name: 'Aplicar filtros' }))
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ tipo_registro: 'HISTORICO' }))
+  })
+
   it('maneja modalidad sin etapas y error de capacidades', async () => {
     const user = userEvent.setup(); reportesService.obtenerCapacidades.mockResolvedValueOnce({ configuracion_valida: true, etapas: [] }).mockRejectedValueOnce(new Error('falló'))
     render(<ReportFilters onApply={() => {}} />); await user.selectOptions(await screen.findByLabelText('Modalidad'), '1'); expect(await screen.findByText('Sin etapas disponibles')).toBeInTheDocument(); await user.selectOptions(screen.getByLabelText('Modalidad'), '2'); expect(await screen.findByText('No se pudieron cargar las etapas.')).toBeInTheDocument()

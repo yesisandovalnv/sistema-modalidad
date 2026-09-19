@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import ReportePostulacionesPage from './ReportePostulacionesPage'
 import { reportesService } from '../../services/reportesService'
@@ -52,6 +52,30 @@ describe('ReportePostulacionesPage', () => {
     }] })
     render(<ReportePostulacionesPage />)
     expect(await screen.findByText('No aplica')).toBeInTheDocument()
+  })
+
+  it('muestra el tipo de registro del backend y traduce histórica como No aplica', async () => {
+    reportesService.obtenerPostulaciones.mockResolvedValue({
+      count: 2,
+      next: null,
+      previous: null,
+      results: [
+        { postulacion_id: 1, postulante_nombre: 'Ana Pérez', modalidad: { nombre: 'Proyecto de grado' }, gestion: 2026, semestre: 'I', tutor_activo: 'tutor1', tipo_registro: 'SEGUIMIENTO', etapa_actual: 'DEFENSA_PUBLICA', estado_general: 'EN_PROCESO', porcentaje_etapas_aprobadas: 50, documentos_pendientes: 0, proxima_defensa: null, concluida: false, cierre_documental_aprobado: false, revision_final_aprobada: false, cierre_aplicable: true, fecha_actualizacion: '2026-08-20T12:00:00Z' },
+        { postulacion_id: 2, postulante_nombre: 'Luis', modalidad: { nombre: 'Proyecto de grado' }, gestion: 2026, semestre: 'I', tutor_activo: 'tutor2', tipo_registro: 'HISTORICO', etapa_actual: null, estado_general: 'CONCLUIDA', porcentaje_etapas_aprobadas: null, documentos_pendientes: 0, proxima_defensa: null, concluida: true, cierre_documental_aprobado: false, revision_final_aprobada: false, cierre_aplicable: true, fecha_actualizacion: '2026-08-21T12:00:00Z' },
+      ],
+    })
+
+    render(<ReportePostulacionesPage />)
+
+    const seguimientoRow = (await screen.findByText('Ana Pérez')).closest('tr')
+    expect(within(seguimientoRow).getByText('Seguimiento')).toBeInTheDocument()
+    expect(within(seguimientoRow).getByText('Defensa Pública')).toBeInTheDocument()
+    expect(within(seguimientoRow).getByText('50.00%')).toBeInTheDocument()
+
+    const historicoRow = screen.getByText('Luis').closest('tr')
+    expect(within(historicoRow).getByText('Histórico')).toBeInTheDocument()
+    expect(within(historicoRow).getAllByText('No aplica')).toHaveLength(2)
+    expect(within(historicoRow).getAllByText('No aplica')[0]).toBeInTheDocument()
   })
 
   it('muestra Exportar Excel y descarga el archivo XLSX', async () => {
