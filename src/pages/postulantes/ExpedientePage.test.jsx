@@ -7,7 +7,24 @@ import { getActiveTribunalComposition } from './tribunalComposition'
 import { postulacionesService } from '../../services/postulacionesService'
 import { AuthContext } from '../../context/AuthContext'
 
+const { humanizeRequirementCode } = vi.hoisted(() => {
+  const humanizeRequirementCode = (value) => {
+    const code = String(value || '').split(':').pop()
+    const overrides = {
+      ACTA_DEFENSA: 'Acta de Defensa',
+      CD_RESPALDO: 'CD de respaldo',
+      HOJA_APROBACION: 'Hoja de Aprobación',
+      INFORME_FINAL_TUTOR: 'Informe Final del Tutor',
+      PLAN_ESTUDIOS: 'Plan de estudios',
+      PLAZO_MAXIMO: 'Plazo máximo',
+    }
+    return overrides[code] || code.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+  }
+  return { humanizeRequirementCode }
+})
+
 vi.mock('../../services/postulacionesService', () => ({
+  humanizeRequirementCode,
   postulacionesService: {
     obtenerExpediente: vi.fn(), obtenerCapacidadesModalidad: vi.fn(), inicializarFlujo: vi.fn(), iniciarEtapa: vi.fn(), aprobarEtapa: vi.fn(), obtenerHistorial: vi.fn(), obtenerActores: vi.fn(), obtenerDocumentos: vi.fn(),
     obtenerVersiones: vi.fn(), descargarVersion: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), obtenerTiposDocumentosHistoricos: vi.fn(), cargarDocumento: vi.fn(), subirDocumentoHistorico: vi.fn(),
@@ -1159,6 +1176,46 @@ describe('ExpedientePage US-008', () => {
     })
     renderApplicationManagerPage()
     expect(await screen.findByRole('button', { name: 'Aprobar Documento Final' })).toBeInTheDocument()
+  })
+
+  it('muestra el faltante humano al fallar la aprobación de la etapa actual', async () => {
+    const reviewStage = { id: 120, codigo: 'REVISION_FINAL_POST_PUBLICA', nombre: 'Revisión Final Post Pública', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: {
+        ...response.flujo,
+        etapa_actual: reviewStage,
+        etapas: [reviewStage],
+        orientacion_etapa_actual: {
+          mensaje: 'Completa los requisitos de la etapa actual.',
+          requisitos: [{ tipo: 'DOCUMENTO', codigo: 'HOJA_APROBACION', nombre: 'Hoja de Aprobación', cumplido: false, estado_display: 'Pendiente', destino: '#documentos' }],
+          siguiente_accion: { codigo: 'APROBAR_ETAPA', titulo: 'Aprobar Revisión Final Post Pública', estado: 'DISPONIBLE', destino: '#resumen' },
+        },
+      },
+    })
+    postulacionesService.aprobarEtapa.mockRejectedValue({
+      status: 400,
+      message: 'No se puede aprobar la etapa. Falta completar: Hoja de Aprobación.',
+      faltantes: ['DOCUMENTO:HOJA_APROBACION'],
+      fields: { faltantes: ['DOCUMENTO:HOJA_APROBACION'] },
+    })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderApplicationManagerPage()
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+
+    expect(await screen.findByText(/Hay 1 requisito pendiente/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Aprobar Revisión Final Post Pública' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se puede aprobar la Revisión Final Post Pública. Falta completar: Hoja de Aprobación.')
+    expect(screen.queryByText('DOCUMENTO:HOJA_APROBACION')).not.toBeInTheDocument()
+    const orientation = screen.getByRole('heading', { name: 'Qué debes hacer ahora' }).parentElement
+    expect(within(orientation).getByText('Falta completar: Hoja de Aprobación.', { exact: true })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Ir a documentos' })).toHaveLength(1)
+    expect(screen.queryByRole('link', { name: 'Ir a documentos' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Ir a documentos' }))
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+    confirm.mockRestore()
   })
 
   it('no ofrece aprobar Documento Final al estudiante aunque la orientación esté lista', async () => {

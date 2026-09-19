@@ -4,7 +4,7 @@ import { PageHeader, DataState, Modal } from '../../components/crud/CrudShell'
 import { Card } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Pagination } from '../../components/reports/ReportComponents'
-import { postulacionesService } from '../../services/postulacionesService'
+import { humanizeRequirementCode, postulacionesService } from '../../services/postulacionesService'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { AuthContext } from '../../context/AuthContext'
 import DefenseParticipants from './DefenseParticipants'
@@ -618,9 +618,19 @@ export default function ExpedientePage() {
     } catch (requestError) {
       if (!requestError.canceled && !controller.signal.aborted) {
         stageApprovalSubmitting.current = false
-        setStageApproval({ submitting: false, error: requestError.message, fields: requestError.fields || {} })
+        const error = requestError.faltantes?.length
+          ? `No se puede aprobar la ${currentStage.nombre || formatCode(currentStage.codigo)}. Falta completar: ${requestError.faltantes.map(humanizeRequirementCode).join(', ')}.`
+          : requestError.message
+        setStageApproval({ submitting: false, error, fields: requestError.fields || {} })
       }
     }
+  }
+
+  const scrollToDocuments = () => {
+    const documentsSection = document.getElementById('documentos')
+    if (!documentsSection) return
+    documentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}#documentos`)
   }
 
   const closeAssignment = () => {
@@ -1051,6 +1061,9 @@ export default function ExpedientePage() {
       if (review.action === 'corregir') await postulacionesService.marcarObservacionCorregida(review.observation.id, controller.signal)
       setReview(null)
       reviewController.current = null
+      setStageApproval({ submitting: false, error: '', fields: {} })
+      setClosureRevision((current) => current + 1)
+      setRevision((current) => current + 1)
       setDocumentsRevision((current) => current + 1)
       setVersionsRevision((current) => current + 1)
       if (selectedVersion) setObservationsRevision((current) => current + 1)
@@ -1173,7 +1186,7 @@ export default function ExpedientePage() {
   </>
   const closureSection = cierreSoportado && <details id="condiciones-tecnicas" open={closureDetailsOpen} className="scroll-mt-24 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
     <summary className="cursor-pointer list-none px-6 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">
-      <span className="text-lg font-bold">{closureIsRelevant ? 'Cierre técnico' : 'Preparación para cierre'}</span>
+      <span className="text-lg font-bold">{currentStage?.codigo === 'REVISION_FINAL_POST_PUBLICA' ? 'Información para el cierre documental posterior' : closureIsRelevant ? 'Cierre técnico' : 'Preparación para cierre'}</span>
       <span className="mt-1 block text-sm text-slate-500">{formatClosureSummary(cierre.data)}</span>
       <span className="mt-2 block text-sm font-medium text-sky-700 dark:text-sky-300">Ver detalle</span>
     </summary>
@@ -1273,9 +1286,13 @@ export default function ExpedientePage() {
                     {stageApproval.submitting ? 'Procesando...' : `Aprobar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
                   </Button>
                   {pendingCurrentRequirements > 0 && <p id="stage-approval-guidance" className="mt-2 text-sm text-amber-700 dark:text-amber-300">Hay {pendingCurrentRequirements} {pendingCurrentRequirements === 1 ? 'requisito pendiente' : 'requisitos pendientes'}. Puedes intentar la aprobación; el backend realizará la validación definitiva.</p>}
-                  {stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
-                  {Array.isArray(stageApproval.fields?.faltantes) && stageApproval.fields.faltantes.length > 0 && (
-                    <p role="alert" className="mt-2 text-sm text-red-600">Faltantes: {stageApproval.fields.faltantes.map(formatCode).join(', ')}</p>
+                  {stageApproval.error && (
+                    <>
+                      <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>
+                    </>
+                  )}
+                  {!stageApproval.error && Array.isArray(stageApproval.fields?.faltantes) && stageApproval.fields.faltantes.length > 0 && (
+                    <p className="mt-2 text-sm text-red-600">Faltantes: {stageApproval.fields.faltantes.map(humanizeRequirementCode).join(', ')}</p>
                   )}
                 </div>
               )}
@@ -1285,7 +1302,7 @@ export default function ExpedientePage() {
       </Card>
 
       {!isHistorical && <ExpedienteNav />}
-      {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} assignments={activeActors.data?.results || []} documents={documents.data?.results || []} defenses={defenses.data?.results || []} reports={tribunalReports.data} stageReportsAvailable={Boolean(tribunalReviewStage)} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
+      {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} assignments={activeActors.data?.results || []} documents={documents.data?.results || []} defenses={defenses.data?.results || []} reports={tribunalReports.data} stageReportsAvailable={Boolean(tribunalReviewStage)} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
 
       {!isHistorical && currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA' && reviewSection}
 
@@ -1436,7 +1453,7 @@ function ExpedienteNav() {
   </nav>
 }
 
-function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, completedStages = 0, totalStages = 0, resultado, concluded, assignments = [], documents = [], defenses = [], reports, stageReportsAvailable = false, isProjectGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageDefenses = false, canManageEvaluations = false, onManageMissingActors }) {
+function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, stageApproval, onGoToDocuments, completedStages = 0, totalStages = 0, resultado, concluded, assignments = [], documents = [], defenses = [], reports, stageReportsAvailable = false, isProjectGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageDefenses = false, canManageEvaluations = false, onManageMissingActors }) {
   if (concluded) return <Card className="overflow-hidden border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
     <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-800 dark:text-emerald-200">✓ Expediente concluido</p>
     <p className="mt-3 font-medium">{cierreSoportado ? 'Todas las etapas académicas y el cierre documental se encuentran completados.' : 'Todas las etapas académicas se encuentran completadas.'}</p>
@@ -1509,11 +1526,17 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
   const tribunalRequirement = requirements.find((item) => item.codigo === 'TRIBUNAL' && item.cumplido === false)
   const tribunalGap = tribunalRequirement ? getRequirementGap(tribunalRequirement) : null
   const specializedTribunalAction = Boolean(tribunalRequirement && nextAction?.destino === '#actores')
-  const orientationMessage = studentMustWaitForApproval
+  const approvalMissingLabels = Array.isArray(stageApproval?.fields?.faltantes)
+    ? stageApproval.fields.faltantes.map(humanizeRequirementCode).join(', ')
+    : ''
+  const orientationMessage = approvalMissingLabels
+    ? `Falta completar: ${approvalMissingLabels}.`
+    : studentMustWaitForApproval
     ? 'El Documento Final está aprobado. Espera la aprobación de la etapa por el personal responsable.'
     : specializedTribunalAction
     ? 'Antes de programar la Defensa de Perfil, debes completar la conformación del tribunal.'
     : effectiveOrientation?.mensaje || stageMessage
+  const visibleOrientationAction = approvalMissingLabels ? null : nextAction
   return <Card className="overflow-hidden border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950">
     <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800 dark:text-sky-200">Orientación del expediente</p>
     <h2 className="mt-2 text-xl font-bold">{administrativeActionPending ? 'Gestión administrativa pendiente' : 'Qué debes hacer ahora'}</h2>
@@ -1524,7 +1547,11 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
       </div>
     </section>
     <p className="mt-4 text-sm">{orientationMessage}</p>
-    {administrativeActionPending ? <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="administrative-action-title">
+    {approvalMissingLabels ? <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="missing-document-action-title">
+      <h3 id="missing-document-action-title" className="text-lg font-bold">Siguiente acción</h3>
+      <p className="mt-1 text-sm">Completa el documento pendiente para volver a intentar la aprobación.</p>
+      <Button className="mt-3" onClick={onGoToDocuments}>Ir a documentos</Button>
+    </section> : administrativeActionPending ? <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="administrative-action-title">
       <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 id="administrative-action-title" className="text-lg font-bold">En espera del personal responsable</h3><p className="mt-1 text-sm">{profileDefenseAction.waitingMessage}</p></div><StatusBadge value="Pendiente" compact /></div>
       <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#defensas">Ver defensa</a>
     </section> : specializedTribunalAction ? <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="tribunal-action-title">
@@ -1533,7 +1560,7 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
         <StatusBadge value="Pendiente" compact />
       </div>
       <a className="mt-4 inline-block rounded-md bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-600" href="#actores">Gestionar tribunales</a>
-    </section> : nextAction && <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="next-action-title" data-personal-action={personalDocumentAction || undefined}>
+    </section> : visibleOrientationAction && <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="next-action-title" data-personal-action={personalDocumentAction || undefined}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{visibleNextActionTitle}</p><p className="mt-1 text-sm">{nextAction.descripcion}</p></div>
         {nextAction.estado && <StatusBadge value={nextAction.estado_display || nextAction.estado} positive={nextAction.estado === 'COMPLETADA'} compact />}

@@ -1,14 +1,19 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
+from rest_framework.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.academico.models import EtapaModalidad, Modalidad
+from apps.documentos.models import EstadoDocumento, TipoDocumento
+from apps.documentos.services import DocumentoService
 from apps.modalidades.policies import (BaseModalidadPolicy, EtapaDefinition,
     ModalidadNoSoportadaError, ModalidadPolicyRegistry)
 from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
 from apps.modalidades.tesis_grado import TesisGradoPolicy
 from apps.modalidades.validators import ModalidadConfigurationValidator
-from apps.postulantes.models import EstadoPostulacion, Postulacion
+from apps.postulantes.models import EstadoPostulacion, Postulacion, SeguimientoEtapa
 from apps.postulantes.workflow import WorkflowService
 from apps.academico.models import Periodo
 from apps.usuarios.models import CustomUser
@@ -154,3 +159,101 @@ class ProyectoGradoRequisitosTests(TestCase):
         """Verificar que DOCUMENTO_FINAL sigue siendo aplicable en su etapa."""
         resultado = self.policy.get_documentos_aplicables_en_etapa("DOCUMENTO_FINAL")
         self.assertEqual(resultado, ("DOCUMENTO_FINAL", "OBSERVACIONES_DEFENSA_PERFIL"))
+
+    def test_revision_final_post_publica_ofrece_exactamente_hoja_aprobacion(self):
+        resultado = self.policy.get_documentos_aplicables_en_etapa("REVISION_FINAL_POST_PUBLICA")
+        self.assertEqual(resultado, ("HOJA_APROBACION",))
+
+
+class ProyectoGradoDocumentosAplicablesTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = CustomUser.objects.create_superuser(username="documentos-pg-admin", password="x")
+        modalidad = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto documentos aplicables")
+        periodo = Periodo.objects.create(
+            nombre="2026-PGA", gestion=2026, semestre="I",
+            fecha_inicio="2026-01-01", fecha_fin="2026-12-31",
+        )
+        estado = EstadoPostulacion.objects.create(codigo="EN_PROCESO", nombre="En proceso documentos")
+        self.postulacion = Postulacion.objects.create(
+            codigo="POST-DOCUMENTOS-PG", estudiante=self.admin,
+            modalidad=modalidad, periodo=periodo, estado_actual=estado,
+        )
+        etapas = {
+            "REVISION_FINAL_POST_PUBLICA": EtapaModalidad.objects.create(
+                modalidad=modalidad, codigo="REVISION_FINAL_POST_PUBLICA",
+                nombre="Revisión Final Post Pública", orden=7,
+                obligatoria=True, origen_normativo="Normativa",
+            ),
+            "CIERRE_DOCUMENTAL": EtapaModalidad.objects.create(
+                modalidad=modalidad, codigo="CIERRE_DOCUMENTAL",
+                nombre="Cierre Documental", orden=8,
+                obligatoria=True, origen_normativo="Normativa",
+            ),
+        }
+        SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=etapas["REVISION_FINAL_POST_PUBLICA"],
+            estado="EN_PROCESO",
+        )
+        SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=etapas["CIERRE_DOCUMENTAL"],
+            estado="PENDIENTE",
+        )
+        self.estado_enviado = EstadoDocumento.objects.create(codigo="ENV", nombre="Enviado documentos")
+        self.hoja = TipoDocumento.objects.create(codigo="HOJA_APROBACION", nombre="Hoja de Aprobación")
+        self.acta = TipoDocumento.objects.create(codigo="ACTA_DEFENSA", nombre="Acta de Defensa")
+        self.informe = TipoDocumento.objects.create(codigo="INFORME_FINAL_TUTOR", nombre="Informe Final del Tutor")
+        self.ajeno = TipoDocumento.objects.create(codigo="DOCUMENTO_AJENO_CIERRE", nombre="Documento ajeno al cierre")
+
+    def _activar_cierre(self):
+        SeguimientoEtapa.objects.filter(
+            postulacion=self.postulacion,
+            etapa__codigo="REVISION_FINAL_POST_PUBLICA",
+        ).update(estado="APROBADA")
+        SeguimientoEtapa.objects.filter(
+            postulacion=self.postulacion,
+            etapa__codigo="CIERRE_DOCUMENTAL",
+        ).update(estado="EN_PROCESO")
+
+    def test_endpoint_de_cierre_expone_solo_acta_e_informe_final_tutor(self):
+        self._activar_cierre()
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.get(f"/api/v1/postulaciones/{self.postulacion.pk}/documentos-aplicables/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["etapa_actual"], "CIERRE_DOCUMENTAL")
+        self.assertEqual(
+            {item["codigo"] for item in response.data["documentos_aplicables"]},
+            {"ACTA_DEFENSA", "INFORME_FINAL_TUTOR"},
+        )
+        self.assertNotIn("DOCUMENTO_FINAL", {item["codigo"] for item in response.data["documentos_aplicables"]})
+        self.assertNotIn("HOJA_APROBACION", {item["codigo"] for item in response.data["documentos_aplicables"]})
+
+    def test_carga_ordinaria_permite_informe_y_rechaza_tipo_ajeno(self):
+        self._activar_cierre()
+        service = DocumentoService()
+        archivo = SimpleUploadedFile("informe-tutor.pdf", b"%PDF-1.4", content_type="application/pdf")
+
+        version = service.subir_documento(self.postulacion, self.informe, archivo, self.admin)
+
+        self.assertEqual(version.documento.tipo_documento.codigo, "INFORME_FINAL_TUTOR")
+        with self.assertRaisesMessage(ValidationError, "no puede cargarse en la etapa"):
+            service.subir_documento(
+                self.postulacion,
+                self.ajeno,
+                SimpleUploadedFile("ajeno.pdf", b"%PDF-1.4", content_type="application/pdf"),
+                self.admin,
+            )
+
+    def test_acta_conserva_vinculo_especial_y_rechaza_carga_sin_evento(self):
+        self._activar_cierre()
+        with self.assertRaisesMessage(DjangoValidationError, "ACTA_DEFENSA debe vincularse a una Defensa Pública finalizada"):
+            DocumentoService().subir_documento(
+                self.postulacion,
+                self.acta,
+                SimpleUploadedFile("acta.pdf", b"%PDF-1.4", content_type="application/pdf"),
+                self.admin,
+            )

@@ -1,4 +1,5 @@
 import apiClient from './api'
+import { formatCodeLabel } from '../lib/utils'
 
 function normalize(error) {
   if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
@@ -85,11 +86,50 @@ function normalizeClosure(error) {
   const status = error?.response?.status
   const data = error?.response?.data
   const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
-  if (status === 400 || status === 409) return { status, message: 'La acción no cumple las precondiciones del cierre técnico.', fields }
+  if (status === 400 || status === 409) {
+    const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+    return { status, message: 'La acción no cumple las precondiciones del cierre técnico.', fields }
+  }
   if (status === 401) return { status, message: 'Debes iniciar sesión para gestionar el cierre técnico.' }
   if (status === 403) return { status, message: 'No tienes autorización para gestionar el cierre técnico.' }
   if (status === 404) return { status, message: 'La postulación o su cierre técnico ya no están disponibles.' }
   return { status, message: 'No se pudo completar la acción de cierre. Comprueba tu conexión e intenta nuevamente.' }
+}
+
+const requirementLabelOverrides = {
+  ACTA_DEFENSA: 'Acta de Defensa',
+  CD_RESPALDO: 'CD de respaldo',
+  HOJA_APROBACION: 'Hoja de Aprobación',
+  INFORME_FINAL_TUTOR: 'Informe Final del Tutor',
+  PLAN_ESTUDIOS: 'Plan de estudios',
+  PLAZO_MAXIMO: 'Plazo máximo',
+}
+
+export function humanizeRequirementCode(value) {
+  const code = String(value || '').split(':').pop()
+  return requirementLabelOverrides[code] || formatCodeLabel(code)
+}
+
+function parseStructuredList(value, key) {
+  const match = value.match(new RegExp(`[\\"']${key}[\\"']\\s*:\\s*\\[([^\\]]*)\\]`))
+  if (!match) return null
+  return [...match[1].matchAll(/'([^']*)'|"([^"]*)"/g)].map(([, single, double]) => single ?? double)
+}
+
+function extractStructuredActionFields(data) {
+  if (data && typeof data === 'object' && !Array.isArray(data)) return data
+  if (!Array.isArray(data) || data.length !== 1 || typeof data[0] !== 'string') return {}
+  const faltantes = parseStructuredList(data[0], 'faltantes')
+  if (!faltantes) return {}
+  return { faltantes, advertencias: parseStructuredList(data[0], 'advertencias') || [] }
+}
+
+function normalizeStructuredActionError(status, data, fallback) {
+  const fields = extractStructuredActionFields(data)
+  const faltantes = Array.isArray(fields.faltantes) ? fields.faltantes : []
+  if (!faltantes.length) return { status, message: fallback, fields }
+  const labels = faltantes.map(humanizeRequirementCode).join(', ')
+  return { status, message: `No se puede aprobar la etapa. Falta completar: ${labels}.`, fields, faltantes }
 }
 
 async function closureRequest(method, url, payload, signal) {
@@ -221,6 +261,7 @@ export const postulacionesService = {
       if (status === 401) throw { status, message: 'Debes iniciar sesión para aprobar la etapa.' }
       if (status === 403) throw { status, message: 'No tienes autorización para aprobar esta etapa.' }
       if (status === 404) throw { status, message: 'El seguimiento o la etapa ya no están disponibles.' }
+      if (status === 400) throw normalizeStructuredActionError(status, error?.response?.data, 'No se pudo aprobar la etapa. Intenta nuevamente.')
       throw { status, message: 'No se pudo aprobar la etapa. Intenta nuevamente.' }
     }
   },

@@ -243,6 +243,10 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
         documentos = super().get_documentos_aplicables_en_etapa(codigo_etapa)
         if codigo_etapa == "DOCUMENTO_FINAL":
             return (*documentos, "OBSERVACIONES_DEFENSA_PERFIL")
+        if codigo_etapa == "REVISION_FINAL_POST_PUBLICA":
+            return (*documentos, "HOJA_APROBACION")
+        if codigo_etapa == "CIERRE_DOCUMENTAL":
+            return (*documentos, "ACTA_DEFENSA", "INFORME_FINAL_TUTOR")
         return documentos
     def get_revision_tribunal_previa_policy(self): return ProyectoGradoRevisionTribunalPreviaPolicy()
     def _documento_final_y_version_actual(self, seguimiento):

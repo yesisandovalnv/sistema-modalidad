@@ -146,6 +146,39 @@ describe('postulacionesService', () => {
     expect(apiClient.post).toHaveBeenCalledWith('/api/v1/seguimientos-etapa/18/aprobar/', {}, { signal })
   })
 
+  it.each([
+    [['DOCUMENTO:HOJA_APROBACION'], 'Hoja de Aprobación'],
+    [['CONDICION:PLAN_ESTUDIOS', 'ENTREGA:CD_RESPALDO'], 'Plan de estudios, CD de respaldo'],
+  ])('humaniza faltantes estructurados sin perder los códigos originales', async (faltantes, labels) => {
+    apiClient.post.mockRejectedValue({ response: { status: 400, data: [`{'faltantes': [${faltantes.map((value) => `'${value}'`).join(', ')}], 'advertencias': []}`] } })
+
+    await expect(postulacionesService.aprobarEtapa(120)).rejects.toEqual(expect.objectContaining({
+      status: 400,
+      message: `No se puede aprobar la etapa. Falta completar: ${labels}.`,
+      fields: { faltantes, advertencias: [] },
+      faltantes,
+    }))
+  })
+
+  it.each([
+    [401, 'Debes iniciar sesión para aprobar la etapa.'],
+    [403, 'No tienes autorización para aprobar esta etapa.'],
+    [404, 'El seguimiento o la etapa ya no están disponibles.'],
+  ])('conserva el mensaje de autorización o disponibilidad para %s', async (status, message) => {
+    apiClient.post.mockRejectedValue({ response: { status } })
+
+    await expect(postulacionesService.aprobarEtapa(120)).rejects.toEqual({ status, message })
+  })
+
+  it('conserva un fallback genérico para errores desconocidos', async () => {
+    apiClient.post.mockRejectedValue({ response: { status: 500 } })
+
+    await expect(postulacionesService.aprobarEtapa(120)).rejects.toEqual({
+      status: 500,
+      message: 'No se pudo aprobar la etapa. Intenta nuevamente.',
+    })
+  })
+
   it('obtiene el detalle básico con AbortSignal', async () => {
     const signal = new AbortController().signal
     apiClient.get.mockResolvedValue({ data: { id: 5, codigo: 'BASIC-005' } })
