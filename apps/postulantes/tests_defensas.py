@@ -213,6 +213,155 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         ev.refresh_from_db(); self.assertEqual(ev.estado,"PROGRAMADA"); self.assertIsNone(ev.fecha_inicio_real)
         self.assertFalse(AuditLog.objects.filter(accion="START",modulo="DEFENSAS").exists())
 
+    def test_inicio_combinado_registra_todos_los_pendientes_y_delega_quorum_pg(self):
+        ev = self.event()
+        participants = self.add(ev, ["TRIBUNAL", "TRIBUNAL"])
+        tutor_assignment = AsignacionPostulacion.objects.create(
+            postulacion=self.post,
+            usuario=User.objects.create_user(username="tutor_retirado_inicio", role=self.docs[0].role),
+            tipo_participacion="TUTOR",
+            designado_por=self.admin,
+        )
+        retired = EventoDefensaService.agregar_participante(ev, tutor_assignment, "TUTOR", self.admin)
+        EventoDefensaService.remover_participante(ev, retired, self.admin)
+        unincorporated_assignment = self.assign["PRESIDENTE"][0]
+
+        updated = EventoDefensaService.iniciar_evento_con_asistencia(
+            ev,
+            self.admin,
+            [
+                {"participante": participants[0], "presente": True},
+                {"participante": participants[1], "presente": False},
+            ],
+        )
+
+        self.assertEqual(updated.estado, "EN_CURSO")
+        self.assertIsNotNone(updated.fecha_inicio_real)
+        for participant, expected in zip(participants, (True, False)):
+            participant.refresh_from_db()
+            self.assertTrue(participant.activo)
+            self.assertTrue(participant.convocado)
+            self.assertEqual(participant.presente, expected)
+            self.assertIsNotNone(participant.fecha_registro_asistencia)
+            self.assertEqual(participant.registrado_por, self.admin)
+        self.assertFalse(EventoDefensaService.validar_quorum(updated)["valido"])
+        retired.refresh_from_db()
+        self.assertFalse(retired.activo)
+        self.assertIsNone(retired.presente)
+        self.assertFalse(ParticipanteEvento.objects.filter(evento=updated, asignacion=unincorporated_assignment).exists())
+        self.assertEqual(AuditLog.objects.filter(accion="START", modulo="DEFENSAS").count(), 1)
+        self.assertEqual(AuditLog.objects.filter(accion="ATTENDANCE", modulo="DEFENSAS").count(), 2)
+
+    def test_inicio_reprogramado_preserva_asistencias_y_solo_registra_pendientes(self):
+        ev = self.event(state="EN_CURSO")
+        extra = AsignacionPostulacion.objects.create(
+            postulacion=self.post,
+            usuario=User.objects.create_user(username="tribunal_extra_inicio", role=self.docs[0].role),
+            tipo_participacion="TRIBUNAL",
+            designado_por=self.admin,
+        )
+        participants = self.add(ev, ["TRIBUNAL", "TRIBUNAL"])
+        present = EventoDefensaService.registrar_asistencia(participants[0], True, self.admin, "Presente anterior")
+        absent = EventoDefensaService.registrar_asistencia(participants[1], False, self.admin, "Ausencia anterior")
+        prior_values = {
+            present.pk: (present.fecha_registro_asistencia, present.registrado_por_id, present.observaciones),
+            absent.pk: (absent.fecha_registro_asistencia, absent.registrado_por_id, absent.observaciones),
+        }
+        EventoDefensaService.suspender_evento(ev, self.admin, "Suspensión técnica")
+        ev = EventoDefensaService.reprogramar_evento(
+            ev,
+            timezone.now() - timedelta(minutes=1),
+            self.admin,
+            "Nueva fecha ya alcanzada para la prueba",
+        )
+        third = EventoDefensaService.agregar_participante(ev, extra, "TRIBUNAL", self.admin)
+
+        updated = EventoDefensaService.iniciar_evento_con_asistencia(
+            ev,
+            self.admin,
+            [{"participante": third, "presente": True}],
+        )
+
+        present.refresh_from_db()
+        absent.refresh_from_db()
+        third.refresh_from_db()
+        self.assertEqual((present.presente, present.fecha_registro_asistencia, present.registrado_por_id, present.observaciones), (True, *prior_values[present.pk]))
+        self.assertEqual((absent.presente, absent.fecha_registro_asistencia, absent.registrado_por_id, absent.observaciones), (False, *prior_values[absent.pk]))
+        self.assertTrue(present.activo)
+        self.assertTrue(absent.activo)
+        self.assertEqual(third.presente, True)
+        self.assertTrue(third.activo)
+        self.assertEqual(EventoDefensaService.validar_quorum(updated)["valido"], True)
+        self.assertEqual(AuditLog.objects.filter(accion="ATTENDANCE", modulo="DEFENSAS").count(), 3)
+
+    def test_inicio_combinado_falla_si_falta_decision_pendiente_o_incluye_asistencia_existente(self):
+        ev = self.event()
+        participants = self.add(ev, ["TRIBUNAL", "TRIBUNAL"])
+
+        with self.assertRaisesMessage(ValidationError, "Confirma la asistencia"):
+            EventoDefensaService.iniciar_evento_con_asistencia(
+                ev, self.admin, [{"participante": participants[0], "presente": True}],
+            )
+        ev.refresh_from_db()
+        self.assertEqual(ev.estado, "PROGRAMADA")
+        self.assertTrue(all(participant.presente is None for participant in participants))
+
+        ev.estado = "EN_CURSO"
+        ev.save(update_fields=["estado"])
+        existing = EventoDefensaService.registrar_asistencia(participants[0], True, self.admin)
+        ev.estado = "SUSPENDIDA"
+        ev.save(update_fields=["estado"])
+        ev = EventoDefensaService.reprogramar_evento(
+            ev, timezone.now() - timedelta(minutes=1), self.admin, "Nueva fecha",
+        )
+        with self.assertRaisesMessage(ValidationError, "Confirma la asistencia"):
+            EventoDefensaService.iniciar_evento_con_asistencia(
+                ev,
+                self.admin,
+                [
+                    {"participante": existing, "presente": False},
+                    {"participante": participants[1], "presente": True},
+                ],
+            )
+        ev.refresh_from_db()
+        existing.refresh_from_db()
+        self.assertEqual(ev.estado, "PROGRAMADA")
+        self.assertTrue(existing.presente)
+
+    def test_fallo_de_asistencia_combinada_revierte_inicio_y_marcas_parciales(self):
+        ev = self.event()
+        participants = self.add(ev, ["TRIBUNAL", "TRIBUNAL"])
+        registrar = EventoDefensaService.registrar_asistencia
+        calls = 0
+
+        def fail_on_second(participant, presente, usuario, observaciones=""):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise ValidationError("Fallo de asistencia simulado.")
+            return registrar(participant, presente, usuario, observaciones)
+
+        with patch.object(EventoDefensaService, "registrar_asistencia", side_effect=fail_on_second):
+            with self.assertRaisesMessage(ValidationError, "Fallo de asistencia simulado"):
+                EventoDefensaService.iniciar_evento_con_asistencia(
+                    ev,
+                    self.admin,
+                    [
+                        {"participante": participants[0], "presente": True},
+                        {"participante": participants[1], "presente": False},
+                    ],
+                )
+
+        ev.refresh_from_db()
+        self.assertEqual(ev.estado, "PROGRAMADA")
+        self.assertIsNone(ev.fecha_inicio_real)
+        for participant in participants:
+            participant.refresh_from_db()
+            self.assertIsNone(participant.presente)
+            self.assertIsNone(participant.fecha_registro_asistencia)
+            self.assertIsNone(participant.registrado_por_id)
+        self.assertFalse(AuditLog.objects.filter(accion__in=("START", "ATTENDANCE"), modulo="DEFENSAS").exists())
+
     def test_ciclo_operativo_y_auditoria(self):
         ev=self.event(); ev=EventoDefensaService.iniciar_evento(ev,self.admin); ev=EventoDefensaService.suspender_evento(ev,self.admin,"Falta quórum"); ev=EventoDefensaService.reprogramar_evento(ev,timezone.now()+timedelta(days=2),self.admin,"Nueva fecha"); ev=EventoDefensaService.cancelar_evento(ev,self.admin,"Causa")
         self.assertEqual(ev.estado,"CANCELADA"); self.assertTrue({"START","SUSPEND","RESCHEDULE","CANCEL"}.issubset(set(AuditLog.objects.values_list("accion",flat=True))))
@@ -506,8 +655,45 @@ class ApiDefensaTests(DefensaMixin,APITestCase):
         superuser=User.objects.create_superuser(username="superdef",password="secret",role=self.admin.role)
         for user in (self.admin,superuser):
             ev=self.event(); self.client.force_authenticate(user)
-            self.assertEqual(self.client.post(f"/api/v1/eventos-defensa/{ev.pk}/iniciar/",{}).status_code,200)
+            self.assertEqual(self.client.post(f"/api/v1/eventos-defensa/{ev.pk}/iniciar/",{"asistencias":[]},format="json").status_code,200)
             ev.activo=False; ev.save(update_fields=["activo"])
+
+    def test_api_inicio_combinado_devuelve_evento_y_asistencias(self):
+        ev = self.event()
+        participants = self.add(ev, ["TRIBUNAL", "TRIBUNAL"])
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{ev.pk}/iniciar/",
+            {"asistencias": [
+                {"participante": participants[0].pk, "presente": True},
+                {"participante": participants[1].pk, "presente": False},
+            ]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["estado"], "EN_CURSO")
+        self.assertEqual({item["presente"] for item in response.data["participantes"]}, {True, False})
+        self.assertTrue(all(item["activo"] and item["convocado"] for item in response.data["participantes"]))
+
+    def test_api_inicio_combinado_rechaza_decision_incompleta(self):
+        ev = self.event()
+        participant = self.add(ev, ["TRIBUNAL"])[0]
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{ev.pk}/iniciar/",
+            {"asistencias": []},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        ev.refresh_from_db()
+        participant.refresh_from_db()
+        self.assertEqual(ev.estado, "PROGRAMADA")
+        self.assertIsNone(participant.presente)
+
 
     def test_acciones_administrativas_rechazan_todos_los_no_administrativos(self):
         historical=User.objects.create_user(username="histdef",role=self.docs[0].role)
@@ -585,3 +771,66 @@ class ApiDefensaTests(DefensaMixin,APITestCase):
     def test_resultado_final_no_admite_put(self):
         self.client.force_authenticate(self.admin)
         self.assertEqual(self.client.put(f"/api/v1/postulaciones/{self.post.pk}/resultado-final/",{}).status_code,405)
+
+
+class InicioCombinadoQuorumModalidadesTests(TestCase):
+    def setUp(self):
+        self.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Admin inicio combinado")
+        self.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante inicio combinado")
+        self.docente_role = Role.objects.create(codigo="DOCENTE", nombre="Docente inicio combinado")
+        self.admin = User.objects.create_user(username="admin_inicio_combinado", role=self.admin_role, is_staff=True)
+        self.period = Periodo.objects.create(
+            nombre="2026-INICIO-COMBINADO", gestion=2026, semestre="II",
+            fecha_inicio="2026-01-01", fecha_fin="2026-12-31",
+        )
+        self.estado = EstadoPostulacion.objects.create(codigo="REG-INICIO-COMBINADO", nombre="Registrada inicio combinado")
+
+    def _start_and_check_quorum(self, modalidad_codigo, tipo_evento, etapa_codigo, roles):
+        modalidad = Modalidad.objects.create(codigo=modalidad_codigo, nombre=modalidad_codigo)
+        student = User.objects.create_user(username=f"student_{modalidad_codigo.lower()}", role=self.student_role)
+        post = Postulacion.objects.create(
+            codigo=f"POST-{modalidad_codigo}", estudiante=student, modalidad=modalidad,
+            periodo=self.period, estado_actual=self.estado,
+        )
+        stage = EtapaModalidad.objects.create(
+            modalidad=modalidad, codigo=etapa_codigo, nombre=etapa_codigo,
+            orden=1, origen_normativo="Fixture de prueba",
+        )
+        follow = SeguimientoEtapa.objects.create(postulacion=post, etapa=stage, estado="EN_PROCESO")
+        event = EventoDefensa.objects.create(
+            postulacion=post, seguimiento_etapa=follow, tipo_evento=tipo_evento,
+            estado="PROGRAMADA", fecha_programada=timezone.now() - timedelta(minutes=1),
+            lugar="Sala", programado_por=self.admin,
+        )
+        participants = []
+        for index, role in enumerate(roles):
+            user = User.objects.create_user(
+                username=f"{modalidad_codigo.lower()}_{role.lower()}_{index}",
+                role=self.docente_role,
+            )
+            assignment = AsignacionPostulacion.objects.create(
+                postulacion=post, usuario=user, tipo_participacion=role, designado_por=self.admin,
+            )
+            participants.append(ParticipanteEvento.objects.create(
+                evento=event, asignacion=assignment, rol_evento=role,
+            ))
+
+        updated = EventoDefensaService.iniciar_evento_con_asistencia(
+            event,
+            self.admin,
+            [{"participante": participant, "presente": True} for participant in participants],
+        )
+
+        self.assertEqual(updated.estado, "EN_CURSO")
+        self.assertTrue(EventoDefensaService.validar_quorum(updated)["valido"])
+
+    def test_quorum_se_delega_a_policy_de_cada_modalidad(self):
+        cases = (
+            ("PROYECTO_GRADO", "DEFENSA_PERFIL", "PERFIL_PROYECTO", ("TRIBUNAL", "TRIBUNAL")),
+            ("TESIS_GRADO", "DEFENSA_PRIVADA", "DEFENSA_PRIVADA", ("TRIBUNAL", "TRIBUNAL", "DOCENTE_MODALIDAD")),
+            ("TRABAJO_DIRIGIDO", "DEFENSA_PERFIL", "PERFIL_TRABAJO_DIRIGIDO", ("TRIBUNAL", "TRIBUNAL", "TRIBUNAL")),
+            ("GRADUACION_VIA_DIPLOMADO", "DEFENSA_PUBLICA", "DEFENSA_PUBLICA", ("TRIBUNAL", "TRIBUNAL", "DECANO_FACULTAD")),
+        )
+        for modalidad_codigo, tipo_evento, etapa_codigo, roles in cases:
+            with self.subTest(modalidad=modalidad_codigo):
+                self._start_and_check_quorum(modalidad_codigo, tipo_evento, etapa_codigo, roles)

@@ -8,6 +8,7 @@ import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { postulacionesService } from '../../services/postulacionesService'
 
 const emptyForm = { codigo: '', estudiante: '', modalidad: '', periodo: '', observaciones_generales: '', tipo_registro: 'SEGUIMIENTO' }
+const duplicateCodeMessage = 'El código ingresado ya se encuentra registrado en otra postulación. Por favor, ingrese un código diferente.'
 
 const humanizeTipoRegistro = (value) => {
   if (value === 'HISTORICO') return 'Registro histórico'
@@ -234,8 +235,11 @@ export default function PostulantesPage() {
     } catch (requestError) {
       if (requestError.status === 403) setError('No tienes permiso para gestionar postulaciones.')
       else {
-        setError(requestError.message)
-        setFieldErrors(requestError.fields || {})
+        const fields = requestError.fields || {}
+        const codeError = Array.isArray(fields.codigo) ? fields.codigo.join(' ') : fields.codigo
+        const duplicateCode = requestError.status === 400 && /\b(ya existe|already exists|unique)\b/i.test(codeError || '')
+        setError(duplicateCode ? '' : requestError.message)
+        setFieldErrors(duplicateCode ? { ...fields, codigo: [duplicateCodeMessage] } : fields)
       }
     } finally {
       setSaving(false)
@@ -395,9 +399,6 @@ export default function PostulantesPage() {
                   <Info label="Estado técnico" value={stateLabel(detail.data)} />
                   <Info label="Observaciones generales" value={detail.data.observaciones_generales || 'Sin observaciones generales.'} />
                 </dl>
-                <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-                  Estos son datos técnicos básicos y no sustituyen actos administrativos o institucionales.
-                </p>
               </div>
             )}
           </DataState>

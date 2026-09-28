@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -208,7 +209,10 @@ class ProyectoGradoRevisionTribunalPreviaPolicy(BaseRevisionTribunalPreviaPolicy
         if seguimiento.etapa.codigo != self.ETAPA: raise ValidationError("El seguimiento debe corresponder a REVISION_TRIBUNAL_PREVIA.")
     def validar_tribunales(self, seguimiento):
         from apps.postulantes.models import AsignacionPostulacion
-        tribunales = list(AsignacionPostulacion.objects.select_for_update().select_related("usuario").filter(postulacion=seguimiento.postulacion, tipo_participacion="TRIBUNAL", activo=True, usuario__is_active=True, usuario__activo=True))
+        queryset = AsignacionPostulacion.objects.select_related("usuario").filter(postulacion=seguimiento.postulacion, tipo_participacion="TRIBUNAL", activo=True, usuario__is_active=True, usuario__activo=True)
+        if transaction.get_connection().in_atomic_block:
+            queryset = queryset.select_for_update()
+        tribunales = list(queryset)
         if len(tribunales) != 3 or {x.orden_cargo for x in tribunales} != self.ORDENES_TRIBUNAL or len({x.usuario_id for x in tribunales}) != 3: raise ValidationError("REVISION_TRIBUNAL_PREVIA requiere tres tribunales activos distintos con \u00f3rdenes 1, 2 y 3.")
         return tribunales
     def get_documento_final_codigo(self): return self.DOCUMENTO_FINAL

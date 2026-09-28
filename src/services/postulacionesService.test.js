@@ -413,7 +413,7 @@ describe('postulacionesService', () => {
 
   it.each([
     ['programarDefensa', [7, { seguimiento_etapa: 12, tipo_evento: 'DEFENSA_PUBLICA', fecha_programada: '2026-08-20T14:00', lugar: 'Auditorio', modalidad_evento: 'MIXTA', enlace_virtual: 'https://meet.example.test', observaciones: 'Registro técnico' }], '/api/v1/postulaciones/7/eventos-defensa/programar/', { seguimiento_etapa: 12, tipo_evento: 'DEFENSA_PUBLICA', fecha_programada: '2026-08-20T14:00', lugar: 'Auditorio', modalidad_evento: 'MIXTA', enlace_virtual: 'https://meet.example.test', observaciones: 'Registro técnico' }],
-    ['iniciarDefensa', [81], '/api/v1/eventos-defensa/81/iniciar/', {}],
+    ['iniciarDefensa', [81], '/api/v1/eventos-defensa/81/iniciar/', { asistencias: [] }],
     ['finalizarDefensa', [81], '/api/v1/eventos-defensa/81/finalizar/', {}],
     ['suspenderDefensa', [81, 'Pausa técnica'], '/api/v1/eventos-defensa/81/suspender/', { motivo: 'Pausa técnica' }],
     ['cancelarDefensa', [81, 'Cancelación técnica'], '/api/v1/eventos-defensa/81/cancelar/', { motivo: 'Cancelación técnica' }],
@@ -427,6 +427,20 @@ describe('postulacionesService', () => {
     await postulacionesService[method](...args, signal)
     expect(apiClient.post).toHaveBeenCalledWith(url, payload, { signal })
     expect(apiClient.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('envía las decisiones de asistencia pendientes al iniciar una defensa', async () => {
+    const signal = new AbortController().signal
+    const asistencias = [{ participante: 91, presente: true }, { participante: 92, presente: false }]
+    apiClient.post.mockResolvedValue({ data: { id: 81, estado: 'EN_CURSO' } })
+
+    await postulacionesService.iniciarDefensa(81, asistencias, signal)
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      '/api/v1/eventos-defensa/81/iniciar/',
+      { asistencias },
+      { signal },
+    )
   })
 
   it.each([

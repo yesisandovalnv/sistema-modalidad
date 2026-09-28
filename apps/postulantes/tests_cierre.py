@@ -9,6 +9,7 @@ from apps.documentos.models import DocumentoPostulacion,EstadoDocumento,TipoDocu
 from apps.postulantes.cierre import CierrePostulacionService,ProyectoGradoCierrePolicy
 from apps.postulantes.models import (AsignacionPostulacion,CondicionPostulacion,EntregaFisica,
     EstadoPostulacion,EvaluacionDefensa,EventoDefensa,HistorialEstado,Postulacion,SeguimientoEtapa)
+from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.usuarios.models import AuditLog,Role
 from apps.postulantes.workflow import WorkflowService
 
@@ -114,13 +115,25 @@ class PolicyServiceTests(Base,TestCase):
         CierrePostulacionService.aprobar_revision_final(self.post,self.admin)
         self.stages["REVISION_FINAL_POST_PUBLICA"].refresh_from_db()
         self.assertEqual(self.stages["REVISION_FINAL_POST_PUBLICA"].estado,"APROBADA")
-        cierre=WorkflowService.iniciar_etapa(self.stages["CIERRE_DOCUMENTAL"],self.admin)
-        self.assertEqual(cierre.estado,"EN_PROCESO")
+        self.stages["CIERRE_DOCUMENTAL"].refresh_from_db()
+        self.assertEqual(self.stages["CIERRE_DOCUMENTAL"].estado,"EN_PROCESO")
 
-    def test_cierre_detecta_condiciones_y_entregas(self):
+    def test_cierre_reporta_condiciones_y_entregas_sin_bloquear(self):
         self.stages["REVISION_FINAL_POST_PUBLICA"].estado="APROBADA"; self.stages["REVISION_FINAL_POST_PUBLICA"].save()
         result=ProyectoGradoCierrePolicy.evaluar_cierre_documental(self.post)
-        self.assertTrue(any(x.startswith("CONDICION:") for x in result["faltantes"])); self.assertTrue(any(x.startswith("ENTREGA:") for x in result["faltantes"]))
+        self.assertTrue(result["cumple"])
+        self.assertFalse(any(x.startswith("CONDICION:") or x.startswith("ENTREGA:") for x in result["faltantes"]))
+        self.assertTrue(any(x.startswith("CONDICION:") for x in result["advertencias"])); self.assertTrue(any(x.startswith("ENTREGA:") for x in result["advertencias"]))
+        self.assertEqual(set(result["detalle"]["condiciones_faltantes"]),set(ProyectoGradoCierrePolicy.CONDITION_CODES))
+        self.assertEqual(set(result["detalle"]["entregas_faltantes"]),set(ProyectoGradoCierrePolicy.DELIVERY_CODES))
+
+    def test_cierre_reporta_acta_e_informe_final_sin_bloquear(self):
+        self.stages["REVISION_FINAL_POST_PUBLICA"].estado="APROBADA"; self.stages["REVISION_FINAL_POST_PUBLICA"].save()
+        self.documents["ACTA_DEFENSA"].delete(); self.documents["INFORME_FINAL_TUTOR"].delete()
+        result=ProyectoGradoCierrePolicy.evaluar_cierre_documental(self.post)
+        self.assertTrue(result["cumple"])
+        self.assertEqual(set(result["detalle"]["documentos_faltantes"]),{"ACTA_DEFENSA","INFORME_FINAL_TUTOR"})
+        self.assertIn("DOCUMENTO:ACTA_DEFENSA",result["advertencias"]); self.assertIn("DOCUMENTO:INFORME_FINAL_TUTOR",result["advertencias"])
 
     def test_cierre_acepta_requisitos_y_advierte_ejemplares(self):
         self.stages["REVISION_FINAL_POST_PUBLICA"].estado="APROBADA"; self.stages["REVISION_FINAL_POST_PUBLICA"].save(); self.requirements()
@@ -135,6 +148,31 @@ class PolicyServiceTests(Base,TestCase):
     def test_aprobar_cierre_no_concluye(self):
         CierrePostulacionService.aprobar_revision_final(self.post,self.admin); self.requirements(); CierrePostulacionService.aprobar_cierre_documental(self.post,self.admin)
         self.post.refresh_from_db(); self.stages["CIERRE_DOCUMENTAL"].refresh_from_db(); self.assertEqual(self.stages["CIERRE_DOCUMENTAL"].estado,"APROBADA"); self.assertNotEqual(self.post.estado_actual.codigo,"CONCLUIDA")
+
+    def test_cierre_tecnico_con_controles_pendientes_conserva_trazabilidad_y_concluye(self):
+        CierrePostulacionService.aprobar_revision_final(self.post,self.admin)
+        self.documents["ACTA_DEFENSA"].delete(); self.documents["INFORME_FINAL_TUTOR"].delete()
+        CierrePostulacionService.aprobar_cierre_documental(self.post,self.admin,"Cierre técnico")
+
+        self.stages["CIERRE_DOCUMENTAL"].refresh_from_db()
+        self.assertEqual(self.stages["CIERRE_DOCUMENTAL"].estado,"APROBADA")
+        self.assertEqual(self.stages["CIERRE_DOCUMENTAL"].cerrada_por,self.admin)
+        self.assertIsNotNone(self.stages["CIERRE_DOCUMENTAL"].fecha_fin)
+        self.assertEqual(FlujoPostulacionSerializer(self.post).data["porcentaje_avance"],100.0)
+        self.assertEqual(set(self.post.condiciones.values_list("codigo",flat=True)),set(ProyectoGradoCierrePolicy.CONDITION_CODES))
+        self.assertFalse(self.post.condiciones.exclude(estado="PENDIENTE").exists())
+        self.assertEqual(set(self.post.entregas_fisicas.values_list("codigo",flat=True)),set(ProyectoGradoCierrePolicy.DELIVERY_CODES))
+        self.assertFalse(self.post.entregas_fisicas.exclude(estado="PENDIENTE").exists())
+        estado=CierrePostulacionService.consultar_estado_cierre(self.post)
+        self.assertEqual(set(estado["condiciones_faltantes"]),set(ProyectoGradoCierrePolicy.CONDITION_CODES))
+        self.assertEqual(set(estado["entregas_faltantes"]),set(ProyectoGradoCierrePolicy.DELIVERY_CODES))
+        self.assertEqual(set(estado["documentos_faltantes"]),{"ACTA_DEFENSA","INFORME_FINAL_TUTOR"})
+        self.assertTrue(AuditLog.objects.filter(accion="APPROVE_DOCUMENTARY_CLOSURE",usuario=self.admin).exists())
+
+        CierrePostulacionService.concluir_postulacion(self.post,self.admin,"Conclusión técnica")
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.estado_actual.codigo,"CONCLUIDA")
+        self.assertTrue(HistorialEstado.objects.filter(postulacion=self.post,estado_nuevo=self.concluded,usuario=self.admin).exists())
 
     def test_conclusion_idempotente_crea_historial_y_auditoria(self):
         CierrePostulacionService.aprobar_revision_final(self.post,self.admin); self.requirements(); CierrePostulacionService.aprobar_cierre_documental(self.post,self.admin); CierrePostulacionService.concluir_postulacion(self.post,self.admin,"Cierre válido")
@@ -159,10 +197,13 @@ class ApiTests(Base,APITestCase):
     def test_estudiante_no_ve_ajena_y_patch_no_permitido(self):
         self.client.force_authenticate(self.student); self.assertEqual(self.client.get(f"/api/v1/postulaciones/{self.other_post.pk}/cierre/").status_code,404); self.assertEqual(self.client.patch(f"/api/v1/postulaciones/{self.post.pk}/cierre/",{}).status_code,405)
 
-    def test_admin_opera_y_error_contiene_faltantes(self):
+    def test_admin_aprueba_cierre_y_respuesta_conserva_pendientes(self):
         self.client.force_authenticate(self.admin); url=f"/api/v1/postulaciones/{self.post.pk}/cierre/"
         self.assertEqual(self.client.post(url+"aprobar-revision-final/",{}).status_code,200)
-        response=self.client.post(url+"aprobar-cierre-documental/",{}); self.assertEqual(response.status_code,400); self.assertIn("faltantes",response.data)
+        response=self.client.post(url+"aprobar-cierre-documental/",{})
+        self.assertEqual(response.status_code,200); self.assertTrue(response.data["cierre_documental_aprobado"])
+        self.assertEqual(set(response.data["condiciones_faltantes"]),set(ProyectoGradoCierrePolicy.CONDITION_CODES))
+        self.assertEqual(set(response.data["entregas_faltantes"]),set(ProyectoGradoCierrePolicy.DELIVERY_CODES))
 
     def test_recorrido_integral_de_cierre_y_reapertura_auditada(self):
         self.client.force_authenticate(self.admin); url=f"/api/v1/postulaciones/{self.post.pk}/cierre/"

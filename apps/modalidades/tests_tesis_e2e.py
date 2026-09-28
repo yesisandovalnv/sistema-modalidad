@@ -26,14 +26,14 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         teacher_role, _ = Role.objects.get_or_create(codigo="DOCENTE", defaults={"nombre": "Docente E2E"})
         student_role, _ = Role.objects.get_or_create(codigo="ESTUDIANTE", defaults={"nombre": "Estudiante E2E"})
         self.admin = CustomUser.objects.create_user(username="e2e-admin", password="x", ci="8800001", ru="RU8800001", role=admin_role, is_staff=True)
-        student = CustomUser.objects.create_user(username="e2e-student", password="x", ci="8800002", ru="RU8800002", role=student_role)
+        self.student = CustomUser.objects.create_user(username="e2e-student", password="x", ci="8800002", ru="RU8800002", role=student_role)
         self.teachers = [CustomUser.objects.create_user(username=f"e2e-doc-{n}", password="x", ci=f"880001{n}", ru=f"RU880001{n}", role=teacher_role) for n in range(1, 6)]
-        self.post = Postulacion.objects.create(codigo="TESIS-E2E-001", estudiante=student, modalidad=Modalidad.objects.get(codigo="TESIS_GRADO"), periodo=Periodo.objects.create(nombre="E2E-TESIS", gestion=2026, semestre="II", fecha_inicio="2026-07-01", fecha_fin="2026-12-31"), estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"))
+        self.post = Postulacion.objects.create(codigo="TESIS-E2E-001", estudiante=self.student, modalidad=Modalidad.objects.get(codigo="TESIS_GRADO"), periodo=Periodo.objects.create(nombre="E2E-TESIS", gestion=2026, semestre="II", fecha_inicio="2026-07-01", fecha_fin="2026-12-31"), estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"))
         self.stages = {x.etapa.codigo: x for x in WorkflowService.inicializar_flujo(self.post, self.admin)}
         self.docs = DocumentoService()
 
     def upload_and_approve(self, code):
-        version = self.docs.subir_documento(self.post, TipoDocumento.objects.get(codigo=code), SimpleUploadedFile(f"{code}.pdf", b"%PDF-1.4\ncontenido", content_type="application/pdf"), self.admin)
+        version = self.docs.subir_documento(self.post, TipoDocumento.objects.get(codigo=code), SimpleUploadedFile(f"{code}.pdf", b"%PDF-1.4\ncontenido", content_type="application/pdf"), self.student)
         self.docs.aprobar_documento(DocumentoPostulacion.objects.get(pk=version.documento_id), self.admin)
         return version
 

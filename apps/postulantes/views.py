@@ -1,4 +1,5 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -173,12 +174,21 @@ class PostulacionViewSet(viewsets.ModelViewSet):
             })
 
         try:
-            postulacion = PostulacionService.crear_postulacion(
-                {
-                    **serializer.validated_data,
-                    "usuario": request.user,
-                }
-            )
+            with transaction.atomic():
+                postulacion = PostulacionService.crear_postulacion(
+                    {
+                        **serializer.validated_data,
+                        "usuario": request.user,
+                    }
+                )
+                if (
+                    postulacion.modalidad.codigo == "PROYECTO_GRADO"
+                    and postulacion.tipo_registro != Postulacion.TipoRegistroChoices.HISTORICO
+                ):
+                    from apps.postulantes.proyecto_grado_workflow import ProyectoGradoWorkflowOrchestrator
+
+                    ProyectoGradoWorkflowOrchestrator.inicializar_proceso(postulacion, request.user)
+                    postulacion.refresh_from_db()
         except DjangoValidationError as exc:
             raise DRFValidationError(str(exc)) from exc
 
@@ -342,7 +352,12 @@ class PostulacionViewSet(viewsets.ModelViewSet):
 
         postulacion = self.get_object()
         try:
-            WorkflowService.inicializar_flujo(postulacion, request.user)
+            if postulacion.modalidad.codigo == "PROYECTO_GRADO":
+                from apps.postulantes.proyecto_grado_workflow import ProyectoGradoWorkflowOrchestrator
+
+                ProyectoGradoWorkflowOrchestrator.inicializar_proceso(postulacion, request.user)
+            else:
+                WorkflowService.inicializar_flujo(postulacion, request.user)
         except DjangoValidationError as exc:
             raise DRFValidationError(str(exc)) from exc
 

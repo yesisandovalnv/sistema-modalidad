@@ -129,6 +129,10 @@ class ParticipantePayload(serializers.Serializer):
     asignacion=serializers.PrimaryKeyRelatedField(queryset=AsignacionPostulacion.objects.all()); rol_evento=serializers.ChoiceField(choices=ParticipanteEvento.Rol.choices)
 class AsistenciaPayload(serializers.Serializer):
     participante=serializers.PrimaryKeyRelatedField(queryset=ParticipanteEvento.objects.all()); presente=serializers.BooleanField(); observaciones=serializers.CharField(required=False,allow_blank=True,default="")
+class AsistenciaInicioPayload(serializers.Serializer):
+    participante=serializers.PrimaryKeyRelatedField(queryset=ParticipanteEvento.objects.all()); presente=serializers.BooleanField()
+class IniciarEventoPayload(serializers.Serializer):
+    asistencias=AsistenciaInicioPayload(many=True,required=False,default=list)
 class MotivoPayload(serializers.Serializer): motivo=serializers.CharField()
 class ReprogramarPayload(MotivoPayload): nueva_fecha=serializers.DateTimeField()
 class EvaluarPayload(serializers.Serializer):
@@ -200,7 +204,10 @@ class EventoDefensaViewSet(viewsets.ReadOnlyModelViewSet):
         try: return fn(*args,**kwargs)
         except DjangoValidationError as e: raise ValidationError(e.message_dict if hasattr(e,"message_dict") else e.messages) from e
     @action(detail=True,methods=["post"])
-    def iniciar(self,r,pk=None): self._admin(); return Response(self.get_serializer(self._call(EventoDefensaService.iniciar_evento,self.get_object(),r.user)).data)
+    def iniciar(self,r,pk=None):
+        self._admin(); s=IniciarEventoPayload(data=r.data); s.is_valid(raise_exception=True)
+        evento=self._call(EventoDefensaService.iniciar_evento_con_asistencia,self.get_object(),r.user,s.validated_data["asistencias"])
+        return Response(self.get_serializer(evento).data)
     @action(detail=True,methods=["post"])
     def finalizar(self,r,pk=None): self._admin(); return Response(self.get_serializer(self._call(EventoDefensaService.finalizar_evento,self.get_object(),r.user)).data)
     @extend_schema(

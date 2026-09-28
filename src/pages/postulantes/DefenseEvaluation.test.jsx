@@ -1,10 +1,15 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import DefenseEvaluation from './DefenseEvaluation'
 import { postulacionesService } from '../../services/postulacionesService'
 
-vi.mock('../../services/postulacionesService', () => ({ postulacionesService: { registrarEvaluacionDefensa: vi.fn() } }))
+vi.mock('../../services/postulacionesService', () => ({ postulacionesService: {
+  registrarEvaluacionDefensa: vi.fn(),
+  finalizarDefensa: vi.fn(),
+  consolidarEvaluacionDefensa: vi.fn(),
+  obtenerDefensa: vi.fn(),
+} }))
 
 const quorum = { data: { valido: true } }
 const defense = (modalidad) => ({
@@ -21,7 +26,7 @@ const profileDefense = (modalidad = 'PROYECTO_GRADO') => ({
 })
 
 describe('DefenseEvaluation por modalidad', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('conserva 0--70 para Proyecto de Grado', async () => {
     render(<DefenseEvaluation defense={defense('PROYECTO_GRADO')} quorum={quorum} canManage onChanged={vi.fn()} />)
@@ -147,5 +152,107 @@ describe('DefenseEvaluation por modalidad', () => {
     render(<DefenseEvaluation defense={profileDefense('TESIS_GRADO')} quorum={quorum} canManage onChanged={vi.fn()} />)
     await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
     expect(screen.queryByText('Evaluación consensuada del Tribunal')).not.toBeInTheDocument()
+  })
+
+  it('abre el flujo rápido único para Perfil sin duplicar acciones de recuperación', async () => {
+    const baseDefense = {
+      ...profileDefense(),
+      participantes: [{ id: 10, rol_evento: 'TRIBUNAL', activo: true, presente: true, usuario_nombre: 'Tribunal 1' }],
+    }
+
+    render(<DefenseEvaluation defense={baseDefense} quorum={quorum} canManage onChanged={vi.fn()} projectProfileFlow />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar resultado de la defensa' }))
+    const flow = screen.getByRole('dialog', { name: 'Registrar resultado de la defensa' })
+
+    expect(within(flow).getByRole('button', { name: 'Registrar resultado y finalizar' })).toBeInTheDocument()
+    expect(within(flow).getByText('Resultado *')).toBeInTheDocument()
+    expect(within(flow).getByText('Observaciones')).toBeInTheDocument()
+    expect(within(flow).getByText('(opcional)')).toBeInTheDocument()
+    expect(within(flow).queryByRole('button', { name: 'Registrar evaluación consensuada' })).not.toBeInTheDocument()
+  })
+
+  it('abre el flujo rápido único para Defensa Privada y exige la nota privada antes de finalizar', async () => {
+    const baseDefense = {
+      ...privateDefense(),
+      estado: 'EN_CURSO',
+      participantes: [{ id: 10, rol_evento: 'TRIBUNAL', activo: true, presente: true, usuario_nombre: 'Tribunal 1' }],
+    }
+
+    render(<DefenseEvaluation defense={baseDefense} quorum={quorum} canManage onChanged={vi.fn()} projectProfileFlow />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar resultado de la defensa' }))
+    const flow = screen.getByRole('dialog', { name: 'Registrar resultado de la defensa' })
+
+    expect(within(flow).getByRole('button', { name: 'Registrar resultado y finalizar' })).toBeInTheDocument()
+    expect(within(flow).getByLabelText('Nota privada')).toBeInTheDocument()
+    expect(within(flow).queryByRole('button', { name: 'Registrar evaluación consensuada' })).not.toBeInTheDocument()
+  })
+
+  it('completa en orden el flujo rápido de Perfil y refresca el padre solamente al final', async () => {
+    const operations = []
+    const baseDefense = { ...profileDefense(), participantes: [{ id: 10, rol_evento: 'TRIBUNAL', activo: true, presente: true, usuario_nombre: 'Tribunal 1' }] }
+    const evaluated = { ...baseDefense, evaluaciones: [{ id: 30, tipo_evaluacion: 'PERFIL', modalidad_registro: 'CONSENSO', es_resultado_final_evento: false, resultado_cualitativo: 'INSUFICIENTE', observaciones: 'Requiere ajustes' }] }
+    const finalized = { ...evaluated, estado: 'FINALIZADA' }
+    const consolidated = { ...finalized, resultado_consolidado: { id: 31, tipo_evaluacion: 'RESULTADO_FINAL', modalidad_registro: 'CONSENSO', es_resultado_final_evento: true, resultado_cualitativo: 'INSUFICIENTE' } }
+    postulacionesService.obtenerDefensa
+      .mockImplementationOnce(async () => { operations.push('refresh-inicial'); return baseDefense })
+      .mockImplementationOnce(async () => { operations.push('refresh-evaluacion'); return evaluated })
+      .mockImplementationOnce(async () => { operations.push('refresh-finalizacion'); return finalized })
+      .mockImplementationOnce(async () => { operations.push('refresh-consolidacion'); return consolidated })
+    postulacionesService.registrarEvaluacionDefensa.mockImplementation(async () => { operations.push('registrar'); return evaluated.evaluaciones[0] })
+    postulacionesService.finalizarDefensa.mockImplementation(async () => { operations.push('finalizar'); return finalized })
+    postulacionesService.consolidarEvaluacionDefensa.mockImplementation(async () => { operations.push('consolidar'); return consolidated.resultado_consolidado })
+    const onChanged = vi.fn(async () => { operations.push('refresh-padre') })
+    const view = render(<DefenseEvaluation defense={baseDefense} quorum={quorum} canManage onChanged={onChanged} projectProfileFlow />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar resultado de la defensa' }))
+    const flow = screen.getByRole('dialog', { name: 'Registrar resultado de la defensa' })
+    await userEvent.click(within(flow).getByRole('radio', { name: 'Insuficiente' }))
+    await userEvent.type(within(flow).getByLabelText(/Observaciones/), 'Requiere ajustes')
+    await userEvent.click(within(flow).getByRole('button', { name: 'Registrar resultado y finalizar' }))
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    expect(operations).toEqual(['refresh-inicial', 'registrar', 'refresh-evaluacion', 'finalizar', 'refresh-finalizacion', 'consolidar', 'refresh-consolidacion', 'refresh-padre'])
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(9, 'perfil', { observaciones: 'Requiere ajustes', modalidad_registro: 'CONSENSO', resultado: 'INSUFICIENTE' }, expect.any(AbortSignal))
+    expect(postulacionesService.finalizarDefensa).toHaveBeenCalledWith(9, expect.any(AbortSignal))
+    expect(postulacionesService.consolidarEvaluacionDefensa).toHaveBeenCalledWith(9, expect.any(AbortSignal))
+    view.rerender(<DefenseEvaluation defense={consolidated} quorum={{ data: null, loading: true }} canManage onChanged={onChanged} projectProfileFlow />)
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.finalizarDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.consolidarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+  })
+
+  it('reanuda desde la finalización después de un fallo parcial sin duplicar la evaluación', async () => {
+    const baseDefense = { ...profileDefense(), participantes: [{ id: 10, rol_evento: 'TRIBUNAL', activo: true, presente: true, usuario_nombre: 'Tribunal 1' }] }
+    const evaluated = { ...baseDefense, evaluaciones: [{ id: 30, tipo_evaluacion: 'PERFIL', modalidad_registro: 'CONSENSO', es_resultado_final_evento: false, resultado_cualitativo: 'SUFICIENTE' }] }
+    const finalized = { ...evaluated, estado: 'FINALIZADA' }
+    const consolidated = { ...finalized, resultado_consolidado: { id: 31, tipo_evaluacion: 'RESULTADO_FINAL', modalidad_registro: 'CONSENSO', es_resultado_final_evento: true, resultado_cualitativo: 'SUFICIENTE' } }
+    postulacionesService.obtenerDefensa
+      .mockResolvedValueOnce(baseDefense)
+      .mockResolvedValueOnce(evaluated)
+      .mockResolvedValueOnce(evaluated)
+      .mockResolvedValueOnce(evaluated)
+      .mockResolvedValueOnce(evaluated)
+      .mockResolvedValueOnce(finalized)
+      .mockResolvedValueOnce(consolidated)
+    postulacionesService.registrarEvaluacionDefensa.mockResolvedValue(evaluated.evaluaciones[0])
+    postulacionesService.finalizarDefensa.mockRejectedValueOnce({ message: 'No se pudo finalizar temporalmente.' }).mockResolvedValueOnce(finalized)
+    postulacionesService.consolidarEvaluacionDefensa.mockResolvedValue(consolidated.resultado_consolidado)
+    const onChanged = vi.fn()
+    render(<DefenseEvaluation defense={baseDefense} quorum={quorum} canManage onChanged={onChanged} projectProfileFlow />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar resultado de la defensa' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar resultado y finalizar' }))
+    expect(await screen.findByText('No se pudo finalizar temporalmente.')).toBeInTheDocument()
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.finalizarDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.consolidarEvaluacionDefensa).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Comprobar estado y continuar' }))
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.finalizarDefensa).toHaveBeenCalledTimes(2)
+    expect(postulacionesService.consolidarEvaluacionDefensa).toHaveBeenCalledTimes(1)
   })
 })

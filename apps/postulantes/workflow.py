@@ -148,6 +148,11 @@ class WorkflowService:
                     strict=True,
                 )
 
+            if seguimiento.postulacion.modalidad.codigo == "PROYECTO_GRADO":
+                from apps.postulantes.proyecto_grado_workflow import ProyectoGradoWorkflowOrchestrator
+
+                ProyectoGradoWorkflowOrchestrator.autoabrir_siguiente(seguimiento, usuario)
+
             return seguimiento
 
     @staticmethod

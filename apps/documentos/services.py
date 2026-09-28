@@ -120,7 +120,8 @@ class DocumentoService:
                 raise ValidationError(
                     "La modalidad no tiene una policy académica configurada para cargar documentos."
                 )
-            if documento is None:
+            es_carga_inicial = documento is None
+            if es_carga_inicial:
                 documento = DocumentoPostulacion.objects.create(
                     postulacion=postulacion,
                     tipo_documento=tipo_documento,
@@ -145,6 +146,18 @@ class DocumentoService:
                 archivo=archivo,
                 usuario=usuario,
                 request=request,
+                autoaprobar_carga_inicial=(
+                    es_carga_inicial
+                    and is_staff_user(usuario)
+                    and (
+                        (not es_carga_especial and evento_defensa is None)
+                        or (
+                            tipo_documento.codigo == "OBSERVACIONES_DEFENSA_PERFIL"
+                            and es_carga_especial
+                            and evento_defensa is not None
+                        )
+                    )
+                ),
             )
 
     def subir_documento_historico(
@@ -198,6 +211,7 @@ class DocumentoService:
         usuario: Any,
         request: Optional[Any] = None,
         allow_historic: bool = False,
+        autoaprobar_carga_inicial: bool = False,
     ) -> VersionDocumento:
         """Crea una nueva versión para un documento existente.
 
@@ -291,6 +305,13 @@ class DocumentoService:
                 event_type = EventTypes.DOCUMENTO_SUBIDO if version.numero_version == 1 else EventTypes.DOCUMENTO_NUEVA_VERSION
                 publish_domain_event(event_type, version, usuario, documento.postulacion,
                     {"documento": documento.tipo_documento.nombre}, f"{event_type}:{version.pk}")
+
+                if autoaprobar_carga_inicial and version.numero_version == 1:
+                    self.aprobar_documento(
+                        documento=documento,
+                        usuario=usuario,
+                        request=request,
+                    )
 
                 return version
         except Exception:

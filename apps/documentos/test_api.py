@@ -14,6 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.academico.models import EtapaModalidad, Modalidad, ModalidadRequisito, Periodo, Requisito
 from apps.modalidades.policies import BaseModalidadPolicy, BaseRequisitosPolicy, EtapaDefinition, ModalidadPolicyRegistry
+from apps.notificaciones.models import Notificacion
 from apps.documentos.models import (
     DocumentoPostulacion,
     EstadoDocumento,
@@ -21,7 +22,8 @@ from apps.documentos.models import (
     TipoDocumento,
     VersionDocumento,
 )
-from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, EventoDefensa, Postulacion, SeguimientoEtapa
+from apps.documentos.services import DocumentoService
+from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, EvaluacionDefensa, EventoDefensa, Postulacion, SeguimientoEtapa
 from apps.usuarios.models import AuditLog, Role
 
 
@@ -393,39 +395,120 @@ class TestPerfilObservationDocument(DocumentoAPITestCase):
 
     def upload_observation(self, event_id, user=None, post_id=None, name="observaciones.pdf"):
         self.authenticate_user(user or self.admin_user)
+        payload = {
+            "postulacion_id": post_id or self.postulacion.id,
+            "tipo_documento_id": self.observation_type.id,
+            "archivo": self.create_pdf_file(name=name),
+        }
+        if event_id is not None:
+            payload["evento_defensa_id"] = event_id
         return self.client.post(
             "/api/v1/documentos/documentos/subir/",
-            {
-                "postulacion_id": post_id or self.postulacion.id,
-                "tipo_documento_id": self.observation_type.id,
-                "evento_defensa_id": event_id,
-                "archivo": self.create_pdf_file(name=name),
-            },
+            payload,
             format="multipart",
         )
 
     def test_admin_carga_hoja_vinculada_a_perfil_finalizado_y_versiona(self) -> None:
-        response = self.upload_observation(self.profile_event.id)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.upload_observation(self.profile_event.id)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         documento = DocumentoPostulacion.objects.get(tipo_documento=self.observation_type)
         self.assertEqual(documento.evento_defensa_id, self.profile_event.id)
+        self.assertEqual(documento.estado, self.estado_apr)
+        self.assertIsNotNone(documento.fecha_revision)
         self.assertEqual(VersionDocumento.objects.filter(documento=documento).count(), 1)
-        self.assertTrue(AuditLog.objects.filter(accion="UPLOAD", modulo="DOCUMENTOS", usuario=self.admin_user).exists())
+        self.assertEqual(
+            list(AuditLog.objects.filter(usuario=self.admin_user, modulo="DOCUMENTOS")
+                 .order_by("id").values_list("accion", flat=True)),
+            ["UPLOAD", "APPROVE"],
+        )
+        self.assertEqual(
+            set(Notificacion.objects.filter(postulacion=self.postulacion).values_list("tipo", flat=True)),
+            {"DOCUMENTO_SUBIDO", "DOCUMENTO_APROBADO"},
+        )
+        self.profile_event.refresh_from_db()
+        self.profile_follow.refresh_from_db()
+        self.assertEqual(self.profile_event.estado, "FINALIZADA")
+        self.assertEqual(self.profile_follow.estado, "APROBADA")
+        self.assertEqual(self.profile_event.participantes.count(), 0)
+        self.assertEqual(EvaluacionDefensa.objects.filter(evento=self.profile_event).count(), 0)
 
-        second = self.upload_observation(self.profile_event.id, name="observaciones-v2.pdf")
+        with self.captureOnCommitCallbacks(execute=True):
+            second = self.upload_observation(self.profile_event.id, name="observaciones-v2.pdf")
         self.assertEqual(second.status_code, status.HTTP_201_CREATED)
         self.assertEqual(VersionDocumento.objects.filter(documento=documento).count(), 2)
         self.assertEqual(VersionDocumento.objects.filter(documento=documento, es_version_actual=True).count(), 1)
+        documento.refresh_from_db()
+        self.assertEqual(documento.estado, self.estado_env)
+        self.assertIsNone(documento.fecha_revision)
+        self.assertEqual(
+            list(AuditLog.objects.filter(usuario=self.admin_user, modulo="DOCUMENTOS")
+                 .order_by("id").values_list("accion", flat=True)),
+            ["UPLOAD", "APPROVE", "UPLOAD"],
+        )
+        self.assertEqual(
+            set(Notificacion.objects.filter(postulacion=self.postulacion).values_list("tipo", flat=True)),
+            {"DOCUMENTO_SUBIDO", "DOCUMENTO_APROBADO", "DOCUMENTO_NUEVA_VERSION"},
+        )
 
     def test_rechaza_vinculos_de_privada_publica_y_otra_postulacion(self) -> None:
-        for event_id in (self.private_event.id, self.public_event.id, self.other_profile_event.id):
+        for event_id in (None, self.private_event.id, self.public_event.id, self.other_profile_event.id):
             with self.subTest(event_id=event_id):
                 response = self.upload_observation(event_id)
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_usuario_sin_autorizacion_administrativa_no_carga_ni_autoaprueba(self) -> None:
+        teacher = User.objects.create_user(
+            username="docente_sin_permiso_hoja",
+            role=self.teacher_role,
+        )
+
+        response = self.upload_observation(self.profile_event.id, user=teacher)
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(
+            DocumentoPostulacion.objects.filter(
+                postulacion=self.postulacion,
+                tipo_documento=self.observation_type,
+            ).exists()
+        )
+        self.assertFalse(Notificacion.objects.filter(postulacion=self.postulacion).exists())
+
+    def test_fallo_de_autoaprobacion_revierte_registros_y_elimina_archivo(self) -> None:
+        with patch.object(
+            DocumentoService,
+            "aprobar_documento",
+            side_effect=RuntimeError("Fallo simulado al aprobar la Hoja."),
+        ):
+            with self.assertRaisesMessage(RuntimeError, "Fallo simulado"):
+                DocumentoService().subir_documento(
+                    postulacion=self.postulacion,
+                    tipo_documento=self.observation_type,
+                    archivo=self.create_pdf_file(name="observaciones-fallo.pdf"),
+                    usuario=self.admin_user,
+                    evento_defensa=self.profile_event,
+                )
+
+        self.assertFalse(
+            DocumentoPostulacion.objects.filter(
+                postulacion=self.postulacion,
+                tipo_documento=self.observation_type,
+            ).exists()
+        )
+        self.assertFalse(VersionDocumento.objects.filter(documento__postulacion=self.postulacion).exists())
+        self.assertFalse(AuditLog.objects.filter(usuario=self.admin_user, modulo="DOCUMENTOS").exists())
+        self.assertFalse(Notificacion.objects.filter(postulacion=self.postulacion).exists())
+        self.assertEqual(list((self._tmp_media / "documentos" / "versiones").iterdir()), [])
+
     def test_estudiante_no_carga_pero_propietario_descarga_y_ajeno_no_accede(self) -> None:
         denied = self.upload_observation(self.profile_event.id, user=self.student_user)
         self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(
+            DocumentoPostulacion.objects.filter(
+                postulacion=self.postulacion,
+                tipo_documento=self.observation_type,
+            ).exists()
+        )
         self.upload_observation(self.profile_event.id)
         version = VersionDocumento.objects.get(documento__tipo_documento=self.observation_type)
 
@@ -590,6 +673,162 @@ class TestDocumentoUpload(DocumentoAPITestCase):
                 modulo="DOCUMENTOS",
             ).exists()
         )
+
+    def test_admin_autoriza_carga_inicial_y_la_autoaprueba_con_trazabilidad(self) -> None:
+        with patch("apps.documentos.services.publish_domain_event") as publish:
+            response = self.upload_document(
+                self.admin_user,
+                self.postulacion.id,
+                self.tipo_pdf.id,
+                self.create_pdf_file(name="carga-admin.pdf"),
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(
+            postulacion=self.postulacion,
+            tipo_documento=self.tipo_pdf,
+        )
+        version = VersionDocumento.objects.get(documento=documento)
+        self.assertEqual(documento.estado, self.estado_apr)
+        self.assertIsNotNone(documento.fecha_revision)
+        self.assertEqual(version.numero_version, 1)
+        self.assertEqual(version.subido_por, self.admin_user)
+        self.assertEqual(
+            list(
+                AuditLog.objects.filter(usuario=self.admin_user, modulo="DOCUMENTOS")
+                .order_by("id")
+                .values_list("accion", flat=True)
+            ),
+            ["UPLOAD", "APPROVE"],
+        )
+        self.assertEqual(
+            [call.args[0] for call in publish.call_args_list],
+            ["DOCUMENTO_SUBIDO", "DOCUMENTO_APROBADO"],
+        )
+        self.test_follow.refresh_from_db()
+        self.assertEqual(self.test_follow.estado, SeguimientoEtapa.EstadoChoices.EN_PROCESO)
+
+    def test_superusuario_autoriza_carga_inicial_y_la_autoaprueba(self) -> None:
+        superusuario = User.objects.create_user(
+            username="superuser-carga",
+            role=self.teacher_role,
+            is_superuser=True,
+        )
+
+        response = self.upload_document(
+            superusuario,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            self.create_pdf_file(name="carga-superuser.pdf"),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(
+            postulacion=self.postulacion,
+            tipo_documento=self.tipo_pdf,
+        )
+        self.assertEqual(documento.estado, self.estado_apr)
+        self.assertIsNotNone(documento.fecha_revision)
+
+    def test_is_staff_sin_autorizacion_real_no_autoaprueba(self) -> None:
+        self.student_user.is_staff = True
+        self.student_user.save(update_fields=["is_staff"])
+
+        response = self.upload_document(
+            self.student_user,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            self.create_pdf_file(name="carga-staff-estudiante.pdf"),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(
+            postulacion=self.postulacion,
+            tipo_documento=self.tipo_pdf,
+        )
+        self.assertEqual(documento.estado, self.estado_env)
+        self.assertIsNone(documento.fecha_revision)
+        self.assertFalse(
+            AuditLog.objects.filter(usuario=self.student_user, accion="APPROVE").exists()
+        )
+
+    def test_segunda_version_administrativa_permanece_enviada(self) -> None:
+        first = self.upload_document(
+            self.admin_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(),
+        )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+
+        second = self.upload_document(
+            self.admin_user,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            self.create_pdf_file(name="documento-v2.pdf"),
+        )
+
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(
+            postulacion=self.postulacion,
+            tipo_documento=self.tipo_pdf,
+        )
+        self.assertEqual(documento.estado, self.estado_env)
+        self.assertIsNone(documento.fecha_revision)
+        self.assertEqual(documento.versiones.count(), 2)
+        self.assertEqual(
+            AuditLog.objects.filter(usuario=self.admin_user, accion="APPROVE").count(),
+            1,
+        )
+
+    def test_version_administrativa_posterior_a_rechazo_permanece_enviada(self) -> None:
+        self.upload_document(
+            self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(),
+        )
+        documento = DocumentoPostulacion.objects.get(
+            postulacion=self.postulacion,
+            tipo_documento=self.tipo_pdf,
+        )
+        self.authenticate_user(self.admin_user)
+        rejected = self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/rechazar/",
+            {"motivo": "Corregir"},
+            format="json",
+        )
+        self.assertEqual(rejected.status_code, status.HTTP_200_OK)
+
+        response = self.upload_document(
+            self.admin_user,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            self.create_pdf_file(name="correccion-admin.pdf"),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        documento.refresh_from_db()
+        self.assertEqual(documento.estado, self.estado_env)
+        self.assertIsNone(documento.fecha_revision)
+
+    def test_fallo_de_autoaprobacion_revierte_bd_y_elimina_archivo(self) -> None:
+        with patch.object(
+            DocumentoService,
+            "aprobar_documento",
+            side_effect=RuntimeError("fallo de autoaprobacion"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self.upload_document(
+                    self.admin_user,
+                    self.postulacion.id,
+                    self.tipo_pdf.id,
+                    self.create_pdf_file(name="autoaprobacion-fallida.pdf"),
+                )
+
+        self.assertFalse(
+            DocumentoPostulacion.all_objects.filter(
+                postulacion=self.postulacion,
+                tipo_documento=self.tipo_pdf,
+            ).exists()
+        )
+        self.assertFalse(VersionDocumento.all_objects.exists())
+        self.assertFalse(AuditLog.objects.filter(modulo="DOCUMENTOS").exists())
+        self.assertEqual(list(self._tmp_media.rglob("*.pdf")), [])
 
     def test_nueva_version_actualiza_estados_de_version_y_no_duplica_documento(self) -> None:
         """Una segunda subida debe crear la versión 2 sin duplicar el documento."""

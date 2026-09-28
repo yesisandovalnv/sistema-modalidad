@@ -335,7 +335,7 @@ describe('Nueva postulación', () => {
   it('mantiene el formulario abierto y muestra errores de campo del backend', async () => {
     crudService.create.mockRejectedValue({
       status: 400,
-      message: 'codigo: Ya existe una postulación con este código.',
+      message: 'codigo: Ya existe una postulación con este código. status_code: 400',
       fields: { codigo: ['Ya existe una postulación con este código.'] },
     })
     setup()
@@ -346,7 +346,8 @@ describe('Nueva postulación', () => {
     await userEvent.selectOptions(screen.getByLabelText('Gestión / Semestre'), '8')
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
-    expect(await screen.findByText('Ya existe una postulación con este código.')).toBeInTheDocument()
+    expect(await screen.findByText('El código ingresado ya se encuentra registrado en otra postulación. Por favor, ingrese un código diferente.')).toBeInTheDocument()
+    expect(screen.queryByText(/status_code/)).not.toBeInTheDocument()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 

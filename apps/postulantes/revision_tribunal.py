@@ -39,23 +39,22 @@ class RevisionTribunalPreviaService:
 
     @classmethod
     def _documento_final_actual(cls, seguimiento):
-        documento = (
-            DocumentoPostulacion.objects.select_for_update()
-            .select_related("estado", "tipo_documento")
-            .filter(
-                postulacion=seguimiento.postulacion,
-                tipo_documento__codigo=cls._policy(seguimiento).get_documento_final_codigo(),
-                activo=True,
-            )
-            .first()
+        documentos = DocumentoPostulacion.objects.select_related("estado", "tipo_documento").filter(
+            postulacion=seguimiento.postulacion,
+            tipo_documento__codigo=cls._policy(seguimiento).get_documento_final_codigo(),
+            activo=True,
         )
-        version = (
-            VersionDocumento.objects.select_for_update()
-            .filter(documento=documento, es_version_actual=True, activo=True)
-            .first()
-            if documento
-            else None
+        if transaction.get_connection().in_atomic_block:
+            documentos = documentos.select_for_update()
+        documento = documentos.first()
+        versiones = VersionDocumento.objects.filter(
+            documento=documento,
+            es_version_actual=True,
+            activo=True,
         )
+        if transaction.get_connection().in_atomic_block:
+            versiones = versiones.select_for_update()
+        version = versiones.first() if documento else None
         if not documento or documento.estado.codigo != "APR" or documento.requiere_correccion or not version:
             raise ValidationError(
                 "Se requiere un Documento Final activo, aprobado, sin correcciones y con versión actual activa."
@@ -189,16 +188,16 @@ class RevisionTribunalPreviaService:
         cls._validar_seguimiento(seguimiento)
         cls._validar_tribunales(seguimiento)
         _documento, actual = cls._documento_final_actual(seguimiento)
-        informe = (
-            InformeRevisionTribunalPrevia.objects.select_for_update()
-            .select_related("evidencia_version__documento__tipo_documento")
-            .filter(
-                seguimiento_etapa=seguimiento,
-                version_documento_revisada=actual,
-                activo=True,
-            )
-            .first()
+        informes = InformeRevisionTribunalPrevia.objects.select_related(
+            "evidencia_version__documento__tipo_documento",
+        ).filter(
+            seguimiento_etapa=seguimiento,
+            version_documento_revisada=actual,
+            activo=True,
         )
+        if transaction.get_connection().in_atomic_block:
+            informes = informes.select_for_update()
+        informe = informes.first()
         if not informe:
             raise ValidationError("No existe un informe activo para la versión actual del Documento Final.")
         cls._validar_evidencia(seguimiento, informe.evidencia_version)

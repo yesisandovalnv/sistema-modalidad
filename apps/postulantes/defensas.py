@@ -110,6 +110,35 @@ class EventoDefensaService:
 
     @staticmethod
     @transaction.atomic
+    def iniciar_evento_con_asistencia(evento, usuario, asistencias):
+        evento = EventoDefensa.objects.select_for_update().get(pk=evento.pk)
+        participantes = list(
+            ParticipanteEvento.objects.select_for_update()
+            .filter(evento=evento, activo=True)
+            .order_by("pk")
+        )
+        pendientes = {participante.pk: participante for participante in participantes if participante.presente is None}
+        decisiones = {}
+        for asistencia in asistencias:
+            participante = asistencia["participante"]
+            participante_id = participante.pk if isinstance(participante, ParticipanteEvento) else int(participante)
+            if not isinstance(asistencia["presente"], bool):
+                raise ValidationError({"asistencias": "Cada participante requiere una decisión de presencia válida."})
+            if participante_id in decisiones:
+                raise ValidationError({"asistencias": "No se permiten decisiones duplicadas para un participante."})
+            decisiones[participante_id] = asistencia["presente"]
+
+        if decisiones.keys() != pendientes.keys():
+            raise ValidationError({"asistencias": "Confirma la asistencia de todos los participantes activos pendientes."})
+
+        evento = EventoDefensaService.iniciar_evento(evento, usuario)
+        for participante_id, presente in decisiones.items():
+            EventoDefensaService.registrar_asistencia(pendientes[participante_id], presente, usuario)
+
+        return EventoDefensa.objects.select_related("postulacion__modalidad").get(pk=evento.pk)
+
+    @staticmethod
+    @transaction.atomic
     def registrar_asistencia(participante, presente, usuario, observaciones=""):
         p=ParticipanteEvento.objects.select_for_update().select_related("evento").get(pk=participante.pk)
         if p.evento.estado != EventoDefensa.Estado.EN_CURSO: raise ValidationError("El evento no está en curso.")

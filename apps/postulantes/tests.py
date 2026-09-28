@@ -2,6 +2,7 @@
 
 from django.contrib.auth import get_user_model
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, close_old_connections, transaction
@@ -13,6 +14,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento
 from apps.modalidades.policies import ModalidadPolicyRegistry
+from apps.notificaciones.events import EventTypes
 from apps.postulantes.models import (
     AsignacionPostulacion,
     EstadoPostulacion,
@@ -74,6 +76,7 @@ class TestCrearPostulacion(APITestCase):
             codigo="REGISTRADA",
             nombre="Registrada",
         )
+        EstadoPostulacion.objects.create(codigo="EN_PROCESO", nombre="En proceso")
         self.estado_concluida = EstadoPostulacion.objects.create(
             codigo="CONCLUIDA",
             nombre="Concluida",
@@ -88,7 +91,8 @@ class TestCrearPostulacion(APITestCase):
         token = RefreshToken.for_user(self.estudiante).access_token
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
-    def test_crear_postulacion_exitoso_con_autenticacion(self) -> None:
+    @patch("apps.postulantes.workflow.publish_domain_event")
+    def test_crear_postulacion_exitoso_con_autenticacion(self, publish) -> None:
         """Debe crear una postulación mediante API con JWT."""
         response = self.client.post(
             "/api/v1/postulaciones/",
@@ -105,6 +109,43 @@ class TestCrearPostulacion(APITestCase):
         self.assertEqual(response.data["codigo"], "POST-001")
         self.assertEqual(response.data["vigencia"], Postulacion.VigenciaChoices.VIGENTE)
         self.assertEqual(response.data["tipo_registro"], Postulacion.TipoRegistroChoices.SEGUIMIENTO)
+        self.assertEqual(response.data["estado_actual_detalle"]["codigo"], "EN_PROCESO")
+
+        postulacion = Postulacion.objects.get(pk=response.data["id"])
+        flujo = self.client.get(f"/api/v1/postulaciones/{postulacion.pk}/flujo/", format="json")
+        self.assertEqual(flujo.status_code, status.HTTP_200_OK)
+        self.assertEqual(flujo.data["porcentaje_avance"], 12.5)
+        estados = {etapa["codigo"]: etapa["estado"] for etapa in flujo.data["etapas"]}
+        self.assertEqual(len(estados), 8)
+        self.assertEqual(estados["INSCRIPCION"], "APROBADA")
+        self.assertEqual(estados["PERFIL_PROYECTO"], "EN_PROCESO")
+        self.assertTrue(all(estado == "PENDIENTE" for estado in list(estados.values())[2:]))
+        self.assertEqual(SeguimientoEtapa.objects.filter(postulacion=postulacion).count(), 8)
+        self.assertEqual(
+            sum(call.args[0] == EventTypes.ETAPA_INICIADA for call in publish.call_args_list),
+            2,
+        )
+
+    @patch(
+        "apps.postulantes.proyecto_grado_workflow.ProyectoGradoWorkflowOrchestrator.inicializar_proceso",
+        side_effect=ValidationError("Fallo simulado al arrancar Proyecto de Grado."),
+    )
+    def test_fallo_al_arrancar_pg_revierte_creacion_historial_y_auditoria(self, _inicializar) -> None:
+        response = self.client.post(
+            "/api/v1/postulaciones/",
+            {
+                "codigo": "POST-PG-ROLLBACK",
+                "estudiante": self.estudiante.id,
+                "modalidad": self.modalidad.id,
+                "periodo": self.periodo.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Postulacion.objects.filter(codigo="POST-PG-ROLLBACK").exists())
+        self.assertFalse(HistorialEstado.objects.filter(postulacion__codigo="POST-PG-ROLLBACK").exists())
+        self.assertFalse(AuditLog.objects.filter(descripcion__contains="POST-PG-ROLLBACK").exists())
 
     def test_crear_historico_por_via_administrativa_no_inicializa_workflow(self) -> None:
         response = self.client.post(
@@ -235,8 +276,8 @@ class TestCrearPostulacion(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["tipo_registro"], Postulacion.TipoRegistroChoices.SEGUIMIENTO)
 
-    def test_estado_inicial_es_registrada(self) -> None:
-        """El estado_actual debe ser REGISTRADA al crear."""
+    def test_creacion_pg_avanza_a_en_proceso_y_conserva_historial_registrada(self) -> None:
+        """La etapa inicial se registra y el autoarranque lleva PG a EN_PROCESO."""
         response = self.client.post(
             "/api/v1/postulaciones/",
             {
@@ -249,11 +290,17 @@ class TestCrearPostulacion(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["estado_actual"], self.estado_registrada.id)
+        self.assertEqual(response.data["estado_actual_detalle"]["codigo"], "EN_PROCESO")
+        self.assertTrue(
+            HistorialEstado.objects.filter(
+                postulacion__codigo="POST-002",
+                estado_nuevo=self.estado_registrada,
+            ).exists()
+        )
 
     def test_crear_historial_automaticamente(self) -> None:
-        """Debe crear un registro de HistorialEstado automáticamente."""
-        self.client.post(
+        """Registra una vez las transiciones inicial y de autoarranque."""
+        response = self.client.post(
             "/api/v1/postulaciones/",
             {
                 "codigo": "POST-003",
@@ -264,12 +311,36 @@ class TestCrearPostulacion(APITestCase):
             format="json",
         )
 
-        self.assertTrue(
-            HistorialEstado.objects.filter(postulacion__codigo="POST-003").exists()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        postulacion = Postulacion.objects.get(pk=response.data["id"])
+        historiales = list(
+            HistorialEstado.objects.filter(postulacion=postulacion)
+            .order_by("fecha_cambio", "pk")
         )
-        historial = HistorialEstado.objects.get(postulacion__codigo="POST-003")
-        self.assertIsNone(historial.estado_anterior)
-        self.assertEqual(historial.estado_nuevo, self.estado_registrada)
+
+        self.assertEqual(len(historiales), 2)
+        inicial, autoarranque = historiales
+        self.assertEqual(inicial.postulacion_id, postulacion.pk)
+        self.assertEqual(autoarranque.postulacion_id, postulacion.pk)
+        self.assertIsNone(inicial.estado_anterior)
+        self.assertEqual(inicial.estado_nuevo, self.estado_registrada)
+        self.assertEqual(autoarranque.estado_anterior, self.estado_registrada)
+        self.assertEqual(autoarranque.estado_nuevo.codigo, "EN_PROCESO")
+        self.assertLessEqual(inicial.fecha_cambio, autoarranque.fecha_cambio)
+        self.assertEqual(
+            HistorialEstado.objects.filter(
+                postulacion=postulacion,
+                estado_nuevo=self.estado_registrada,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            HistorialEstado.objects.filter(
+                postulacion=postulacion,
+                estado_nuevo__codigo="EN_PROCESO",
+            ).count(),
+            1,
+        )
 
     def test_crear_auditlog_automaticamente(self) -> None:
         """Debe crear un registro de AuditLog automáticamente."""

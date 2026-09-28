@@ -16,6 +16,7 @@ class ProyectoGradoCierrePolicy(BaseCierrePolicy):
     DELIVERY_CODES=(EntregaFisica.Tipo.CD_RESPALDO,EntregaFisica.Tipo.EJEMPLARES_IMPRESOS,EntregaFisica.Tipo.TIMBRE_UNIVERSITARIO)
     FINAL_DOCUMENT_CODES=("DOCUMENTO_FINAL","ACTA_DEFENSA","HOJA_APROBACION","INFORME_FINAL_TUTOR")
     REVIEW_DOCUMENT_CODES=("DOCUMENTO_FINAL","HOJA_APROBACION")
+    TRACKING_DOCUMENT_CODES=("ACTA_DEFENSA","INFORME_FINAL_TUTOR")
 
     @classmethod
     def inicializar_requisitos(cls, post):
@@ -78,15 +79,16 @@ class ProyectoGradoCierrePolicy(BaseCierrePolicy):
         if not revision or revision.estado!="APROBADA": missing.append("REVISION_FINAL_POST_PUBLICA_APROBADA")
         conditions={x.codigo:x.estado for x in post.condiciones.filter(codigo__in=cls.CONDITION_CODES,activo=True)}
         condition_missing=[c for c in cls.CONDITION_CODES if conditions.get(c)!="CUMPLE"]
-        missing.extend(f"CONDICION:{x}" for x in condition_missing)
         deliveries={x.codigo:x.estado for x in post.entregas_fisicas.filter(codigo__in=cls.DELIVERY_CODES,activo=True)}
         delivery_missing=[c for c in cls.DELIVERY_CODES if deliveries.get(c)!="COMPLETA"]
-        missing.extend(f"ENTREGA:{x}" for x in delivery_missing)
+        warnings.extend(f"CONDICION:{x}" for x in condition_missing)
+        warnings.extend(f"ENTREGA:{x}" for x in delivery_missing)
         warnings.append("La cantidad normativa de EJEMPLARES_IMPRESOS permanece pendiente; no se calcula automáticamente.")
         event=post.eventos_defensa.filter(tipo_evento="DEFENSA_PUBLICA",estado="FINALIZADA",activo=True).order_by("-fecha_fin_real").first()
         if not event: missing.append("EVENTO_DEFENSA_PUBLICA_FINALIZADO")
         configured,approved,doc_missing=cls._documents(post,cls.FINAL_DOCUMENT_CODES,event,require_configured=True)
-        missing.extend(f"DOCUMENTO:{x}" for x in doc_missing)
+        missing.extend(f"DOCUMENTO:{x}" for x in doc_missing if x not in cls.TRACKING_DOCUMENT_CODES)
+        warnings.extend(f"DOCUMENTO:{x}" for x in doc_missing if x in cls.TRACKING_DOCUMENT_CODES)
         if "ACTA_DEFENSA" not in configured: warnings.append("ACTA_DEFENSA no está configurada como TipoDocumento inequívoco.")
         if "HOJA_APROBACION" not in configured: warnings.append("HOJA_APROBACION no está configurada como TipoDocumento inequívoco.")
         detail.update(condiciones=conditions,condiciones_faltantes=condition_missing,entregas=deliveries,entregas_faltantes=delivery_missing,documentos_configurados=sorted(configured),documentos_aprobados=approved,documentos_faltantes=doc_missing)

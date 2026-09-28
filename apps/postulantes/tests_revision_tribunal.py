@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APITestCase, APITransactionTestCase
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
@@ -322,6 +322,20 @@ class RevisionTribunalServiceTest(RevisionTribunalFixtureMixin, TestCase):
         self.registrar("INSUFICIENTE", "Falta sustento técnico.")
         with self.assertRaisesMessage(ValidationError, "declara el trabajo INSUFICIENTE"):
             WorkflowService.aprobar_etapa(self.seguimiento, self.admin)
+
+
+class RevisionTribunalFlowApiTransactionTest(RevisionTribunalFixtureMixin, APITransactionTestCase):
+    def test_flujo_serializa_acciones_en_revision_previa_fuera_de_transaccion(self):
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.get(
+            f"/api/v1/postulaciones/{self.postulacion.pk}/flujo/",
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["etapa_actual"]["id"], self.seguimiento.pk)
+        self.assertNotIn("aprobar", response.data["etapa_actual"]["acciones_permitidas"])
 
 
 class RevisionTribunalApiTest(RevisionTribunalFixtureMixin, APITestCase):

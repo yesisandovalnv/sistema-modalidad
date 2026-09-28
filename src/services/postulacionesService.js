@@ -494,8 +494,12 @@ export const postulacionesService = {
   programarDefensa(postulacion, payload, signal) {
     return defenseAction(`/api/v1/postulaciones/${postulacion}/eventos-defensa/programar/`, payload, signal)
   },
-  iniciarDefensa(evento, signal) {
-    return defenseAction(`/api/v1/eventos-defensa/${evento}/iniciar/`, {}, signal)
+  iniciarDefensa(evento, asistencias, signal) {
+    if (!Array.isArray(asistencias)) {
+      signal = asistencias
+      asistencias = []
+    }
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/iniciar/`, { asistencias }, signal)
   },
   finalizarDefensa(evento, signal) {
     return defenseAction(`/api/v1/eventos-defensa/${evento}/finalizar/`, {}, signal)

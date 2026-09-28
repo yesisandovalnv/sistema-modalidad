@@ -280,7 +280,7 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
         with self.assertRaisesMessage(ValidationError, "Las observaciones son obligatorias."):
             WorkflowService.observar_etapa(seguimiento, self.admin, "   ")
 
-    def test_aprobar_cierre_documental_bloquea_requisitos_pendientes(self):
+    def test_aprobar_cierre_documental_bloquea_solo_requisitos_tecnicos(self):
         WorkflowService.inicializar_flujo(self.postulacion, self.admin)
         for etapa in (self.etapa_inscripcion, self.etapa_perfil, self.etapa_opcional, self.etapa_cierre):
             seguimiento = SeguimientoEtapa.objects.get(
@@ -292,10 +292,14 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
             if etapa == self.etapa_cierre:
                 with self.assertRaises(ValidationError) as error:
                     WorkflowService.aprobar_etapa(seguimiento, self.admin)
-                self.assertIn("REVISION_FINAL_POST_PUBLICA_APROBADA", str(error.exception))
-                self.assertIn("CONDICION:PLAN_ESTUDIOS", str(error.exception))
-                self.assertIn("ENTREGA:CD_RESPALDO", str(error.exception))
-                self.assertIn("DOCUMENTO:DOCUMENTO_FINAL", str(error.exception))
+                faltantes = error.exception.message_dict["faltantes"]
+                advertencias = error.exception.message_dict["advertencias"]
+                self.assertIn("REVISION_FINAL_POST_PUBLICA_APROBADA", faltantes)
+                self.assertIn("DOCUMENTO:DOCUMENTO_FINAL", faltantes)
+                self.assertNotIn("CONDICION:PLAN_ESTUDIOS", faltantes)
+                self.assertNotIn("ENTREGA:CD_RESPALDO", faltantes)
+                self.assertIn("CONDICION:PLAN_ESTUDIOS", advertencias)
+                self.assertIn("ENTREGA:CD_RESPALDO", advertencias)
             else:
                 if etapa == self.etapa_perfil:
                     self.habilitar_aprobacion_perfil(seguimiento)

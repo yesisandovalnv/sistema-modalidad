@@ -202,6 +202,7 @@ class ProyectoGradoDocumentosAplicablesTests(TestCase):
             estado="PENDIENTE",
         )
         self.estado_enviado = EstadoDocumento.objects.create(codigo="ENV", nombre="Enviado documentos")
+        EstadoDocumento.objects.create(codigo="APR", nombre="Aprobado documentos")
         self.hoja = TipoDocumento.objects.create(codigo="HOJA_APROBACION", nombre="Hoja de Aprobación")
         self.acta = TipoDocumento.objects.create(codigo="ACTA_DEFENSA", nombre="Acta de Defensa")
         self.informe = TipoDocumento.objects.create(codigo="INFORME_FINAL_TUTOR", nombre="Informe Final del Tutor")

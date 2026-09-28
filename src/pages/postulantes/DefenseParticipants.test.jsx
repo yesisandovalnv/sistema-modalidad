@@ -105,6 +105,64 @@ describe('DefenseParticipants US-020', () => {
     await waitFor(() => expect(postulacionesService.registrarAsistenciaDefensa).toHaveBeenLastCalledWith(81, 91, true, 'Corregida', expect.any(AbortSignal)))
   })
 
+  it.each(['PROGRAMADA', 'SUSPENDIDA'])('mantiene solo incorporación sin asistencia automática en %s', async (estado) => {
+    postulacionesService.agregarParticipanteDefensa.mockResolvedValue({ id: 99 })
+    render(<DefenseParticipants defense={{ ...defense, estado, participantes: [] }} canManage onChanged={vi.fn().mockResolvedValue()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar participante' }))
+    const dialog = screen.getByRole('dialog', { name: 'Agregar participante' })
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Ana Tribunal — Tribunal' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Agregar 1 participante' }))
+    await waitFor(() => expect(postulacionesService.agregarParticipanteDefensa).toHaveBeenCalledTimes(1))
+    expect(postulacionesService.registrarAsistenciaDefensa).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Agregar como presente' })).not.toBeInTheDocument()
+  })
+
+  it.each(['FINALIZADA', 'CANCELADA'])('no ofrece incorporación ni acción rápida en %s', (estado) => {
+    render(<DefenseParticipants defense={{ ...defense, estado, participantes: [] }} canManage onChanged={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Agregar participante' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Agregar como presente' })).not.toBeInTheDocument()
+  })
+
+  it('agrega y registra presencia secuencialmente antes de refrescar', async () => {
+    const order = []
+    postulacionesService.agregarParticipanteDefensa.mockImplementation(async () => { order.push('agregar'); return { id: 99 } })
+    postulacionesService.registrarAsistenciaDefensa.mockImplementation(async () => { order.push('asistencia'); return { id: 99, presente: true } })
+    const onChanged = vi.fn(async () => { order.push('refrescar') })
+    const view = render(<DefenseParticipants defense={{ ...defense, estado: 'EN_CURSO', participantes: [] }} canManage onChanged={onChanged} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar participante' }))
+    const dialog = screen.getByRole('dialog', { name: 'Agregar participante' })
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Ana Tribunal — Tribunal' }))
+    expect(within(dialog).queryByRole('button', { name: 'Agregar como presente' })).not.toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Agregar 1 participante' }))
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    expect(order).toEqual(['agregar', 'asistencia', 'refrescar'])
+    expect(postulacionesService.registrarAsistenciaDefensa).toHaveBeenCalledWith(81, 99, true, '', expect.any(AbortSignal))
+    view.rerender(<DefenseParticipants defense={{ ...defense, estado: 'EN_CURSO', participantes: [{ ...participant, id: 99, presente: true }] }} canManage onChanged={onChanged} />)
+    expect(screen.getByText('Tribunal · Convocado · Presente')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Corregir asistencia' })).toBeInTheDocument()
+  })
+
+  it('conserva la incorporación parcial y reintenta solamente asistencia', async () => {
+    const incorporated = { ...participant, id: 99, asignacion: 11, presente: null }
+    postulacionesService.agregarParticipanteDefensa.mockResolvedValue({ id: 99 })
+    postulacionesService.registrarAsistenciaDefensa.mockRejectedValueOnce({ message: 'Fallo de asistencia' }).mockResolvedValueOnce({ id: 99, presente: true })
+    const onChanged = vi.fn().mockResolvedValue()
+    const view = render(<DefenseParticipants defense={{ ...defense, estado: 'EN_CURSO', participantes: [] }} canManage onChanged={onChanged} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar participante' }))
+    const dialog = screen.getByRole('dialog', { name: 'Agregar participante' })
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Ana Tribunal — Tribunal' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Agregar 1 participante' }))
+    await waitFor(() => expect(postulacionesService.registrarAsistenciaDefensa).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    view.rerender(<DefenseParticipants defense={{ ...defense, estado: 'EN_CURSO', participantes: [incorporated] }} canManage onChanged={onChanged} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Participante incorporado, pero no se pudo registrar su presencia.')
+    expect(screen.getByText('Tribunal · Convocado · Asistencia pendiente')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar presencia' }))
+    await waitFor(() => expect(postulacionesService.registrarAsistenciaDefensa).toHaveBeenCalledTimes(2))
+    expect(postulacionesService.agregarParticipanteDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.registrarAsistenciaDefensa).toHaveBeenLastCalledWith(81, 99, true, '', expect.any(AbortSignal))
+  })
+
   it('muestra errores funcionales, permite reintentar catálogo y cancela al desmontar', async () => {
     let capturedSignal
     postulacionesService.obtenerAsignacionesCandidatas.mockImplementationOnce((_post, signal) => { capturedSignal = signal; return Promise.reject({ message: 'No se pudo consultar', status: 404 }) })
@@ -120,7 +178,9 @@ describe('DefenseParticipants US-020', () => {
   it('muestra estado, fecha y advertencia contractual sin controles de evaluación', () => {
     render(<DefenseParticipants defense={{ ...defense, participantes: [{ ...participant, presente: false, fecha_asistencia: '2026-08-10T14:00:00Z', observaciones: 'No asistió' }] }} canManage={false} onChanged={vi.fn()} />)
     expect(screen.getByText(/Convocado · Ausente/)).toBeInTheDocument()
-    expect(screen.getByRole('note')).toHaveTextContent(/no sustituye memorando, designación ni convocatoria institucional formal/i)
+    const participantRow = screen.getByRole('heading', { name: 'Ana Tribunal' }).closest('li')
+    expect(participantRow).toHaveTextContent(/Asistencia:/)
+    expect(participantRow).toHaveTextContent(/Observaciones:\s*No asistió/)
     expect(screen.queryByRole('button', { name: /evaluación|nota|resultado/i })).not.toBeInTheDocument()
   })
 
@@ -160,10 +220,10 @@ describe('DefenseParticipants US-020', () => {
   })
 
   it.each([
-    [2, 0, 2, false, '2 de 3 miembros incorporados', '0 tribunales con presencia confirmada', 'Faltan 2 presencias para alcanzar el quórum.'],
-    [2, 1, 1, false, '2 de 3 miembros incorporados', '1 tribunal con presencia confirmada', 'Falta 1 presencia para alcanzar el quórum.'],
-    [2, 2, 0, true, '2 de 3 miembros incorporados', '2 tribunales con presencia confirmada', 'Quórum válido'],
-    [3, 2, 0, true, '3 de 3 miembros incorporados', '2 tribunales con presencia confirmada', 'Tribunal completo'],
+    [2, 0, 2, false, '2 de 3 incorporados', '0 presentes', 'Faltan 2 presencias para alcanzar el quórum.'],
+    [2, 1, 1, false, '2 de 3 incorporados', '1 presente', 'Falta 1 presencia para alcanzar el quórum.'],
+    [2, 2, 0, true, '2 de 3 incorporados', '2 presentes', '✓ Válido'],
+    [3, 2, 0, true, '3 de 3 incorporados', '2 presentes', '✓ Válido'],
   ])('separa %s incorporados de %s presentes', (incorporados, presentes, faltantes, valido, progreso, presencia, estado) => {
     const rows = Array.from({ length: incorporados }, (_, index) => ({
       ...participant,
@@ -179,11 +239,13 @@ describe('DefenseParticipants US-020', () => {
       profileContext
       quorum={{ valido, conteos: { TRIBUNAL: presentes }, faltantes: faltantes ? { TRIBUNAL: faltantes } : {} }}
     />)
-    expect(screen.getByText(progreso)).toBeInTheDocument()
+    expect(screen.getByLabelText('Resumen operativo de la defensa')).toHaveTextContent(progreso)
     expect(screen.getByText(presencia)).toBeInTheDocument()
+    expect(screen.getByText('Mínimo requerido: 2')).toBeInTheDocument()
     expect(screen.getByText(estado)).toBeInTheDocument()
-    expect(screen.getByText('Se requiere quórum válido para registrar evaluaciones y finalizar la defensa.')).toBeInTheDocument()
-    if (incorporados === 2) expect(screen.queryByText('Tribunal completo')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Resumen operativo de la defensa').querySelector('dl')).toHaveClass('sm:grid-cols-3')
+    if (valido) expect(screen.queryByText('Se requiere quórum válido para registrar evaluaciones y finalizar la defensa.')).not.toBeInTheDocument()
+    else expect(screen.getByText('Se requiere quórum válido para registrar evaluaciones y finalizar la defensa.')).toBeInTheDocument()
   })
 
   it('distingue asistencia pendiente, presente y ausente en participantes incorporados', () => {
@@ -302,8 +364,92 @@ describe('DefenseParticipants US-020', () => {
     resolveRequest({})
   })
 
-  it('no muestra el resumen contextual en otras modalidades', () => {
-    render(<DefenseParticipants defense={defense} canManage={false} onChanged={vi.fn()} quorum={{ valido: true, conteos: { TRIBUNAL: 2 }, faltantes: {} }} />)
-    expect(screen.queryByText(/miembros incorporados/)).not.toBeInTheDocument()
+  it.each(['DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'])('no muestra las métricas exclusivas de Perfil en %s', (tipoEvento) => {
+    render(<DefenseParticipants defense={{ ...defense, tipo_evento: tipoEvento }} canManage={false} onChanged={vi.fn()} quorum={{ valido: true, conteos: { TRIBUNAL: 2 }, faltantes: {} }} />)
+    expect(screen.queryByText(/de 3 incorporados/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Mínimo requerido:/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Pendientes de incorporar')).not.toBeInTheDocument()
+  })
+
+  it('ofrece asistencia múltiple solo en curso y selecciona inicialmente a todos los pendientes activos', async () => {
+    const pending = [
+      { ...participant, id: 91, usuario_nombre: 'Ana Tribunal' },
+      { ...participant, id: 92, asignacion: 12, usuario_nombre: 'Tomás Tutor', rol_evento: 'TUTOR', rol_display: 'Tutor' },
+      { ...participant, id: 93, asignacion: 13, usuario_nombre: 'Diana Modalidad', rol_evento: 'DOCENTE_MODALIDAD', rol_display: 'Docente de modalidad' },
+    ]
+    const { rerender } = render(<DefenseParticipants defense={{ ...defense, estado: 'EN_CURSO', participantes: pending }} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar asistencia múltiple' }))
+    const dialog = screen.getByRole('dialog', { name: 'Registrar asistencia múltiple' })
+    expect(within(dialog).getAllByRole('checkbox')).toHaveLength(3)
+    within(dialog).getAllByRole('checkbox').forEach((checkbox) => expect(checkbox).toBeChecked())
+    expect(within(dialog).getByText('3 seleccionados')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Registrar asistencia' })).toHaveLength(3)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }))
+
+    rerender(<DefenseParticipants defense={{ ...defense, estado: 'PROGRAMADA', participantes: pending }} canManage onChanged={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Registrar asistencia múltiple' })).not.toBeInTheDocument()
+    rerender(<DefenseParticipants defense={{ ...defense, estado: 'EN_CURSO', participantes: pending.map((item) => ({ ...item, presente: true })) }} canManage onChanged={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Registrar asistencia múltiple' })).not.toBeInTheDocument()
+  })
+
+  it('desmarcar conserva asistencia pendiente y registra presente en secuencia solo para seleccionados', async () => {
+    const pending = [
+      { ...participant, id: 91, usuario_nombre: 'Ana Tribunal' },
+      { ...participant, id: 92, asignacion: 12, usuario_nombre: 'Tomás Tutor', rol_evento: 'TUTOR', rol_display: 'Tutor' },
+      { ...participant, id: 93, asignacion: 13, usuario_nombre: 'Diana Modalidad', rol_evento: 'DOCENTE_MODALIDAD', rol_display: 'Docente de modalidad' },
+    ]
+    const order = []
+    postulacionesService.registrarAsistenciaDefensa.mockImplementation(async (_defense, participantId, present) => { order.push(`${participantId}-${present}`); return {} })
+    const onChanged = vi.fn(async () => { order.push('refrescar') })
+    render(<DefenseParticipants defense={{ ...defense, estado: 'EN_CURSO', participantes: pending }} canManage onChanged={onChanged} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar asistencia múltiple' }))
+    const dialog = screen.getByRole('dialog', { name: 'Registrar asistencia múltiple' })
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Diana Modalidad — Docente de modalidad' }))
+    expect(within(dialog).getByText('Asistencia pendiente')).toBeInTheDocument()
+    expect(within(dialog).getByText('2 seleccionados')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar asistentes' }))
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    expect(order).toEqual(['91-true', '92-true', 'refrescar'])
+    expect(postulacionesService.registrarAsistenciaDefensa).not.toHaveBeenCalledWith(81, 93, expect.anything(), expect.anything(), expect.anything())
+    expect(postulacionesService.registrarAsistenciaDefensa.mock.calls.every(([, , present]) => present === true)).toBe(true)
+  })
+
+  it('muestra éxito parcial, continúa el lote y reintenta únicamente los fallidos', async () => {
+    const pending = [
+      { ...participant, id: 91, usuario_nombre: 'Ana Tribunal' },
+      { ...participant, id: 92, asignacion: 12, usuario_nombre: 'Tomás Tutor', rol_evento: 'TUTOR', rol_display: 'Tutor' },
+      { ...participant, id: 93, asignacion: 13, usuario_nombre: 'Diana Modalidad', rol_evento: 'DOCENTE_MODALIDAD', rol_display: 'Docente de modalidad' },
+      { ...participant, id: 94, asignacion: 14, usuario_nombre: 'Pablo Presidente', rol_evento: 'PRESIDENTE', rol_display: 'Presidente' },
+    ]
+    let failedOnce = false
+    postulacionesService.registrarAsistenciaDefensa.mockImplementation(async (_defense, participantId) => {
+      if (participantId === 92 && !failedOnce) { failedOnce = true; throw { message: 'Conflicto de asistencia.' } }
+      return {}
+    })
+    const onChanged = vi.fn().mockResolvedValue()
+    render(<DefenseParticipants defense={{ ...defense, estado: 'EN_CURSO', participantes: pending }} canManage onChanged={onChanged} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar asistencia múltiple' }))
+    const dialog = screen.getByRole('dialog', { name: 'Registrar asistencia múltiple' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar asistentes' }))
+
+    expect(await within(dialog).findByText('Algunas asistencias no pudieron registrarse.')).toBeInTheDocument()
+    expect(postulacionesService.registrarAsistenciaDefensa).toHaveBeenCalledTimes(4)
+    expect(within(dialog).getAllByText('Presente')).toHaveLength(3)
+    expect(within(dialog).getByText('Error · Conflicto de asistencia.')).toBeInTheDocument()
+    expect(within(dialog).getByText('1 seleccionado')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reintentar fallidos' }))
+
+    await waitFor(() => expect(postulacionesService.registrarAsistenciaDefensa).toHaveBeenCalledTimes(5))
+    expect(postulacionesService.registrarAsistenciaDefensa.mock.calls.map(([, participantId]) => participantId)).toEqual([91, 92, 93, 94, 92])
+    expect(onChanged).toHaveBeenCalledTimes(2)
+  })
+
+  it('mantiene las acciones individuales visualmente separadas después de registrar presencia', () => {
+    render(<DefenseParticipants defense={{ ...defense, estado: 'EN_CURSO', participantes: [{ ...participant, presente: true }] }} canManage onChanged={vi.fn()} />)
+    const row = screen.getByRole('heading', { name: 'Ana Tribunal' }).closest('li')
+    expect(within(row).getByRole('button', { name: 'Corregir asistencia' })).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Retirar participante' })).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Corregir asistencia' }).parentElement).toHaveClass('gap-2')
   })
 })
