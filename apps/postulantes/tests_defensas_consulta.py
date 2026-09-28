@@ -127,6 +127,7 @@ class ConsultaDefensasContractTests(APITestCase):
             nota_numerica=Decimal("60.00"),
             ponderacion=Decimal("70.00"),
             aporte_ponderado=Decimal("60.00"),
+            semantica_nota="LEGACY_PONDERADA",
             registrado_por=self.participant_user,
         )
         EvaluacionDefensa.objects.create(
@@ -137,6 +138,7 @@ class ConsultaDefensasContractTests(APITestCase):
             nota_numerica=Decimal("60.00"),
             ponderacion=Decimal("70.00"),
             aporte_ponderado=Decimal("60.00"),
+            semantica_nota="LEGACY_PONDERADA",
             es_resultado_final_evento=True,
             registrado_por=self.staff,
         )

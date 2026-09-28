@@ -146,7 +146,7 @@ class ProyectoGradoAutoaperturaTests(TestCase):
             evento=evento, tipo_evaluacion=tipo_evaluacion, modalidad_registro="CONSENSO",
             resultado_cualitativo="SUFICIENTE" if tipo_evaluacion == "PRIVADA" else "",
             nota_numerica=nota, ponderacion=Decimal("30") if tipo_evaluacion == "PRIVADA" else Decimal("70"),
-            aporte_ponderado=nota, registrado_por=self.admin,
+            aporte_ponderado=nota, semantica_nota="LEGACY_PONDERADA", registrado_por=self.admin,
         )
         return objetivo, evento, evaluacion
 
@@ -177,7 +177,7 @@ class ProyectoGradoAutoaperturaTests(TestCase):
         EvaluacionDefensa.objects.create(
             evento=evento_privado, tipo_evaluacion="RESULTADO_FINAL", modalidad_registro="CONSENSO",
             resultado_cualitativo="SUFICIENTE", nota_numerica=Decimal("25"),
-            ponderacion=Decimal("30"), aporte_ponderado=Decimal("25"),
+            ponderacion=Decimal("30"), aporte_ponderado=Decimal("25"), semantica_nota="LEGACY_PONDERADA",
             es_resultado_final_evento=True, registrado_por=self.admin,
         )
 

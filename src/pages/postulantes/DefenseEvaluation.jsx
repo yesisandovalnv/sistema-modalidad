@@ -9,6 +9,14 @@ const firstFieldError = (value) => Array.isArray(value) ? value[0] : value
 const formatEvaluationLabel = (tipo) => ({ TEMATICA: 'Temática', PERFIL: 'Perfil', PRIVADA: 'Privada', PUBLICA: 'Pública' }[tipo] || tipo)
 const formatRegistroLabel = (modalidad) => ({ CONSENSO: 'Consenso del tribunal', INDIVIDUAL: 'Individual' }[modalidad] || modalidad)
 
+function weightedNotePreview(value, percentage) {
+  const match = /^(\d{1,3})(?:\.(\d{0,2}))?$/.exec(String(value || '').trim())
+  if (!match || BigInt(match[1]) > 100n) return ''
+  const cents = BigInt(match[1]) * 100n + BigInt((match[2] || '').padEnd(2, '0') || '0')
+  const weightedCents = (cents * BigInt(percentage) + 50n) / 100n
+  return `${weightedCents / 100n},${String(weightedCents % 100n).padStart(2, '0')}`
+}
+
 const resultSourceEvaluation = (defense, flowType = 'perfil') => {
   const evaluationType = evaluationTypeByEvent[flowType]
   return (defense.evaluaciones || []).find((item) => (
@@ -151,9 +159,12 @@ function ProjectProfileResultFlow({ defense, onChanged, onReviewAttendance }) {
 
 export default function DefenseEvaluation({ defense, quorum, canManage, onChanged, projectProfileFlow = false, onReviewAttendance }) {
   const [form, setForm] = useState(null)
+  const [projectPrivateNote, setProjectPrivateNote] = useState('')
+  const [projectPublicNote, setProjectPublicNote] = useState('')
   const controller = useRef(null)
   const type = kind[defense.tipo_evento]
   const tesis = defense.postulacion_modalidad_codigo === 'TESIS_GRADO'
+  const proyectoGrado = defense.postulacion_modalidad_codigo === 'PROYECTO_GRADO'
   const tesisPrivada = tesis && type === 'privada'
   const tesisPublica = tesis && type === 'publica'
   const projectProfile = type === 'perfil' && (defense.postulacion_modalidad_codigo === 'PROYECTO_GRADO' || projectProfileFlow)
@@ -220,7 +231,7 @@ export default function DefenseEvaluation({ defense, quorum, canManage, onChange
   return <section className="mt-5 border-t pt-5" aria-label="Gestión de evaluación">
     {!writable && !hasEvaluation && <p className="text-sm text-slate-500">La evaluación requiere una defensa en curso o finalizada y quórum válido.</p>}
     {(existingEvaluation || profileEvaluation) && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950"><p className="font-semibold">Evaluación consensuada registrada</p><p className="mt-1">Tipo: {formatEvaluationLabel((existingEvaluation || profileEvaluation).tipo_evaluacion)}</p><p className="mt-1">Resultado académico: {(existingEvaluation || profileEvaluation).resultado_cualitativo === 'SUFICIENTE' ? 'Suficiente' : 'Insuficiente'}</p>{(existingEvaluation || profileEvaluation).nota_numerica !== null && (existingEvaluation || profileEvaluation).nota_numerica !== undefined && <p className="mt-1">Nota: {String((existingEvaluation || profileEvaluation).nota_numerica)}</p>}<p className="mt-1">Evaluación: {formatRegistroLabel((existingEvaluation || profileEvaluation).modalidad_registro)}</p></div>}
-    {!existingEvaluation && !profileEvaluation && writable && !form && <Button onClick={() => setForm({ action: 'evaluar', mode: 'CONSENSO', submitting: false, error: '', fields: {} }) }>Registrar evaluación consensuada</Button>}
+    {!existingEvaluation && !profileEvaluation && writable && !form && <Button onClick={() => { setProjectPrivateNote(''); setProjectPublicNote(''); setForm({ action: 'evaluar', mode: 'CONSENSO', submitting: false, error: '', fields: {} }) }}>Registrar evaluación consensuada</Button>}
     {form?.action === 'evaluar' && <form className="mt-4 space-y-4" onSubmit={submit} noValidate={tesisPrivada && !individual}>
       {projectProfile && <aside className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm dark:border-sky-800 dark:bg-sky-950">
         <p className="font-semibold">Evaluación consensuada del Tribunal</p>
@@ -229,8 +240,19 @@ export default function DefenseEvaluation({ defense, quorum, canManage, onChange
       {tesis && ['privada', 'publica'].includes(type) && <label className="block text-sm font-medium">Modo<select value={form.mode} onChange={(e) => setForm((v) => ({ ...v, mode: e.target.value }))}><option value="CONSENSO">Por consenso</option><option value="INDIVIDUAL">Individual</option></select></label>}{type !== 'publica' && <label className="block text-sm font-medium">Resultado<select name="resultado" className="mt-1 w-full rounded-md border p-2" required><option value="SUFICIENTE">Suficiente</option><option value="INSUFICIENTE">Insuficiente</option></select></label>}
       {tesis && ['privada', 'publica'].includes(type) && individual && <><label>Tribunal evaluador<select name="evaluador" required>{tribunals.filter((p) => !evaluated.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{p.usuario_nombre || `Tribunal ${p.id}`}</option>)}</select></label><label>Nota individual<input name="nota" type="number" min={tesisPublica ? '1' : undefined} max={tesisPublica ? '100' : undefined} step="0.01" required /></label><p>{evaluated.size}/3 evaluaciones registradas</p></>}
       {tesisPrivada && !individual && <label className="block text-sm font-medium">Nota privada<input name="nota" type="number" min="0" max="30" step="0.01" required aria-describedby="nota-privada-error" className="mt-1 w-full rounded-md border p-2" />{form.fields?.nota_numerica && <span id="nota-privada-error" role="alert" className="mt-1 block text-sm text-red-600">{firstFieldError(form.fields.nota_numerica)}</span>}</label>}
-      {type === 'privada' && !tesis && <label className="block text-sm font-medium">Nota privada (0–30)<input name="nota_privada" type="number" min="0" max="30" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label>}
-      {type === 'publica' && (!tesisPublica || !individual) && (tesisPublica ? <label className="block text-sm font-medium">Nota pública (1–100)<input name="nota" type="number" min="1" max="100" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label> : <label className="block text-sm font-medium">Nota pública (0–70)<input name="nota_publica" type="number" min="0" max="70" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label>)}
+      {type === 'privada' && !tesis && (proyectoGrado ? <div>
+        <label className="block text-sm font-medium">Nota de Defensa Privada (0–100)<input name="nota_privada" type="number" min="0" max="100" step="0.01" required onChange={(event) => setProjectPrivateNote(event.target.value)} className="mt-1 w-full rounded-md border p-2" /></label>
+        <p className="mt-2 text-sm text-slate-600">Ponderación en la nota final: 30%</p>
+        <p className="text-sm font-medium" aria-live="polite">Aporte ponderado: {weightedNotePreview(projectPrivateNote, 30) || '—'} / 30</p>
+      </div> : <label className="block text-sm font-medium">Nota privada (0–30)<input name="nota_privada" type="number" min="0" max="30" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label>)}
+      {type === 'publica' && (!tesisPublica || !individual) && (tesisPublica
+        ? <label className="block text-sm font-medium">Nota pública (1–100)<input name="nota" type="number" min="1" max="100" step="0.01" required /></label>
+        : proyectoGrado ? <div>
+          <label className="block text-sm font-medium">Nota de Defensa Pública (0–100)<input name="nota_publica" type="number" min="0" max="100" step="0.01" required onChange={(event) => setProjectPublicNote(event.target.value)} className="mt-1 w-full rounded-md border p-2" /></label>
+          <p className="mt-2 text-sm text-slate-600">Ponderación en la nota final: 70%</p>
+          <p className="text-sm font-medium" aria-live="polite">Aporte ponderado: {weightedNotePreview(projectPublicNote, 70) || '—'} / 70</p>
+        </div>
+          : <label className="block text-sm font-medium">Nota pública (0–70)<input name="nota_publica" type="number" min="0" max="70" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label>)}
       <label className="block text-sm font-medium">Observaciones<textarea name="observaciones" className="mt-1 w-full rounded-md border p-2" /></label>
       {form.error && <p role="alert" className="text-sm text-red-600">{form.error}</p>}
       <div className="flex gap-2"><Button type="submit" disabled={form.submitting}>{form.submitting ? 'Procesando…' : 'Registrar'}</Button><Button type="button" variant="secondary" disabled={form.submitting} onClick={() => setForm(null)}>Cancelar</Button></div>

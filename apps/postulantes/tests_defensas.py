@@ -59,12 +59,17 @@ class DefensaMixin:
         self.add(event,["TRIBUNAL","TRIBUNAL","PRESIDENTE","SECRETARIO"])
         return event
 
+    def private_event_with_quorum(self, state="EN_CURSO"):
+        event=self.event("DEFENSA_PRIVADA",state)
+        self.add(event,["TRIBUNAL","TRIBUNAL","DOCENTE_MODALIDAD"])
+        return event
+
     def add_private_consolidated_result(self, note=Decimal("25")):
         event=self.event("DEFENSA_PRIVADA","FINALIZADA")
         return EvaluacionDefensa.objects.create(
             evento=event,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",
             resultado_cualitativo="SUFICIENTE",nota_numerica=note,ponderacion=Decimal("30"),
-            aporte_ponderado=note,es_resultado_final_evento=True,registrado_por=self.admin,
+            aporte_ponderado=note,semantica_nota="LEGACY_PONDERADA",es_resultado_final_evento=True,registrado_por=self.admin,
         )
 
 
@@ -100,16 +105,165 @@ class ModelosDefensaTests(DefensaMixin,TestCase):
         ev=self.event(); EvaluacionDefensa(evento=ev,tipo_evaluacion="PERFIL",modalidad_registro="CONSENSO",resultado_cualitativo="SUFICIENTE").full_clean()
         with self.assertRaises(ValidationError): EvaluacionDefensa(evento=ev,tipo_evaluacion="PERFIL",modalidad_registro="CONSENSO",resultado_cualitativo="APROBADO",nota_numerica=1).full_clean()
         ev=self.event("DEFENSA_PRIVADA");
-        for n in (Decimal("0"),Decimal("30")): EvaluacionDefensa(evento=ev,tipo_evaluacion="PRIVADA",modalidad_registro="CONSENSO",resultado_cualitativo="SUFICIENTE",nota_numerica=n,ponderacion=Decimal("30"),aporte_ponderado=n).full_clean()
+        for n in (Decimal("0"),Decimal("30")): EvaluacionDefensa(evento=ev,tipo_evaluacion="PRIVADA",modalidad_registro="CONSENSO",resultado_cualitativo="SUFICIENTE",nota_numerica=n,ponderacion=Decimal("30"),aporte_ponderado=n,semantica_nota="LEGACY_PONDERADA").full_clean()
         for n in (-1,31):
-            with self.assertRaises(ValidationError): EvaluacionDefensa(evento=ev,tipo_evaluacion="PRIVADA",modalidad_registro="CONSENSO",resultado_cualitativo="SUFICIENTE",nota_numerica=n,ponderacion=Decimal("30"),aporte_ponderado=n).full_clean()
+            with self.assertRaises(ValidationError): EvaluacionDefensa(evento=ev,tipo_evaluacion="PRIVADA",modalidad_registro="CONSENSO",resultado_cualitativo="SUFICIENTE",nota_numerica=n,ponderacion=Decimal("30"),aporte_ponderado=n,semantica_nota="LEGACY_PONDERADA").full_clean()
         ev=self.event("DEFENSA_PUBLICA","EN_CURSO")
-        for n in (Decimal("0"),Decimal("70")): EvaluacionDefensa(evento=ev,tipo_evaluacion="PUBLICA",modalidad_registro="CONSENSO",nota_numerica=n,ponderacion=Decimal("70"),aporte_ponderado=n).full_clean()
+        for n in (Decimal("0"),Decimal("70")): EvaluacionDefensa(evento=ev,tipo_evaluacion="PUBLICA",modalidad_registro="CONSENSO",nota_numerica=n,ponderacion=Decimal("70"),aporte_ponderado=n,semantica_nota="LEGACY_PONDERADA").full_clean()
         for n in (-1,71):
-            with self.assertRaises(ValidationError): EvaluacionDefensa(evento=ev,tipo_evaluacion="PUBLICA",modalidad_registro="CONSENSO",nota_numerica=n,ponderacion=Decimal("70"),aporte_ponderado=n).full_clean()
+            with self.assertRaises(ValidationError): EvaluacionDefensa(evento=ev,tipo_evaluacion="PUBLICA",modalidad_registro="CONSENSO",nota_numerica=n,ponderacion=Decimal("70"),aporte_ponderado=n,semantica_nota="LEGACY_PONDERADA").full_clean()
 
 
 class ServiciosDefensaTests(DefensaMixin,TestCase):
+    def test_nueva_nota_privada_de_proyecto_es_bruta_y_se_pondera_con_decimal(self):
+        for note, contribution in (
+            (Decimal("85.00"), Decimal("25.50")),
+            (Decimal("85.05"), Decimal("25.52")),
+            (Decimal("83.00"), Decimal("24.90")),
+            (Decimal("0.00"), Decimal("0.00")),
+            (Decimal("100.00"), Decimal("30.00")),
+        ):
+            with self.subTest(note=note):
+                event=self.private_event_with_quorum()
+                try:
+                    evaluation=EvaluacionDefensaService.registrar_evaluacion_privada(
+                        event,self.admin,"SUFICIENTE",nota=note,modalidad_registro="CONSENSO",
+                    )
+                    self.assertEqual(evaluation.nota_numerica,note)
+                    self.assertEqual(evaluation.ponderacion,Decimal("30.00"))
+                    self.assertEqual(evaluation.aporte_ponderado,contribution)
+                    self.assertEqual(evaluation.semantica_nota,"BRUTA_100")
+                finally:
+                    event.activo=False; event.save(update_fields=["activo"])
+
+    def test_nueva_nota_privada_de_proyecto_rechaza_fuera_de_0_a_100(self):
+        for note in (Decimal("-0.01"),Decimal("100.01")):
+            with self.subTest(note=note):
+                event=self.private_event_with_quorum()
+                with self.assertRaises(ValidationError):
+                    EvaluacionDefensaService.registrar_evaluacion_privada(
+                        event,self.admin,"SUFICIENTE",nota=note,modalidad_registro="CONSENSO",
+                    )
+                event.activo=False; event.save(update_fields=["activo"])
+
+    def test_nueva_nota_publica_de_proyecto_es_bruta_y_se_pondera_con_decimal(self):
+        for note, contribution in (
+            (Decimal("95.00"), Decimal("66.50")),
+            (Decimal("87.15"), Decimal("61.01")),
+            (Decimal("87.00"), Decimal("60.90")),
+            (Decimal("0.00"), Decimal("0.00")),
+            (Decimal("100.00"), Decimal("70.00")),
+        ):
+            with self.subTest(note=note):
+                event=self.public_event_with_quorum()
+                evaluation=EvaluacionDefensaService.registrar_evaluacion_publica(
+                    event,self.admin,note,modalidad_registro="CONSENSO",
+                )
+                self.assertEqual(evaluation.nota_numerica,note)
+                self.assertEqual(evaluation.ponderacion,Decimal("70.00"))
+                self.assertEqual(evaluation.aporte_ponderado,contribution)
+                self.assertEqual(evaluation.semantica_nota,"BRUTA_100")
+                event.activo=False; event.save(update_fields=["activo"])
+
+    def test_nueva_nota_publica_de_proyecto_rechaza_fuera_de_0_a_100(self):
+        for note in (Decimal("-0.01"),Decimal("100.01")):
+            with self.subTest(note=note):
+                event=self.public_event_with_quorum()
+                with self.assertRaises(ValidationError):
+                    EvaluacionDefensaService.registrar_evaluacion_publica(
+                        event,self.admin,note,modalidad_registro="CONSENSO",
+                    )
+                event.activo=False; event.save(update_fields=["activo"])
+
+    def test_nota_privada_no_deriva_resultado_cualitativo(self):
+        event=self.private_event_with_quorum()
+        evaluation=EvaluacionDefensaService.registrar_evaluacion_privada(
+            event,self.admin,"INSUFICIENTE",nota=Decimal("100.00"),modalidad_registro="CONSENSO",
+        )
+        self.assertEqual(evaluation.nota_numerica,Decimal("100.00"))
+        self.assertEqual(evaluation.resultado_cualitativo,"INSUFICIENTE")
+
+    def test_consolidado_preserva_nota_bruta_aporte_ponderado_y_semantica(self):
+        event=self.public_event_with_quorum()
+        source=EvaluacionDefensaService.registrar_evaluacion_publica(
+            event,self.admin,Decimal("95.00"),modalidad_registro="CONSENSO",
+        )
+        event.estado="FINALIZADA"; event.fecha_fin_real=timezone.now(); event.save()
+
+        consolidated=EvaluacionDefensaService.consolidar_evaluacion_evento(event,self.admin)
+
+        self.assertEqual(source.nota_numerica,Decimal("95.00"))
+        self.assertEqual(consolidated.nota_numerica,Decimal("95.00"))
+        self.assertEqual(consolidated.ponderacion,Decimal("70.00"))
+        self.assertEqual(consolidated.aporte_ponderado,Decimal("66.50"))
+        self.assertEqual(consolidated.semantica_nota,"BRUTA_100")
+
+    def test_resultado_final_mixto_usa_aporte_nuevo_y_preserva_nota_legacy(self):
+        private=self.event("DEFENSA_PRIVADA","FINALIZADA")
+        public=self.event("DEFENSA_PUBLICA","FINALIZADA")
+        EvaluacionDefensa.objects.create(
+            evento=private,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",nota_numerica=Decimal("25.00"),
+            ponderacion=Decimal("30.00"),aporte_ponderado=Decimal("25.00"),
+            semantica_nota="LEGACY_PONDERADA",es_resultado_final_evento=True,registrado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=public,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",
+            nota_numerica=Decimal("95.00"),ponderacion=Decimal("70.00"),
+            aporte_ponderado=Decimal("66.50"),semantica_nota="BRUTA_100",
+            es_resultado_final_evento=True,registrado_por=self.admin,
+        )
+
+        result=EvaluacionDefensaService.calcular_resultado_final(self.post,self.admin)
+
+        self.assertEqual(result["aporte_privada"],Decimal("25.00"))
+        self.assertEqual(result["aporte_publica"],Decimal("66.50"))
+        self.assertEqual(result["nota_final"],Decimal("91.50"))
+        self.assertEqual(result["semantica_privada"],"LEGACY_PONDERADA")
+        self.assertEqual(result["semantica_publica"],"BRUTA_100")
+
+    def test_resultado_final_nuevo_85_y_95_suma_aportes_y_clasifica_sobre_100(self):
+        private=self.event("DEFENSA_PRIVADA","FINALIZADA")
+        public=self.event("DEFENSA_PUBLICA","FINALIZADA")
+        EvaluacionDefensa.objects.create(
+            evento=private,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",nota_numerica=Decimal("85.00"),
+            ponderacion=Decimal("30.00"),aporte_ponderado=Decimal("25.50"),
+            semantica_nota="BRUTA_100",es_resultado_final_evento=True,registrado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=public,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",
+            nota_numerica=Decimal("95.00"),ponderacion=Decimal("70.00"),
+            aporte_ponderado=Decimal("66.50"),semantica_nota="BRUTA_100",
+            es_resultado_final_evento=True,registrado_por=self.admin,
+        )
+
+        result=EvaluacionDefensaService.calcular_resultado_final(self.post,self.admin)
+
+        self.assertEqual(result["aporte_privada"],Decimal("25.50"))
+        self.assertEqual(result["aporte_publica"],Decimal("66.50"))
+        self.assertEqual(result["nota_final"],Decimal("92.00"))
+        self.assertEqual(result["clasificacion"],"APROBACION_PLENA_CON_FELICITACION")
+
+    def test_resultado_final_legacy_25_mas_60_sigue_siendo_85(self):
+        private=self.event("DEFENSA_PRIVADA","FINALIZADA")
+        public=self.event("DEFENSA_PUBLICA","FINALIZADA")
+        EvaluacionDefensa.objects.create(
+            evento=private,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",nota_numerica=Decimal("25.00"),
+            ponderacion=Decimal("30.00"),aporte_ponderado=Decimal("25.00"),
+            semantica_nota="LEGACY_PONDERADA",es_resultado_final_evento=True,registrado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=public,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",
+            nota_numerica=Decimal("60.00"),ponderacion=Decimal("70.00"),
+            aporte_ponderado=Decimal("60.00"),semantica_nota="LEGACY_PONDERADA",
+            es_resultado_final_evento=True,registrado_por=self.admin,
+        )
+        result=EvaluacionDefensaService.calcular_resultado_final(self.post,self.admin)
+        self.assertEqual(result["nota_final"],Decimal("85.00"))
+        self.assertEqual(result["clasificacion"],"APROBACION_PLENA")
+
     def test_aprobacion_manual_perfil_exige_defensa_finalizada_y_resultado_suficiente(self):
         with self.assertRaisesMessage(ValidationError, "Defensa de Perfil finalizada"):
             WorkflowService.aprobar_etapa(self.follow["PERFIL_PROYECTO"], self.admin)
@@ -621,10 +775,10 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
 
     def test_resultado_final_suma_aportes_y_no_sustituye_faltantes_por_cero(self):
         private=self.event("DEFENSA_PRIVADA","FINALIZADA"); public=self.event("DEFENSA_PUBLICA","FINALIZADA")
-        EvaluacionDefensa.objects.create(evento=private,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",resultado_cualitativo="SUFICIENTE",nota_numerica=Decimal("24"),ponderacion=Decimal("30"),aporte_ponderado=Decimal("24"),es_resultado_final_evento=True,registrado_por=self.admin)
+        EvaluacionDefensa.objects.create(evento=private,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",resultado_cualitativo="SUFICIENTE",nota_numerica=Decimal("24"),ponderacion=Decimal("30"),aporte_ponderado=Decimal("24"),semantica_nota="LEGACY_PONDERADA",es_resultado_final_evento=True,registrado_por=self.admin)
         result=EvaluacionDefensaService.calcular_resultado_final(self.post,self.admin)
         self.assertIsNone(result["nota_final"])
-        EvaluacionDefensa.objects.create(evento=public,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",nota_numerica=Decimal("60"),ponderacion=Decimal("70"),aporte_ponderado=Decimal("60"),es_resultado_final_evento=True,registrado_por=self.admin)
+        EvaluacionDefensa.objects.create(evento=public,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",nota_numerica=Decimal("60"),ponderacion=Decimal("70"),aporte_ponderado=Decimal("60"),semantica_nota="LEGACY_PONDERADA",es_resultado_final_evento=True,registrado_por=self.admin)
         result=EvaluacionDefensaService.calcular_resultado_final(self.post,self.admin)
         self.assertEqual(result["nota_final"],Decimal("84.00")); self.assertEqual(result["clasificacion"],"APROBACION_PLENA")
 
@@ -757,16 +911,66 @@ class ApiDefensaTests(DefensaMixin,APITestCase):
         ev=self.public_event_with_quorum()
         self.client.force_authenticate(self.admin)
         evaluate=f"/api/v1/eventos-defensa/{ev.pk}/evaluaciones/publica/"
-        self.assertEqual(self.client.post(evaluate,{"nota_publica":"71"},format="json").status_code,400)
-        response=self.client.post(evaluate,{"nota_publica":"60"},format="json")
+        self.assertEqual(self.client.post(evaluate,{"nota_publica":"101"},format="json").status_code,400)
+        response=self.client.post(evaluate,{"nota_publica":"95"},format="json")
         self.assertEqual(response.status_code,201)
-        self.assertEqual(response.data["nota_numerica"],"60.00")
+        self.assertEqual(response.data["nota_numerica"],"95.00")
+        self.assertEqual(response.data["ponderacion"],"70.00")
+        self.assertEqual(response.data["aporte_ponderado"],"66.50")
+        self.assertEqual(response.data["semantica_nota"],"BRUTA_100")
         self.assertEqual(self.client.post(f"/api/v1/eventos-defensa/{ev.pk}/finalizar/",{},format="json").status_code,200)
         consolidated=self.client.post(f"/api/v1/eventos-defensa/{ev.pk}/evaluaciones/consolidar/",{},format="json")
         self.assertEqual(consolidated.status_code,200)
         self.assertTrue(consolidated.data["es_resultado_final_evento"])
         self.follow["DEFENSA_PUBLICA"].refresh_from_db()
         self.assertEqual(self.follow["DEFENSA_PUBLICA"].estado,"APROBADA")
+
+    def test_api_nota_privada_bruta_acepta_100_y_devuelve_aporte_y_semantica(self):
+        event=self.private_event_with_quorum()
+        self.client.force_authenticate(self.admin)
+        endpoint=f"/api/v1/eventos-defensa/{event.pk}/evaluaciones/privada/"
+
+        response=self.client.post(endpoint,{"nota_privada":"100","resultado":"SUFICIENTE"},format="json")
+
+        self.assertEqual(response.status_code,201)
+        self.assertEqual(response.data["nota_numerica"],"100.00")
+        self.assertEqual(response.data["ponderacion"],"30.00")
+        self.assertEqual(response.data["aporte_ponderado"],"30.00")
+        self.assertEqual(response.data["semantica_nota"],"BRUTA_100")
+        event.activo=False; event.save(update_fields=["activo"])
+        invalid_event=self.event("DEFENSA_PRIVADA")
+        self.add(invalid_event,["TRIBUNAL","TRIBUNAL","DOCENTE_MODALIDAD"])
+        invalid=self.client.post(
+            f"/api/v1/eventos-defensa/{invalid_event.pk}/evaluaciones/privada/",
+            {"nota_privada":"100.01","resultado":"SUFICIENTE"},format="json",
+        )
+        self.assertEqual(invalid.status_code,400)
+
+    def test_api_resultado_final_expone_semantica_de_cada_evaluacion(self):
+        private=self.event("DEFENSA_PRIVADA","FINALIZADA")
+        public=self.event("DEFENSA_PUBLICA","FINALIZADA")
+        EvaluacionDefensa.objects.create(
+            evento=private,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",nota_numerica=Decimal("25.00"),
+            ponderacion=Decimal("30.00"),aporte_ponderado=Decimal("25.00"),
+            semantica_nota="LEGACY_PONDERADA",es_resultado_final_evento=True,registrado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=public,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",
+            nota_numerica=Decimal("95.00"),ponderacion=Decimal("70.00"),
+            aporte_ponderado=Decimal("66.50"),semantica_nota="BRUTA_100",
+            es_resultado_final_evento=True,registrado_por=self.admin,
+        )
+        self.client.force_authenticate(self.admin)
+
+        response=self.client.get(f"/api/v1/postulaciones/{self.post.pk}/resultado-final/")
+
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.data["semantica_privada"],"LEGACY_PONDERADA")
+        self.assertEqual(response.data["semantica_publica"],"BRUTA_100")
+        self.assertEqual(response.data["aporte_privada"],Decimal("25.00"))
+        self.assertEqual(response.data["aporte_publica"],Decimal("66.50"))
+        self.assertEqual(response.data["nota_final"],Decimal("91.50"))
 
     def test_resultado_final_no_admite_put(self):
         self.client.force_authenticate(self.admin)

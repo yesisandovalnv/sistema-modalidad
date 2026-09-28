@@ -98,8 +98,8 @@ const defenseRows = [
     modalidad_evento: 'MIXTA', modalidad_display: 'Mixta', enlace_virtual: 'https://meet.example.test/defensa',
     etapa_codigo: 'DEFENSA_PUBLICA', etapa_nombre: 'Defensa Pública', observaciones: 'Registro técnico',
     participantes: [{ id: 91, usuario_nombre: 'María Tribunal', rol_evento: 'TRIBUNAL', rol_display: 'Tribunal', convocatoria: true, convocado: true, presente: true, fecha_asistencia: '2026-06-10T14:03:00Z', observaciones: 'Presente en sala' }],
-    evaluaciones: [{ id: 101, tipo_evaluacion: 'PUBLICA', tipo_display: 'Pública', evaluador_nombre: null, modalidad_registro: 'CONSENSO', modalidad_registro_display: 'Consenso', resultado_cualitativo: '', nota_numerica: '60.00', ponderacion: '70.00', aporte_ponderado: '60.00' }],
-    resultado_consolidado: { id: 102, tipo_evaluacion: 'RESULTADO_FINAL', tipo_display: 'Resultado final', evaluador_nombre: null, modalidad_registro: 'CONSENSO', modalidad_registro_display: 'Consenso', resultado_cualitativo: '', nota_numerica: '60.00', ponderacion: '70.00', aporte_ponderado: '60.00' },
+    evaluaciones: [{ id: 101, tipo_evaluacion: 'PUBLICA', tipo_display: 'Pública', evaluador_nombre: null, modalidad_registro: 'CONSENSO', modalidad_registro_display: 'Consenso', resultado_cualitativo: '', nota_numerica: '60.00', ponderacion: '70.00', aporte_ponderado: '60.00', semantica_nota: 'LEGACY_PONDERADA' }],
+    resultado_consolidado: { id: 102, tipo_evaluacion: 'RESULTADO_FINAL', tipo_display: 'Resultado final', evaluador_nombre: null, modalidad_registro: 'CONSENSO', modalidad_registro_display: 'Consenso', resultado_cualitativo: '', nota_numerica: '60.00', ponderacion: '70.00', aporte_ponderado: '60.00', semantica_nota: 'LEGACY_PONDERADA' },
   },
   { id: 82, tipo_evento: 'DEFENSA_PRIVADA', tipo_display: 'Defensa privada', numero_intento: 1, estado: 'PROGRAMADA', estado_display: 'Programada', fecha_programada: '2026-05-01T10:00:00Z', lugar: 'Sala 2', modalidad_display: 'Presencial', etapa_nombre: 'Defensa Privada', participantes: [], evaluaciones: [], resultado_consolidado: null },
   { id: 83, tipo_evento: 'DEFENSA_PERFIL', tipo_display: 'Defensa de perfil', numero_intento: 1, estado: 'EN_CURSO', estado_display: 'En curso', fecha_programada: '2026-04-01T10:00:00Z', lugar: '', modalidad_display: 'Virtual', enlace_virtual: '', etapa_nombre: 'Perfil de Proyecto', participantes: [], evaluaciones: [], resultado_consolidado: null },
@@ -139,7 +139,7 @@ const response = {
     ],
   },
   resultado: {
-    data: { nota_privada: '24.00', nota_publica: '60.00', aporte_privada: '24.00', aporte_publica: '60.00', clasificacion: 'APROBACION_PLENA', resultado: 'APROBACION_PLENA', nota_final: '84.00', limitacion_normativa: '' },
+    data: { nota_privada: '24.00', nota_publica: '60.00', aporte_privada: '24.00', aporte_publica: '60.00', semantica_privada: 'LEGACY_PONDERADA', semantica_publica: 'LEGACY_PONDERADA', clasificacion: 'APROBACION_PLENA', resultado: 'APROBACION_PLENA', nota_final: '84.00', limitacion_normativa: '' },
     error: '',
   },
   cierre: {
@@ -691,9 +691,11 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByRole('heading', { name: 'Gestión administrativa pendiente' })).toBeInTheDocument()
     expect(screen.getByText('0 de 3 etapas completadas')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Resultado académico técnico' })).toBeInTheDocument()
-    expect(screen.getByText('24.00')).toBeInTheDocument()
-    expect(screen.getAllByText('60.00').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('84.00').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('24,00')).toHaveLength(2)
+    expect(screen.getAllByText('60,00').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('84,00').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Registro con escala anterior')).toHaveLength(2)
+    expect(screen.getAllByText('Nota de Defensa Privada').length).toBeGreaterThan(0)
     expect(screen.queryByText('0')).not.toBeInTheDocument()
     expect(screen.queryByRole('note', { name: 'Límites normativos' })).not.toBeInTheDocument()
     expect(screen.queryByText(/nota privada es el aporte consensuado/i)).not.toBeInTheDocument()
@@ -816,7 +818,7 @@ describe('ExpedientePage US-008', () => {
     expect(await screen.findByText('✓ Expediente concluido')).toBeInTheDocument()
     expect(screen.getByText(/Todas las etapas académicas y el cierre documental/)).toBeInTheDocument()
     expect(screen.getByText('Nota final: 84.00')).toBeInTheDocument()
-    expect(screen.getAllByText('APROBACION PLENA').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('APROBACIÓN PLENA').length).toBeGreaterThan(0)
   })
 
   const projectStages = (inscriptionState = 'PENDIENTE', profileState = 'PENDIENTE') => [
@@ -1658,7 +1660,7 @@ describe('ExpedientePage US-008', () => {
     })
     renderPage()
     await screen.findByText('EXP-007')
-    const result = screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement
+    const result = (await screen.findByRole('heading', { name: 'Resultado académico técnico' })).parentElement
     expect(within(result).getAllByText('/ 100')).toHaveLength(2)
     expect(within(result).getByText('Aporte pública')).toBeInTheDocument()
     expect(within(result).getByText('56.00')).toBeInTheDocument()
@@ -1667,6 +1669,36 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByRole('heading', { name: 'Siguiente acción' })).toBeInTheDocument()
     expect(screen.getByText('Completa las asignaciones de Tesis.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Ir a actores' })).toHaveAttribute('href', '#actores')
+  })
+
+  it('distingue nota bruta, aportes, ponderaciones y clasificación de Proyecto nuevo', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      resultado: { data: {
+        nota_privada: '85.00', aporte_privada: '25.50', semantica_privada: 'BRUTA_100',
+        nota_publica: '95.00', aporte_publica: '66.50', semantica_publica: 'BRUTA_100',
+        nota_final: '92.00', clasificacion: 'APROBACION_PLENA_CON_FELICITACION',
+      }, error: '' },
+    })
+    renderPage()
+
+    const result = (await screen.findByRole('heading', { name: 'Resultado académico técnico' })).parentElement
+    await within(result).findByText('Nota de Defensa Privada')
+    expect(within(result).getByText('85,00')).toBeInTheDocument()
+    expect(within(result).getAllByText('/ 100')).toHaveLength(3)
+    expect(within(result).getByText('Aporte de Defensa Privada')).toBeInTheDocument()
+    expect(within(result).getByText('Nota de Defensa Pública')).toBeInTheDocument()
+    expect(within(result).getByText('Aporte de Defensa Pública')).toBeInTheDocument()
+    expect(within(result).getByText('Nota Final')).toBeInTheDocument()
+    expect(within(result).getAllByText('Calificación')).toHaveLength(2)
+    expect(within(result).getByText('25,50')).toBeInTheDocument()
+    expect(within(result).getByText('66,50')).toBeInTheDocument()
+    expect(within(result).getAllByText('Ponderación 30%')).toHaveLength(1)
+    expect(within(result).getAllByText('Ponderación 70%')).toHaveLength(1)
+    expect(within(result).getByText('/ 30')).toBeInTheDocument()
+    expect(within(result).getByText('/ 70')).toBeInTheDocument()
+    expect(within(result).getByText('92,00')).toBeInTheDocument()
+    expect(within(result).getByText('APROBACIÓN PLENA CON FELICITACIÓN')).toBeInTheDocument()
   })
 
   it('orienta a cargar el Acta cuando la Defensa Pública de Tesis ya está aprobada', async () => {
@@ -1771,7 +1803,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('Estado de cierre técnico todavía no disponible')).toBeInTheDocument()
     expect(screen.queryByRole('note', { name: 'Límites normativos' })).not.toBeInTheDocument()
     await userEvent.click(screen.getAllByRole('button', { name: 'Reintentar' })[0])
-    expect((await screen.findAllByText('84.00')).length).toBeGreaterThanOrEqual(2)
+    expect(await screen.findByText('84,00')).toBeInTheDocument()
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2)
   })
 
@@ -3725,7 +3757,7 @@ describe('ExpedientePage US-008', () => {
           ? { ...stage, estado: 'APROBADA' }
           : stage),
       },
-      resultado: { data: { nota_privada: '28.00', nota_publica: null, nota_final: null }, error: '' },
+      resultado: { data: { nota_privada: '28.00', nota_publica: null, aporte_privada: '28.00', semantica_privada: 'LEGACY_PONDERADA', nota_final: null }, error: '' },
       cierre: { data: { ...closureResponse, etapa_actual: 'DEFENSA_PUBLICA' }, error: '' },
     }
     postulacionesService.obtenerExpediente.mockResolvedValueOnce(stale).mockResolvedValue(synchronized)
@@ -3733,7 +3765,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.consolidarEvaluacionDefensa.mockResolvedValue({})
     postulacionesService.obtenerDefensa.mockResolvedValue({
       ...privateDefense,
-      resultado_consolidado: { id: 202, tipo_evaluacion: 'RESULTADO_FINAL', resultado_cualitativo: 'SUFICIENTE', nota_numerica: '28.00', ponderacion: '30.00', aporte_ponderado: '28.00' },
+      resultado_consolidado: { id: 202, tipo_evaluacion: 'RESULTADO_FINAL', resultado_cualitativo: 'SUFICIENTE', nota_numerica: '28.00', ponderacion: '30.00', aporte_ponderado: '28.00', semantica_nota: 'LEGACY_PONDERADA' },
     })
 
     renderDefenseEvaluationManagerPage()
@@ -3741,8 +3773,9 @@ describe('ExpedientePage US-008', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Consolidar resultado del evento' }))
 
     await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
-    expect(within(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).getByText('28.00')).toBeInTheDocument()
-    expect(within(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).getByText('/ 30')).toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).getAllByText('28,00').length).toBeGreaterThan(0)
+    expect(within(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).getAllByText('/ 30')).toHaveLength(2)
+    expect(within(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).getByText('Registro con escala anterior')).toBeInTheDocument()
     expect(within(screen.getByRole('heading', { name: 'Cierre técnico' }).parentElement).getByText('DEFENSA_PUBLICA')).toBeInTheDocument()
     expect(screen.getAllByText('Defensa Pública').length).toBeGreaterThan(0)
   })

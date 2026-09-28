@@ -28,12 +28,20 @@ const profileDefense = (modalidad = 'PROYECTO_GRADO') => ({
 describe('DefenseEvaluation por modalidad', () => {
   beforeEach(() => vi.resetAllMocks())
 
-  it('conserva 0--70 para Proyecto de Grado', async () => {
+  it('captura Defensa Pública de Proyecto en escala bruta 0--100 y muestra preview', async () => {
+    postulacionesService.registrarEvaluacionDefensa.mockResolvedValue({})
     render(<DefenseEvaluation defense={defense('PROYECTO_GRADO')} quorum={quorum} canManage onChanged={vi.fn()} />)
     await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
-    const input = screen.getByLabelText('Nota pública (0–70)')
+    const input = screen.getByLabelText('Nota de Defensa Pública (0–100)')
     expect(input).toHaveAttribute('min', '0')
-    expect(input).toHaveAttribute('max', '70')
+    expect(input).toHaveAttribute('max', '100')
+    await userEvent.type(input, '95')
+    expect(screen.getByText('Ponderación en la nota final: 70%')).toBeInTheDocument()
+    expect(screen.getByText('Aporte ponderado: 66,50 / 70')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(9, 'publica', {
+      observaciones: '', modalidad_registro: 'CONSENSO', nota_publica: '95',
+    }, expect.any(AbortSignal))
   })
 
   it('prepara 1--100 y payload técnico para Tesis sin imponer 48 horas', async () => {
@@ -87,10 +95,26 @@ describe('DefenseEvaluation por modalidad', () => {
     expect(await screen.findByText('La escala numérica provisional de la Defensa Privada es 0 a 30.')).toBeInTheDocument()
   })
 
-  it('mantiene la nota_privada existente para otras modalidades', async () => {
+  it('captura Defensa Privada de Proyecto sobre 100 y no envía el aporte del preview', async () => {
+    postulacionesService.registrarEvaluacionDefensa.mockResolvedValue({})
     render(<DefenseEvaluation defense={privateDefense('PROYECTO_GRADO')} quorum={quorum} canManage onChanged={vi.fn()} />)
     await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
-    expect(screen.getByLabelText('Nota privada (0–30)')).toHaveAttribute('name', 'nota_privada')
+    const input = screen.getByLabelText('Nota de Defensa Privada (0–100)')
+    expect(input).toHaveAttribute('min', '0')
+    expect(input).toHaveAttribute('max', '100')
+    await userEvent.type(input, '85')
+    expect(screen.getByText('Ponderación en la nota final: 30%')).toBeInTheDocument()
+    expect(screen.getByText('Aporte ponderado: 25,50 / 30')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(9, 'privada', {
+      observaciones: '', modalidad_registro: 'CONSENSO', resultado: 'SUFICIENTE', nota_privada: '85',
+    }, expect.any(AbortSignal))
+  })
+
+  it('conserva 0--30 para Defensa Privada de Trabajo Dirigido', async () => {
+    render(<DefenseEvaluation defense={privateDefense('TRABAJO_DIRIGIDO')} quorum={quorum} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    expect(screen.getByLabelText('Nota privada (0–30)')).toHaveAttribute('max', '30')
   })
 
   it('explica que Perfil de Proyecto registra un único consenso sin evaluador individual', async () => {

@@ -124,8 +124,12 @@ class TrabajoDirigidoTest(TestCase):
 
     def test_evaluacion_reutiliza_ponderacion_30_70_y_escala(self):
         policy = ModalidadPolicyRegistry.get(self.post).evaluacion_policy
-        self.assertEqual(policy.get_valores_registro(evento=None, tipo="PRIVADA", nota=Decimal("21"))["ponderacion"], Decimal("30.00"))
-        self.assertEqual(policy.get_valores_registro(evento=None, tipo="PUBLICA", nota=Decimal("55"))["ponderacion"], Decimal("70.00"))
+        private = policy.get_valores_registro(evento=None, tipo="PRIVADA", nota=Decimal("21"))
+        public = policy.get_valores_registro(evento=None, tipo="PUBLICA", nota=Decimal("55"))
+        self.assertEqual(private, {"ponderacion": Decimal("30.00"), "aporte_ponderado": Decimal("21.00")})
+        self.assertEqual(public, {"ponderacion": Decimal("70.00"), "aporte_ponderado": Decimal("55.00")})
+        self.assertEqual(policy.get_semantica_nota(evento=None, tipo="PRIVADA"), "MODALIDAD_ESPECIFICA")
+        self.assertNotEqual(policy.get_semantica_nota(evento=None, tipo="PRIVADA"), "BRUTA_100")
         self.assertEqual(policy.clasificar_nota_final(Decimal("50")), "POSTERGADO")
         self.assertEqual(policy.clasificar_nota_final(Decimal("51")), "APROBADO")
         self.assertEqual(policy.clasificar_nota_final(Decimal("75")), "APROBACION_PLENA")

@@ -226,7 +226,7 @@ class EvaluacionDefensaAdmin(admin.ModelAdmin):
     list_display=("evento","tipo_evaluacion","modalidad_registro","resultado_cualitativo","nota_numerica","es_resultado_final_evento")
     list_filter=("tipo_evaluacion","modalidad_registro","resultado_cualitativo","es_resultado_final_evento")
     search_fields=("evento__postulacion__codigo","observaciones")
-    readonly_fields=("nota_numerica","ponderacion","aporte_ponderado","es_resultado_final_evento","registrado_por","created_at","updated_at")
+    readonly_fields=("nota_numerica","ponderacion","aporte_ponderado","semantica_nota","es_resultado_final_evento","registrado_por","created_at","updated_at")
 
 @admin.register(CondicionPostulacion)
 class CondicionPostulacionAdmin(admin.ModelAdmin):

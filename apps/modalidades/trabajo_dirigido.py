@@ -6,8 +6,8 @@ from django.utils import timezone
 from apps.modalidades.models import TrabajoDirigidoExpediente
 from apps.modalidades.policies import BaseRequisitosPolicy, EtapaDefinition
 from apps.modalidades.proyecto_grado import (
-    ProyectoGradoEvaluacionPolicy,
     ProyectoGradoEventoPolicy,
+    ProyectoGradoLegacyEvaluacionPolicy,
     ProyectoGradoPolicy,
     ProyectoGradoRevisionTribunalPreviaPolicy,
 )
@@ -88,7 +88,7 @@ class TrabajoDirigidoPolicy(ProyectoGradoPolicy):
     codigo = "TRABAJO_DIRIGIDO"
     etapas = ETAPAS
     evento_policy = TrabajoDirigidoEventoPolicy()
-    evaluacion_policy = ProyectoGradoEvaluacionPolicy()
+    evaluacion_policy = ProyectoGradoLegacyEvaluacionPolicy()
     requisitos_policy = TrabajoDirigidoRequisitosPolicy()
 
     def usa_conclusion_academica_propia(self):

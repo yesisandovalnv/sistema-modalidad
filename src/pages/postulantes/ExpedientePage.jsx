@@ -1223,13 +1223,20 @@ export default function ExpedientePage() {
       <h2 id="resultado-academico-title" className="text-xl font-bold">Resultado académico técnico</h2>
       {resultado.error ? <PartialState message={resultado.error} onRetry={() => setRevision((value) => value + 1)} /> : (
         <dl className="mt-5 grid gap-3 sm:grid-cols-3">
-          <Score label="Privada" value={resultado.data?.nota_privada} scale="30" />
-          <Score label="Pública" value={resultado.data?.nota_publica} scale={detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' ? '100' : '70'} />
-          {detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' && <Score label="Aporte pública" value={resultado.data?.aporte_publica} scale="70" />}
-          <Score label="Final" value={resultado.data?.nota_final} scale="100" fallback="Pendiente" />
+          {detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' ? <>
+            <Score label="Nota de Defensa Privada" value={resultado.data?.nota_privada} scale={resultado.data?.semantica_privada === 'LEGACY_PONDERADA' ? '30' : resultado.data?.semantica_privada === 'BRUTA_100' ? '100' : null} detail={resultado.data?.semantica_privada === 'LEGACY_PONDERADA' ? 'Registro con escala anterior' : resultado.data?.semantica_privada === 'BRUTA_100' ? 'Calificación' : null} decimalComma />
+            <Score label="Aporte de Defensa Privada" value={resultado.data?.aporte_privada} scale={resultado.data?.aporte_privada != null ? '30' : null} detail={resultado.data?.aporte_privada != null ? 'Ponderación 30%' : null} decimalComma />
+            <Score label="Nota de Defensa Pública" value={resultado.data?.nota_publica} scale={resultado.data?.semantica_publica === 'LEGACY_PONDERADA' ? '70' : resultado.data?.semantica_publica === 'BRUTA_100' ? '100' : null} detail={resultado.data?.semantica_publica === 'LEGACY_PONDERADA' ? 'Registro con escala anterior' : resultado.data?.semantica_publica === 'BRUTA_100' ? 'Calificación' : null} decimalComma />
+            <Score label="Aporte de Defensa Pública" value={resultado.data?.aporte_publica} scale={resultado.data?.aporte_publica != null ? '70' : null} detail={resultado.data?.aporte_publica != null ? 'Ponderación 70%' : null} decimalComma />
+          </> : <>
+            <Score label="Privada" value={resultado.data?.nota_privada} scale="30" />
+            <Score label="Pública" value={resultado.data?.nota_publica} scale={detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' ? '100' : '70'} />
+            {detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' && <Score label="Aporte pública" value={resultado.data?.aporte_publica} scale="70" />}
+          </>}
+          <Score label={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' ? 'Nota Final' : 'Final'} value={resultado.data?.nota_final} scale="100" fallback="Pendiente" decimalComma={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO'} />
         </dl>
       )}
-      {resultado.data?.clasificacion && <p className="mt-5 rounded-lg bg-slate-100 px-4 py-3 text-center font-bold tracking-wide dark:bg-slate-800">{formatCode(resultado.data.clasificacion)}</p>}
+      {resultado.data?.clasificacion && <p className="mt-5 rounded-lg bg-slate-100 px-4 py-3 text-center font-bold tracking-wide dark:bg-slate-800">{formatAcademicClassification(resultado.data.clasificacion)}</p>}
       {resultado.data?.limitacion_normativa && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{resultado.data.limitacion_normativa}</p>}
     </Card>
     <AcademicConclusion postulacion={detalle.id} modalidadCodigo={detalle.modalidad_detalle?.codigo} resultado={resultado} canManage={canManageClosure} onChanged={() => { setRevision((value) => value + 1); setHistoryRevision((value) => value + 1) }} />
@@ -1781,8 +1788,15 @@ function StageMarker({ state }) {
   return <span aria-hidden="true" className={`relative z-[1] mt-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold ${complete ? 'border-emerald-600 bg-emerald-600 text-white' : active ? 'border-sky-600 bg-white text-sky-700 dark:bg-slate-900' : 'border-slate-300 bg-white text-slate-400 dark:border-slate-600 dark:bg-slate-900'}`}>{complete ? '✓' : active ? '●' : '○'}</span>
 }
 
-function Score({ label, value, scale, fallback = EMPTY }) {
-  return <div className="rounded-lg border border-slate-200 p-4 text-center dark:border-slate-700"><dt className="text-sm font-medium text-slate-500">{label}</dt><dd className="mt-2 text-2xl font-bold">{value ?? fallback}{value !== null && value !== undefined ? <span className="text-sm font-medium text-slate-500"> / {scale}</span> : null}</dd></div>
+function Score({ label, value, scale, fallback = EMPTY, detail = null, decimalComma = false }) {
+  const displayValue = decimalComma && value !== null && value !== undefined ? String(value).replace('.', ',') : value
+  return <div className="rounded-lg border border-slate-200 p-4 text-center dark:border-slate-700"><dt className="text-sm font-medium text-slate-500">{label}</dt><dd className="mt-2 text-2xl font-bold">{displayValue ?? fallback}{scale && value !== null && value !== undefined ? <span className="text-sm font-medium text-slate-500"> / {scale}</span> : null}</dd>{detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}</div>
+}
+
+function formatAcademicClassification(value) {
+  if (value === 'APROBACION_PLENA_CON_FELICITACION') return 'APROBACIÓN PLENA CON FELICITACIÓN'
+  if (value === 'APROBACION_PLENA') return 'APROBACIÓN PLENA'
+  return formatCode(value)
 }
 
 function formatCode(value) {
@@ -2686,7 +2700,11 @@ function DefenseOperationDialog({ operation, stages, quorum, onSubmit, onClose }
 
 function EvaluationData({ evaluation }) {
   const consensus = evaluation.modalidad_registro === 'CONSENSO' && !evaluation.evaluador_nombre
-  return <div className="space-y-3"><dl className="grid gap-2 text-sm sm:grid-cols-2"><Info label="Tipo" value={evaluation.tipo_display || evaluation.tipo_evaluacion} /><Info label="Resultado académico" value={evaluation.resultado_cualitativo || 'No registrado'} /><Info label="Nota" value={evaluation.nota_numerica ?? 'No registrada'} />{consensus && <Info label="Evaluación" value="Consenso del tribunal" />}</dl><details className="overflow-hidden rounded-lg border"><summary className="cursor-pointer p-3 text-sm font-semibold">Detalles de la evaluación</summary><dl className="grid gap-2 border-t p-3 text-sm sm:grid-cols-2">{!consensus && <Info label="Evaluador" value={evaluation.evaluador_nombre || 'No registrado'} />}<Info label="Modalidad de registro" value={evaluation.modalidad_registro_display || evaluation.modalidad_registro} /><Info label="Ponderación" value={evaluation.ponderacion ?? 'No registrada'} /><Info label="Aporte" value={evaluation.aporte_ponderado ?? 'No registrado'} /></dl></details></div>
+  const isRawGrade = evaluation.semantica_nota === 'BRUTA_100'
+  const isLegacyGrade = evaluation.semantica_nota === 'LEGACY_PONDERADA'
+  const gradeScale = isRawGrade ? '100' : isLegacyGrade ? evaluation.ponderacion : null
+  const gradeLabel = isRawGrade ? 'Calificación bruta' : 'Nota'
+  return <div className="space-y-3"><dl className="grid gap-2 text-sm sm:grid-cols-2"><Info label="Tipo" value={evaluation.tipo_display || evaluation.tipo_evaluacion} /><Info label="Resultado académico" value={evaluation.resultado_cualitativo || 'No registrado'} /><Info label={gradeLabel} value={evaluation.nota_numerica == null ? 'No registrada' : `${evaluation.nota_numerica}${gradeScale ? ` / ${gradeScale}` : ''}`} />{consensus && <Info label="Evaluación" value="Consenso del tribunal" />}{isLegacyGrade && <Info label="Escala" value="Registro con escala anterior" />}</dl><details className="overflow-hidden rounded-lg border"><summary className="cursor-pointer p-3 text-sm font-semibold">Detalles de la evaluación</summary><dl className="grid gap-2 border-t p-3 text-sm sm:grid-cols-2">{!consensus && <Info label="Evaluador" value={evaluation.evaluador_nombre || 'No registrado'} />}<Info label="Modalidad de registro" value={evaluation.modalidad_registro_display || evaluation.modalidad_registro} /><Info label="Semántica de nota" value={evaluation.semantica_nota || 'No registrada'} /><Info label="Ponderación" value={evaluation.ponderacion ?? 'No registrada'} /><Info label="Aporte" value={evaluation.aporte_ponderado ?? 'No registrado'} /></dl></details></div>
 }
 
 function TechnicalCounts({ title, values }) {

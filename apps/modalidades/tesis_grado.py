@@ -235,6 +235,7 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
             nota_numerica=nota,
             ponderacion=Decimal("70.00") if es_publica else (Decimal("30.00") if evaluacion.tipo_evaluacion == "PRIVADA" else None),
             aporte_ponderado=(nota * Decimal("0.70")).quantize(Decimal("0.01")) if es_publica else nota,
+            semantica_nota=evaluacion.semantica_nota,
             es_resultado_final_evento=True, registrado_por=usuario,
         )
 

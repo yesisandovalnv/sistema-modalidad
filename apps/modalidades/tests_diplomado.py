@@ -50,6 +50,12 @@ class DiplomadoTest(TestCase):
         module = DiplomadoService.set_module_result(self.post, 4, Decimal("65"), self.admin)
         self.assertEqual(module.estado, DiplomadoModulo.Estado.REPROBADO)
 
+    def test_policy_de_defensa_conserva_nota_1_a_100_y_ponderacion_total(self):
+        policy = DiplomadoPolicy().evaluacion_policy
+        values = policy.get_valores_registro(evento=None, tipo="PUBLICA", nota=Decimal("95.00"))
+        self.assertEqual(values, {"ponderacion": Decimal("100.00"), "aporte_ponderado": Decimal("95.00")})
+        self.assertEqual(policy.get_semantica_nota(evento=None, tipo="PUBLICA"), "MODALIDAD_ESPECIFICA")
+
     def test_no_puede_iniciar_defensa_sin_cinco_modulos_aprobados(self):
         stage = self.follow["DEFENSA_PUBLICA"]
         with self.assertRaises(ValidationError):

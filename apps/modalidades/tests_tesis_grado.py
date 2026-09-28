@@ -258,6 +258,7 @@ class TesisGradoPolicyTest(TestCase):
                 ).full_clean()
         values = policy.get_valores_registro(evento=event, tipo="PUBLICA", nota=Decimal("70"))
         self.assertEqual(values, {"ponderacion": Decimal("70.00"), "aporte_ponderado": Decimal("49.00")})
+        self.assertEqual(policy.get_semantica_nota(evento=event, tipo="PUBLICA"), "MODALIDAD_ESPECIFICA")
         with self.assertRaises(ValidationError):
             policy.validar_solicitud_registro(
                 modalidad_registro="INDIVIDUAL", evaluador=secretary, evento=event, tipo="PUBLICA",

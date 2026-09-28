@@ -30,9 +30,9 @@ class Base:
             state="APROBADA" if order<=6 else "PENDIENTE"
             self.stages[code]=SeguimientoEtapa.objects.create(postulacion=self.post,etapa=stage,estado=state)
         self.event=EventoDefensa.objects.create(postulacion=self.post,seguimiento_etapa=self.stages["DEFENSA_PUBLICA"],tipo_evento="DEFENSA_PUBLICA",estado="FINALIZADA",fecha_programada="2026-06-01T10:00:00Z",lugar="Sala",programado_por=self.admin)
-        self.evaluation=EvaluacionDefensa.objects.create(evento=self.event,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",resultado_cualitativo="APROBADO",nota_numerica=Decimal("60"),ponderacion=Decimal("70"),aporte_ponderado=Decimal("60"),es_resultado_final_evento=True,registrado_por=self.admin)
+        self.evaluation=EvaluacionDefensa.objects.create(evento=self.event,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",resultado_cualitativo="APROBADO",nota_numerica=Decimal("60"),ponderacion=Decimal("70"),aporte_ponderado=Decimal("60"),semantica_nota="LEGACY_PONDERADA",es_resultado_final_evento=True,registrado_por=self.admin)
         private_event=EventoDefensa.objects.create(postulacion=self.post,seguimiento_etapa=self.stages["DEFENSA_PRIVADA"],tipo_evento="DEFENSA_PRIVADA",estado="FINALIZADA",fecha_programada="2026-05-01T10:00:00Z",lugar="Sala",programado_por=self.admin)
-        EvaluacionDefensa.objects.create(evento=private_event,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",resultado_cualitativo="SUFICIENTE",nota_numerica=Decimal("24"),ponderacion=Decimal("30"),aporte_ponderado=Decimal("24"),es_resultado_final_evento=True,registrado_por=self.admin)
+        EvaluacionDefensa.objects.create(evento=private_event,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",resultado_cualitativo="SUFICIENTE",nota_numerica=Decimal("24"),ponderacion=Decimal("30"),aporte_ponderado=Decimal("24"),semantica_nota="LEGACY_PONDERADA",es_resultado_final_evento=True,registrado_por=self.admin)
         self.assignment=AsignacionPostulacion.objects.create(postulacion=self.post,usuario=self.doc,tipo_participacion="TUTOR",designado_por=self.admin)
         self.approved_document=EstadoDocumento.objects.create(codigo="APR",nombre="Aprobado cierre")
         self.sent_document=EstadoDocumento.objects.create(codigo="ENV",nombre="Enviado cierre")
@@ -65,7 +65,7 @@ class PolicyServiceTests(Base,TestCase):
         private=self.post.eventos_defensa.get(tipo_evento="DEFENSA_PRIVADA")
         private.evaluaciones.all().delete()
         self.assertIn("RESULTADO_FINAL_COMPLETO",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
-        EvaluacionDefensa.objects.create(evento=private,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",resultado_cualitativo="INSUFICIENTE",nota_numerica=Decimal("0"),ponderacion=Decimal("30"),aporte_ponderado=Decimal("0"),es_resultado_final_evento=True,registrado_por=self.admin)
+        EvaluacionDefensa.objects.create(evento=private,tipo_evaluacion="RESULTADO_FINAL",modalidad_registro="CONSENSO",resultado_cualitativo="INSUFICIENTE",nota_numerica=Decimal("0"),ponderacion=Decimal("30"),aporte_ponderado=Decimal("0"),semantica_nota="LEGACY_PONDERADA",es_resultado_final_evento=True,registrado_por=self.admin)
         self.evaluation.nota_numerica=Decimal("50"); self.evaluation.aporte_ponderado=Decimal("50"); self.evaluation.save()
         self.assertIn("RESULTADO_FINAL_APROBATORIO",ProyectoGradoCierrePolicy.obtener_faltantes_revision_final(self.post))
 

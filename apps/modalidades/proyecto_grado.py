@@ -135,7 +135,7 @@ class ProyectoGradoEventoPolicy(BaseEventoPolicy):
             raise ValidationError(f"La defensa pública requiere {anticipacion} horas de anticipación.")
 
 
-class ProyectoGradoEvaluacionPolicy(BaseEvaluacionPolicy):
+class ProyectoGradoLegacyEvaluacionPolicy(BaseEvaluacionPolicy):
     def get_tipos_evaluacion(self): return ("PERFIL", "PRIVADA", "PUBLICA", "RESULTADO_FINAL")
     def clasificar_nota_final(self, nota_final):
         if nota_final <= 50: return "POSTERGADO"
@@ -186,7 +186,7 @@ class ProyectoGradoEvaluacionPolicy(BaseEvaluacionPolicy):
     def construir_consolidado(self, evaluacion, usuario):
         from decimal import Decimal
         from apps.postulantes.models import EvaluacionDefensa
-        data = {"evento": evaluacion.evento, "tipo_evaluacion": "RESULTADO_FINAL", "modalidad_registro": "CONSENSO", "es_resultado_final_evento": True, "registrado_por": usuario}
+        data = {"evento": evaluacion.evento, "tipo_evaluacion": "RESULTADO_FINAL", "modalidad_registro": "CONSENSO", "semantica_nota": evaluacion.semantica_nota, "es_resultado_final_evento": True, "registrado_por": usuario}
         if evaluacion.tipo_evaluacion == "PUBLICA": data.update(nota_numerica=evaluacion.nota_numerica, ponderacion=Decimal("70.00"), aporte_ponderado=evaluacion.nota_numerica)
         elif evaluacion.tipo_evaluacion == "PRIVADA": data.update(resultado_cualitativo=evaluacion.resultado_cualitativo, nota_numerica=evaluacion.nota_numerica, ponderacion=Decimal("30.00"), aporte_ponderado=evaluacion.nota_numerica)
         else: data.update(resultado_cualitativo=evaluacion.resultado_cualitativo)
@@ -201,6 +201,110 @@ class ProyectoGradoEvaluacionPolicy(BaseEvaluacionPolicy):
         nota = (privada_nota + publica_nota).quantize(Decimal("0.01")) if privada_nota is not None and publica_nota is not None else None
         clasificacion = None if nota is None else self.clasificar_nota_final(nota)
         return {"nota_privada": privada_nota, "nota_publica": publica_nota, "aporte_privada": privada_nota, "aporte_publica": publica_nota, "nota_final": nota, "clasificacion": clasificacion, "resultado": clasificacion, "limitacion_normativa": "" if nota is not None else "La nota final requiere resultados consolidados de defensa privada y p\u00fablica."}
+
+
+class ProyectoGradoEvaluacionPolicy(ProyectoGradoLegacyEvaluacionPolicy):
+    def get_semantica_nota(self, *, evento, tipo):
+        from apps.postulantes.models import EvaluacionDefensa
+        if tipo in ("PRIVADA", "PUBLICA"):
+            return EvaluacionDefensa.SemanticaNota.BRUTA_100
+        return EvaluacionDefensa.SemanticaNota.MODALIDAD_ESPECIFICA
+
+    def get_valores_registro(self, *, evento, tipo, nota):
+        from decimal import Decimal, ROUND_HALF_UP
+        if tipo not in ("PRIVADA", "PUBLICA"):
+            return {"ponderacion": None, "aporte_ponderado": None}
+        ponderacion = Decimal("30.00") if tipo == "PRIVADA" else Decimal("70.00")
+        if nota is None:
+            return {"ponderacion": ponderacion, "aporte_ponderado": None}
+        aporte = (Decimal(str(nota)) * ponderacion / Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP,
+        )
+        return {"ponderacion": ponderacion, "aporte_ponderado": aporte}
+
+    def validar_registro(self, evaluacion):
+        from decimal import Decimal, ROUND_HALF_UP
+        from apps.postulantes.models import EvaluacionDefensa, EventoDefensa
+        if evaluacion.tipo_evaluacion not in ("PRIVADA", "PUBLICA"):
+            return super().validar_registro(evaluacion)
+
+        cual = {EvaluacionDefensa.Resultado.SUFICIENTE, EvaluacionDefensa.Resultado.INSUFICIENTE}
+        if evaluacion.modalidad_registro != "CONSENSO":
+            raise ValidationError({"modalidad_registro": "La evaluación de Proyecto de Grado debe registrarse por consenso."})
+        if evaluacion.evaluador_id:
+            raise ValidationError({"evaluador": "La evaluación consensuada no se atribuye a un evaluador individual."})
+        if evaluacion.tipo_evaluacion == "PRIVADA" and evaluacion.resultado_cualitativo not in cual:
+            raise ValidationError({"resultado_cualitativo": "La privada requiere SUFICIENTE o INSUFICIENTE."})
+        expected = {
+            EventoDefensa.Tipo.DEFENSA_PRIVADA: "PRIVADA",
+            EventoDefensa.Tipo.DEFENSA_PUBLICA: "PUBLICA",
+        }
+        if expected.get(evaluacion.evento.tipo_evento) != evaluacion.tipo_evaluacion:
+            raise ValidationError({"tipo_evaluacion": "La evaluación no corresponde al tipo de evento."})
+
+        if evaluacion.semantica_nota == EvaluacionDefensa.SemanticaNota.LEGACY_PONDERADA:
+            return super().validar_registro(evaluacion)
+        if evaluacion.semantica_nota != EvaluacionDefensa.SemanticaNota.BRUTA_100:
+            raise ValidationError({"semantica_nota": "La evaluación numérica de Proyecto de Grado debe declarar su semántica."})
+        if evaluacion.nota_numerica is None or not Decimal("0") <= evaluacion.nota_numerica <= Decimal("100"):
+            raise ValidationError({"nota_numerica": "La calificación bruta debe estar entre 0 y 100."})
+
+        ponderacion = Decimal("30.00") if evaluacion.tipo_evaluacion == "PRIVADA" else Decimal("70.00")
+        expected_aporte = (evaluacion.nota_numerica * ponderacion / Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP,
+        )
+        if evaluacion.ponderacion != ponderacion:
+            raise ValidationError({"ponderacion": "La ponderación no coincide con la defensa."})
+        if evaluacion.aporte_ponderado != expected_aporte:
+            raise ValidationError({"aporte_ponderado": "El aporte debe ser calculado por el dominio a partir de la nota bruta."})
+
+    def construir_consolidado(self, evaluacion, usuario):
+        consolidado = super().construir_consolidado(evaluacion, usuario)
+        if evaluacion.semantica_nota == "BRUTA_100":
+            consolidado.aporte_ponderado = evaluacion.aporte_ponderado
+        return consolidado
+
+    def calcular_resultado_final(self, postulacion):
+        from decimal import Decimal, ROUND_HALF_UP
+        from apps.postulantes.models import EvaluacionDefensa
+        resultados = EvaluacionDefensa.objects.filter(
+            evento__postulacion=postulacion,
+            tipo_evaluacion="RESULTADO_FINAL",
+            es_resultado_final_evento=True,
+        )
+        privada = resultados.filter(evento__tipo_evento="DEFENSA_PRIVADA").order_by("-created_at").first()
+        publica = resultados.filter(evento__tipo_evento="DEFENSA_PUBLICA").order_by("-created_at").first()
+
+        def get_contribution(evaluacion):
+            if not evaluacion:
+                return None
+            if evaluacion.semantica_nota == EvaluacionDefensa.SemanticaNota.LEGACY_PONDERADA:
+                return evaluacion.nota_numerica
+            if evaluacion.semantica_nota == EvaluacionDefensa.SemanticaNota.BRUTA_100:
+                return evaluacion.aporte_ponderado
+            return None
+
+        privada_nota = privada.nota_numerica if privada else None
+        publica_nota = publica.nota_numerica if publica else None
+        aporte_privada = get_contribution(privada)
+        aporte_publica = get_contribution(publica)
+        nota = (
+            (aporte_privada + aporte_publica).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if aporte_privada is not None and aporte_publica is not None else None
+        )
+        clasificacion = None if nota is None else self.clasificar_nota_final(nota)
+        return {
+            "nota_privada": privada_nota,
+            "nota_publica": publica_nota,
+            "aporte_privada": aporte_privada,
+            "aporte_publica": aporte_publica,
+            "semantica_privada": privada.semantica_nota if privada else None,
+            "semantica_publica": publica.semantica_nota if publica else None,
+            "nota_final": nota,
+            "clasificacion": clasificacion,
+            "resultado": clasificacion,
+            "limitacion_normativa": "" if nota is not None else "La nota final requiere resultados consolidados de defensa privada y pública.",
+        }
 
 
 class ProyectoGradoRevisionTribunalPreviaPolicy(BaseRevisionTribunalPreviaPolicy):

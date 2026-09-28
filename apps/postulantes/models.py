@@ -704,6 +704,7 @@ class EvaluacionDefensa(BaseModel):
     class Tipo(models.TextChoices): TEMATICA="TEMATICA","Temática"; PERFIL="PERFIL","Perfil"; PRIVADA="PRIVADA","Privada"; PUBLICA="PUBLICA","Pública"; RESULTADO_FINAL="RESULTADO_FINAL","Resultado final"
     class ModalidadRegistro(models.TextChoices): INDIVIDUAL="INDIVIDUAL","Individual"; CONSENSO="CONSENSO","Consenso"
     class Resultado(models.TextChoices): SUFICIENTE="SUFICIENTE","Suficiente"; INSUFICIENTE="INSUFICIENTE","Insuficiente"; POSTERGADO="POSTERGADO","Postergado"; APROBADO="APROBADO","Aprobado"; APROBACION_PLENA="APROBACION_PLENA","Aprobación plena"; APROBACION_PLENA_CON_FELICITACION="APROBACION_PLENA_CON_FELICITACION","Aprobación plena con felicitación"
+    class SemanticaNota(models.TextChoices): LEGACY_PONDERADA="LEGACY_PONDERADA","Escala ponderada anterior"; BRUTA_100="BRUTA_100","Calificación bruta sobre 100"; MODALIDAD_ESPECIFICA="MODALIDAD_ESPECIFICA","Escala específica de modalidad"
     evento=models.ForeignKey(EventoDefensa,models.CASCADE,related_name="evaluaciones")
     evaluador=models.ForeignKey(ParticipanteEvento,models.PROTECT,null=True,blank=True,related_name="evaluaciones")
     tipo_evaluacion=models.CharField(max_length=20,choices=Tipo.choices)
@@ -712,6 +713,7 @@ class EvaluacionDefensa(BaseModel):
     nota_numerica=models.DecimalField(max_digits=5,decimal_places=2,null=True,blank=True)
     ponderacion=models.DecimalField(max_digits=5,decimal_places=2,null=True,blank=True)
     aporte_ponderado=models.DecimalField(max_digits=6,decimal_places=2,null=True,blank=True)
+    semantica_nota=models.CharField(max_length=24,choices=SemanticaNota.choices,default=SemanticaNota.MODALIDAD_ESPECIFICA)
     es_resultado_final_evento=models.BooleanField(default=False)
     observaciones=models.TextField(blank=True)
     registrado_por=models.ForeignKey(CustomUser,models.SET_NULL,null=True,blank=True,related_name="evaluaciones_registradas")

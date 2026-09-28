@@ -93,6 +93,9 @@ class BaseEvaluacionPolicy(ABC):
         raise ModalidadNoSoportadaError(evento.postulacion.modalidad.codigo)
     def get_valores_registro(self, *, evento, tipo, nota):
         return {"ponderacion": None, "aporte_ponderado": nota}
+    def get_semantica_nota(self, *, evento, tipo):
+        from apps.postulantes.models import EvaluacionDefensa
+        return EvaluacionDefensa.SemanticaNota.MODALIDAD_ESPECIFICA
     def obtener_evaluacion_para_consolidar(self, *, evento, evaluaciones): raise NotImplementedError
     def obtener_aprobacion_por_consolidacion(self, *, evento, evaluacion, resultado_final): return None
     def obtener_rechazo_por_consolidacion(self, *, evento, evaluacion, resultado_final): return None

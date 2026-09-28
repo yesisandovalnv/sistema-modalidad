@@ -136,6 +136,7 @@ class DiplomadoEvaluacionPolicy(BaseEvaluacionPolicy):
         return EvaluacionDefensa(
             evento=evaluacion.evento, tipo_evaluacion="RESULTADO_FINAL", modalidad_registro="CONSENSO",
             nota_numerica=nota, ponderacion=Decimal("100.00"), aporte_ponderado=nota,
+            semantica_nota=evaluacion.semantica_nota,
             es_resultado_final_evento=True, registrado_por=usuario,
         )
 

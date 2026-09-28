@@ -65,7 +65,7 @@ class EvaluacionDefensaSerializer(serializers.ModelSerializer):
         fields = (
             "id", "evento", "evaluador", "evaluador_nombre", "tipo_evaluacion", "tipo_display",
             "modalidad_registro", "modalidad_registro_display", "resultado_cualitativo",
-            "nota_numerica", "ponderacion", "aporte_ponderado", "es_resultado_final_evento",
+            "nota_numerica", "ponderacion", "aporte_ponderado", "semantica_nota", "es_resultado_final_evento",
             "resultado_consolidado", "observaciones", "activo",
         )
         read_only_fields = fields
@@ -137,10 +137,9 @@ class MotivoPayload(serializers.Serializer): motivo=serializers.CharField()
 class ReprogramarPayload(MotivoPayload): nueva_fecha=serializers.DateTimeField()
 class EvaluarPayload(serializers.Serializer):
     resultado=serializers.ChoiceField(choices=("SUFICIENTE","INSUFICIENTE"),required=False)
-    nota_privada=serializers.DecimalField(max_digits=5,decimal_places=2,min_value=0,max_value=30,required=False)
+    nota_privada=serializers.DecimalField(max_digits=5,decimal_places=2,min_value=0,max_value=100,required=False)
     nota=serializers.DecimalField(max_digits=5,decimal_places=2,required=False)
-    # La policy de la modalidad determina el rango: Proyecto 0--70, Tesis 1--100.
-    nota_publica=serializers.DecimalField(max_digits=5,decimal_places=2,required=False)
+    nota_publica=serializers.DecimalField(max_digits=5,decimal_places=2,min_value=0,max_value=100,required=False)
     evaluador=serializers.PrimaryKeyRelatedField(queryset=ParticipanteEvento.objects.all(), required=False, allow_null=True)
     modalidad_registro=serializers.ChoiceField(choices=EvaluacionDefensa.ModalidadRegistro.choices, required=False)
     observaciones=serializers.CharField(required=False,allow_blank=True,default="")
@@ -149,6 +148,8 @@ class ResultadoFinalSerializer(serializers.Serializer):
     nota_publica=serializers.DecimalField(max_digits=5,decimal_places=2,allow_null=True)
     aporte_privada=serializers.DecimalField(max_digits=6,decimal_places=2,allow_null=True)
     aporte_publica=serializers.DecimalField(max_digits=6,decimal_places=2,allow_null=True)
+    semantica_privada=serializers.CharField(allow_null=True,required=False)
+    semantica_publica=serializers.CharField(allow_null=True,required=False)
     clasificacion=serializers.CharField(allow_null=True)
     resultado=serializers.CharField(allow_null=True)
     nota_final=serializers.DecimalField(max_digits=6,decimal_places=2,allow_null=True)
