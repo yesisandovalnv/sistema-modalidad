@@ -9,6 +9,7 @@ from rest_framework.test import APITestCase, APITransactionTestCase
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
+from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
 from apps.notificaciones.events import EventTypes
 from apps.postulantes.models import (
     AsignacionPostulacion,
@@ -116,6 +117,11 @@ class RevisionTribunalFixtureMixin:
             evidencia_version=self.evidencia,
             usuario=self.admin,
         )
+
+    def nueva_version_evidencia(self):
+        self.evidencia.es_version_actual = False
+        self.evidencia.save(update_fields=["es_version_actual", "updated_at"])
+        return self._version(self.documento_evidencia, "informe-v2.pdf", b"informe tribunal v2", numero=2)
 
 
 class RevisionTribunalServiceTest(RevisionTribunalFixtureMixin, TestCase):
@@ -309,6 +315,55 @@ class RevisionTribunalServiceTest(RevisionTribunalFixtureMixin, TestCase):
         with self.assertRaisesMessage(ValidationError, "Ya existe un informe activo"):
             self.registrar()
 
+    @patch("apps.postulantes.revision_tribunal.publish_domain_event")
+    def test_actualiza_evidencia_del_mismo_informe_y_habilita_aprobacion(self, publish):
+        informe = self.registrar()
+        publish.reset_mock()
+        evidencia_v2 = self.nueva_version_evidencia()
+
+        with self.assertRaisesMessage(ValidationError, "evidencia debe ser una versión actual"):
+            WorkflowService._validar_aprobacion_etapa(self.seguimiento)
+        orientation = ProyectoGradoPolicy().get_orientacion_etapa_actual(
+            postulacion=self.postulacion,
+            seguimiento=self.seguimiento,
+        )
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "ACTUALIZAR_INFORME_TRIBUNAL")
+        self.assertEqual(
+            orientation["mensaje"],
+            "El informe del tribunal utiliza una versión anterior de la evidencia. Actualiza el informe con la versión vigente.",
+        )
+
+        updated = RevisionTribunalPreviaService.actualizar_evidencia(
+            self.seguimiento,
+            informe.pk,
+            evidencia_v2,
+            self.admin,
+        )
+
+        informe.refresh_from_db()
+        self.assertEqual(updated.pk, informe.pk)
+        self.assertEqual(informe.evidencia_version, evidencia_v2)
+        self.assertEqual(informe.resultado, "SUFICIENTE")
+        self.assertEqual(InformeRevisionTribunalPrevia.objects.filter(seguimiento_etapa=self.seguimiento).count(), 1)
+        self.assertIn("aprobar", WorkflowService.obtener_acciones_permitidas(self.seguimiento))
+        audit = AuditLog.objects.get(accion="UPDATE_PRE_REVIEW_REPORT_EVIDENCE")
+        self.assertIn(f"{self.evidencia.pk}->{evidencia_v2.pk}", audit.descripcion)
+        publish.assert_called_once()
+        self.assertEqual(publish.call_args.args[0], EventTypes.INFORME_REVISION_TRIBUNAL_ACTUALIZADO)
+
+    def test_orientacion_no_reinterpreta_revision_ya_aprobada(self):
+        self.registrar()
+        self.seguimiento.estado = SeguimientoEtapa.EstadoChoices.APROBADA
+        self.seguimiento.save(update_fields=["estado", "updated_at"])
+        self.nueva_version_evidencia()
+
+        orientation = ProyectoGradoPolicy().get_orientacion_etapa_actual(
+            postulacion=self.postulacion,
+            seguimiento=self.seguimiento,
+        )
+
+        self.assertIsNone(orientation)
+
     def test_policy_bloquea_sin_informe_y_aprueba_con_informe_suficiente(self):
         with self.assertRaisesMessage(ValidationError, "No existe un informe activo"):
             WorkflowService.aprobar_etapa(self.seguimiento, self.admin)
@@ -342,6 +397,9 @@ class RevisionTribunalApiTest(RevisionTribunalFixtureMixin, APITestCase):
     def endpoint(self):
         return f"/api/v1/seguimientos-etapa/{self.seguimiento.pk}/informes-revision-tribunal/"
 
+    def update_endpoint(self, informe_id):
+        return f"{self.endpoint()}{informe_id}/actualizar-evidencia/"
+
     def payload(self):
         return {
             "version_documento_revisada": self.version_final.pk,
@@ -359,6 +417,51 @@ class RevisionTribunalApiTest(RevisionTribunalFixtureMixin, APITestCase):
         self.assertEqual(created.data["evidencia_version"], self.evidencia.pk)
         self.assertEqual(listed.status_code, status.HTTP_200_OK)
         self.assertEqual(len(listed.data), 1)
+
+    def test_staff_actualiza_evidencia_existente_sin_crear_otro_informe(self):
+        informe = self.registrar()
+        evidencia_v2 = self.nueva_version_evidencia()
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            self.update_endpoint(informe.pk),
+            {"evidencia_version": evidencia_v2.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        informe.refresh_from_db()
+        self.assertEqual(response.data["id"], informe.pk)
+        self.assertEqual(informe.evidencia_version, evidencia_v2)
+        self.assertEqual(informe.resultado, "SUFICIENTE")
+        self.assertEqual(InformeRevisionTribunalPrevia.objects.filter(seguimiento_etapa=self.seguimiento).count(), 1)
+
+    def test_update_endpoint_rechaza_evidencia_historica(self):
+        informe = self.registrar()
+        self.nueva_version_evidencia()
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            self.update_endpoint(informe.pk),
+            {"evidencia_version": self.evidencia.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        informe.refresh_from_db()
+        self.assertEqual(informe.evidencia_version, self.evidencia)
+
+    def test_update_endpoint_solo_administrativo(self):
+        informe = self.registrar()
+        self.client.force_authenticate(self.student)
+
+        response = self.client.post(
+            self.update_endpoint(informe.pk),
+            {"evidencia_version": self.evidencia.pk},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_estudiante_y_tribunal_pueden_listar_pero_no_registrar(self):
         self.registrar()

@@ -324,12 +324,24 @@ class ProyectoGradoRevisionTribunalPreviaPolicy(BaseRevisionTribunalPreviaPolicy
 
 
 class ProyectoGradoRequisitosPolicy(BaseRequisitosPolicy):
+    INSCRIPTION_DOCUMENTS = (
+        "CARTA_SOLICITUD_PROYECTO", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ",
+    )
+    INSCRIPTION_DELIVERIES = ("FOLDER_AMARILLO",)
     CONDITIONS = ("PLAN_ESTUDIOS", "ADMISION_COMPLETA", "SOLVENCIA_UNIVERSITARIA", "SOLVENCIA_BIBLIOTECA", "MATRICULA_VIGENTE", "PLAZO_MAXIMO")
     DELIVERIES = ("CD_RESPALDO", "EJEMPLARES_IMPRESOS", "TIMBRE_UNIVERSITARIO")
     DOCUMENTS = ("DOCUMENTO_FINAL", "ACTA_DEFENSA", "HOJA_APROBACION", "INFORME_FINAL_TUTOR")
-    def get_condiciones_requeridas(self, fase=None): return self.CONDITIONS
-    def get_entregas_requeridas(self, fase=None): return self.DELIVERIES
+    def get_condiciones_requeridas(self, fase=None):
+        if fase == "INSCRIPCION":
+            return ()
+        return self.CONDITIONS
+    def get_entregas_requeridas(self, fase=None):
+        if fase == "INSCRIPCION":
+            return self.INSCRIPTION_DELIVERIES
+        return self.DELIVERIES
     def get_documentos_requeridos(self, fase=None):
+        if fase == "INSCRIPCION":
+            return self.INSCRIPTION_DOCUMENTS
         # Si se especifica etapa, retorna solo documentos aplicables en esa etapa
         if fase == "DOCUMENTO_FINAL":
             return ("DOCUMENTO_FINAL",)
@@ -357,6 +369,143 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
             return (*documentos, "ACTA_DEFENSA", "INFORME_FINAL_TUTOR")
         return documentos
     def get_revision_tribunal_previa_policy(self): return ProyectoGradoRevisionTribunalPreviaPolicy()
+    def _evaluar_requisitos_inscripcion(self, postulacion):
+        from apps.postulantes.models import EntregaFisica
+
+        document_names = {
+            "CARTA_SOLICITUD_PROYECTO": "Carta de solicitud",
+            "MATRICULA_VIGENTE": "Matrícula vigente",
+            "HISTORIAL_PRERREQ": "Historial académico de prerrequisitos",
+        }
+        requirements = []
+        for code in self.requisitos_policy.get_documentos_requeridos("INSCRIPCION"):
+            document = postulacion.documentos.filter(
+                tipo_documento__codigo=code,
+                activo=True,
+            ).select_related("estado").first()
+            current_version = document.versiones.filter(
+                activo=True,
+                es_version_actual=True,
+            ).first() if document else None
+            approved = bool(
+                document
+                and document.estado.codigo == "APR"
+                and not document.requiere_correccion
+                and current_version
+            )
+            if not document:
+                status_display = "No presentado"
+            elif document.requiere_correccion or document.estado.codigo in {"OBS", "REC"}:
+                status_display = "Requiere corrección"
+            elif document.estado.codigo != "APR":
+                status_display = "Pendiente de revisión administrativa"
+            elif not current_version:
+                status_display = "Sin versión vigente"
+            else:
+                status_display = "Aprobado"
+            requirements.append({
+                "tipo": "DOCUMENTO",
+                "codigo": code,
+                "nombre": document_names[code],
+                "cumplido": approved,
+                "presentado": bool(document and current_version),
+                "estado": "CUMPLIDO" if approved else "PENDIENTE",
+                "estado_display": status_display,
+                "destino": "#documentos",
+            })
+
+        delivery = postulacion.entregas_fisicas.filter(
+            codigo=EntregaFisica.Tipo.FOLDER_AMARILLO,
+            activo=True,
+        ).first()
+        delivery_complete = bool(delivery and delivery.estado == EntregaFisica.Estado.COMPLETA)
+        requirements.append({
+            "tipo": "ENTREGA_FISICA",
+            "codigo": EntregaFisica.Tipo.FOLDER_AMARILLO,
+            "nombre": "Fólder amarillo rotulado con nombre y modalidad",
+            "cumplido": delivery_complete,
+            "estado": "CUMPLIDO" if delivery_complete else "PENDIENTE",
+            "estado_display": "Recepción registrada" if delivery_complete else "Pendiente de recepción",
+            "destino": "#inscripcion-entregas",
+        })
+        return requirements
+
+    def _orientar_inscripcion(self, postulacion):
+        requirements = self._evaluar_requisitos_inscripcion(postulacion)
+        completed = sum(item["cumplido"] for item in requirements)
+        missing_documents = [
+            item for item in requirements
+            if item["tipo"] == "DOCUMENTO" and not item["presentado"]
+        ]
+        documents_needing_correction = [
+            item for item in requirements
+            if item["tipo"] == "DOCUMENTO" and item["estado_display"] == "Requiere corrección"
+        ]
+        pending_document_review = [
+            item for item in requirements
+            if item["tipo"] == "DOCUMENTO"
+            and item["presentado"]
+            and not item["cumplido"]
+            and item not in documents_needing_correction
+        ]
+        folder_complete = requirements[-1]["cumplido"]
+
+        if missing_documents or documents_needing_correction:
+            action = {
+                "codigo": "COMPLETAR_DOCUMENTOS",
+                "titulo": "Completar documentos de Inscripción",
+                "descripcion": "Presenta o corrige los documentos obligatorios de Inscripción.",
+                "estado": "PENDIENTE",
+                "estado_display": "Pendiente",
+                "destino": "#documentos",
+                "accion_label": "Ir a documentos",
+            }
+            message = f"{completed}/4 requisitos de Inscripción cumplidos. Completa los documentos pendientes."
+        elif pending_document_review:
+            action = {
+                "codigo": "GESTIONAR_DOCUMENTOS",
+                "titulo": "Revisión administrativa de documentos",
+                "descripcion": "Los documentos presentados deben ser aprobados por personal administrativo.",
+                "estado": "PENDIENTE",
+                "estado_display": "Pendiente de revisión",
+                "destino": "#documentos",
+                "accion_label": "Revisar documentos",
+            }
+            message = f"{completed}/4 requisitos de Inscripción cumplidos. Los documentos están pendientes de revisión administrativa."
+        elif not folder_complete:
+            action = {
+                "codigo": "GESTIONAR_ENTREGA_FISICA",
+                "titulo": "Registrar recepción del fólder amarillo",
+                "descripcion": "El personal administrativo debe registrar la recepción del fólder rotulado.",
+                "estado": "PENDIENTE",
+                "estado_display": "Pendiente",
+                "destino": "#inscripcion-entregas",
+                "accion_label": "Ir a recepción física",
+            }
+            message = f"{completed}/4 requisitos de Inscripción cumplidos. Falta registrar la recepción del fólder amarillo."
+        else:
+            action = {
+                "codigo": "APROBAR_ETAPA",
+                "titulo": "Aprobar Inscripción",
+                "descripcion": "Los cuatro requisitos de Inscripción están aprobados y recibidos.",
+                "estado": "DISPONIBLE",
+                "estado_display": "Disponible",
+                "destino": "#resumen",
+                "accion_label": "Aprobar etapa",
+            }
+            message = "Los cuatro requisitos de Inscripción están cumplidos. La etapa puede aprobarse."
+
+        return {
+            "operacion": "ORIENTAR_ETAPA",
+            "mensaje": message,
+            "requisitos": requirements,
+            "requisitos_cumplidos": completed,
+            "requisitos_totales": len(requirements),
+            "permite_aprobar_etapa": completed == len(requirements),
+            "siguiente_accion": action,
+            "conflictos_identidad": [],
+        }
+
     def _documento_final_y_version_actual(self, seguimiento):
         from apps.documentos.models import DocumentoPostulacion, VersionDocumento
 
@@ -382,7 +531,51 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
         )
 
     def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
-        if not seguimiento or seguimiento.etapa.codigo != "DOCUMENTO_FINAL":
+        if not seguimiento:
+            return None
+        if seguimiento.etapa.codigo == "INSCRIPCION":
+            return self._orientar_inscripcion(postulacion)
+        if seguimiento.etapa.codigo == "REVISION_TRIBUNAL_PREVIA":
+            if not seguimiento.activo or seguimiento.estado not in {"EN_PROCESO", "OBSERVADA"}:
+                return None
+            documento, version_actual = self._documento_final_y_version_actual(seguimiento)
+            if not documento or documento.estado.codigo != "APR" or documento.requiere_correccion or not version_actual:
+                return None
+            from apps.postulantes.models import InformeRevisionTribunalPrevia
+            informe = InformeRevisionTribunalPrevia.objects.filter(
+                seguimiento_etapa=seguimiento,
+                version_documento_revisada=version_actual,
+                activo=True,
+            ).select_related("evidencia_version__documento__tipo_documento").first()
+            if not informe:
+                return None
+            from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
+            if not RevisionTribunalPreviaService.evidencia_requiere_actualizacion(seguimiento, informe):
+                return None
+            return {
+                "operacion": "ORIENTAR_ETAPA",
+                "mensaje": "El informe del tribunal utiliza una versión anterior de la evidencia. Actualiza el informe con la versión vigente.",
+                "requisitos": [{
+                    "tipo": "DOCUMENTO",
+                    "codigo": "EVIDENCIA_INFORME_TRIBUNAL_VIGENTE",
+                    "nombre": "Evidencia vigente vinculada al informe del tribunal",
+                    "cumplido": False,
+                    "estado": "REQUIERE_ACTUALIZACION",
+                    "estado_display": "Requiere actualización",
+                    "destino": "#informes-etapa",
+                }],
+                "siguiente_accion": {
+                    "codigo": "ACTUALIZAR_INFORME_TRIBUNAL",
+                    "titulo": "Actualizar informe del tribunal",
+                    "descripcion": "Selecciona la versión vigente del Informe de Evaluación del Tribunal. El resultado académico existente se conservará.",
+                    "estado": "PENDIENTE",
+                    "estado_display": "Requiere actualización",
+                    "destino": "#informes-etapa",
+                    "accion_label": "Actualizar informe del tribunal",
+                },
+                "conflictos_identidad": [],
+            }
+        if seguimiento.etapa.codigo != "DOCUMENTO_FINAL":
             return None
 
         documento, version_actual = self._documento_final_y_version_actual(seguimiento)
@@ -446,6 +639,12 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
             if queryset_contexto.count() >= 3: raise ValidationError("Proyecto de Grado admite como m\u00e1ximo tres miembros activos de tribunal en el perfil.")
             if orden_cargo is not None and queryset_contexto.filter(orden_cargo=orden_cargo).exists(): raise ValidationError("Ya existe un miembro activo del tribunal con ese orden de cargo.")
     def validar_aprobacion_etapa(self, seguimiento):
+        if seguimiento.etapa.codigo == "INSCRIPCION":
+            requirements = self._evaluar_requisitos_inscripcion(seguimiento.postulacion)
+            missing = [item["codigo"] for item in requirements if not item["cumplido"]]
+            if missing:
+                raise ValidationError({"faltantes": missing})
+            return None
         if seguimiento.etapa.codigo == "PERFIL_PROYECTO":
             evento = seguimiento.eventos_defensa.filter(
                 tipo_evento="DEFENSA_PERFIL",

@@ -35,6 +35,7 @@ class NotificationTemplateRegistry:
       EventTypes.DEFENSA_FINALIZADA:NotificationTemplate("Defensa finalizada","La defensa finalizó."),
       EventTypes.EVALUACION_CONSOLIDADA:NotificationTemplate("Evaluación consolidada","Se consolidó el resultado de la evaluación.","SUCCESS"),
       EventTypes.INFORME_REVISION_TRIBUNAL_REGISTRADO:NotificationTemplate("Informe del tribunal registrado","El informe de revisión previa declaró el trabajo {resultado}."),
+    EventTypes.INFORME_REVISION_TRIBUNAL_ACTUALIZADO:NotificationTemplate("Informe del tribunal actualizado","Se actualizó la evidencia vigente del informe de revisión previa."),
       EventTypes.REVISION_FINAL_APROBADA:NotificationTemplate("Revisión final aprobada","La revisión final fue aprobada.","SUCCESS"),
       EventTypes.CIERRE_DOCUMENTAL_APROBADO:NotificationTemplate("Cierre documental aprobado","El cierre documental fue aprobado.","SUCCESS"),
       EventTypes.POSTULACION_CONCLUIDA:NotificationTemplate("Postulación concluida","La postulación fue concluida.","SUCCESS"),

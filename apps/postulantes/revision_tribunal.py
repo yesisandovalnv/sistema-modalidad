@@ -96,6 +96,14 @@ class RevisionTribunalPreviaService:
                 {"evidencia_version": ["La evidencia debe ser una versión actual, activa y disponible del Informe de Evaluación del Tribunal."]}
             )
 
+    @classmethod
+    def evidencia_requiere_actualizacion(cls, seguimiento, informe):
+        try:
+            cls._validar_evidencia(seguimiento, informe.evidencia_version)
+        except ValidationError:
+            return True
+        return False
+
     @staticmethod
     def _validar_administrador(usuario):
         if not usuario or not usuario.is_active or not is_staff_user(usuario):
@@ -180,6 +188,55 @@ class RevisionTribunalPreviaService:
             seguimiento.postulacion,
             {"etapa": seguimiento.etapa.nombre, "resultado": resultado},
             f"INFORME_REVISION_TRIBUNAL_REGISTRADO:{informe.pk}",
+        )
+        return informe
+
+    @classmethod
+    @transaction.atomic
+    def actualizar_evidencia(cls, seguimiento, informe_id, evidencia_version, usuario):
+        cls._validar_administrador(usuario)
+        seguimiento = (
+            SeguimientoEtapa.objects.select_for_update()
+            .select_related("postulacion__modalidad", "etapa")
+            .get(pk=seguimiento.pk)
+        )
+        cls._validar_seguimiento(seguimiento)
+        cls._validar_tribunales(seguimiento)
+        try:
+            informe = InformeRevisionTribunalPrevia.objects.select_for_update().select_related(
+                "version_documento_revisada__documento__tipo_documento",
+                "evidencia_version__documento__tipo_documento",
+            ).get(pk=informe_id, seguimiento_etapa=seguimiento, activo=True)
+        except InformeRevisionTribunalPrevia.DoesNotExist as exc:
+            raise ValidationError({"informe": ["No existe un informe activo para actualizar en esta etapa."]}) from exc
+
+        _documento, version_actual = cls._documento_final_actual(seguimiento)
+        cls._validar_version_revisada(seguimiento, informe.version_documento_revisada, version_actual)
+        evidencia_version = VersionDocumento.all_objects.select_for_update().select_related(
+            "documento__postulacion", "documento__tipo_documento",
+        ).get(pk=evidencia_version.pk)
+        cls._validar_evidencia(seguimiento, evidencia_version)
+
+        evidencia_anterior_id = informe.evidencia_version_id
+        informe.evidencia_version = evidencia_version
+        informe.save(update_fields=["evidencia_version", "updated_at"])
+        AuditLog.objects.create(
+            usuario=usuario,
+            accion="UPDATE_PRE_REVIEW_REPORT_EVIDENCE",
+            modulo="REVISION_TRIBUNAL",
+            descripcion=(
+                f"Postulación {seguimiento.postulacion.codigo}; informe {informe.pk}; "
+                f"Documento Final v{version_actual.numero_version}; evidencia "
+                f"{evidencia_anterior_id}->{evidencia_version.pk}; resultado conservado {informe.resultado}."
+            ),
+        )
+        publish_domain_event(
+            EventTypes.INFORME_REVISION_TRIBUNAL_ACTUALIZADO,
+            informe,
+            usuario,
+            seguimiento.postulacion,
+            {"resultado": informe.resultado},
+            f"INFORME_REVISION_TRIBUNAL_ACTUALIZADO:{informe.pk}:{evidencia_anterior_id}:{evidencia_version.pk}",
         )
         return informe
 

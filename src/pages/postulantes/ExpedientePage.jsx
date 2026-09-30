@@ -481,9 +481,15 @@ export default function ExpedientePage() {
   const currentRequirements = flujo.orientacion_etapa_actual?.requisitos || []
   const pendingCurrentRequirements = currentRequirements.filter((item) => item.estado !== 'INFORMATIVO' && item.cumplido === false).length
   const currentOrientation = flujo.orientacion_etapa_actual
-  const projectDocumentApprovalReady = !isProjectGrade
-    || currentStage?.codigo !== 'DOCUMENTO_FINAL'
-    || currentOrientation?.siguiente_accion?.codigo === 'APROBAR_ETAPA'
+  const stageApprovalAllowed = Array.isArray(currentStage?.acciones_permitidas)
+    ? currentStage.acciones_permitidas.includes('aprobar')
+    : !currentOrientation?.siguiente_accion
+      || (currentOrientation.siguiente_accion.codigo === 'APROBAR_ETAPA' && currentOrientation.siguiente_accion.estado === 'DISPONIBLE')
+  const physicalRequirements = currentRequirements.filter((item) => item.tipo === 'ENTREGA_FISICA')
+  const isProjectInscription = isProjectGrade && currentStage?.codigo === 'INSCRIPCION'
+  const inscriptionDocumentRequirements = isProjectInscription
+    ? currentRequirements.filter((item) => item.tipo === 'DOCUMENTO')
+    : []
   const tribunalRequirement = isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO'
     ? currentOrientation?.requisitos?.find((item) => item.codigo === 'TRIBUNAL')
     : null
@@ -767,6 +773,25 @@ export default function ExpedientePage() {
     }
   }
 
+  const openInscriptionUpload = async () => {
+    uploadController.current?.abort()
+    const controller = new AbortController()
+    uploadController.current = controller
+    const completed = currentRequirements.filter((item) => item.cumplido === true).length
+    setUpload({ document: null, multiple: true, trackIndividualStatus: true, stageProgress: { completed, total: currentRequirements.length }, title: 'Cargar documentos de Inscripción', submitting: false, fields: {}, error: '', success: '' })
+    setDocumentTypes((current) => ({ ...current, loading: true, error: '' }))
+    try {
+      const response = await postulacionesService.obtenerDocumentosAplicables(id, controller.signal)
+      if (!controller.signal.aborted) {
+        setDocumentTypes({ data: response.documentos_aplicables || [], loading: false, error: '' })
+      }
+    } catch (requestError) {
+      if (!requestError.canceled && !controller.signal.aborted) {
+        setDocumentTypes({ data: [], loading: false, error: requestError.message })
+      }
+    }
+  }
+
   const openUploadFromDetail = (document) => {
     setSelectedVersion(null)
     setSelectedDocument(null)
@@ -903,11 +928,12 @@ export default function ExpedientePage() {
     }
   }
 
-  const submitHistoricalUpload = async (entries) => {
+  const submitMultipleUpload = async (entries) => {
     if (!Array.isArray(entries) || entries.length === 0) {
       return { total: 0, successCount: 0, failureCount: 0, items: [], summary: 'No hay documentos seleccionados.' }
     }
     const results = []
+    let flowRefreshFailed = false
     const controller = new AbortController()
     uploadController.current?.abort()
     uploadController.current = controller
@@ -920,7 +946,27 @@ export default function ExpedientePage() {
       formData.append('archivo', entry.archivo)
       setUpload((current) => ({ ...current, progress: { current: index + 1, total: entries.length }, error: '', success: `Cargando ${index + 1} de ${entries.length}...` }))
       try {
-        await postulacionesService.subirDocumentoHistorico(detalle.id, formData, controller.signal)
+        if (isHistorical) {
+          await postulacionesService.subirDocumentoHistorico(detalle.id, formData, controller.signal)
+        } else {
+          await postulacionesService.cargarDocumento({
+            postulacionId: detalle.id,
+            tipoDocumentoId: entry.tipo_documento_id,
+            archivo: entry.archivo,
+          }, controller.signal)
+          if (upload.trackIndividualStatus) {
+            try {
+              const refreshed = await refreshExpedienteFlow(controller.signal)
+              const requirements = refreshed?.flujo?.orientacion_etapa_actual?.requisitos || []
+              setUpload((current) => ({ ...current, stageProgress: {
+                completed: requirements.filter((item) => item.cumplido === true).length,
+                total: requirements.length,
+              } }))
+            } catch (refreshError) {
+              if (!refreshError.canceled) flowRefreshFailed = true
+            }
+          }
+        }
         results.push({ ...entry, status: 'success', message: 'Cargado' })
       } catch (requestError) {
         results.push({ ...entry, status: 'error', message: requestError.message || 'No se pudo cargar este documento.' })
@@ -942,7 +988,7 @@ export default function ExpedientePage() {
       submitting: false,
       progress: null,
       success: summary,
-      error: '',
+      error: flowRefreshFailed ? 'Los documentos se cargaron, pero no se pudo actualizar el avance de Inscripción.' : '',
       results,
       failedTypeIds: results.filter((item) => item.status === 'error').map((item) => item.tipo_documento_id),
     }))
@@ -990,6 +1036,7 @@ export default function ExpedientePage() {
         capacidades: expediente.capacidades ?? current.capacidades,
       } : current)
     }
+    return expediente
   }
 
   const refreshSelectedDefense = async (signal, knownDefense = null) => {
@@ -1136,6 +1183,19 @@ export default function ExpedientePage() {
     setTribunalReportDialog((current) => ({ ...current, draft: { ...current.draft, [name]: value } }))
   }
 
+  const openTribunalReportUpdate = (report) => {
+    tribunalReportSubmitting.current = false
+    setTribunalReportDialog({
+      view: 'UPDATE_EVIDENCE',
+      report,
+      draft: { resultado: report.resultado, evidencia_version: '' },
+      assignment: { submitting: false, fields: {}, error: '' },
+      submitting: false,
+      fields: {},
+      error: '',
+    })
+  }
+
   const submitMissingTribunal = async (payload) => {
     if (!tribunalReportDialog || tribunalAssignmentSubmitting.current) return
     tribunalAssignmentSubmitting.current = true
@@ -1166,35 +1226,43 @@ export default function ExpedientePage() {
   const submitTribunalReport = async (event) => {
     event.preventDefault()
     if (!tribunalReportDialog || tribunalReportSubmitting.current || !tribunalReviewStage) return
+    const updatingEvidence = tribunalReportDialog.view === 'UPDATE_EVIDENCE'
     const resultado = tribunalReportDialog.draft.resultado
-    const observaciones = tribunalReportDialog.draft.observaciones.trim()
+    const observaciones = tribunalReportDialog.draft.observaciones?.trim() || ''
     const evidenciaVersion = Number(tribunalReportDialog.draft.evidencia_version) || null
     const fields = {}
-    if (!resultado) fields.resultado = ['Selecciona un resultado.']
     if (!evidenciaVersion) fields.evidencia_version = ['Selecciona la evidencia del informe.']
-    if (resultado === 'INSUFICIENTE' && !observaciones) fields.observaciones = ['Las observaciones son obligatorias para un resultado insuficiente.']
+    if (!updatingEvidence && !resultado) fields.resultado = ['Selecciona un resultado.']
+    if (!updatingEvidence && resultado === 'INSUFICIENTE' && !observaciones) fields.observaciones = ['Las observaciones son obligatorias para un resultado insuficiente.']
     if (!currentFinalVersion) fields.version_documento_revisada = ['No existe una versión actual activa del Documento Final en el expediente.']
     if (Object.keys(fields).length) {
       setTribunalReportDialog((current) => ({ ...current, fields, error: '' }))
       return
     }
-    const payload = {
-      version_documento_revisada: currentFinalVersion.id,
-      resultado,
-      observaciones,
-      evidencia_version: evidenciaVersion,
-    }
+    const payload = updatingEvidence
+      ? { evidencia_version: evidenciaVersion }
+      : { version_documento_revisada: currentFinalVersion.id, resultado, observaciones, evidencia_version: evidenciaVersion }
     const controller = new AbortController()
     tribunalReportController.current?.abort()
     tribunalReportController.current = controller
     tribunalReportSubmitting.current = true
     setTribunalReportDialog((current) => ({ ...current, submitting: true, fields: {}, error: '' }))
     try {
-      await postulacionesService.registrarInformeRevisionTribunal(tribunalReviewStage.id, payload, controller.signal)
+      if (updatingEvidence) {
+        await postulacionesService.actualizarEvidenciaInformeRevisionTribunal(
+          tribunalReviewStage.id,
+          tribunalReportDialog.report.id,
+          payload,
+          controller.signal,
+        )
+      } else {
+        await postulacionesService.registrarInformeRevisionTribunal(tribunalReviewStage.id, payload, controller.signal)
+      }
       tribunalReportController.current = null
       tribunalReportSubmitting.current = false
       setTribunalReportDialog(null)
       setTribunalReportsRevision((value) => value + 1)
+      if (updatingEvidence) setRevision((value) => value + 1)
     } catch (requestError) {
       if (!requestError.canceled && !controller.signal.aborted) {
         tribunalReportSubmitting.current = false
@@ -1208,9 +1276,12 @@ export default function ExpedientePage() {
     reports={tribunalReports}
     canManage={canManageTribunalReports}
     versions={allDocumentVersions}
+    currentFinalVersion={currentFinalVersion}
     evidenceVersions={currentEvidenceVersions}
+    orientation={currentOrientation}
     canUpload={canUpload}
     onRetry={() => setTribunalReportsRevision((value) => value + 1)}
+    onUpdate={openTribunalReportUpdate}
     onRegister={() => {
       tribunalReportSubmitting.current = false
       setTribunalReportDialog({ view: 'REGISTER_REPORT', draft: { resultado: '', evidencia_version: '', observaciones: '' }, assignment: { submitting: false, fields: {}, error: '' }, submitting: false, fields: {}, error: '' })
@@ -1259,7 +1330,7 @@ export default function ExpedientePage() {
         refreshToken={closureRevision}
         onChanged={() => setHistoryRevision((value) => value + 1)}
         />
-        <ClosureRequirements postulacion={detalle.id} canManage={canManageClosure} onChanged={() => { setStageApproval({ submitting: false, error: '', fields: {} }); setClosureRevision((value) => value + 1); setRevision((value) => value + 1) }} />
+        <ClosureRequirements postulacion={detalle.id} canManage={canManageClosure} deliveryCodes={Array.isArray(cierre.data?.entregas_requeridas) ? cierre.data.entregas_requeridas : null} onChanged={() => { setStageApproval({ submitting: false, error: '', fields: {} }); setClosureRevision((value) => value + 1); setRevision((value) => value + 1) }} />
       </div>
     </div>
   </details>
@@ -1337,7 +1408,7 @@ export default function ExpedientePage() {
                   {stageInitialization.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageInitialization.error}</p>}
                 </div>
               )}
-              {canManageApplications && projectDocumentApprovalReady && currentStage?.id && ['EN_PROCESO', 'OBSERVADA'].includes(currentStage.estado) && !['PERFIL_PROYECTO', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(currentStage.codigo) && !isConcluded && (
+              {canManageApplications && stageApprovalAllowed && currentStage?.id && ['EN_PROCESO', 'OBSERVADA'].includes(currentStage.estado) && !['PERFIL_PROYECTO', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(currentStage.codigo) && !isConcluded && (
                 <div className="mt-5">
                   <Button variant={pendingCurrentRequirements > 0 ? 'secondary' : 'default'} aria-describedby={pendingCurrentRequirements > 0 ? 'stage-approval-guidance' : undefined} disabled={stageApproval.submitting} onClick={approveCurrentStage}>
                     {stageApproval.submitting ? 'Procesando...' : `Aprobar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
@@ -1359,9 +1430,19 @@ export default function ExpedientePage() {
       </Card>
 
       {!isHistorical && <ExpedienteNav />}
-      {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} assignments={activeActors.data?.results || []} assignmentsComplete={Boolean(activeActors.data && !activeActors.data.next && (activeActors.data.results || []).length >= (activeActors.data.count || 0))} tribunals={activeTribunals.data} documents={documents.data?.results || []} defenses={defenses.data?.results || []} reports={tribunalReports.data} stageReportsAvailable={Boolean(tribunalReviewStage)} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageAssignments={canManageAssignments} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} onConformTeam={() => setTeamAssignment(isProjectGrade && currentStage?.codigo === 'DEFENSA_PUBLICA' ? { mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '', results: {} } : { submitting: false, error: '', results: {} })} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
+      {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} assignments={activeActors.data?.results || []} assignmentsComplete={Boolean(activeActors.data && !activeActors.data.next && (activeActors.data.results || []).length >= (activeActors.data.count || 0))} tribunals={activeTribunals.data} documents={documents.data?.results || []} defenses={defenses.data?.results || []} reports={tribunalReports.data} stageReportsAvailable={Boolean(tribunalReviewStage)} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageAssignments={canManageAssignments} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} hideRequirements={isProjectInscription} onConformTeam={() => setTeamAssignment(isProjectGrade && currentStage?.codigo === 'DEFENSA_PUBLICA' ? { mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '', results: {} } : { submitting: false, error: '', results: {} })} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
+
+      {!isHistorical && isProjectInscription && <InscriptionDocumentsSection
+        requirements={inscriptionDocumentRequirements}
+        completed={currentRequirements.filter((item) => item.cumplido === true).length}
+        total={currentRequirements.length}
+        canUpload={canUpload}
+        onUpload={openInscriptionUpload}
+      />}
 
       {!isHistorical && currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA' && reviewSection}
+
+      {!isHistorical && physicalRequirements.length > 0 && <div id="inscripcion-entregas" className="scroll-mt-24"><ClosureRequirements postulacion={detalle.id} canManage={canManageApplications} showConditions={false} requiredDeliveries={physicalRequirements} title="Recepción física" description="" titleId="inscripcion-entregas-title" createLabel="Registrar recepción" onChanged={() => { setRevision((value) => value + 1); setStageApproval({ submitting: false, error: '', fields: {} }) }} /></div>}
 
       <div id="documentos" className="scroll-mt-24"><DocumentsCard
         documents={documents}
@@ -1474,7 +1555,7 @@ export default function ExpedientePage() {
         </form>
       </Modal>}
 
-      {upload && <UploadDialog upload={upload} types={documentTypes} postulacion={detalle.id} isHistorical={isHistorical} onSubmit={submitUpload} onHistoricalSubmit={submitHistoricalUpload} onClose={closeUpload} />}
+      {upload && <UploadDialog upload={upload} types={documentTypes} postulacion={detalle.id} isHistorical={isHistorical} onSubmit={submitUpload} onMultipleSubmit={submitMultipleUpload} onClose={closeUpload} />}
 
       {selectedDocument && (
         <DocumentDetail
@@ -1540,7 +1621,7 @@ function clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, cur
   }
 }
 
-function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, stageApproval, onGoToDocuments, completedStages = 0, totalStages = 0, resultado, concluded, assignments = [], assignmentsComplete = false, tribunals = null, documents = [], defenses = [], reports, stageReportsAvailable = false, isProjectGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, onConformTeam, onManageMissingActors }) {
+function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, stageApproval, onGoToDocuments, completedStages = 0, totalStages = 0, resultado, concluded, assignments = [], assignmentsComplete = false, tribunals = null, documents = [], defenses = [], reports, stageReportsAvailable = false, isProjectGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, onConformTeam, onManageMissingActors }) {
   if (concluded) return <Card className="overflow-hidden border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
     <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-800 dark:text-emerald-200">✓ Expediente concluido</p>
     <p className="mt-3 font-medium">{cierreSoportado ? 'Todas las etapas académicas y el cierre documental se encuentran completados.' : 'Todas las etapas académicas se encuentran completadas.'}</p>
@@ -1684,7 +1765,7 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
         ? <Button className="mt-3" type="button" onClick={onConformTeam}>Conformar equipo</Button>
         : nextAction.destino && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={managesMissingPublicActors ? onManageMissingActors : undefined}>{profilePendingTribunal ? 'Gestionar tribunal' : nextAction.accion_label || 'Ir a gestionar'}</a>}
     </section>}
-    {!specializedTribunalAction && requirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">
+    {!hideRequirements && !specializedTribunalAction && requirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">
       <h3 id="stage-requirements-title" className="text-lg font-bold">Requisitos de esta etapa</h3>
       <ul className="mt-3 space-y-2">{requirements.map((item) => (
         isProjectProfile && item.codigo === 'TRIBUNAL'
@@ -1710,6 +1791,25 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
         </dl>
       </div>
     </details>}
+  </Card>
+}
+
+function InscriptionDocumentsSection({ requirements, completed, total, canUpload, onUpload }) {
+  return <Card className="overflow-hidden" aria-labelledby="inscription-requirements-title">
+    <div className="flex flex-wrap items-baseline justify-between gap-3">
+      <h2 id="inscription-requirements-title" className="text-xl font-bold">Requisitos de Inscripción</h2>
+      <p className="font-semibold text-slate-700 dark:text-slate-200">{completed} de {total} cumplidos</p>
+    </div>
+    <section className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700" aria-labelledby="inscription-documents-title">
+      <h3 id="inscription-documents-title" className="text-sm font-bold uppercase tracking-[0.16em] text-slate-600 dark:text-slate-300">Documentación de Inscripción</h3>
+      <ul className="mt-4 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-700 dark:border-slate-700">
+        {requirements.map((item) => <li key={item.codigo} className="flex flex-wrap items-center justify-between gap-3 py-3">
+          <span className="font-medium">{item.cumplido ? '✓' : '⚠'} {item.nombre}</span>
+          <span className={item.cumplido ? 'font-semibold text-emerald-700 dark:text-emerald-300' : 'font-semibold text-amber-700 dark:text-amber-300'}>{item.estado_display}</span>
+        </li>)}
+      </ul>
+      {canUpload && <Button className="mt-5" type="button" onClick={onUpload}>Cargar documentos de Inscripción</Button>}
+    </section>
   </Card>
 }
 
@@ -1862,9 +1962,14 @@ function hasActiveCurrentDefense({ defenses, orientation, currentStage }) {
   })
 }
 
-function TribunalReviewReports({ stage, reports, canManage, versions, evidenceVersions, canUpload, onRetry, onRegister, onUploadEvidence }) {
+function TribunalReviewReports({ stage, reports, canManage, versions, currentFinalVersion, evidenceVersions, orientation, canUpload, onRetry, onRegister, onUpdate, onUploadEvidence }) {
   const rows = Array.isArray(reports.data) ? reports.data : reports.data?.results || []
-  const canRegister = canManage && ['EN_PROCESO', 'OBSERVADA'].includes(stage.estado)
+  const currentReport = rows.find((report) => report.activo !== false
+    && String(report.version_documento_revisada) === String(currentFinalVersion?.id))
+  const updateRequired = orientation?.siguiente_accion?.codigo === 'ACTUALIZAR_INFORME_TRIBUNAL'
+  const stageEditable = ['EN_PROCESO', 'OBSERVADA'].includes(stage.estado)
+  const canRegister = canManage && stageEditable && !reports.loading && !reports.error && !currentReport && !updateRequired
+  const canUpdate = canManage && stageEditable && currentReport && updateRequired
   const versionById = new Map(versions.map((version) => [String(version.id), version]))
   const noEvidence = evidenceVersions.length === 0
   return <Card id="informes-etapa" className="scroll-mt-24 overflow-hidden" aria-labelledby="revision-tribunal-title">
@@ -1872,6 +1977,10 @@ function TribunalReviewReports({ stage, reports, canManage, versions, evidenceVe
       <div><h2 id="revision-tribunal-title" className="text-xl font-bold">Revisión de Tribunal Previa</h2><p className="mt-1 text-sm text-slate-500">Informes del tribunal vinculados a versiones exactas del Documento Final.</p></div>
       {canRegister && <Button onClick={onRegister}>Registrar informe del tribunal</Button>}
     </div>
+    {updateRequired && <div role="status" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:bg-amber-950">
+      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">{orientation.mensaje}</p>
+      {canUpdate && <Button className="mt-3" onClick={() => onUpdate(currentReport)}>Actualizar informe del tribunal</Button>}
+    </div>}
     {noEvidence && <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:bg-amber-950">
       <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.</p>
       {canUpload && <Button className="mt-3" variant="secondary" onClick={onUploadEvidence}>Cargar Informe de Evaluación</Button>}
@@ -1918,6 +2027,7 @@ function friendlyTribunalCompletionError(errorMessage) {
 }
 
 function TribunalReportDialog({ report, finalVersion, evidenceVersions, canUpload, canManageAssignments, tribunalReviewStage, activeActors, activeTribunals, onRetryActiveTribunals, onDraftChange, onAssignMissing, onBackToReport, onSubmitMissing, onUploadEvidence, onSubmit, onClose }) {
+  const updatingEvidence = report.view === 'UPDATE_EVIDENCE'
   const fieldMessage = (name) => {
     const value = report.fields?.[name]
     return Array.isArray(value) ? value.join(' ') : value
@@ -1927,7 +2037,7 @@ function TribunalReportDialog({ report, finalVersion, evidenceVersions, canUploa
   const composition = activeTribunals.data ? getActiveTribunalComposition(activeTribunals.data) : null
   const tribunalOrientation = composition ? describeTribunalOrderGap(activeTribunals.data) : ''
   const missingOrder = report.view === 'ASSIGN_MISSING_TRIBUNAL' ? report.assignment.order : composition?.firstMissingOrder
-  return <Modal title="Registrar informe del tribunal" onClose={onClose}>
+  return <Modal title={updatingEvidence ? 'Actualizar informe del tribunal' : 'Registrar informe del tribunal'} onClose={onClose}>
     {report.view === 'ASSIGN_MISSING_TRIBUNAL' ? <section className="mt-4 grid gap-4">
       <div><h3 className="text-lg font-semibold">Asignar Tribunal {missingOrder}</h3><p className="mt-1 text-sm text-slate-500">Selecciona a la persona que ocupará Tribunal {missingOrder} para completar la conformación requerida.</p></div>
       <dl className="grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-3"><Info label="Tipo de participación" value="Tribunal" /><Info label="Etapa" value={tribunalReviewStage?.nombre || 'Revisión de Tribunal Previa'} /><Info label="Orden" value={`Tribunal ${missingOrder}`} /></dl>
@@ -1935,13 +2045,15 @@ function TribunalReportDialog({ report, finalVersion, evidenceVersions, canUploa
     </section> :
     <form className="mt-4 grid gap-4" onSubmit={onSubmit} noValidate>
       <div><p className="text-sm text-slate-500">Versión del Documento Final revisada</p><p className="font-medium">{finalVersion ? `Documento Final — Versión ${finalVersion.numero_version}` : 'No existe una versión actual disponible'}</p>{fieldError('version_documento_revisada')}</div>
-      <label className="text-sm">Resultado<select name="resultado" value={report.draft.resultado} onChange={(event) => onDraftChange('resultado', event.target.value)} required disabled={report.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione un resultado</option><option value="SUFICIENTE">Suficiente</option><option value="INSUFICIENTE">Insuficiente</option></select>{fieldError('resultado')}</label>
-      <label className="text-sm">Evidencia<select name="evidencia_version" value={report.draft.evidencia_version} onChange={(event) => onDraftChange('evidencia_version', event.target.value)} required disabled={report.submitting || evidenceVersions.length === 0} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una evidencia</option>{evidenceVersions.map((version) => <option key={version.id} value={version.id}>{version.nombre_original || 'Archivo sin nombre'} — Versión {version.numero_version}</option>)}</select>{fieldError('evidencia_version')}</label>
+      {updatingEvidence
+        ? <p className="rounded-lg border border-slate-200 p-3 text-sm">Resultado conservado: <strong>{formatReportResult(report.report.resultado)}</strong></p>
+        : <label className="text-sm">Resultado<select name="resultado" value={report.draft.resultado} onChange={(event) => onDraftChange('resultado', event.target.value)} required disabled={report.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione un resultado</option><option value="SUFICIENTE">Suficiente</option><option value="INSUFICIENTE">Insuficiente</option></select>{fieldError('resultado')}</label>}
+      <label className="text-sm">{updatingEvidence ? 'Evidencia vigente' : 'Evidencia'}<select name="evidencia_version" value={report.draft.evidencia_version} onChange={(event) => onDraftChange('evidencia_version', event.target.value)} required disabled={report.submitting || evidenceVersions.length === 0} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una evidencia</option>{evidenceVersions.map((version) => <option key={version.id} value={version.id}>{version.nombre_original || 'Archivo sin nombre'} — Versión {version.numero_version}</option>)}</select>{fieldError('evidencia_version')}</label>
       {evidenceVersions.length === 0 && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:bg-amber-950">
-        <p role="status" className="text-sm font-medium text-amber-800 dark:text-amber-200">Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.</p>
+        <p role="status" className="text-sm font-medium text-amber-800 dark:text-amber-200">{updatingEvidence ? 'No hay una versión vigente disponible. Carga el Informe de Evaluación del Tribunal para actualizar el informe existente.' : 'Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.'}</p>
         {canUpload && <Button type="button" className="mt-3" variant="secondary" disabled={report.submitting} onClick={onUploadEvidence}>Cargar Informe de Evaluación</Button>}
       </div>}
-      <label className="text-sm">Observaciones {report.draft.resultado === 'INSUFICIENTE' ? '(obligatorias)' : '(opcionales)'}<textarea name="observaciones" value={report.draft.observaciones} onChange={(event) => onDraftChange('observaciones', event.target.value)} required={report.draft.resultado === 'INSUFICIENTE'} disabled={report.submitting} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" />{fieldError('observaciones')}</label>
+      {!updatingEvidence && <label className="text-sm">Observaciones {report.draft.resultado === 'INSUFICIENTE' ? '(obligatorias)' : '(opcionales)'}<textarea name="observaciones" value={report.draft.observaciones} onChange={(event) => onDraftChange('observaciones', event.target.value)} required={report.draft.resultado === 'INSUFICIENTE'} disabled={report.submitting} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" />{fieldError('observaciones')}</label>}
       {activeTribunals.loading && <p role="status" className="text-sm text-slate-500">Verificando composición del tribunal…</p>}
       {activeTribunals.error && <div className="rounded-lg border border-red-300 bg-red-50 p-3 dark:bg-red-950"><p role="alert" className="text-sm text-red-700 dark:text-red-200">{activeTribunals.error}</p><Button type="button" variant="secondary" className="mt-2" onClick={onRetryActiveTribunals}>Reintentar composición</Button></div>}
       {!activeTribunals.loading && !activeTribunals.error && tribunalOrientation && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:bg-amber-950">
@@ -1949,7 +2061,7 @@ function TribunalReportDialog({ report, finalVersion, evidenceVersions, canUploa
         {canManageAssignments ? <Button type="button" className="mt-2" variant="secondary" onClick={() => onAssignMissing(missingOrder)}>Asignar Tribunal {missingOrder}</Button> : <a className="mt-2 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#actores">Ir a Tutor y tribunal</a>}
       </div>}
       {report.error && <p role="alert" className="text-red-600">{generalMessage}</p>}
-      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={report.submitting || !finalVersion || evidenceVersions.length === 0}>{report.submitting ? 'Registrando…' : 'Registrar informe'}</Button><Button type="button" variant="secondary" disabled={report.submitting} onClick={onClose}>Cancelar</Button></div>
+      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={report.submitting || !finalVersion || evidenceVersions.length === 0}>{report.submitting ? (updatingEvidence ? 'Actualizando…' : 'Registrando…') : updatingEvidence ? 'Actualizar informe' : 'Registrar informe'}</Button><Button type="button" variant="secondary" disabled={report.submitting} onClick={onClose}>Cancelar</Button></div>
     </form>}
   </Modal>
 }
@@ -2864,8 +2976,9 @@ function DownloadVersionButton({ version, label = 'Descargar' }) {
   return <div><Button variant="outline" disabled={downloading} onClick={download}>{downloading ? 'Descargando…' : label}</Button>{error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}</div>
 }
 
-function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHistoricalSubmit, onClose }) {
+function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onMultipleSubmit, onClose }) {
   const fixedType = upload.document
+  const multiple = isHistorical || upload.multiple === true
   const [selectedTypeId, setSelectedTypeId] = useState('')
   const [selectedEventId, setSelectedEventId] = useState('')
   const [publicDefenses, setPublicDefenses] = useState({ data: [], loading: false, error: '' })
@@ -2875,7 +2988,7 @@ function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHi
   const isDefenseRecord = selectedType?.codigo === 'ACTA_DEFENSA' || selectedType?.tipo_documento_codigo === 'ACTA_DEFENSA'
 
   useEffect(() => {
-    if (!fixedType && isHistorical && types.data.length > 0) {
+    if (!fixedType && multiple && types.data.length > 0) {
       setHistoricalSelections((current) => {
         const currentMap = new Map((current || []).map((entry) => [entry.typeId, entry]))
         return types.data.map((type) => {
@@ -2890,7 +3003,7 @@ function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHi
         })
       })
     }
-  }, [fixedType, isHistorical, types.data])
+  }, [fixedType, multiple, types.data])
 
   useEffect(() => {
     setSelectedEventId('')
@@ -2960,7 +3073,7 @@ function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHi
 
     setHistoricalStatus({ submitting: true, summary: '', items: [] })
     try {
-      const result = await onHistoricalSubmit(selectedEntries)
+      const result = await onMultipleSubmit(selectedEntries)
       const nextItems = result.items || []
       setHistoricalSelections((current) => current.map((item) => {
         const matching = nextItems.find((entry) => String(entry.tipo_documento_id) === String(item.typeId))
@@ -2971,7 +3084,7 @@ function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHi
         return { ...item, status: 'error', error: matching.message || 'No se pudo cargar este documento.', file: item.file }
       }))
       setHistoricalStatus({ submitting: false, summary: result.summary, items: nextItems })
-      if (result.successCount === selectedEntries.length) {
+      if (result.successCount === selectedEntries.length && !upload.trackIndividualStatus) {
         setHistoricalSelections((current) => current.map((item) => ({ ...item, file: null, status: 'idle', error: '' })))
       }
     } catch (requestError) {
@@ -2986,7 +3099,7 @@ function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHi
     if (retryEntries.length === 0) return
     setHistoricalStatus({ submitting: true, summary: '', items: [] })
     try {
-      const result = await onHistoricalSubmit(retryEntries)
+      const result = await onMultipleSubmit(retryEntries)
       const nextItems = result.items || []
       setHistoricalSelections((current) => current.map((item) => {
         const matching = nextItems.find((entry) => String(entry.tipo_documento_id) === String(item.typeId))
@@ -2997,7 +3110,7 @@ function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHi
         return { ...item, status: 'error', error: matching.message || 'No se pudo cargar este documento.', file: item.file }
       }))
       setHistoricalStatus({ submitting: false, summary: result.summary, items: nextItems })
-      if (result.successCount === retryEntries.length) {
+      if (result.successCount === retryEntries.length && !upload.trackIndividualStatus) {
         setHistoricalSelections((current) => current.map((item) => ({ ...item, file: null, status: 'idle', error: '' })))
       }
     } catch (requestError) {
@@ -3006,7 +3119,7 @@ function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHi
   }
 
   const renderHistoryBody = () => {
-    if (!isHistorical || fixedType) return null
+    if (!multiple || fixedType) return null
 
     return (
       <div className="grid gap-3">
@@ -3036,9 +3149,14 @@ function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHi
               <input id={`historical-file-${entry.typeId}`} aria-label={entry.typeName} type="file" disabled={upload.submitting || historicalStatus.submitting} className="block w-full rounded-lg border border-slate-300 p-2 text-sm dark:border-slate-700 dark:bg-slate-950" onChange={(event) => handleHistoricalFileChange(entry.typeId, event.target.files?.[0] || null)} />
               {entry.file && <span className="truncate text-xs text-slate-500">{entry.file.name}</span>}
             </div>
+            {upload.trackIndividualStatus && <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Estado: {entry.status === 'uploaded' ? 'Cargado' : entry.status === 'error' ? 'Error' : entry.file ? 'Seleccionado' : 'Pendiente'}</p>}
             {entry.error && <p className="mt-2 text-xs text-red-600">{entry.error}</p>}
           </div>
         ))}
+        {upload.trackIndividualStatus && upload.stageProgress && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+          <p className="font-semibold">{upload.stageProgress.completed} de {upload.stageProgress.total} requisitos de Inscripción cumplidos</p>
+          <progress className="mt-2 h-3 w-full" max={upload.stageProgress.total || 1} value={upload.stageProgress.completed} aria-label="Avance de requisitos de Inscripción" />
+        </div>}
         {historicalSelections.length > 0 && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
             <span>{selectedHistoryCount} documento{selectedHistoryCount === 1 ? '' : 's'} seleccionado{selectedHistoryCount === 1 ? '' : 's'}</span>
@@ -3061,17 +3179,16 @@ function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHi
     )
   }
 
-  return <Modal title={fixedType ? 'Cargar nueva versión' : isHistorical ? 'Cargar documentación histórica' : 'Cargar documento'} onClose={onClose}>
-    {upload.success && !isHistorical ? <div className="mt-4"><p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-800">{upload.success}</p><Button className="mt-4" onClick={onClose}>Cerrar</Button></div> : <form className="mt-4 grid gap-4" onSubmit={isHistorical ? handleHistoricalSubmit : onSubmit} noValidate>
-      {fixedType ? <div><p className="text-sm text-slate-500">Tipo documental</p><p className="break-words font-medium">{fixedType.tipo_documento_nombre}</p></div> : !isHistorical && <label className="text-sm">Tipo documental
+  return <Modal title={upload.title || (fixedType ? 'Cargar nueva versión' : isHistorical ? 'Cargar documentación histórica' : 'Cargar documento')} onClose={onClose}>
+    {upload.success && !multiple ? <div className="mt-4"><p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-800">{upload.success}</p><Button className="mt-4" onClick={onClose}>Cerrar</Button></div> : <form className="mt-4 grid gap-4" onSubmit={multiple ? handleHistoricalSubmit : onSubmit} noValidate>
+      {fixedType ? <div><p className="text-sm text-slate-500">Tipo documental</p><p className="break-words font-medium">{fixedType.tipo_documento_nombre}</p></div> : !multiple && <label className="text-sm">Tipo documental
         <select name="tipo_documento_id" required disabled={types.loading || upload.submitting} onChange={(event) => setSelectedTypeId(event.target.value)} aria-describedby={fieldMessage('tipo_documento_id') ? 'tipo-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
           <option value="">Seleccione un tipo documental</option>{types.data.map((type) => <option key={type.id} value={type.id}>{type.nombre}</option>)}
         </select>{fieldMessage('tipo_documento_id') && <span id="tipo-error" className="mt-1 block text-red-600">{fieldMessage('tipo_documento_id')}</span>}
       </label>}
       {types.loading && <p role="status">Cargando tipos documentales…</p>}
       {types.error && <p role="alert" className="text-red-600">{types.error}</p>}
-      {!fixedType && !isHistorical && !types.loading && !types.error && types.data.length === 0 && <p role="status">No hay tipos documentales activos disponibles.</p>}
-      {!fixedType && isHistorical && !types.loading && !types.error && types.data.length === 0 && <p role="status">No hay tipos documentales activos disponibles.</p>}
+      {!fixedType && !types.loading && !types.error && types.data.length === 0 && <p role="status">No hay tipos documentales activos disponibles.</p>}
       {isDefenseRecord && publicDefenses.loading && <p role="status">Buscando Defensas Públicas finalizadas…</p>}
       {isDefenseRecord && publicDefenses.error && <p role="alert" className="text-red-600">{publicDefenses.error}</p>}
       {isDefenseRecord && !publicDefenses.loading && !publicDefenses.error && publicDefenses.data.length === 0 && <p role="alert" className="text-amber-700">No existen Defensas Públicas finalizadas disponibles para vincular el Acta de Defensa.</p>}
@@ -3080,15 +3197,15 @@ function UploadDialog({ upload, types, postulacion, isHistorical, onSubmit, onHi
           <option value="">Seleccione la Defensa Pública</option>{publicDefenses.data.map((defense) => <option key={defense.id} value={defense.id}>{formatDefenseDate(defense.fecha_fin_real || defense.fecha_programada)} — {defense.lugar || 'Sin lugar'}</option>)}
         </select>{fieldMessage('evento_defensa_id') && <span id="defensa-error" className="mt-1 block text-red-600">{fieldMessage('evento_defensa_id')}</span>}
       </label>}
-      {!isHistorical && <label className="text-sm">Archivo
+      {!multiple && <label className="text-sm">Archivo
         <input name="archivo" type="file" required disabled={upload.submitting} aria-describedby={fieldMessage('archivo') ? 'archivo-error' : undefined} className="mt-1 block w-full rounded-lg border p-2" />
         {fieldMessage('archivo') && <span id="archivo-error" className="mt-1 block text-red-600">{fieldMessage('archivo')}</span>}
       </label>}
-      {isHistorical && renderHistoryBody()}
+      {multiple && renderHistoryBody()}
       {fieldMessage('non_field_errors') && <p role="alert" className="text-red-600">{fieldMessage('non_field_errors')}</p>}
       {upload.error && <p role="alert" className="text-red-600">{upload.error}</p>}
-      {!isHistorical && <div className="flex flex-wrap gap-3"><Button type="submit" disabled={upload.submitting || types.loading || Boolean(types.error) || (!fixedType && types.data.length === 0) || (isDefenseRecord && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))}>{upload.submitting ? 'Enviando…' : fixedType ? 'Cargar nueva versión' : 'Cargar documento'}</Button><Button type="button" variant="secondary" disabled={upload.submitting} onClick={onClose}>Cancelar</Button></div>}
-      {isHistorical && <div className="flex flex-wrap gap-3"><Button type="button" variant="secondary" disabled={historicalStatus.submitting} onClick={onClose}>Cancelar</Button></div>}
+      {!multiple && <div className="flex flex-wrap gap-3"><Button type="submit" disabled={upload.submitting || types.loading || Boolean(types.error) || (!fixedType && types.data.length === 0) || (isDefenseRecord && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))}>{upload.submitting ? 'Enviando…' : fixedType ? 'Cargar nueva versión' : 'Cargar documento'}</Button><Button type="button" variant="secondary" disabled={upload.submitting} onClick={onClose}>Cancelar</Button></div>}
+      {multiple && <div className="flex flex-wrap gap-3"><Button type="button" variant="secondary" disabled={historicalStatus.submitting} onClick={onClose}>Cancelar</Button></div>}
     </form>}
   </Modal>
 }

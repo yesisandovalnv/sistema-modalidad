@@ -34,11 +34,11 @@ vi.mock('../../services/postulacionesService', () => ({
     registrarEvaluacionDefensa: vi.fn(), consolidarEvaluacionDefensa: vi.fn(), obtenerDefensa: vi.fn(),
     obtenerAsignacionesCandidatas: vi.fn(), agregarParticipanteDefensa: vi.fn(), retirarParticipanteDefensa: vi.fn(), registrarAsistenciaDefensa: vi.fn(),
     obtenerCondiciones: vi.fn(), verificarCondicion: vi.fn(), rechazarCondicion: vi.fn(),
-    obtenerEntregas: vi.fn(), registrarEntrega: vi.fn(),
+    obtenerEntregas: vi.fn(), crearEntregaFisica: vi.fn(), registrarEntrega: vi.fn(),
     obtenerCierre: vi.fn(), aprobarRevisionFinal: vi.fn(), aprobarCierreDocumental: vi.fn(),
     concluirPostulacion: vi.fn(), reabrirCierre: vi.fn(),
     obtenerCandidatosAsignacion: vi.fn(), obtenerTribunalesActivos: vi.fn(), asignarActor: vi.fn(), finalizarAsignacion: vi.fn(),
-    obtenerInformesRevisionTribunal: vi.fn(), registrarInformeRevisionTribunal: vi.fn(),
+    obtenerInformesRevisionTribunal: vi.fn(), registrarInformeRevisionTribunal: vi.fn(), actualizarEvidenciaInformeRevisionTribunal: vi.fn(),
     obtenerDictamenesRevision: vi.fn(),
     obtenerDocumentosAplicables: vi.fn(),
   },
@@ -286,6 +286,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.asignarActor.mockResolvedValue({ id: 90 })
     postulacionesService.finalizarAsignacion.mockResolvedValue({ id: 7, activo: false })
     postulacionesService.obtenerInformesRevisionTribunal.mockResolvedValue([])
+    postulacionesService.actualizarEvidenciaInformeRevisionTribunal.mockResolvedValue({ id: 771, resultado: 'SUFICIENTE', evidencia_version: 603, activo: true })
     postulacionesService.obtenerDictamenesRevision.mockResolvedValue([])
     postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
       { id: 4, codigo: 'INFORME_FINAL', nombre: 'Informe final' },
@@ -318,6 +319,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerDefensa.mockResolvedValue(defenseRows[2])
     postulacionesService.obtenerCondiciones.mockResolvedValue({ count: 0, results: [] })
     postulacionesService.obtenerEntregas.mockResolvedValue({ count: 0, results: [] })
+    postulacionesService.crearEntregaFisica.mockResolvedValue({ id: 99 })
     postulacionesService.obtenerCierre.mockResolvedValue(closureResponse)
     postulacionesService.aprobarRevisionFinal.mockResolvedValue({ ...closureResponse, revision_final_aprobada: true, puede_aprobar_revision_final: false, puede_aprobar_cierre: true })
     postulacionesService.aprobarCierreDocumental.mockResolvedValue({ ...closureResponse, revision_final_aprobada: true, cierre_documental_aprobado: true, puede_aprobar_revision_final: false, puede_aprobar_cierre: false, puede_concluir: true })
@@ -1188,6 +1190,162 @@ describe('ExpedientePage US-008', () => {
     expect(within(summary).getByRole('heading', { name: 'Requisitos de esta etapa' })).toBeInTheDocument()
   })
 
+  const inscriptionRequirements = (completedCount) => [
+    ['CARTA_SOLICITUD_PROYECTO', 'Carta de solicitud', 'DOCUMENTO'],
+    ['MATRICULA_VIGENTE', 'Matrícula vigente', 'DOCUMENTO'],
+    ['HISTORIAL_PRERREQ', 'Historial académico de prerrequisitos', 'DOCUMENTO'],
+    ['FOLDER_AMARILLO', 'Fólder amarillo rotulado con nombre y modalidad', 'ENTREGA_FISICA'],
+  ].map(([codigo, nombre, tipo], index) => {
+    const completed = completedCount === true || (completedCount !== false && index < completedCount)
+    return {
+    codigo,
+    nombre,
+    tipo,
+    cumplido: completed,
+    estado: completed ? 'CUMPLIDO' : 'PENDIENTE',
+    estado_display: completed ? 'Cumplido' : 'Pendiente',
+    destino: tipo === 'DOCUMENTO' ? '#documentos' : '#inscripcion-entregas',
+    }
+  })
+
+  const inscriptionStageResponse = (completedCount) => {
+    const completed = completedCount === true || completedCount === 4
+    const count = completedCount === true ? 4 : completedCount === false ? 0 : completedCount
+    const stage = {
+      id: 31,
+      codigo: 'INSCRIPCION',
+      nombre: 'Inscripción',
+      estado: 'EN_PROCESO',
+      numero_intento: 1,
+      activo: true,
+      acciones_permitidas: completed ? ['aprobar'] : [],
+    }
+    return {
+      ...response,
+      flujo: {
+        ...response.flujo,
+        etapa_actual: stage,
+        etapas: [stage],
+        porcentaje_avance: 0,
+        orientacion_etapa_actual: {
+          mensaje: `${count}/4 requisitos de Inscripción cumplidos.`,
+          requisitos: inscriptionRequirements(completedCount),
+          requisitos_cumplidos: count,
+          requisitos_totales: 4,
+          permite_aprobar_etapa: completed,
+          siguiente_accion: completed
+            ? { codigo: 'APROBAR_ETAPA', titulo: 'Aprobar Inscripción', estado: 'DISPONIBLE', destino: '#resumen' }
+            : { codigo: 'COMPLETAR_DOCUMENTOS', titulo: 'Completar documentos de Inscripción', estado: 'PENDIENTE', destino: '#documentos' },
+        },
+      },
+    }
+  }
+
+  it('muestra 0/4 requisitos y oculta Aprobar Inscripción cuando la policy no habilita aprobar', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(inscriptionStageResponse(false))
+    renderApplicationManagerPage()
+
+    const requirements = (await screen.findByRole('heading', { name: 'Requisitos de Inscripción' })).closest('section')
+    expect(within(requirements).getByText('0 de 4 cumplidos')).toBeInTheDocument()
+    expect(within(requirements).getByRole('heading', { name: 'Documentación de Inscripción' })).toBeInTheDocument()
+    expect(within(requirements).getByText(/Carta de solicitud/)).toBeInTheDocument()
+    expect(within(requirements).getByText(/Matrícula vigente/)).toBeInTheDocument()
+    expect(within(requirements).getByText(/Historial académico de prerrequisitos/)).toBeInTheDocument()
+    expect(within(requirements).queryByRole('button', { name: 'Cargar documentos de Inscripción' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Aprobar Inscripción' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Recepción física' })).toBeInTheDocument()
+    expect(await screen.findByText(/Fólder amarillo rotulado con nombre y modalidad/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Registrar recepción' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar recepción' }))
+    await waitFor(() => expect(postulacionesService.crearEntregaFisica).toHaveBeenCalledWith(
+      7,
+      'FOLDER_AMARILLO',
+      'Fólder amarillo rotulado con nombre y modalidad',
+      1,
+      expect.any(AbortSignal),
+    ))
+  })
+
+  it('reutiliza la carga múltiple para los tres documentos de Inscripción', async () => {
+    let uploadedDocuments = 0
+    postulacionesService.obtenerExpediente.mockImplementation(async () => inscriptionStageResponse(uploadedDocuments))
+    postulacionesService.cargarDocumento.mockImplementation(async () => { uploadedDocuments += 1 })
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
+      { id: 41, codigo: 'CARTA_SOLICITUD_PROYECTO', nombre: 'Carta de Solicitud de Proyecto de Grado' },
+      { id: 42, codigo: 'MATRICULA_VIGENTE', nombre: 'Comprobante de Matrícula Vigente' },
+      { id: 43, codigo: 'HISTORIAL_PRERREQ', nombre: 'Historial Académico de Prerrequisitos' },
+    ] })
+    renderOwnerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documentos de Inscripción' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Cargar documentos de Inscripción' })
+    expect(within(dialog).getByText('0 de 4 requisitos de Inscripción cumplidos')).toBeInTheDocument()
+    expect(dialog.querySelectorAll('input[type="file"]')).toHaveLength(3)
+    expect(within(dialog).getByLabelText(/Carta de Solicitud/)).toBeVisible()
+    expect(within(dialog).getByLabelText(/Matrícula Vigente/)).toBeVisible()
+    expect(within(dialog).getByLabelText(/Historial Académico de Prerrequisitos/)).toBeVisible()
+    expect(within(dialog).queryByLabelText(/Fólder amarillo/i)).not.toBeInTheDocument()
+    const documents = [
+      [/Carta de Solicitud/, 'carta.pdf'],
+      [/Matrícula Vigente/, 'matricula.pdf'],
+      [/Historial Académico de Prerrequisitos/, 'historial.pdf'],
+    ]
+    for (const [index, [name, fileName]] of documents.entries()) {
+      const file = new File([fileName], fileName, { type: 'application/pdf' })
+      await userEvent.upload(within(dialog).getByLabelText(name), file)
+      const selectedCount = index + 1
+      const selectedLabel = `${selectedCount} documento${selectedCount === 1 ? '' : 's'} seleccionado${selectedCount === 1 ? '' : 's'}`
+      expect(within(dialog).getByText(selectedLabel)).toBeInTheDocument()
+      expect(within(dialog).getByRole('button', { name: `Cargar ${selectedCount} documento${selectedCount === 1 ? '' : 's'}` })).toBeEnabled()
+    }
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cargar 3 documentos' }))
+
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledTimes(3))
+    expect(await within(dialog).findByText('3 de 4 requisitos de Inscripción cumplidos')).toBeInTheDocument()
+    expect(within(dialog).getAllByText('Estado: Cargado')).toHaveLength(3)
+    for (const [index, [, fileName]] of documents.entries()) {
+      const file = new File([fileName], fileName, { type: 'application/pdf' })
+      expect(postulacionesService.cargarDocumento).toHaveBeenNthCalledWith(index + 1, expect.objectContaining({ postulacionId: 7, tipoDocumentoId: 41 + index, archivo: file }), expect.any(AbortSignal))
+    }
+    expect(within(dialog).queryByText(/Fólder amarillo/i)).not.toBeInTheDocument()
+  })
+
+  it('completa 3/4 a 4/4 al registrar la recepción física del fólder', async () => {
+    let folderReceived = false
+    let delivery = null
+    postulacionesService.obtenerExpediente.mockImplementation(async () => inscriptionStageResponse(folderReceived ? 4 : 3))
+    postulacionesService.obtenerEntregas.mockImplementation(async () => ({ results: delivery ? [delivery] : [] }))
+    postulacionesService.crearEntregaFisica.mockImplementation(async () => {
+      delivery = { id: 99, codigo: 'FOLDER_AMARILLO', nombre: 'Fólder amarillo rotulado con nombre y modalidad', estado: 'PENDIENTE', estado_display: 'Pendiente de recepción', cantidad: 1, cantidad_recibida: 0 }
+      return delivery
+    })
+    postulacionesService.registrarEntrega.mockImplementation(async () => {
+      folderReceived = true
+      delivery = { ...delivery, estado: 'COMPLETA', estado_display: 'Completa', cantidad_recibida: 1 }
+    })
+    renderApplicationManagerPage()
+
+    expect(await screen.findByText('3 de 4 cumplidos')).toBeInTheDocument()
+    const folder = await screen.findByText('Fólder amarillo rotulado con nombre y modalidad')
+    const item = folder.closest('li')
+    await userEvent.click(within(item).getByRole('button', { name: 'Registrar recepción' }))
+    const form = await within(item).findByRole('form', { name: 'Registrar entrega: Fólder amarillo rotulado con nombre y modalidad' })
+    await userEvent.click(within(form).getByRole('button', { name: 'Guardar' }))
+
+    expect(await screen.findByText('4 de 4 cumplidos')).toBeInTheDocument()
+    expect(postulacionesService.registrarEntrega).toHaveBeenCalledWith(99, 1, '', expect.any(AbortSignal))
+    expect(screen.queryByRole('dialog', { name: /Cargar documentos de Inscripción/ })).not.toBeInTheDocument()
+  })
+
+  it('ofrece Aprobar Inscripción cuando backend expone la acción con los 4/4 cumplidos', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(inscriptionStageResponse(true))
+    renderApplicationManagerPage()
+
+    const requirements = (await screen.findByRole('heading', { name: 'Requisitos de Inscripción' })).closest('section')
+    expect(within(requirements).getByText('4 de 4 cumplidos')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Aprobar Inscripción' })).toBeInTheDocument()
+  })
+
   it('no muestra aprobar Documento Final si la orientación indica cargarlo', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue({
       ...response,
@@ -1369,7 +1527,7 @@ describe('ExpedientePage US-008', () => {
       },
     })
     renderOwnerPage()
-    expect(await screen.findByText('El Documento Final está aprobado. Espera la aprobación de la etapa por el personal responsable.')).toBeInTheDocument()
+    expect(await screen.findByText('El Documento Final del Proyecto de Grado está aprobado. Espera la aprobación de la etapa por el personal responsable.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Aprobar Documento Final' })).not.toBeInTheDocument()
   })
 
@@ -3839,6 +3997,95 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('dialog', { name: 'Registrar informe del tribunal' })).not.toBeInTheDocument()
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
     expect(postulacionesService.obtenerDocumentos).toHaveBeenCalledTimes(1)
+  })
+
+  it('actualiza evidencia vencida sin duplicar informe y habilita aprobar tras refrescar acciones', async () => {
+    const staleOrientation = {
+      operacion: 'ORIENTAR_ETAPA',
+      mensaje: 'El informe del tribunal utiliza una versión anterior de la evidencia. Actualiza el informe con la versión vigente.',
+      requisitos: [{ tipo: 'DOCUMENTO', codigo: 'EVIDENCIA_INFORME_TRIBUNAL_VIGENTE', cumplido: false, estado: 'REQUIERE_ACTUALIZACION' }],
+      siguiente_accion: { codigo: 'ACTUALIZAR_INFORME_TRIBUNAL', titulo: 'Actualizar informe del tribunal', estado: 'PENDIENTE', destino: '#informes-etapa' },
+    }
+    const staleResponse = {
+      ...tribunalResponse,
+      flujo: { ...tribunalResponse.flujo, orientacion_etapa_actual: staleOrientation },
+    }
+    const approvableStage = { ...tribunalStage, acciones_permitidas: ['aprobar', 'observar', 'rechazar'] }
+    const validResponse = {
+      ...tribunalResponse,
+      flujo: {
+        ...tribunalResponse.flujo,
+        etapa_actual: approvableStage,
+        etapas: tribunalResponse.flujo.etapas.map((stage) => stage.codigo === 'REVISION_TRIBUNAL_PREVIA' ? approvableStage : stage),
+        orientacion_etapa_actual: { siguiente_accion: { codigo: 'APROBAR_ETAPA', estado: 'DISPONIBLE' }, requisitos: [] },
+      },
+    }
+    const staleReport = {
+      id: 771,
+      seguimiento_etapa: 4,
+      version_documento_revisada: 601,
+      numero_version_revisada: 1,
+      resultado: 'SUFICIENTE',
+      resultado_display: 'Suficiente',
+      evidencia_version: 602,
+      evidencia_nombre_original: 'informe-tribunal.pdf',
+      observaciones: 'Consenso suficiente',
+      activo: true,
+    }
+    const updatedReport = { ...staleReport, evidencia_version: 603 }
+    postulacionesService.obtenerExpediente.mockResolvedValueOnce(staleResponse).mockResolvedValue(validResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue({
+      count: 2, next: null, previous: null, results: [
+        { id: 41, tipo_documento_codigo: 'DOCUMENTO_FINAL', tipo_documento_nombre: 'Documento Final', activo: true, versiones: [{ id: 601, numero_version: 1, nombre_original: 'documento-final.pdf', es_version_actual: true, activo: true }] },
+        { id: 42, tipo_documento_codigo: 'INFORME_REVISION_TRIBUNAL_PREVIA', tipo_documento_nombre: 'Informe de Evaluación del Tribunal', activo: true, versiones: [
+          { id: 602, numero_version: 1, nombre_original: 'informe-tribunal.pdf', es_version_actual: false, activo: true },
+          { id: 603, numero_version: 2, nombre_original: 'informe-tribunal-v2.pdf', es_version_actual: true, activo: true },
+        ] },
+      ],
+    })
+    let reportReads = 0
+    const reportReadsObserved = []
+    postulacionesService.obtenerInformesRevisionTribunal.mockImplementation(async (...args) => {
+      reportReads += 1
+      const payload = [reportReads === 1 ? staleReport : updatedReport]
+      reportReadsObserved.push({ args, payload })
+      return payload
+    })
+    postulacionesService.obtenerTribunalesActivos.mockResolvedValue([
+      { id: 11, usuario: 45, tipo_participacion: 'TRIBUNAL', orden_cargo: 1, activo: true },
+      { id: 12, usuario: 42, tipo_participacion: 'TRIBUNAL', orden_cargo: 2, activo: true },
+      { id: 13, usuario: 43, tipo_participacion: 'TRIBUNAL', orden_cargo: 3, activo: true },
+    ])
+    const auth = { user: { id: 9 }, hasPermission: (name) => ['puede_gestionar_seguimiento', 'puede_gestionar_postulaciones'].includes(name) }
+    render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+
+    expect((await screen.findAllByText(staleOrientation.mensaje))).toHaveLength(2)
+    await waitFor(() => expect(reportReadsObserved.length).toBeGreaterThan(0))
+    expect(reportReadsObserved[0].args[0]).toBe(4)
+    expect(reportReadsObserved[0].args[1]).toBeInstanceOf(AbortSignal)
+    expect(reportReadsObserved[0].payload).toEqual([staleReport])
+    expect(screen.queryByRole('button', { name: 'Registrar informe del tribunal' })).not.toBeInTheDocument()
+    const reportsPanel = document.getElementById('informes-etapa')
+    await userEvent.click(within(reportsPanel).getByRole('button', { name: 'Actualizar informe del tribunal' }))
+    let dialog = screen.getByRole('dialog', { name: 'Actualizar informe del tribunal' })
+    expect(within(dialog).getByText(/Resultado conservado:/)).toHaveTextContent('Suficiente')
+    expect(within(dialog).queryByLabelText('Resultado')).not.toBeInTheDocument()
+    const evidence = within(dialog).getByRole('combobox', { name: 'Evidencia vigente' })
+    expect(within(evidence).getAllByRole('option')).toHaveLength(2)
+    expect(within(evidence).getByRole('option', { name: /Versión 2/ })).toHaveValue('603')
+    await userEvent.selectOptions(evidence, '603')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Actualizar informe' }))
+
+    await waitFor(() => expect(postulacionesService.actualizarEvidenciaInformeRevisionTribunal).toHaveBeenCalledWith(
+      4,
+      771,
+      { evidencia_version: 603 },
+      expect.any(AbortSignal),
+    ))
+    expect(postulacionesService.registrarInformeRevisionTribunal).not.toHaveBeenCalled()
+    expect(await screen.findByRole('button', { name: 'Aprobar Revisión de Tribunal Previa' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Registrar informe del tribunal' })).not.toBeInTheDocument()
+    expect(screen.getByText('Suficiente')).toBeInTheDocument()
   })
 
   it('exige observaciones para INSUFICIENTE y evita el doble envío', async () => {

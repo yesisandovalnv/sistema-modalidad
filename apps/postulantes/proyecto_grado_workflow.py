@@ -59,7 +59,7 @@ class ProyectoGradoWorkflowOrchestrator:
     @classmethod
     @transaction.atomic
     def inicializar_proceso(cls, postulacion: Postulacion, usuario) -> list[SeguimientoEtapa]:
-        """Inicializa PG y deja Inscripción aprobada y Perfil en proceso."""
+        """Inicializa PG con Inscripción en proceso y las etapas posteriores pendientes."""
         from apps.postulantes.workflow import WorkflowService
 
         seguimientos = WorkflowService.inicializar_flujo(postulacion, usuario)
@@ -68,18 +68,7 @@ class ProyectoGradoWorkflowOrchestrator:
             return seguimientos
 
         inscripcion = cls._seguimiento(postulacion, "INSCRIPCION")
-        inscripcion = cls._iniciar_si_pendiente(inscripcion, usuario)
-        if inscripcion.estado in {
-            SeguimientoEtapa.EstadoChoices.EN_PROCESO,
-            SeguimientoEtapa.EstadoChoices.OBSERVADA,
-        }:
-            inscripcion = WorkflowService.aprobar_etapa(inscripcion, usuario)
-        if inscripcion.estado != SeguimientoEtapa.EstadoChoices.APROBADA:
-            raise ValidationError("No se pudo completar la etapa INSCRIPCION.")
-
-        # aprobar_etapa ya intenta esta apertura; esta segunda llamada hace el
-        # arranque explícitamente idempotente ante reintentos o estados previos.
-        cls._iniciar_si_pendiente(cls._seguimiento(postulacion, "PERFIL_PROYECTO"), usuario)
+        cls._iniciar_si_pendiente(inscripcion, usuario)
         return list(WorkflowService.obtener_seguimientos_ordenados(postulacion))
 
     @classmethod

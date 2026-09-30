@@ -11,7 +11,7 @@ from apps.usuarios.models import AuditLog, CustomUser
 class NotificationRecipientResolver:
     DEFENSE_EVENTS={EventTypes.DEFENSA_PROGRAMADA,EventTypes.DEFENSA_REPROGRAMADA,EventTypes.DEFENSA_SUSPENDIDA,EventTypes.DEFENSA_CANCELADA,EventTypes.DEFENSA_FINALIZADA,EventTypes.EVALUACION_CONSOLIDADA}
     ASSIGNMENT_EVENTS={EventTypes.ACTOR_ASIGNADO,EventTypes.ACTOR_REEMPLAZADO,EventTypes.ASIGNACION_FINALIZADA}
-    REVIEW_EVENTS={EventTypes.INFORME_REVISION_TRIBUNAL_REGISTRADO}
+    REVIEW_EVENTS={EventTypes.INFORME_REVISION_TRIBUNAL_REGISTRADO, EventTypes.INFORME_REVISION_TRIBUNAL_ACTUALIZADO}
     @classmethod
     def resolve(cls,event):
         ids=set(); post=None

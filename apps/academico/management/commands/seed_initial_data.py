@@ -67,6 +67,15 @@ OFFICIAL_ESTADOS_DOCUMENTO = [
 
 OFFICIAL_TIPOS_DOCUMENTO = [
     {
+        "codigo": "CARTA_SOLICITUD_PROYECTO",
+        "nombre": "Carta de Solicitud de Proyecto de Grado",
+        "descripcion": "Carta dirigida a la Dirección de Carrera con la modalidad y el tema a investigar o los términos de referencia.",
+        "obligatorio": True,
+        "permite_multiple_version": True,
+        "tamano_maximo_mb": 10,
+        "extensiones_permitidas": "pdf,doc,docx",
+    },
+    {
         "codigo": "INFORME_REVISION_TRIBUNAL_PREVIA",
         "nombre": "Informe de Evaluación del Tribunal",
         "descripcion": "Evidencia del resultado suficiente o insuficiente emitido en la revisión previa del tribunal.",

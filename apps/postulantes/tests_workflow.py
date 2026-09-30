@@ -10,7 +10,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
 from apps.postulantes.models import (AsignacionPostulacion, EstadoPostulacion, EvaluacionDefensa,
-                                     EventoDefensa, HistorialEstado, Postulacion, SeguimientoEtapa)
+                                     EntregaFisica, EventoDefensa, HistorialEstado, Postulacion, SeguimientoEtapa)
+from apps.postulantes.complementarios import EntregaFisicaService
 from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import Role
@@ -119,6 +120,42 @@ class WorkflowBaseMixin:
             orden=4,
             origen_normativo="Capítulo VII",
         )
+
+    def habilitar_aprobacion_inscripcion(self):
+        document_types = (
+            ("CARTA_SOLICITUD_PROYECTO", "Carta de Solicitud de Proyecto de Grado"),
+            ("MATRICULA_VIGENTE", "Comprobante de Matrícula Vigente"),
+            ("HISTORIAL_PRERREQ", "Historial Académico de Prerrequisitos"),
+        )
+        estado_aprobado, _ = EstadoDocumento.objects.get_or_create(
+            codigo="APR",
+            defaults={"nombre": "Aprobado workflow"},
+        )
+        for index, (codigo, nombre) in enumerate(document_types, start=1):
+            tipo, _ = TipoDocumento.objects.get_or_create(codigo=codigo, defaults={"nombre": nombre})
+            documento = DocumentoPostulacion.objects.create(
+                postulacion=self.postulacion,
+                tipo_documento=tipo,
+                estado=estado_aprobado,
+            )
+            VersionDocumento.objects.create(
+                documento=documento,
+                subido_por=self.student,
+                numero_version=1,
+                archivo=f"tests/{codigo.lower()}.pdf",
+                nombre_original=f"{codigo.lower()}.pdf",
+                tamano_bytes=1,
+                hash_sha256=str(index).zfill(64),
+                es_version_actual=True,
+            )
+        folder = EntregaFisicaService.crear(
+            self.postulacion,
+            EntregaFisica.Tipo.FOLDER_AMARILLO,
+            "Fólder amarillo",
+            self.admin,
+            cantidad=1,
+        )
+        EntregaFisicaService.registrar_entrega(folder, 1, self.admin)
 
     def habilitar_aprobacion_perfil(self, seguimiento):
         ahora = timezone.now()
@@ -282,6 +319,7 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
 
     def test_aprobar_cierre_documental_bloquea_solo_requisitos_tecnicos(self):
         WorkflowService.inicializar_flujo(self.postulacion, self.admin)
+        self.habilitar_aprobacion_inscripcion()
         for etapa in (self.etapa_inscripcion, self.etapa_perfil, self.etapa_opcional, self.etapa_cierre):
             seguimiento = SeguimientoEtapa.objects.get(
                 postulacion=self.postulacion,
@@ -319,6 +357,7 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
 
     def test_crear_nuevo_intento_para_etapa_repetible_rechazada(self):
         WorkflowService.inicializar_flujo(self.postulacion, self.admin)
+        self.habilitar_aprobacion_inscripcion()
         seguimiento_inscripcion = SeguimientoEtapa.objects.get(
             postulacion=self.postulacion,
             etapa=self.etapa_inscripcion,
@@ -350,6 +389,7 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
 
     def test_porcentaje_avance_no_sobrecuenta_intentos_repetidos(self):
         WorkflowService.inicializar_flujo(self.postulacion, self.admin)
+        self.habilitar_aprobacion_inscripcion()
         WorkflowService.aprobar_etapa(
             WorkflowService.iniciar_etapa(
                 SeguimientoEtapa.objects.get(postulacion=self.postulacion, etapa=self.etapa_inscripcion, numero_intento=1),
@@ -595,8 +635,8 @@ class WorkflowApiTest(WorkflowBaseMixin, APITestCase):
 
         expected_by_state = {
             SeguimientoEtapa.EstadoChoices.PENDIENTE: ["iniciar"],
-            SeguimientoEtapa.EstadoChoices.EN_PROCESO: ["aprobar", "observar", "rechazar"],
-            SeguimientoEtapa.EstadoChoices.OBSERVADA: ["aprobar", "rechazar"],
+            SeguimientoEtapa.EstadoChoices.EN_PROCESO: ["observar", "rechazar"],
+            SeguimientoEtapa.EstadoChoices.OBSERVADA: ["rechazar"],
             SeguimientoEtapa.EstadoChoices.APROBADA: [],
             SeguimientoEtapa.EstadoChoices.RECHAZADA: [],
         }
@@ -654,6 +694,7 @@ class WorkflowApiTest(WorkflowBaseMixin, APITestCase):
                 resolve(f"/api/v1/asignaciones/1/{action}/")
 
     def test_admin_aprueba_etapa_en_proceso_por_api(self):
+        self.habilitar_aprobacion_inscripcion()
         seguimiento = WorkflowService.iniciar_etapa(
             WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0],
             self.admin,
@@ -688,6 +729,7 @@ class WorkflowApiTest(WorkflowBaseMixin, APITestCase):
         self.assertEqual(seguimiento.estado, SeguimientoEtapa.EstadoChoices.RECHAZADA)
 
     def test_admin_observa_y_luego_aprueba_etapa_por_api(self):
+        self.habilitar_aprobacion_inscripcion()
         seguimiento = WorkflowService.iniciar_etapa(
             WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0],
             self.admin,
@@ -779,6 +821,7 @@ class WorkflowApiTest(WorkflowBaseMixin, APITestCase):
 
     def test_admin_puede_crear_nuevo_intento_por_api(self):
         WorkflowService.inicializar_flujo(self.postulacion, self.admin)
+        self.habilitar_aprobacion_inscripcion()
         WorkflowService.aprobar_etapa(
             WorkflowService.iniciar_etapa(
                 SeguimientoEtapa.objects.get(postulacion=self.postulacion, etapa=self.etapa_inscripcion, numero_intento=1),

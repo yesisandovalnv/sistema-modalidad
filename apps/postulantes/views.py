@@ -29,6 +29,7 @@ from apps.postulantes.permissions import (IsAssignmentAdminOrRelatedReadOnly,
 from apps.postulantes.serializers import (
     AsignacionPostulacionSerializer,
     AsignarActorSerializer,
+    ActualizarEvidenciaInformeRevisionTribunalSerializer,
     AprobarSeguimientoEtapaSerializer,
     EstadoPostulacionSerializer,
     FinalizarAsignacionSerializer,
@@ -633,6 +634,37 @@ class SeguimientoEtapaViewSet(viewsets.ReadOnlyModelViewSet):
             context=self.get_serializer_context(),
         )
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        request=ActualizarEvidenciaInformeRevisionTribunalSerializer,
+        responses={200: InformeRevisionTribunalSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"informes-revision-tribunal/(?P<informe_id>[^/.]+)/actualizar-evidencia",
+        serializer_class=ActualizarEvidenciaInformeRevisionTribunalSerializer,
+    )
+    def actualizar_evidencia_informe_revision_tribunal(self, request, pk=None, informe_id=None):
+        seguimiento = self.get_object()
+        if not is_staff_user(request.user):
+            raise PermissionDenied("Solo un usuario administrativo puede actualizar el informe.")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            informe = RevisionTribunalPreviaService.actualizar_evidencia(
+                seguimiento=seguimiento,
+                informe_id=informe_id,
+                evidencia_version=serializer.validated_data["evidencia_version"],
+                usuario=request.user,
+            )
+        except DjangoValidationError as exc:
+            raise _assignment_validation_error(exc) from exc
+        response_serializer = InformeRevisionTribunalSerializer(
+            informe,
+            context=self.get_serializer_context(),
+        )
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(request=None, responses={200: SeguimientoEtapaSerializer})
     @action(detail=True, methods=["post"], url_path="iniciar")

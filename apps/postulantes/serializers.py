@@ -560,6 +560,12 @@ class RegistrarInformeRevisionTribunalSerializer(serializers.Serializer):
         return attrs
 
 
+class ActualizarEvidenciaInformeRevisionTribunalSerializer(serializers.Serializer):
+    evidencia_version = serializers.PrimaryKeyRelatedField(
+        queryset=VersionDocumento.all_objects.all(),
+    )
+
+
 class InformeRevisionTribunalSerializer(serializers.ModelSerializer):
     resultado_display = serializers.CharField(source="get_resultado_display", read_only=True)
     numero_version_revisada = serializers.IntegerField(

@@ -8,6 +8,7 @@ vi.mock('../../services/postulacionesService', () => ({
   postulacionesService: {
     obtenerCondiciones: vi.fn(),
     obtenerEntregas: vi.fn(),
+    crearEntregaFisica: vi.fn(),
     verificarCondicion: vi.fn(),
     rechazarCondicion: vi.fn(),
     registrarEntrega: vi.fn(),
@@ -201,6 +202,38 @@ describe('ClosureRequirements', () => {
       expect(within(form).getByRole('button', { name: 'Procesando…' })).toBeDisabled()
       pending.resolve({})
       await waitFor(() => expect(within(item).queryByRole('form')).not.toBeInTheDocument())
+    })
+
+    it('crea el control físico de Inscripción sin mostrar las condiciones del cierre', async () => {
+      postulacionesService.crearEntregaFisica.mockResolvedValue({})
+      postulacionesService.obtenerEntregas.mockResolvedValue({ results: [] })
+      const onChanged = vi.fn()
+      render(<ClosureRequirements
+        postulacion={7}
+        canManage
+        showConditions={false}
+        requiredDeliveries={[{
+          codigo: 'FOLDER_AMARILLO',
+          nombre: 'Fólder amarillo rotulado con nombre y modalidad',
+          cumplido: false,
+        }]}
+        title="Recepción física de Inscripción"
+        onChanged={onChanged}
+      />)
+
+      const folder = await screen.findByText('Fólder amarillo rotulado con nombre y modalidad')
+      const item = folder.closest('li')
+      expect(screen.queryByText(/Condiciones técnicas/)).not.toBeInTheDocument()
+      await userEvent.click(within(item).getByRole('button', { name: 'Preparar recepción' }))
+
+      await waitFor(() => expect(postulacionesService.crearEntregaFisica).toHaveBeenCalledWith(
+        7,
+        'FOLDER_AMARILLO',
+        'Fólder amarillo rotulado con nombre y modalidad',
+        1,
+        expect.any(AbortSignal),
+      ))
+      expect(onChanged).toHaveBeenCalledTimes(1)
     })
   })
 })

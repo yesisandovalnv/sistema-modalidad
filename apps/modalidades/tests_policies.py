@@ -134,12 +134,20 @@ class ProyectoGradoRequisitosTests(TestCase):
 
     def test_etapa_no_configurada_es_fail_closed(self):
         """Verificar que etapas sin documentos configurados devuelven tupla vacía (fail-closed)."""
-        # INSCRIPCION, PERFIL_PROYECTO, DEFENSA_PRIVADA, DEFENSA_PUBLICA, etc.
-        etapas_sin_docs = ["INSCRIPCION", "PERFIL_PROYECTO", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"]
+        # PERFIL_PROYECTO, DEFENSA_PRIVADA, DEFENSA_PUBLICA, etc.
+        etapas_sin_docs = ["PERFIL_PROYECTO", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"]
         for etapa in etapas_sin_docs:
             with self.subTest(etapa=etapa):
                 resultado = self.requisitos_policy.get_documentos_requeridos(etapa)
                 self.assertEqual(resultado, (), f"Etapa {etapa} debe devolver tupla vacía")
+
+    def test_inscripcion_configura_tres_documentos_y_una_entrega_fisica(self):
+        self.assertEqual(
+            self.policy.get_documentos_aplicables_en_etapa("INSCRIPCION"),
+            ("CARTA_SOLICITUD_PROYECTO", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ"),
+        )
+        self.assertEqual(self.policy.get_condiciones_requeridas("INSCRIPCION"), ())
+        self.assertEqual(self.policy.get_entregas_requeridas("INSCRIPCION"), ("FOLDER_AMARILLO",))
 
     def test_sin_fase_devuelve_todos_documentos(self):
         """Verificar que llamar sin fase devuelve todos los documentos requeridos (compatibilidad)."""

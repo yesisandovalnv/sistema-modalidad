@@ -6,15 +6,30 @@ import { postulacionesService } from '../../services/postulacionesService'
 const rows = (data) => data?.results || data || []
 const date = (value) => value ? new Intl.DateTimeFormat('es-BO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Pendiente'
 
-export default function ClosureRequirements({ postulacion, canManage, onChanged }) {
+export default function ClosureRequirements({
+  postulacion,
+  canManage,
+  onChanged,
+  showConditions = true,
+  requiredDeliveries = null,
+  deliveryCodes = null,
+  title = 'Condiciones y entregas técnicas',
+  description = 'Estos registros preparan el cierre documental; no acreditan legalización, titulación ni cierre universitario.',
+  titleId = 'controles-cierre-title',
+  createLabel = 'Preparar recepción',
+}) {
   const [state, setState] = useState({ conditions: null, deliveries: null, loading: true, error: '' })
   const [action, setAction] = useState(null)
+  const [deliveryCreation, setDeliveryCreation] = useState({ codigo: '', submitting: false, error: '' })
   const controller = useRef(null)
   const submitting = useRef(false)
   const load = async () => {
     controller.current?.abort(); controller.current = new AbortController(); setState((current) => ({ ...current, loading: true, error: '' }))
     try {
-      const [conditions, deliveries] = await Promise.all([postulacionesService.obtenerCondiciones(postulacion, controller.current.signal), postulacionesService.obtenerEntregas(postulacion, controller.current.signal)])
+      const conditionsRequest = showConditions
+        ? postulacionesService.obtenerCondiciones(postulacion, controller.current.signal)
+        : Promise.resolve({ results: [] })
+      const [conditions, deliveries] = await Promise.all([conditionsRequest, postulacionesService.obtenerEntregas(postulacion, controller.current.signal)])
       setState({ conditions, deliveries, loading: false, error: '' })
     } catch (error) { if (!error.canceled) setState((current) => ({ ...current, loading: false, error: error.message })) }
   }
@@ -33,6 +48,21 @@ export default function ClosureRequirements({ postulacion, canManage, onChanged 
   }
 
   const closeAction = () => { if (!submitting.current) setAction(null) }
+  const createDelivery = async (requirement) => {
+    if (submitting.current || !canManage) return
+    submitting.current = true
+    controller.current?.abort(); controller.current = new AbortController()
+    setDeliveryCreation({ codigo: requirement.codigo, submitting: true, error: '' })
+    try {
+      const created = await postulacionesService.crearEntregaFisica(postulacion, requirement.codigo, requirement.nombre, 1, controller.current.signal)
+      setDeliveryCreation({ codigo: '', submitting: false, error: '' })
+      await load()
+      setAction({ kind: 'entrega', operation: 'registrar', item: created, submitting: false, error: '' })
+      onChanged?.()
+    } catch (error) {
+      if (!error.canceled) setDeliveryCreation({ codigo: requirement.codigo, submitting: false, error: error.message })
+    } finally { submitting.current = false }
+  }
   const actionForm = (current) => <form aria-label={`${current.operation === 'verificar' ? 'Verificar' : current.kind === 'condicion' ? 'Marcar no cumple' : 'Registrar entrega'}: ${current.item.nombre}`} className="mt-3 rounded-lg border border-blue-300 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950" onSubmit={submit}>
     <h3 className="font-semibold">{current.kind === 'condicion' ? `${current.operation === 'verificar' ? 'Verificar' : 'No cumple'}: ${current.item.nombre}` : `Registrar entrega: ${current.item.nombre}`}</h3>
     {current.kind === 'entrega' && <label className="mt-3 block text-sm">Cantidad recibida<input name="cantidad_recibida" type="number" min="1" required defaultValue={current.item.cantidad_recibida || 1} className="mt-1 w-full rounded-md border p-2" /></label>}
@@ -42,20 +72,33 @@ export default function ClosureRequirements({ postulacion, canManage, onChanged 
   </form>
 
   const conditions = rows(state.conditions)
-  const deliveries = rows(state.deliveries)
+  const allDeliveries = rows(state.deliveries)
+  const deliveries = Array.isArray(requiredDeliveries)
+    ? requiredDeliveries.map((requirement) => allDeliveries.find((item) => item.codigo === requirement.codigo) || {
+        ...requirement,
+        id: null,
+        estado: 'PENDIENTE',
+        estado_display: 'Pendiente de recepción',
+        cantidad: 1,
+        cantidad_recibida: 0,
+      })
+    : Array.isArray(deliveryCodes)
+      ? allDeliveries.filter((item) => deliveryCodes.includes(item.codigo))
+      : allDeliveries
   const completedConditions = conditions.filter((item) => item.estado === 'CUMPLE').length
   const completedDeliveries = deliveries.filter((item) => item.estado === 'COMPLETA').length
   const conditionsComplete = conditions.length > 0 && completedConditions === conditions.length
   const deliveriesComplete = deliveries.length > 0 && completedDeliveries === deliveries.length
+  const deliveryHeading = showConditions ? 'Entregas técnicas' : 'Entregas físicas'
 
-  return <Card className="overflow-hidden" aria-labelledby="controles-cierre-title">
-    <h2 id="controles-cierre-title" className="text-xl font-bold">Condiciones y entregas técnicas</h2>
-    <p className="mt-1 text-sm text-slate-500">Estos registros preparan el cierre documental; no acreditan legalización, titulación ni cierre universitario.</p>
+  return <Card className="overflow-hidden" aria-labelledby={titleId}>
+    <h2 id={titleId} className="text-xl font-bold">{title}</h2>
+    {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
     {state.loading && <p role="status" className="mt-4 text-sm">Cargando condiciones y entregas…</p>}
     {state.error && <div className="mt-4"><p role="alert" className="text-sm text-red-600">{state.error}</p><Button className="mt-2" variant="secondary" onClick={load}>Reintentar</Button></div>}
-    {!state.loading && !state.error && <div className="mt-5 grid items-start gap-4 lg:grid-cols-2">
-      <details open={!conditionsComplete} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700"><summary className="cursor-pointer list-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">{conditionsComplete ? '✓ ' : ''}Condiciones técnicas <span className="font-normal text-slate-500">{completedConditions}/{conditions.length} cumplidas · Ver detalle</span></summary>{conditions.length === 0 ? <p className="mt-2 text-sm">Sin condiciones configuradas.</p> : <ul className="mt-3 space-y-3">{conditions.map((item) => <li key={item.id} className="rounded-lg border p-3 text-sm"><strong>{item.nombre}</strong><p>Estado: {item.estado_display || item.estado}</p><p>Verificador: {item.verificado_por_nombre || 'Pendiente'}</p><p>Fecha: {date(item.fecha_verificacion)}</p>{item.observaciones && <p>Observaciones: {item.observaciones}</p>}{canManage && item.estado === 'PENDIENTE' && <div className="mt-2 flex gap-2"><Button onClick={() => setAction({ kind: 'condicion', operation: 'verificar', item, submitting: false, error: '' })}>Verificar</Button><Button variant="secondary" onClick={() => setAction({ kind: 'condicion', operation: 'rechazar', item, submitting: false, error: '' })}>No cumple</Button></div>}{action?.kind === 'condicion' && action.item.id === item.id && actionForm(action)}</li>)}</ul>}</details>
-      <details open={!deliveriesComplete} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700"><summary className="cursor-pointer list-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">{deliveriesComplete ? '✓ ' : ''}Entregas técnicas <span className="font-normal text-slate-500">{completedDeliveries}/{deliveries.length} completas · Ver detalle</span></summary>{deliveries.length === 0 ? <p className="mt-2 text-sm">Sin entregas configuradas.</p> : <ul className="mt-3 space-y-3">{deliveries.map((item) => <li key={item.id} className="rounded-lg border p-3 text-sm"><strong>{item.nombre}</strong><p>Estado: {item.estado_display || item.estado}</p><p>Cantidad técnica requerida: {item.cantidad ?? 'No definida'}</p><p>Cantidad recibida: {item.cantidad_recibida}</p><p>Receptor: {item.recibido_por_nombre || 'Pendiente'}</p><p>Fecha: {date(item.fecha_entrega)}</p>{item.codigo === 'EJEMPLARES_IMPRESOS' && <p className="mt-2 text-amber-700">La cantidad registrada no certifica una cantidad normativa oficial.</p>}{canManage && <Button className="mt-2" onClick={() => setAction({ kind: 'entrega', operation: 'registrar', item, submitting: false, error: '' })}>Registrar/actualizar entrega</Button>}{action?.kind === 'entrega' && action.item.id === item.id && actionForm(action)}</li>)}</ul>}</details>
+    {!state.loading && !state.error && <div className={`mt-5 grid items-start gap-4 ${showConditions ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
+      {showConditions && <details open={!conditionsComplete} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700"><summary className="cursor-pointer list-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">{conditionsComplete ? '✓ ' : ''}Condiciones técnicas <span className="font-normal text-slate-500">{completedConditions}/{conditions.length} cumplidas · Ver detalle</span></summary>{conditions.length === 0 ? <p className="mt-2 text-sm">Sin condiciones configuradas.</p> : <ul className="mt-3 space-y-3">{conditions.map((item) => <li key={item.id} className="rounded-lg border p-3 text-sm"><strong>{item.nombre}</strong><p>Estado: {item.estado_display || item.estado}</p><p>Verificador: {item.verificado_por_nombre || 'Pendiente'}</p><p>Fecha: {date(item.fecha_verificacion)}</p>{item.observaciones && <p>Observaciones: {item.observaciones}</p>}{canManage && item.estado === 'PENDIENTE' && <div className="mt-2 flex gap-2"><Button onClick={() => setAction({ kind: 'condicion', operation: 'verificar', item, submitting: false, error: '' })}>Verificar</Button><Button variant="secondary" onClick={() => setAction({ kind: 'condicion', operation: 'rechazar', item, submitting: false, error: '' })}>No cumple</Button></div>}{action?.kind === 'condicion' && action.item.id === item.id && actionForm(action)}</li>)}</ul>}</details>}
+      <details open={!deliveriesComplete} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700"><summary className="cursor-pointer list-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">{deliveriesComplete ? '✓ ' : ''}{deliveryHeading} <span className="font-normal text-slate-500">{completedDeliveries}/{deliveries.length} completas · Ver detalle</span></summary>{deliveries.length === 0 ? <p className="mt-2 text-sm">Sin entregas configuradas.</p> : <ul className="mt-3 space-y-3">{deliveries.map((item) => <li key={item.codigo} className="rounded-lg border p-3 text-sm"><strong>{item.nombre}</strong><p>Estado: {item.estado_display || item.estado}</p><p>Cantidad técnica requerida: {item.cantidad ?? 'No definida'}</p><p>Cantidad recibida: {item.cantidad_recibida || 0}</p><p>Receptor: {item.recibido_por_nombre || 'Pendiente'}</p><p>Fecha: {date(item.fecha_entrega)}</p>{item.codigo === 'EJEMPLARES_IMPRESOS' && <p className="mt-2 text-amber-700">La cantidad registrada no certifica una cantidad normativa oficial.</p>}{canManage && !item.id && <><Button className="mt-2" disabled={deliveryCreation.submitting} onClick={() => createDelivery(item)}>{deliveryCreation.submitting && deliveryCreation.codigo === item.codigo ? 'Preparando…' : createLabel}</Button>{deliveryCreation.codigo === item.codigo && deliveryCreation.error && <p role="alert" className="mt-2 text-sm text-red-600">{deliveryCreation.error}</p>}</>}{canManage && item.id && <Button className="mt-2" onClick={() => setAction({ kind: 'entrega', operation: 'registrar', item, submitting: false, error: '' })}>Registrar/actualizar entrega</Button>}{action?.kind === 'entrega' && action.item.id === item.id && actionForm(action)}</li>)}</ul>}</details>
     </div>}
   </Card>
 }

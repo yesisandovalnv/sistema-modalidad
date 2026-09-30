@@ -540,6 +540,9 @@ export const postulacionesService = {
   obtenerEntregas(postulacion, signal) {
     return complementaryRequest('get', '/api/v1/gestion-complementaria/entregas-fisicas/', { postulacion }, signal)
   },
+  crearEntregaFisica(postulacion, codigo, nombre, cantidad, signal) {
+    return complementaryRequest('post', '/api/v1/gestion-complementaria/entregas-fisicas/', { postulacion, codigo, nombre, cantidad }, signal)
+  },
   registrarEntrega(id, cantidadRecibida, observaciones, signal) {
     return complementaryRequest('post', `/api/v1/gestion-complementaria/entregas-fisicas/${id}/registrar/`, { cantidad_recibida: cantidadRecibida, observaciones }, signal)
   },
@@ -581,6 +584,13 @@ export const postulacionesService = {
   async registrarInformeRevisionTribunal(seguimientoId, payload, signal) {
     try {
       return (await apiClient.post(`/api/v1/seguimientos-etapa/${seguimientoId}/informes-revision-tribunal/`, payload, { signal })).data
+    } catch (error) {
+      throw normalizeTribunalReport(error, true)
+    }
+  },
+  async actualizarEvidenciaInformeRevisionTribunal(seguimientoId, informeId, payload, signal) {
+    try {
+      return (await apiClient.post(`/api/v1/seguimientos-etapa/${seguimientoId}/informes-revision-tribunal/${informeId}/actualizar-evidencia/`, payload, { signal })).data
     } catch (error) {
       throw normalizeTribunalReport(error, true)
     }
