@@ -22,9 +22,9 @@ Para iniciar normalmente con Docker:
 docker compose up -d
 ```
 
-URLs predeterminadas: frontend `http://localhost:15174/` y backend `http://localhost:19001/`. La administraciÃ³n de Django estÃ¡ disponible en `http://localhost:19001/admin/`; salud: `GET /api/health/`; OpenAPI: `GET /api/schema/`.
+URLs predeterminadas: frontend `http://localhost:15174/` y backend `http://localhost:19001/`. La administración de Django está disponible en `http://localhost:19001/admin/`; salud: `GET /api/health/`; OpenAPI: `GET /api/schema/`.
 
-Si otra PC tiene un conflicto de puertos, ajuste solamente su archivo `.env` local, sin modificar `docker-compose.yml` ni el cÃ³digo:
+Si otra PC tiene un conflicto de puertos, ajuste solamente su archivo `.env` local, sin modificar `docker-compose.yml` ni el código:
 
 ```dotenv
 FRONTEND_PORT=15174

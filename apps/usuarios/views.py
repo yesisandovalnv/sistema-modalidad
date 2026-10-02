@@ -150,7 +150,7 @@ class RoleAdminViewSet(viewsets.ModelViewSet):
         try:
             instance.delete()
         except ProtectedError as exc:
-            raise ValidationError("No se puede eliminar un rol asignado a usuarios; inactÃ­velo en su lugar.") from exc
+            raise ValidationError("No se puede eliminar un rol asignado a usuarios; inactívelo en su lugar.") from exc
 
 
 class StudentOptionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -187,7 +187,7 @@ class StudentOptionViewSet(viewsets.ReadOnlyModelViewSet):
             OpenApiParameter("search", OpenApiTypes.STR, OpenApiParameter.QUERY, description="Busca por nombre, username o codigo institucional seguro."),
             OpenApiParameter("rol", OpenApiTypes.STR, OpenApiParameter.QUERY, description="Filtra por codigo exacto de rol."),
             OpenApiParameter("ordering", OpenApiTypes.STR, OpenApiParameter.QUERY, description="Orden permitido: username, nombres, apellidos, role__codigo o sus variantes descendentes."),
-            OpenApiParameter("page", OpenApiTypes.INT, OpenApiParameter.QUERY, description="PÃ¡gina del resultado."),
+            OpenApiParameter("page", OpenApiTypes.INT, OpenApiParameter.QUERY, description="Página del resultado."),
         ],
         responses=AssignmentCandidateSerializer(many=True),
     ),

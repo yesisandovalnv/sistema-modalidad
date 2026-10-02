@@ -11,7 +11,7 @@ User = get_user_model()
 class UserRoleAdminApiTests(APITestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="AdministraciÃ³n API")
+        cls.admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administración API")
         cls.student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante API")
         cls.admin = User.objects.create_user("api-admin", password="StrongPass-2026", is_staff=True, role=cls.admin_role)
         cls.student = User.objects.create_user("api-student", password="StrongPass-2026", role=cls.student_role)

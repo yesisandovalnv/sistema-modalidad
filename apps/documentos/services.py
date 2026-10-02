@@ -688,14 +688,14 @@ class DocumentoService:
         size = getattr(archivo, "size", None)
         if size is not None and size > tipo_documento.tamano_maximo_mb * 1024 * 1024:
             raise ValidationError(
-                f"El archivo supera el tamaÃ±o mÃ¡ximo permitido de {tipo_documento.tamano_maximo_mb} MB."
+                f"El archivo supera el tamaño máximo permitido de {tipo_documento.tamano_maximo_mb} MB."
             )
         if extension == "pdf":
             position = archivo.tell() if hasattr(archivo, "tell") else 0
             signature = archivo.read(5)
             archivo.seek(position)
             if signature != b"%PDF-":
-                raise ValidationError("El contenido del archivo no corresponde a un PDF vÃ¡lido.")
+                raise ValidationError("El contenido del archivo no corresponde a un PDF válido.")
         return nombre_original
 
     def _obtener_estado_documento(self, codigo: str) -> EstadoDocumento:

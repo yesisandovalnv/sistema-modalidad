@@ -32,6 +32,38 @@ class CondicionService:
         obj.estado=estado; obj.fecha_verificacion=timezone.now(); obj.verificado_por=usuario; obj.observaciones=observaciones; obj.save()
         _audit(usuario,"VERIFY_CONDITION" if estado==obj.Estado.CUMPLE else "REJECT_CONDITION",f"Condición {obj.pk}: {estado}."); return obj
 
+    @staticmethod
+    @transaction.atomic
+    def verificar_multiples(postulacion, condicion_ids, usuario, observaciones=""):
+        ids = list(condicion_ids or ())
+        if not ids:
+            raise ValidationError("Selecciona al menos una condición para verificar.")
+        if len(ids) != len(set(ids)):
+            raise ValidationError("La selección contiene condiciones duplicadas.")
+
+        postulacion = Postulacion.objects.select_for_update().get(pk=postulacion.pk)
+        _validar_postulacion_editable(postulacion)
+        conditions = list(
+            CondicionPostulacion.objects.select_for_update()
+            .filter(postulacion=postulacion, pk__in=ids, activo=True)
+            .order_by("pk")
+        )
+        if len(conditions) != len(ids):
+            raise ValidationError("Una o más condiciones no pertenecen a la postulación o ya no están disponibles.")
+        if any(item.estado != CondicionPostulacion.Estado.PENDIENTE for item in conditions):
+            raise ValidationError("Solo se pueden verificar condiciones pendientes.")
+
+        by_id = {item.pk: item for item in conditions}
+        return [
+            CondicionService._resolver(
+                by_id[condition_id],
+                CondicionPostulacion.Estado.CUMPLE,
+                usuario,
+                observaciones,
+            )
+            for condition_id in ids
+        ]
+
     verificar=staticmethod(lambda condicion,usuario,observaciones="": CondicionService._resolver(condicion,CondicionPostulacion.Estado.CUMPLE,usuario,observaciones))
     rechazar=staticmethod(lambda condicion,usuario,observaciones="": CondicionService._resolver(condicion,CondicionPostulacion.Estado.NO_CUMPLE,usuario,observaciones))
     listar_pendientes=staticmethod(lambda postulacion: postulacion.condiciones.filter(estado=CondicionPostulacion.Estado.PENDIENTE,activo=True))
@@ -62,6 +94,43 @@ class EntregaFisicaService:
     @transaction.atomic
     def actualizar_cantidad(entrega, cantidad_recibida, usuario, observaciones=""):
         return EntregaFisicaService.registrar_entrega(entrega,cantidad_recibida,usuario,observaciones)
+
+    @staticmethod
+    @transaction.atomic
+    def registrar_multiples(postulacion, entregas, usuario):
+        payload = list(entregas or ())
+        if not payload:
+            raise ValidationError("Selecciona al menos una entrega para registrar.")
+
+        ids = [entry["id"] for entry in payload]
+        if len(ids) != len(set(ids)):
+            raise ValidationError("La selección contiene entregas duplicadas.")
+
+        postulacion = Postulacion.objects.select_for_update().get(pk=postulacion.pk)
+        _validar_postulacion_editable(postulacion)
+
+        items = list(
+            EntregaFisica.objects.select_for_update()
+            .filter(postulacion=postulacion, pk__in=ids, activo=True)
+            .order_by("pk")
+        )
+        if len(items) != len(ids):
+            raise ValidationError("Una o más entregas no pertenecen a la postulación o ya no están disponibles.")
+
+        by_id = {item.pk: item for item in items}
+        if any(item.estado != EntregaFisica.Estado.PENDIENTE for item in items):
+            raise ValidationError("Solo se pueden registrar entregas pendientes.")
+
+        by_entry = {entry["id"]: entry for entry in payload}
+        return [
+            EntregaFisicaService.registrar_entrega(
+                by_id[entry_id],
+                by_entry[entry_id]["cantidad_recibida"],
+                usuario,
+                by_entry[entry_id].get("observaciones", ""),
+            )
+            for entry_id in ids
+        ]
 
     listar_pendientes=staticmethod(lambda postulacion: postulacion.entregas_fisicas.exclude(estado=EntregaFisica.Estado.COMPLETA).filter(activo=True))
     listar_completadas=staticmethod(lambda postulacion: postulacion.entregas_fisicas.filter(estado=EntregaFisica.Estado.COMPLETA,activo=True))

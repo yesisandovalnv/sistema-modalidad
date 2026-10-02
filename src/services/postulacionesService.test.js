@@ -7,6 +7,48 @@ vi.mock('./api', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 describe('postulacionesService', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it('verifica varias condiciones mediante el endpoint batch autorizado', async () => {
+    const signal = new AbortController().signal
+    const result = [{ id: 11, estado: 'CUMPLE' }, { id: 12, estado: 'CUMPLE' }]
+    apiClient.post.mockResolvedValue({ data: result })
+
+    await expect(postulacionesService.verificarCondiciones(7, [11, 12], '', signal)).resolves.toEqual(result)
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      '/api/v1/gestion-complementaria/condiciones/verificar-multiples/',
+      { postulacion: 7, condicion_ids: [11, 12], observaciones: '' },
+      { signal },
+    )
+  })
+
+  it('registra entregas con el contrato batch existente y conserva los detalles HTTP 400/409', async () => {
+    const signal = new AbortController().signal
+    const entregas = [
+      { id: 21, cantidad_recibida: 1, observaciones: '' },
+      { id: 22, cantidad_recibida: 3, observaciones: 'Tres ejemplares' },
+      { id: 23, cantidad_recibida: 1, observaciones: '' },
+    ]
+    const result = entregas.map((item) => ({ ...item, estado: 'COMPLETA' }))
+    apiClient.post.mockResolvedValue({ data: result })
+
+    await expect(postulacionesService.registrarEntregas(7, entregas, signal)).resolves.toEqual(result)
+    expect(apiClient.post).toHaveBeenCalledWith(
+      '/api/v1/gestion-complementaria/entregas-fisicas/registrar-multiples/',
+      { postulacion: 7, entregas },
+      { signal },
+    )
+
+    for (const status of [400, 409]) {
+      apiClient.post.mockRejectedValueOnce({
+        response: { status, data: { entregas: ['Solo se pueden registrar entregas pendientes.'] } },
+      })
+      await expect(postulacionesService.registrarEntregas(7, entregas, signal)).rejects.toMatchObject({
+        status,
+        message: 'Solo se pueden registrar entregas pendientes.',
+      })
+    }
+  })
+
   it('obtiene todos los tribunales activos de una sola página con filtros canónicos', async () => {
     const signal = new AbortController().signal
     const tribunals = [{ id: 1, tipo_participacion: 'TRIBUNAL', orden_cargo: 1 }]

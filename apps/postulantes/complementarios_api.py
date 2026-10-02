@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.postulantes.complementarios import CondicionService, EntregaFisicaService
-from apps.postulantes.models import CondicionPostulacion, EntregaFisica
+from apps.postulantes.models import CondicionPostulacion, EntregaFisica, Postulacion
 
 
 class CondicionSerializer(serializers.ModelSerializer):
@@ -27,7 +27,29 @@ class EntregaSerializer(serializers.ModelSerializer):
         model=EntregaFisica; fields="__all__"; read_only_fields=("cantidad_recibida","estado","fecha_entrega","recibido_por","activo","created_at","updated_at")
 
 class ObservacionPayload(serializers.Serializer): observaciones=serializers.CharField(required=False,allow_blank=True,default="")
+class VerificarCondicionesPayload(ObservacionPayload):
+    postulacion=serializers.PrimaryKeyRelatedField(queryset=Postulacion.objects.all())
+    condicion_ids=serializers.ListField(child=serializers.IntegerField(min_value=1),allow_empty=False)
+
+    def validate_condicion_ids(self,value):
+        if len(value)!=len(set(value)): raise serializers.ValidationError("La selección contiene condiciones duplicadas.")
+        return value
+
 class EntregaPayload(ObservacionPayload): cantidad_recibida=serializers.IntegerField(min_value=1)
+
+class EntregaLoteItem(serializers.Serializer):
+    id=serializers.IntegerField(min_value=1)
+    cantidad_recibida=serializers.IntegerField(min_value=1)
+    observaciones=serializers.CharField(required=False,allow_blank=True,default="")
+
+class EntregasMultiplesPayload(serializers.Serializer):
+    postulacion=serializers.PrimaryKeyRelatedField(queryset=Postulacion.objects.all())
+    entregas=serializers.ListField(child=EntregaLoteItem(),allow_empty=False)
+
+    def validate_entregas(self,value):
+        ids=[entry["id"] for entry in value]
+        if len(ids)!=len(set(ids)): raise serializers.ValidationError("La selección contiene entregas duplicadas.")
+        return value
 
 class RelatedViewSet(viewsets.ModelViewSet):
     permission_classes=[IsAuthenticated]; http_method_names=["get","post","head","options"]
@@ -52,6 +74,11 @@ class CondicionViewSet(RelatedViewSet):
         return Response(self.get_serializer(obj).data,status=status.HTTP_201_CREATED)
     @action(detail=True,methods=["post"])
     def verificar(self,r,pk=None): self._admin(); s=ObservacionPayload(data=r.data); s.is_valid(raise_exception=True); return Response(self.get_serializer(self._call(CondicionService.verificar,self.get_object(),r.user,s.validated_data["observaciones"])).data)
+    @action(detail=False,methods=["post"],url_path="verificar-multiples")
+    def verificar_multiples(self,r):
+        self._admin(); s=VerificarCondicionesPayload(data=r.data); s.is_valid(raise_exception=True); d=s.validated_data
+        conditions=self._call(CondicionService.verificar_multiples,d["postulacion"],d["condicion_ids"],r.user,d["observaciones"])
+        return Response(self.get_serializer(conditions,many=True).data)
     @action(detail=True,methods=["post"])
     def rechazar(self,r,pk=None): self._admin(); s=ObservacionPayload(data=r.data); s.is_valid(raise_exception=True); return Response(self.get_serializer(self._call(CondicionService.rechazar,self.get_object(),r.user,s.validated_data["observaciones"])).data)
     @action(detail=False,methods=["get"])
@@ -67,6 +94,11 @@ class EntregaFisicaViewSet(RelatedViewSet):
         return Response(self.get_serializer(obj).data,status=status.HTTP_201_CREATED)
     @action(detail=True,methods=["post"])
     def registrar(self,r,pk=None): self._admin(); s=EntregaPayload(data=r.data); s.is_valid(raise_exception=True); return Response(self.get_serializer(self._call(EntregaFisicaService.registrar_entrega,self.get_object(),s.validated_data["cantidad_recibida"],r.user,s.validated_data["observaciones"])).data)
+    @action(detail=False,methods=["post"],url_path="registrar-multiples")
+    def registrar_multiples(self,r):
+        self._admin(); s=EntregasMultiplesPayload(data=r.data); s.is_valid(raise_exception=True); d=s.validated_data
+        entregas=self._call(EntregaFisicaService.registrar_multiples,d["postulacion"],d["entregas"],r.user)
+        return Response(self.get_serializer(entregas,many=True).data)
     @action(detail=True,methods=["post"],url_path="actualizar-cantidad")
     def actualizar_cantidad(self,r,pk=None): return self.registrar(r,pk)
     @action(detail=False,methods=["get"])

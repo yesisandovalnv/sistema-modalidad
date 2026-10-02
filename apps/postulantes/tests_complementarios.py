@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from apps.academico.models import Modalidad,Periodo
@@ -64,7 +65,113 @@ class ApiTests(Base,APITestCase):
         obj=CondicionService.crear(self.post,"PLAN_ESTUDIOS","Plan",self.admin); self.client.force_authenticate(self.admin); url=f"/api/v1/gestion-complementaria/condiciones/{obj.pk}/"
         self.assertEqual(self.client.patch(url,{"estado":"CUMPLE"}).status_code,405); self.assertEqual(self.client.post(url+"verificar/",{}).status_code,200)
 
+    def test_admin_verifica_condiciones_en_lote(self):
+        first=CondicionService.crear(self.post,"PLAN_ESTUDIOS","Plan",self.admin)
+        second=CondicionService.crear(self.post,"MATRICULA_VIGENTE","Matrícula",self.admin)
+        self.client.force_authenticate(self.admin)
+
+        response=self.client.post("/api/v1/gestion-complementaria/condiciones/verificar-multiples/",{
+            "postulacion":self.post.pk,"condicion_ids":[first.pk,second.pk],"observaciones":"Verificación conjunta",
+        },format="json")
+
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual({item["id"] for item in response.data},{first.pk,second.pk})
+        first.refresh_from_db(); second.refresh_from_db()
+        self.assertEqual((first.estado,second.estado),("CUMPLE","CUMPLE"))
+        self.assertEqual((first.verificado_por,second.verificado_por),(self.admin,self.admin))
+        self.assertEqual((first.observaciones,second.observaciones),("Verificación conjunta","Verificación conjunta"))
+        self.assertEqual(AuditLog.objects.filter(modulo="GESTION_COMPLEMENTARIA",accion="VERIFY_CONDITION").count(),2)
+
+    def test_lote_requiere_administrador_y_rechaza_ids_de_otra_postulacion(self):
+        own=CondicionService.crear(self.post,"PLAN_ESTUDIOS","Plan",self.admin)
+        foreign=CondicionService.crear(self.other_post,"PLAN_ESTUDIOS","Plan ajeno",self.admin)
+        endpoint="/api/v1/gestion-complementaria/condiciones/verificar-multiples/"
+
+        self.client.force_authenticate(self.student)
+        denied=self.client.post(endpoint,{"postulacion":self.post.pk,"condicion_ids":[own.pk]},format="json")
+        self.assertEqual(denied.status_code,403)
+
+        self.client.force_authenticate(self.admin)
+        invalid=self.client.post(endpoint,{"postulacion":self.post.pk,"condicion_ids":[own.pk,foreign.pk]},format="json")
+        self.assertEqual(invalid.status_code,400)
+        own.refresh_from_db()
+        foreign.refresh_from_db()
+        self.assertEqual(own.estado,"PENDIENTE")
+        self.assertEqual(foreign.estado,"PENDIENTE")
+        self.assertFalse(AuditLog.objects.filter(modulo="GESTION_COMPLEMENTARIA",accion="VERIFY_CONDITION").exists())
+
+    def test_lote_atomico_falla_si_una_condicion_ya_no_esta_pendiente(self):
+        pending=CondicionService.crear(self.post,"PLAN_ESTUDIOS","Plan",self.admin)
+        complete=CondicionService.crear(self.post,"MATRICULA_VIGENTE","Matrícula",self.admin)
+        complete.estado=CondicionPostulacion.Estado.CUMPLE
+        complete.fecha_verificacion=timezone.now()
+        complete.verificado_por=self.admin
+        complete.save()
+        self.client.force_authenticate(self.admin)
+
+        response=self.client.post("/api/v1/gestion-complementaria/condiciones/verificar-multiples/",{
+            "postulacion":self.post.pk,"condicion_ids":[pending.pk,complete.pk],
+        },format="json")
+
+        self.assertEqual(response.status_code,400)
+        pending.refresh_from_db(); complete.refresh_from_db()
+        self.assertEqual(pending.estado,"PENDIENTE")
+        self.assertEqual(complete.estado,"CUMPLE")
+        self.assertFalse(AuditLog.objects.filter(modulo="GESTION_COMPLEMENTARIA",accion="VERIFY_CONDITION").exists())
+
     def test_admin_registra_entrega(self):
         obj=EntregaFisicaService.crear(self.post,"FOLDER_AMARILLO","Folder",self.admin,cantidad=1); self.client.force_authenticate(self.admin)
         response=self.client.post(f"/api/v1/gestion-complementaria/entregas-fisicas/{obj.pk}/registrar/",{"cantidad_recibida":1})
         self.assertEqual(response.status_code,200); self.assertEqual(response.data["estado"],"COMPLETA")
+
+    def test_admin_registra_entregas_en_lote(self):
+        first=EntregaFisicaService.crear(self.post,"CD_RESPALDO","CD",self.admin,cantidad=1)
+        second=EntregaFisicaService.crear(self.post,"EJEMPLARES_IMPRESOS","Ejemplares",self.admin,cantidad=2)
+        self.client.force_authenticate(self.admin)
+
+        response=self.client.post("/api/v1/gestion-complementaria/entregas-fisicas/registrar-multiples/",{
+            "postulacion":self.post.pk,
+            "entregas":[
+                {"id":first.pk,"cantidad_recibida":1,"observaciones":"Recepción de respaldo"},
+                {"id":second.pk,"cantidad_recibida":2,"observaciones":"Módulo de ejemplares"},
+            ],
+        },format="json")
+
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual({item["id"] for item in response.data},{first.pk,second.pk})
+        first.refresh_from_db(); second.refresh_from_db()
+        self.assertEqual((first.estado,second.estado),("COMPLETA","COMPLETA"))
+        self.assertEqual((first.cantidad_recibida,second.cantidad_recibida),(1,2))
+        self.assertEqual((first.observaciones,second.observaciones),("Recepción de respaldo","Módulo de ejemplares"))
+
+    def test_lote_de_entregas_requiere_administrador_y_respeta_ownership(self):
+        own=EntregaFisicaService.crear(self.post,"CD_RESPALDO","CD",self.admin,cantidad=1)
+        foreign=EntregaFisicaService.crear(self.other_post,"EJEMPLARES_IMPRESOS","Ejemplares",self.admin,cantidad=2)
+        endpoint="/api/v1/gestion-complementaria/entregas-fisicas/registrar-multiples/"
+
+        self.client.force_authenticate(self.student)
+        denied=self.client.post(endpoint,{"postulacion":self.post.pk,"entregas":[{"id":own.pk,"cantidad_recibida":1}]},format="json")
+        self.assertEqual(denied.status_code,403)
+
+        self.client.force_authenticate(self.admin)
+        invalid=self.client.post(endpoint,{"postulacion":self.post.pk,"entregas":[{"id":own.pk,"cantidad_recibida":1},{"id":foreign.pk,"cantidad_recibida":1}]},format="json")
+        self.assertEqual(invalid.status_code,400)
+        own.refresh_from_db(); foreign.refresh_from_db()
+        self.assertEqual(own.estado,EntregaFisica.Estado.PENDIENTE)
+        self.assertEqual(foreign.estado,EntregaFisica.Estado.PENDIENTE)
+
+    def test_lote_de_entregas_es_atomico_si_una_ya_no_esta_pendiente(self):
+        pending=EntregaFisicaService.crear(self.post,"CD_RESPALDO","CD",self.admin,cantidad=1)
+        complete=EntregaFisicaService.crear(self.post,"EJEMPLARES_IMPRESOS","Ejemplares",self.admin,cantidad=2)
+        complete.cantidad_recibida=2; complete.estado=EntregaFisica.Estado.COMPLETA; complete.fecha_entrega=timezone.now(); complete.recibido_por=self.admin; complete.save()
+        self.client.force_authenticate(self.admin)
+
+        response=self.client.post("/api/v1/gestion-complementaria/entregas-fisicas/registrar-multiples/",{
+            "postulacion":self.post.pk,
+            "entregas":[{"id":pending.pk,"cantidad_recibida":1},{"id":complete.pk,"cantidad_recibida":2}],
+        },format="json")
+
+        self.assertEqual(response.status_code,400)
+        pending.refresh_from_db(); complete.refresh_from_db()
+        self.assertEqual(pending.estado,EntregaFisica.Estado.PENDIENTE)
+        self.assertEqual(complete.estado,EntregaFisica.Estado.COMPLETA)

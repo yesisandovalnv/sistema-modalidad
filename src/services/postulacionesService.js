@@ -81,6 +81,21 @@ function normalizeComplementary(error) {
   return { status, message: 'No se pudo completar la operación. Comprueba tu conexión e intenta nuevamente.' }
 }
 
+function normalizeDeliveryBatch(error) {
+  const normalized = normalizeComplementary(error)
+  const status = error?.response?.status
+  if (status !== 400 && status !== 409) return normalized
+
+  const messages = (value) => {
+    if (typeof value === 'string') return [value]
+    if (Array.isArray(value)) return value.flatMap(messages)
+    if (value && typeof value === 'object') return Object.values(value).flatMap(messages)
+    return []
+  }
+  const detail = messages(error?.response?.data).join(' ').trim()
+  return { ...normalized, message: detail || normalized.message, fields: error?.response?.data }
+}
+
 function normalizeClosure(error) {
   if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
   const status = error?.response?.status
@@ -557,6 +572,13 @@ export const postulacionesService = {
   verificarCondicion(id, observaciones, signal) {
     return complementaryRequest('post', `/api/v1/gestion-complementaria/condiciones/${id}/verificar/`, { observaciones }, signal)
   },
+  verificarCondiciones(postulacion, condicionIds, observaciones, signal) {
+    return complementaryRequest('post', '/api/v1/gestion-complementaria/condiciones/verificar-multiples/', {
+      postulacion,
+      condicion_ids: condicionIds,
+      observaciones,
+    }, signal)
+  },
   rechazarCondicion(id, observaciones, signal) {
     return complementaryRequest('post', `/api/v1/gestion-complementaria/condiciones/${id}/rechazar/`, { observaciones }, signal)
   },
@@ -568,6 +590,14 @@ export const postulacionesService = {
   },
   registrarEntrega(id, cantidadRecibida, observaciones, signal) {
     return complementaryRequest('post', `/api/v1/gestion-complementaria/entregas-fisicas/${id}/registrar/`, { cantidad_recibida: cantidadRecibida, observaciones }, signal)
+  },
+  registrarEntregas(postulacion, entregas, signal) {
+    return apiClient.post('/api/v1/gestion-complementaria/entregas-fisicas/registrar-multiples/', {
+      postulacion,
+      entregas,
+    }, { signal }).then((response) => response.data).catch((error) => {
+      throw normalizeDeliveryBatch(error)
+    })
   },
   obtenerCierre(postulacion, signal) {
     return closureRequest('get', `/api/v1/postulaciones/${postulacion}/cierre/`, null, signal)
