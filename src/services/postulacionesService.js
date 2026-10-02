@@ -392,11 +392,34 @@ export const postulacionesService = {
       throw normalizeAssignmentManagement(error, 'los candidatos de asignación')
     }
   },
+  async obtenerCandidatosElegibles(postulacion, { posicion, accion, search = '', ordering = 'apellido_paterno', page = 1, page_size = 20 } = {}, signal) {
+    try {
+      return (await apiClient.get(`/api/v1/postulaciones/${postulacion}/candidatos-asignacion/`, {
+        params: { posicion, accion, search, ordering, page, page_size }, signal,
+      })).data
+    } catch (error) {
+      throw normalizeAssignmentManagement(error, 'los candidatos elegibles para esta posición')
+    }
+  },
   async asignarActor(postulacion, payload, signal) {
     try {
       return (await apiClient.post(`/api/v1/postulaciones/${postulacion}/asignaciones/asignar/`, payload, { signal })).data
     } catch (error) {
       throw normalizeAssignmentManagement(error)
+    }
+  },
+  async reemplazarActor(asignacion, payload, signal) {
+    try {
+      return (await apiClient.post(`/api/v1/asignaciones/${asignacion}/reemplazar/`, payload, { signal })).data
+    } catch (error) {
+      throw normalizeAssignmentManagement(error)
+    }
+  },
+  async registrarDecisionAcademica(seguimiento, payload, signal) {
+    try {
+      return (await apiClient.post(`/api/v1/seguimientos-etapa/${seguimiento}/registrar-decision/`, payload, { signal })).data
+    } catch (error) {
+      throw normalizeAssignmentManagement(error, 'la decisión académica')
     }
   },
   async finalizarAsignacion(asignacionId, payload, signal) {

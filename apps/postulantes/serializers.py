@@ -3,11 +3,13 @@ from rest_framework import serializers
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.postulantes.models import (
     AsignacionPostulacion,
+    DecisionAcademicaEtapa,
     EstadoPostulacion,
     DictamenRevisionDocumento,
     HistorialEstado,
     InformeRevisionTribunalPrevia,
     Observacion,
+    ParticipacionDecisionAcademica,
     Postulacion,
     SeguimientoEtapa,
 )
@@ -334,6 +336,54 @@ class SeguimientoEtapaSerializer(serializers.ModelSerializer):
         return WorkflowService.obtener_acciones_permitidas(obj)
 
 
+class ParticipanteDecisionAcademicaInputSerializer(serializers.Serializer):
+    asignacion = serializers.PrimaryKeyRelatedField(queryset=AsignacionPostulacion.all_objects.all())
+    rol = serializers.CharField(max_length=60)
+    orden = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+
+
+class RegistrarDecisionAcademicaSerializer(serializers.Serializer):
+    codigo = serializers.CharField(max_length=80)
+    resultado = serializers.CharField(max_length=80)
+    observaciones = serializers.CharField(required=False, allow_blank=True, default="")
+    participantes = ParticipanteDecisionAcademicaInputSerializer(many=True, required=False, default=list)
+    reemplaza_decision = serializers.PrimaryKeyRelatedField(
+        queryset=DecisionAcademicaEtapa.all_objects.all(),
+        required=False,
+        allow_null=True,
+    )
+
+
+class ParticipacionDecisionAcademicaSerializer(serializers.ModelSerializer):
+    asignacion_usuario_id = serializers.IntegerField(source="asignacion.usuario_id", read_only=True)
+    asignacion_usuario_nombre = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ParticipacionDecisionAcademica
+        fields = ("id", "asignacion", "asignacion_usuario_id", "asignacion_usuario_nombre", "rol", "orden", "activo")
+        read_only_fields = fields
+
+    def get_asignacion_usuario_nombre(self, obj):
+        return obj.asignacion.usuario.nombre_completo or obj.asignacion.usuario.username
+
+
+class DecisionAcademicaEtapaSerializer(serializers.ModelSerializer):
+    registrado_por_nombre = serializers.SerializerMethodField()
+    participantes = ParticipacionDecisionAcademicaSerializer(source="participaciones", many=True, read_only=True)
+
+    class Meta:
+        model = DecisionAcademicaEtapa
+        fields = (
+            "id", "seguimiento_etapa", "codigo", "resultado", "fecha_decision",
+            "registrado_por", "registrado_por_nombre", "observaciones", "participantes",
+            "activo", "created_at", "updated_at",
+        )
+        read_only_fields = fields
+
+    def get_registrado_por_nombre(self, obj):
+        return obj.registrado_por.nombre_completo or obj.registrado_por.username
+
+
 class FlujoPostulacionSerializer(serializers.ModelSerializer):
     """Serializer agregado para exponer el flujo de una postulación."""
 
@@ -342,6 +392,8 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
     porcentaje_avance = serializers.SerializerMethodField()
     etapas = serializers.SerializerMethodField()
     orientacion_etapa_actual = serializers.SerializerMethodField()
+    gestion_actores = serializers.SerializerMethodField()
+    gestion_decisiones_academicas = serializers.SerializerMethodField()
 
     class Meta:
         model = Postulacion
@@ -353,6 +405,8 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
             "porcentaje_avance",
             "etapas",
             "orientacion_etapa_actual",
+            "gestion_actores",
+            "gestion_decisiones_academicas",
         )
         read_only_fields = fields
 
@@ -427,11 +481,17 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
             postulacion=obj, seguimiento=self._seguimiento_actual(obj),
         )
         if orientacion is not None:
-            return orientacion
+            return self._filtrar_aprobacion_no_permitida(orientacion, actual_data)
+        from core.permissions import is_staff_user
+
         evento_policy = policy.evento_policy
         precondiciones = evento_policy.get_precondiciones_programacion(actual_data["codigo"]) if evento_policy else None
         if not precondiciones:
-            return None
+            request = self.context.get("request")
+            return self._orientacion_aprobacion_generica(
+                actual_data,
+                puede_aprobar=is_staff_user(request.user) if request else False,
+            )
         nombres_roles = dict(AsignacionPostulacion.TipoParticipacionChoices.choices)
         nombres_roles.update(precondiciones.get("nombres_asignaciones", {}))
         asignaciones = obj.asignaciones.filter(activo=True)
@@ -477,6 +537,268 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
             "mensaje": "Verifica estas precondiciones antes de intentar programar la defensa.",
             "requisitos": requisitos, "siguiente_accion": siguiente_accion,
             "conflictos_identidad": evaluacion.get("conflictos", []),
+        }
+
+    @staticmethod
+    def _filtrar_aprobacion_no_permitida(orientacion: dict, etapa_actual: dict) -> dict:
+        action = orientacion.get("siguiente_accion") or {}
+        if action.get("codigo") != "APROBAR_ETAPA" or "aprobar" in (etapa_actual.get("acciones_permitidas") or []):
+            return orientacion
+
+        resultado = {**orientacion, "siguiente_accion": None}
+        if etapa_actual.get("estado") in {"EN_PROCESO", "OBSERVADA"}:
+            nombre_etapa = etapa_actual.get("nombre") or etapa_actual.get("codigo", "la etapa")
+            mensaje_responsable = f"La aprobación de {nombre_etapa} está pendiente del personal responsable."
+            mensaje_especifico = (orientacion.get("mensaje") or "").strip()
+            resultado["mensaje"] = f"{mensaje_especifico} {mensaje_responsable}".strip()
+        return resultado
+
+    @staticmethod
+    def _orientacion_aprobacion_generica(etapa_actual: dict, *, puede_aprobar: bool) -> dict | None:
+        if "aprobar" not in (etapa_actual.get("acciones_permitidas") or []):
+            if not puede_aprobar and etapa_actual.get("estado") in {"EN_PROCESO", "OBSERVADA"}:
+                return {
+                    "operacion": "ORIENTAR_ETAPA",
+                    "mensaje": "La etapa está en curso. Las acciones administrativas corresponden al personal responsable.",
+                    "requisitos": [],
+                    "siguiente_accion": None,
+                    "conflictos_identidad": [],
+                }
+            return None
+
+        nombre_etapa = etapa_actual.get("nombre") or etapa_actual.get("codigo", "la etapa")
+        return {
+            "operacion": "ORIENTAR_ETAPA",
+            "mensaje": "Los requisitos de esta etapa están cumplidos. Está lista para aprobación administrativa.",
+            "requisitos": [],
+            "siguiente_accion": {
+                "codigo": "APROBAR_ETAPA",
+                "titulo": f"Aprobar {nombre_etapa}",
+                "descripcion": "La aprobación cerrará esta etapa mediante el workflow y ejecutará la transición configurada.",
+                "estado": "DISPONIBLE",
+                "estado_display": "Disponible",
+                "destino": "#resumen",
+                "accion_label": f"Aprobar {nombre_etapa}",
+            },
+            "conflictos_identidad": [],
+        }
+
+    def get_gestion_actores(self, obj: Postulacion) -> dict:
+        """Proyección canónica del contrato de actores para la UI, sin duplicar reglas operativas."""
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+
+        if not ModalidadPolicyRegistry.has_policy(obj.modalidad):
+            return {}
+
+        policy = ModalidadPolicyRegistry.get(obj.modalidad)
+        config = policy.get_configuracion_actores(obj, self._seguimiento_actual(obj))
+        if not config or not isinstance(config, dict):
+            return {}
+
+        grupos = config.get("grupos", [])
+        if not grupos:
+            return {}
+
+        request = self.context.get("request")
+        is_admin = bool(request and is_staff_user(request.user))
+        actual = self._seguimiento_actual(obj)
+        contexto = {
+            "tipo": "ETAPA",
+            "seguimiento_etapa": actual.pk if actual else None,
+            "codigo_etapa": actual.etapa.codigo if actual else None,
+            "regimen_workflow": config.get("regimen_workflow"),
+        }
+
+        posiciones = []
+        for grupo in grupos:
+            tipo = grupo.get("tipo_participacion")
+            ambito = grupo.get("ambito")
+            codigo_etapa_grupo = grupo.get("codigo_etapa")
+            if ambito == "ETAPA" and codigo_etapa_grupo and (
+                actual is None or actual.etapa.codigo != codigo_etapa_grupo
+            ):
+                continue
+            ordenes_permitidos = grupo.get("ordenes_permitidos", [])
+            ordenado = bool(grupo.get("ordenado"))
+            min_slots = int(grupo.get("minimo", 0) or 0)
+            max_slots = int(grupo.get("maximo", min_slots) or min_slots)
+
+            if ambito == "ETAPA":
+                base_queryset = obj.asignaciones.filter(activo=True, tipo_participacion=tipo)
+                if actual is not None:
+                    base_queryset = base_queryset.filter(seguimiento_etapa=actual)
+            elif ambito == "POSTULACION":
+                base_queryset = obj.asignaciones.filter(activo=True, tipo_participacion=tipo, seguimiento_etapa__isnull=True)
+            else:
+                base_queryset = obj.asignaciones.none()
+
+            if ordenado and ordenes_permitidos:
+                for orden in ordenes_permitidos:
+                    posicion_config = next(
+                        (item for item in grupo.get("posiciones", []) if item.get("orden_cargo") == orden),
+                        {"clave": f"{grupo['clave']}_{orden}", "orden_cargo": orden, "nombre": grupo.get("nombre", tipo)},
+                    )
+                    asignacion = base_queryset.filter(orden_cargo=orden).order_by("-fecha_designacion").first()
+                    posicion = self._proyectar_posicion(
+                        obj=obj,
+                        grupo=grupo,
+                        tipo=tipo,
+                        ambito=ambito,
+                        orden=orden,
+                        asignacion=asignacion,
+                        is_admin=is_admin,
+                        configuracion_posicion=posicion_config,
+                    )
+                    posiciones.append(posicion)
+            else:
+                posicion_config = (grupo.get("posiciones") or [{}])[0]
+                asignacion = base_queryset.order_by("-fecha_designacion").first()
+                posicion = self._proyectar_posicion(
+                    obj=obj,
+                    grupo=grupo,
+                    tipo=tipo,
+                    ambito=ambito,
+                    orden=None,
+                    asignacion=asignacion,
+                    is_admin=is_admin,
+                    configuracion_posicion=posicion_config,
+                )
+                posiciones.append(posicion)
+
+        return {"contexto": contexto, "posiciones": posiciones}
+
+    def get_gestion_decisiones_academicas(self, obj: Postulacion) -> dict:
+        """Proyecta decisiones declaradas por policy junto con estado, participantes y permisos."""
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+
+        actual = self._seguimiento_actual(obj)
+        if actual is None or not ModalidadPolicyRegistry.has_policy(obj.modalidad):
+            return {"contexto": None, "decisiones": []}
+        policy = ModalidadPolicyRegistry.get(obj.modalidad)
+        definitions = policy.get_decisiones_academicas_permitidas(actual.etapa.codigo)
+        request = self.context.get("request")
+        is_admin = bool(request and is_staff_user(request.user))
+        decisiones = []
+        for definition in definitions:
+            if definition.regimen_workflow_requerido and obj.regimen_workflow != definition.regimen_workflow_requerido:
+                continue
+            asignaciones = obj.asignaciones.filter(
+                activo=True,
+                seguimiento_etapa=actual,
+                tipo_participacion__in=definition.roles_participantes,
+            ).select_related("usuario").order_by("orden_cargo", "pk")
+            participantes = [{
+                "asignacion": item.pk,
+                "usuario": item.usuario_id,
+                "usuario_nombre": item.usuario.nombre_completo or item.usuario.username,
+                "rol": item.tipo_participacion,
+                "orden": item.orden_cargo,
+            } for item in asignaciones]
+            orders = tuple(sorted(item["orden"] for item in participantes if item["orden"] is not None))
+            composicion_completa = (
+                len(participantes) >= definition.participantes_minimos
+                and (definition.participantes_maximos is None or len(participantes) <= definition.participantes_maximos)
+                and (not definition.ordenes_requeridos or orders == tuple(sorted(definition.ordenes_requeridos)))
+            )
+            decision = DecisionAcademicaEtapa.objects.filter(
+                seguimiento_etapa=actual, codigo=definition.codigo, activo=True,
+            ).prefetch_related("participaciones__asignacion__usuario").first()
+            cumplida = decision is not None
+            acciones = []
+            if is_admin:
+                if cumplida:
+                    acciones = ["REEMPLAZAR"]
+                elif composicion_completa:
+                    acciones = ["REGISTRAR"]
+            bloqueo = None if cumplida or composicion_completa else {
+                "codigo": "COMPOSICION_PARTICIPANTES_INCOMPLETA",
+                "mensaje": "Falta completar la composición formal requerida para registrar la decisión.",
+            }
+            decisiones.append({
+                "codigo": definition.codigo,
+                "nombre": definition.nombre or definition.codigo.replace("_", " ").title(),
+                "estado": "CUMPLIDA" if cumplida else "PENDIENTE",
+                "cumplida": cumplida,
+                "resultados_permitidos": list(definition.resultados),
+                "resultado_actual": decision.resultado if decision else None,
+                "participantes_requeridos": {
+                    "roles": list(definition.roles_participantes),
+                    "minimo": definition.participantes_minimos,
+                    "maximo": definition.participantes_maximos,
+                    "ordenes": list(definition.ordenes_requeridos),
+                },
+                "participantes_disponibles": participantes,
+                "participantes_actuales": DecisionAcademicaEtapaSerializer(decision, context=self.context).data["participantes"] if decision else [],
+                "habilitada": cumplida or composicion_completa,
+                "acciones_permitidas": acciones,
+                "bloqueo": bloqueo,
+                "decision_actual": DecisionAcademicaEtapaSerializer(decision, context=self.context).data if decision else None,
+                "reemplazable": bool(decision and is_admin),
+            })
+        return {
+            "contexto": {"seguimiento_etapa": actual.pk, "codigo_etapa": actual.etapa.codigo},
+            "decisiones": decisiones,
+        }
+
+    def _proyectar_posicion(self, obj, grupo, tipo, ambito, orden, asignacion, is_admin, configuracion_posicion):
+        precondicion = grupo.get("precondicion")
+        enforcement_activo = bool(precondicion and precondicion.get("enforcement") == "ACTIVO")
+        precondicion_pendiente = enforcement_activo and precondicion.get("estado") != "CUMPLIDA"
+        habilitada = bool(grupo.get("habilitada", True)) and not precondicion_pendiente
+        bloqueo_configurado = grupo.get("bloqueo_precondicion_pendiente", {})
+        bloqueo = None
+        if precondicion_pendiente:
+            bloqueo = {
+                "codigo": bloqueo_configurado.get("codigo", "PRECONDICION_NO_CUMPLIDA"),
+                "mensaje": bloqueo_configurado.get("mensaje", "La precondición requerida no está cumplida."),
+            }
+        if asignacion is not None:
+            estado_ocupacion = "ASIGNADA"
+            asignacion_actual = asignacion.pk
+            asignacion_data = AsignacionPostulacionSerializer(asignacion, context=self.context).data
+            asignacion_actual_detalle = {
+                "id": asignacion.pk,
+                "usuario": {
+                    "id": asignacion.usuario_id,
+                    "nombre": asignacion_data["usuario_nombre"],
+                },
+                "tipo_participacion": asignacion.tipo_participacion,
+                "orden_cargo": asignacion.orden_cargo,
+                "ambito": ambito,
+                "seguimiento_etapa": asignacion.seguimiento_etapa_id,
+                "fecha_designacion": asignacion_data["fecha_designacion"],
+            }
+            acciones = ["REEMPLAZAR", "FINALIZAR"] if is_admin else []
+        else:
+            estado_ocupacion = "VACANTE"
+            asignacion_actual = None
+            asignacion_actual_detalle = None
+            acciones = ["ASIGNAR"] if is_admin and habilitada else []
+
+        if precondicion_pendiente:
+            acciones = []
+
+        return {
+            "clave": configuracion_posicion.get("clave") or f"{grupo['clave']}_{orden or 1}",
+            "tipo_participacion": tipo,
+            "nombre": configuracion_posicion.get("nombre") or grupo.get("nombre", tipo),
+            "orden_cargo": orden if orden is not None else configuracion_posicion.get("orden_cargo"),
+            "obligatoriedad": bool(grupo.get("obligatoriedad", False)),
+            "restriccion_identidad": grupo.get("restriccion_identidad"),
+            "ocupacion_actor": grupo.get("ocupacion_actor"),
+            "habilitada": habilitada,
+            "estado_ocupacion": estado_ocupacion,
+            "ambito": ambito,
+            "seguimiento_etapa": (
+                asignacion.seguimiento_etapa_id
+                if asignacion is not None and ambito == "ETAPA"
+                else (self._seguimiento_actual(obj).pk if ambito == "ETAPA" and self._seguimiento_actual(obj) else None)
+            ),
+            "asignacion_actual": asignacion_actual,
+            "asignacion_actual_detalle": asignacion_actual_detalle,
+            "acciones_permitidas": acciones,
+            "bloqueo": bloqueo,
+            "precondicion": precondicion,
         }
 
     def _seguimiento_actual(self, obj: Postulacion) -> SeguimientoEtapa | None:

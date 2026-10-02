@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import TestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.modalidades.policies import ModalidadPolicyRegistry
@@ -105,7 +105,11 @@ class TesisGradoPolicyTest(TestCase):
         )
 
     def _orientacion_revision_tribunal(self):
-        return FlujoPostulacionSerializer(self.postulacion, context={}).data["orientacion_etapa_actual"]
+        request = APIRequestFactory().get("/")
+        request.user = self.admin
+        return FlujoPostulacionSerializer(
+            self.postulacion, context={"request": request},
+        ).data["orientacion_etapa_actual"]
 
     def test_orientacion_revision_tribunal_insuficiente_pide_corregir_documento(self):
         seguimiento = self.seguimientos["REVISION_TRIBUNAL"]

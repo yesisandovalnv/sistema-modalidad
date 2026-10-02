@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.modalidades.policies import (BaseEvaluacionPolicy, BaseEventoPolicy,
     BaseModalidadPolicy, BaseRequisitosPolicy, BaseRevisionTribunalPreviaPolicy,
-    EtapaDefinition)
+    DecisionAcademicaDefinition, EtapaDefinition)
 
 
 STAGE_DATA = (
@@ -354,10 +354,162 @@ class ProyectoGradoRequisitosPolicy(BaseRequisitosPolicy):
 
 class ProyectoGradoPolicy(BaseModalidadPolicy):
     codigo = "PROYECTO_GRADO"
+    PROPUESTA_APROBADA = "PROPUESTA_APROBADA"
+    RESULTADO_PROPUESTA_APROBADA = "APROBADA"
     etapas = ETAPAS
     evento_policy = ProyectoGradoEventoPolicy()
     evaluacion_policy = ProyectoGradoEvaluacionPolicy()
     requisitos_policy = ProyectoGradoRequisitosPolicy()
+
+    def get_decisiones_academicas_permitidas(self, codigo_etapa):
+        if codigo_etapa != "PERFIL_PROYECTO":
+            return ()
+        return (
+            DecisionAcademicaDefinition(
+                codigo=self.PROPUESTA_APROBADA,
+                resultados=(self.RESULTADO_PROPUESTA_APROBADA,),
+                nombre="Propuesta aprobada",
+                roles_participantes=("TRIBUNAL",),
+                participantes_minimos=3,
+                participantes_maximos=3,
+                ordenes_requeridos=(1, 2, 3),
+                regimen_workflow_requerido="PG_HITOS_V1",
+                validar_composicion_asignaciones=True,
+            ),
+        )
+
+    @staticmethod
+    def _seguimiento_perfil_activo(postulacion):
+        return postulacion.seguimientos_etapa.filter(
+            activo=True,
+            etapa__codigo="PERFIL_PROYECTO",
+        ).order_by("-numero_intento", "-pk").first()
+
+    def _propuesta_aprobada(self, postulacion, seguimiento=None):
+        if not postulacion or postulacion.regimen_workflow != "PG_HITOS_V1":
+            return False
+        if not seguimiento or seguimiento.etapa.codigo != "PERFIL_PROYECTO":
+            seguimiento = self._seguimiento_perfil_activo(postulacion)
+        if (
+            not seguimiento
+            or not seguimiento.activo
+            or seguimiento.postulacion_id != postulacion.pk
+            or seguimiento.etapa.codigo != "PERFIL_PROYECTO"
+        ):
+            return False
+        from apps.postulantes.models import DecisionAcademicaEtapa
+
+        definition = self.get_decisiones_academicas_permitidas("PERFIL_PROYECTO")[0]
+        return DecisionAcademicaEtapa.objects.filter(
+            seguimiento_etapa=seguimiento,
+            codigo=definition.codigo,
+            resultado=definition.resultados[0],
+            activo=True,
+        ).exists()
+
+    def get_configuracion_actores(self, postulacion=None, seguimiento=None):
+        """Fuente canónica del contrato formal de actores para Proyecto de Grado.
+
+        El Tribunal de Perfil se define por composición formal (3 posiciones). En el régimen
+        PG_HITOS_V1, la precondición del Tutor refleja exclusivamente una decisión académica
+        activa del seguimiento de Perfil; los expedientes legacy preservan su comportamiento.
+        """
+        regimen_workflow = getattr(postulacion, "regimen_workflow", None)
+        precondicion_tutor = None
+        if regimen_workflow == "PG_HITOS_V1":
+            perfil_aprobado = self._propuesta_aprobada(postulacion, seguimiento)
+            precondicion_tutor = {
+                "codigo": self.PROPUESTA_APROBADA,
+                "nombre": "Propuesta aprobada",
+                "requerido": True,
+                "estado": "CUMPLIDA" if perfil_aprobado else "PENDIENTE",
+                "enforcement": "ACTIVO",
+                "mensaje": "El Tutor se designa después de aprobar la propuesta.",
+            }
+        restriccion_identidad_tribunal = (
+            {"grupo": "TRIBUNAL_PERFIL", "unica_persona": True}
+            if self.codigo == "PROYECTO_GRADO" else None
+        )
+        ocupacion_actor = (
+            {
+                "aplica": True,
+                "ambito": "POSTULACION",
+                "motivo": "YA_TIENE_ASIGNACION_VIGENTE_EN_POSTULACION",
+                "relevantes": [
+                    "TUTOR", "TRIBUNAL", "DOCENTE_MODALIDAD", "PRESIDENTE", "SECRETARIO",
+                    "DIRECTOR_INSTITUTO_INVESTIGACION", "VICERRECTOR_POSGRADO", "DECANO_FACULTAD",
+                    "DIRECTOR_CARRERA", "SUPERVISOR_INSTITUCIONAL",
+                ],
+            }
+            if self.codigo == "PROYECTO_GRADO" else None
+        )
+
+        return {
+            "regimen_workflow": regimen_workflow,
+            "grupos": [
+                {
+                    "clave": "TRIBUNAL_PERFIL",
+                    "tipo_participacion": "TRIBUNAL",
+                    "nombre": "Tribunal de Perfil",
+                    "ambito": "ETAPA",
+                    "codigo_etapa": "PERFIL_PROYECTO",
+                    "minimo": 3,
+                    "maximo": 3,
+                    "ordenado": True,
+                    "ordenes_permitidos": [1, 2, 3],
+                    "restriccion_identidad": restriccion_identidad_tribunal,
+                    "ocupacion_actor": ocupacion_actor,
+                    "obligatoriedad": True,
+                    "habilitada": True,
+                    "precondicion": None,
+                    "posiciones": [
+                        {"clave": "TRIBUNAL_PERFIL_1", "orden_cargo": 1, "nombre": "Tribunal 1"},
+                        {"clave": "TRIBUNAL_PERFIL_2", "orden_cargo": 2, "nombre": "Tribunal 2"},
+                        {"clave": "TRIBUNAL_PERFIL_3", "orden_cargo": 3, "nombre": "Tribunal 3"},
+                    ],
+                },
+                {
+                    "clave": "TUTOR_PROYECTO",
+                    "tipo_participacion": "TUTOR",
+                    "nombre": "Tutor",
+                    "ambito": "POSTULACION",
+                    "minimo": 1,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "ocupacion_actor": ocupacion_actor,
+                    "obligatoriedad": True,
+                    "habilitada": True,
+                    "precondicion": precondicion_tutor,
+                    "bloqueo_precondicion_pendiente": {
+                        "codigo": "PROPUESTA_NO_APROBADA",
+                        "mensaje": "El Tutor se designa después de aprobar la propuesta.",
+                    },
+                    "posiciones": [{"clave": "TUTOR_PROYECTO_1", "orden_cargo": None, "nombre": "Tutor"}],
+                },
+                *([{
+                    "clave": "DOCENTE_MODALIDAD_DEFENSA_PRIVADA",
+                    "tipo_participacion": "DOCENTE_MODALIDAD",
+                    "nombre": "Docente de modalidad",
+                    "ambito": "ETAPA",
+                    "codigo_etapa": "DEFENSA_PRIVADA",
+                    "minimo": 1,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "ocupacion_actor": ocupacion_actor,
+                    "obligatoriedad": True,
+                    "habilitada": True,
+                    "precondicion": None,
+                    "posiciones": [{
+                        "clave": "DOCENTE_MODALIDAD_DEFENSA_PRIVADA_1",
+                        "orden_cargo": None,
+                        "nombre": "Docente de modalidad",
+                    }],
+                }] if self.codigo == "PROYECTO_GRADO" else []),
+            ]
+        }
+
     def get_reglas_asignacion(self): return self.evento_policy.ASSIGNMENTS
     def get_documentos_aplicables_en_etapa(self, codigo_etapa: str) -> tuple:
         documentos = super().get_documentos_aplicables_en_etapa(codigo_etapa)
@@ -533,6 +685,66 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
     def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
         if not seguimiento:
             return None
+        if seguimiento.etapa.codigo == "PERFIL_PROYECTO" and postulacion.regimen_workflow == "PG_HITOS_V1":
+            tribunales = postulacion.asignaciones.filter(
+                activo=True,
+                tipo_participacion="TRIBUNAL",
+                seguimiento_etapa=seguimiento,
+                orden_cargo__in=(1, 2, 3),
+            )
+            ordenes = set(tribunales.values_list("orden_cargo", flat=True))
+            if ordenes != {1, 2, 3}:
+                return {
+                    "operacion": "ORIENTAR_ETAPA",
+                    "mensaje": "Completa la composición formal del Tribunal de Perfil.",
+                    "requisitos": [{
+                        "tipo": "ACTOR", "codigo": "TRIBUNAL_FORMAL", "nombre": "Tribunal de Perfil",
+                        "actual": len(ordenes), "minimo": 3, "cumplido": False,
+                        "estado": "PENDIENTE", "estado_display": f"{len(ordenes)}/3 pendiente", "destino": "#actores",
+                    }],
+                    "siguiente_accion": {
+                        "codigo": "GESTIONAR_ACTORES", "titulo": "Completar Tribunal de Perfil",
+                        "descripcion": "Asigna las posiciones formales pendientes.", "estado": "PENDIENTE",
+                        "estado_display": "Pendiente", "destino": "#actores", "accion_label": "Gestionar actores",
+                    },
+                    "conflictos_identidad": [],
+                }
+            if not self._propuesta_aprobada(postulacion, seguimiento):
+                return {
+                    "operacion": "ORIENTAR_ETAPA",
+                    "mensaje": "Registra la decisión académica de la propuesta.",
+                    "requisitos": [{
+                        "tipo": "DECISION_ACADEMICA", "codigo": self.PROPUESTA_APROBADA,
+                        "nombre": "Propuesta aprobada", "cumplido": False,
+                        "estado": "PENDIENTE", "estado_display": "Pendiente", "destino": "#decisiones-academicas",
+                    }],
+                    "siguiente_accion": {
+                        "codigo": "REGISTRAR_DECISION", "titulo": "Registrar decisión académica",
+                        "descripcion": "Registra el resultado de la propuesta con la composición formal del tribunal.",
+                        "estado": "PENDIENTE", "estado_display": "Pendiente",
+                        "destino": "#decisiones-academicas", "accion_label": "Registrar decisión",
+                    },
+                    "conflictos_identidad": [],
+                }
+            tutor = postulacion.asignaciones.filter(
+                activo=True, tipo_participacion="TUTOR", seguimiento_etapa__isnull=True,
+            ).exists()
+            if not tutor:
+                return {
+                    "operacion": "ORIENTAR_ETAPA",
+                    "mensaje": "Asigna el Tutor después de la aprobación de la propuesta.",
+                    "requisitos": [{
+                        "tipo": "ACTOR", "codigo": "TUTOR", "nombre": "Tutor", "actual": 0,
+                        "minimo": 1, "cumplido": False, "estado": "PENDIENTE",
+                        "estado_display": "0/1 pendiente", "destino": "#actores",
+                    }],
+                    "siguiente_accion": {
+                        "codigo": "GESTIONAR_ACTORES", "titulo": "Asignar Tutor",
+                        "descripcion": "La propuesta está aprobada. Asigna el Tutor.", "estado": "PENDIENTE",
+                        "estado_display": "Pendiente", "destino": "#actores", "accion_label": "Gestionar actores",
+                    },
+                    "conflictos_identidad": [],
+                }
         if seguimiento.etapa.codigo == "INSCRIPCION":
             return self._orientar_inscripcion(postulacion)
         if seguimiento.etapa.codigo == "REVISION_TRIBUNAL_PREVIA":
@@ -630,11 +842,20 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
             "siguiente_accion": action,
             "conflictos_identidad": [],
         }
-    def validar_asignacion(self, *, queryset_contexto, tipo_participacion, seguimiento_etapa, orden_cargo, queryset_activas, usuario_asignado, **kwargs):
+    def validar_asignacion(self, *, queryset_contexto, postulacion, tipo_participacion, seguimiento_etapa, orden_cargo, queryset_activas, usuario_asignado, **kwargs):
         self.evento_policy.validar_asignacion_publica(
             queryset_activas=queryset_activas, usuario_asignado=usuario_asignado,
             tipo_participacion=tipo_participacion, seguimiento_etapa=seguimiento_etapa,
         )
+        if (
+            tipo_participacion == "TUTOR"
+            and postulacion.regimen_workflow == "PG_HITOS_V1"
+            and not self._propuesta_aprobada(postulacion)
+        ):
+            raise ValidationError(
+                "No se puede asignar Tutor antes de registrar PROPUESTA_APROBADA.",
+                code="propuesta_no_aprobada",
+            )
         if tipo_participacion == "TRIBUNAL" and seguimiento_etapa and seguimiento_etapa.etapa.codigo == "PERFIL_PROYECTO":
             if queryset_contexto.count() >= 3: raise ValidationError("Proyecto de Grado admite como m\u00e1ximo tres miembros activos de tribunal en el perfil.")
             if orden_cargo is not None and queryset_contexto.filter(orden_cargo=orden_cargo).exists(): raise ValidationError("Ya existe un miembro activo del tribunal con ese orden de cargo.")

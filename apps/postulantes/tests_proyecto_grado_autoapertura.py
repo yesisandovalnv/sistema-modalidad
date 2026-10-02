@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.utils import timezone
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
@@ -21,6 +21,7 @@ from apps.postulantes.complementarios import EntregaFisicaService
 from apps.postulantes.proyecto_grado_workflow import ProyectoGradoWorkflowOrchestrator
 from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.workflow import WorkflowService
+from apps.usuarios.models import Role
 
 
 User = get_user_model()
@@ -28,7 +29,8 @@ User = get_user_model()
 
 class ProyectoGradoAutoaperturaTests(TestCase):
     def setUp(self):
-        self.admin = User.objects.create_user(username="admin_auto_pg", is_staff=True)
+        admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Administrador auto PG")
+        self.admin = User.objects.create_user(username="admin_auto_pg", is_staff=True, role=admin_role)
         self.student = User.objects.create_user(username="student_auto_pg")
         self.modalidad = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto auto")
         self.periodo = Periodo.objects.create(
@@ -54,6 +56,14 @@ class ProyectoGradoAutoaperturaTests(TestCase):
             item.etapa.codigo: item
             for item in self.postulacion.seguimientos_etapa.select_related("etapa")
         }
+
+    def _serialize_flow(self, user):
+        request = APIRequestFactory().get("/")
+        request.user = user
+        return FlujoPostulacionSerializer(
+            self.postulacion,
+            context={"request": request},
+        ).data
 
     def test_arranque_deja_inscripcion_en_proceso_sin_aprobar_etapas(self):
         ProyectoGradoWorkflowOrchestrator.inicializar_proceso(self.postulacion, self.admin)
@@ -148,6 +158,36 @@ class ProyectoGradoAutoaperturaTests(TestCase):
             {item["codigo"] for item in response.data["documentos_aplicables"]},
         )
 
+    def test_inscripcion_2_de_4_con_documentos_aplicables_y_folder_pendiente(self):
+        self._start_inscription()
+        self._create_inscription_document("MATRICULA_VIGENTE")
+        self._create_inscription_document("HISTORIAL_PRERREQ")
+        TipoDocumento.objects.get_or_create(
+            codigo="CARTA_SOLICITUD_PROYECTO",
+            defaults={"nombre": "Carta de Solicitud de Proyecto de Grado"},
+        )
+
+        orientation = FlujoPostulacionSerializer(self.postulacion).data["orientacion_etapa_actual"]
+        requirements = {item["codigo"]: item for item in orientation["requisitos"]}
+        client = APIClient()
+        self.admin.is_superuser = True
+        self.admin.save(update_fields=["is_superuser"])
+        client.force_authenticate(self.admin)
+        response = client.get(f"/api/v1/postulaciones/{self.postulacion.pk}/documentos-aplicables/")
+
+        self.assertEqual(orientation["requisitos_cumplidos"], 2)
+        self.assertEqual(orientation["requisitos_totales"], 4)
+        self.assertEqual(requirements["CARTA_SOLICITUD_PROYECTO"]["estado_display"], "No presentado")
+        self.assertEqual(requirements["MATRICULA_VIGENTE"]["estado_display"], "Aprobado")
+        self.assertEqual(requirements["HISTORIAL_PRERREQ"]["estado_display"], "Aprobado")
+        self.assertEqual(requirements["FOLDER_AMARILLO"]["estado_display"], "Pendiente de recepción")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {item["codigo"] for item in response.data["documentos_aplicables"]},
+            {"CARTA_SOLICITUD_PROYECTO", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ"},
+        )
+        self.assertNotIn("FOLDER_AMARILLO", {item["codigo"] for item in response.data["documentos_aplicables"]})
+
     def test_inscripcion_bloquea_si_falta_cualquiera_de_los_cuatro_requisitos(self):
         inscription = self._start_inscription()
         document_codes = ProyectoGradoPolicy.requisitos_policy.INSCRIPTION_DOCUMENTS
@@ -193,9 +233,12 @@ class ProyectoGradoAutoaperturaTests(TestCase):
         self._complete_inscription_documents()
         self._receive_yellow_folder()
 
-        orientation = FlujoPostulacionSerializer(self.postulacion).data["orientacion_etapa_actual"]
+        orientation = self._serialize_flow(self.admin)["orientacion_etapa_actual"]
         self.assertEqual(orientation["requisitos_cumplidos"], 4)
         self.assertEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+        student_flow = self._serialize_flow(self.student)
+        self.assertEqual(student_flow["etapa_actual"]["acciones_permitidas"], [])
+        self.assertIsNone(student_flow["orientacion_etapa_actual"]["siguiente_accion"])
         approved = WorkflowService.aprobar_etapa(inscription, self.admin)
 
         self.assertEqual(approved.estado, "APROBADA")
@@ -203,18 +246,18 @@ class ProyectoGradoAutoaperturaTests(TestCase):
 
     def test_orientacion_actualiza_progreso_desde_cero_hasta_cuatro(self):
         self._start_inscription()
-        flow = FlujoPostulacionSerializer(self.postulacion).data
+        flow = self._serialize_flow(self.admin)
         self.assertEqual(flow["orientacion_etapa_actual"]["requisitos_cumplidos"], 0)
 
         for progress, code in enumerate(ProyectoGradoPolicy.requisitos_policy.INSCRIPTION_DOCUMENTS, start=1):
             self._create_inscription_document(code)
-            orientation = FlujoPostulacionSerializer(self.postulacion).data["orientacion_etapa_actual"]
+            orientation = self._serialize_flow(self.admin)["orientacion_etapa_actual"]
             self.assertEqual(orientation["requisitos_cumplidos"], progress)
             self.assertEqual(orientation["requisitos_totales"], 4)
             self.assertNotEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
 
         self._receive_yellow_folder()
-        orientation = FlujoPostulacionSerializer(self.postulacion).data["orientacion_etapa_actual"]
+        orientation = self._serialize_flow(self.admin)["orientacion_etapa_actual"]
         self.assertEqual(orientation["requisitos_cumplidos"], 4)
         self.assertEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
         self.assertIn("aprobar", WorkflowService.obtener_acciones_permitidas(self.etapas()["INSCRIPCION"]))

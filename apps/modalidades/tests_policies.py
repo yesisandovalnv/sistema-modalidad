@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
 from django.urls import reverse
+from unittest.mock import patch
 from rest_framework.test import APIClient
 from rest_framework.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -9,8 +10,9 @@ from apps.academico.models import EtapaModalidad, Modalidad
 from apps.documentos.models import EstadoDocumento, TipoDocumento
 from apps.documentos.services import DocumentoService
 from apps.modalidades.policies import (BaseModalidadPolicy, EtapaDefinition,
-    ModalidadNoSoportadaError, ModalidadPolicyRegistry)
+    DecisionAcademicaDefinition, ModalidadNoSoportadaError, ModalidadPolicyRegistry)
 from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
+from apps.modalidades.trabajo_dirigido import TrabajoDirigidoPolicy
 from apps.modalidades.tesis_grado import TesisGradoPolicy
 from apps.modalidades.validators import ModalidadConfigurationValidator
 from apps.postulantes.models import EstadoPostulacion, Postulacion, SeguimientoEtapa
@@ -44,6 +46,21 @@ class RegistryTests(TestCase):
         self.assertTrue(cap.soportada and cap.eventos_soportados and cap.evaluaciones_soportadas and cap.cierre_soportado)
         self.assertEqual(len(cap.etapas), 8)
         self.assertEqual(cap.tipos_evento, ["DEFENSA_PERFIL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"])
+
+    def test_trabajo_dirigido_does_not_inherit_project_identity_restriction(self):
+        groups = TrabajoDirigidoPolicy().get_configuracion_actores()["grupos"]
+        tribunal = next(group for group in groups if group["clave"] == "TRIBUNAL_PERFIL")
+
+        self.assertIsNone(tribunal.get("restriccion_identidad"))
+
+    def test_ocupacion_actor_is_opt_in_for_project_grade_pilot_only(self):
+        project_groups = ProyectoGradoPolicy().get_configuracion_actores()["grupos"]
+        td_groups = TrabajoDirigidoPolicy().get_configuracion_actores()["grupos"]
+        thesis_config = TesisGradoPolicy().get_configuracion_actores()
+
+        self.assertTrue(all(group["ocupacion_actor"]["aplica"] for group in project_groups))
+        self.assertTrue(all(group.get("ocupacion_actor") is None for group in td_groups))
+        self.assertEqual(thesis_config, {})
 
     def test_capacidades_examen_configuradas(self):
         examen = Modalidad.objects.create(codigo="EXAMEN_GRADO", nombre="Examen capacidades configuradas")
@@ -173,6 +190,63 @@ class ProyectoGradoRequisitosTests(TestCase):
         self.assertEqual(resultado, ("HOJA_APROBACION",))
 
 
+class ActorConfigurationContractTests(TestCase):
+    def test_base_policy_default_is_empty(self):
+        self.assertEqual(BaseModalidadPolicy().get_configuracion_actores(postulacion=None, seguimiento=None), {})
+
+    def test_proyecto_grado_configuracion_expone_tribunal_y_tutor(self):
+        configuration = ProyectoGradoPolicy().get_configuracion_actores(postulacion=None, seguimiento=None)
+        self.assertIn("grupos", configuration)
+        self.assertEqual(len(configuration["grupos"]), 3)
+
+        tribunal = next(group for group in configuration["grupos"] if group["tipo_participacion"] == "TRIBUNAL")
+        tutor = next(group for group in configuration["grupos"] if group["tipo_participacion"] == "TUTOR")
+        docente_modalidad = next(group for group in configuration["grupos"] if group["tipo_participacion"] == "DOCENTE_MODALIDAD")
+
+        self.assertEqual(tribunal["ambito"], "ETAPA")
+        self.assertEqual(tribunal["minimo"], 3)
+        self.assertEqual(tribunal["maximo"], 3)
+        self.assertTrue(tribunal["ordenado"])
+        self.assertEqual(tribunal["ordenes_permitidos"], [1, 2, 3])
+        self.assertTrue(tribunal["obligatoriedad"])
+
+        self.assertEqual(tutor["ambito"], "POSTULACION")
+        self.assertEqual(tutor["minimo"], 1)
+        self.assertEqual(tutor["maximo"], 1)
+        self.assertTrue(tutor["obligatoriedad"])
+        self.assertIsNone(tutor["precondicion"])
+
+        self.assertEqual(docente_modalidad["ambito"], "ETAPA")
+        self.assertEqual(docente_modalidad["codigo_etapa"], "DEFENSA_PRIVADA")
+        self.assertEqual(docente_modalidad["minimo"], 1)
+        self.assertEqual(docente_modalidad["maximo"], 1)
+        self.assertTrue(docente_modalidad["obligatoriedad"])
+        self.assertIsNone(docente_modalidad["posiciones"][0]["orden_cargo"])
+
+    def test_docente_modalidad_defensa_privada_no_se_hereda_a_trabajo_dirigido(self):
+        configuration = TrabajoDirigidoPolicy().get_configuracion_actores(postulacion=None, seguimiento=None)
+
+        self.assertFalse(any(
+            group["tipo_participacion"] == "DOCENTE_MODALIDAD"
+            for group in configuration["grupos"]
+        ))
+
+    def test_proyecto_declara_decision_aprobacion_de_propuesta_con_composicion_formal(self):
+        definitions = ProyectoGradoPolicy().get_decisiones_academicas_permitidas("PERFIL_PROYECTO")
+        self.assertEqual(len(definitions), 1)
+        decision = definitions[0]
+        self.assertIsInstance(decision, DecisionAcademicaDefinition)
+        self.assertEqual(decision.codigo, "PROPUESTA_APROBADA")
+        self.assertEqual(decision.resultados, ("APROBADA",))
+        self.assertEqual(decision.participantes_minimos, 3)
+        self.assertEqual(decision.participantes_maximos, 3)
+        self.assertEqual(decision.roles_participantes, ("TRIBUNAL",))
+        self.assertEqual(decision.ordenes_requeridos, (1, 2, 3))
+        self.assertEqual(decision.regimen_workflow_requerido, "PG_HITOS_V1")
+        self.assertTrue(decision.validar_composicion_asignaciones)
+        self.assertEqual(ProyectoGradoPolicy().get_decisiones_academicas_permitidas("DEFENSA_PERFIL"), ())
+
+
 class ProyectoGradoDocumentosAplicablesTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -225,6 +299,45 @@ class ProyectoGradoDocumentosAplicablesTests(TestCase):
             postulacion=self.postulacion,
             etapa__codigo="CIERRE_DOCUMENTAL",
         ).update(estado="EN_PROCESO")
+
+    def _solicitar_codigos_policy(self, codes):
+        self.client.force_authenticate(self.admin)
+        with patch.object(ProyectoGradoPolicy, "get_documentos_aplicables_en_etapa", return_value=codes):
+            return self.client.get(f"/api/v1/postulaciones/{self.postulacion.pk}/documentos-aplicables/")
+
+    def test_endpoint_devuelve_todos_los_tipos_declarados_y_activos(self):
+        codes = ("POLICY_DOCUMENT_A", "POLICY_DOCUMENT_B", "POLICY_DOCUMENT_C")
+        for code in codes:
+            TipoDocumento.objects.create(codigo=code, nombre=code)
+
+        response = self._solicitar_codigos_policy(codes)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({item["codigo"] for item in response.data["documentos_aplicables"]}, set(codes))
+
+    def test_endpoint_reporta_tipo_declarado_inexistente(self):
+        codes = ("POLICY_MISSING_A", "POLICY_MISSING_B", "POLICY_MISSING_C")
+        for code in codes[:2]:
+            TipoDocumento.objects.create(codigo=code, nombre=code)
+
+        response = self._solicitar_codigos_policy(codes)
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.data["data"]["codigos_faltantes"], [codes[2]])
+        self.assertIn(codes[2], response.data["message"])
+        self.assertNotIn("documentos_aplicables", response.data["data"])
+
+    def test_endpoint_reporta_tipo_declarado_inactivo(self):
+        codes = ("POLICY_INACTIVE_A", "POLICY_INACTIVE_B", "POLICY_INACTIVE_C")
+        for code in codes[:2]:
+            TipoDocumento.objects.create(codigo=code, nombre=code)
+        TipoDocumento.all_objects.create(codigo=codes[2], nombre=codes[2], activo=False)
+
+        response = self._solicitar_codigos_policy(codes)
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.data["data"]["codigos_faltantes"], [codes[2]])
+        self.assertIn(codes[2], response.data["message"])
 
     def test_endpoint_de_cierre_expone_solo_acta_e_informe_final_tutor(self):
         self._activar_cierre()

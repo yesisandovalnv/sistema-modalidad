@@ -4,7 +4,7 @@ from django.test import TestCase
 from django.urls import Resolver404, resolve
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIRequestFactory, APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
@@ -545,7 +545,11 @@ class DocumentoFinalApprovalPreconditionTest(WorkflowBaseMixin, TestCase):
         self.assertIsNone(self.seguimiento.cerrada_por_id)
 
     def _orientation(self):
-        return FlujoPostulacionSerializer(self.postulacion, context={}).data["orientacion_etapa_actual"]
+        request = APIRequestFactory().get("/")
+        request.user = self.admin
+        return FlujoPostulacionSerializer(
+            self.postulacion, context={"request": request},
+        ).data["orientacion_etapa_actual"]
 
     def test_orientation_requests_document_when_missing(self):
         orientation = self._orientation()

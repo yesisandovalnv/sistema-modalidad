@@ -115,13 +115,41 @@ class AssignmentCandidateSerializer(serializers.ModelSerializer):
     rol_codigo = serializers.CharField(source="role.codigo", read_only=True)
     rol_nombre = serializers.CharField(source="role.nombre", read_only=True)
     activo = serializers.BooleanField(read_only=True)
+    elegible = serializers.SerializerMethodField()
+    motivo_bloqueo = serializers.SerializerMethodField()
+    asignaciones_vigentes = serializers.SerializerMethodField()
 
     def get_codigo(self, obj) -> str:
         return obj.ru or obj.username
 
+    def get_elegible(self, obj) -> bool:
+        return bool(getattr(obj, "elegible", True))
+
+    def get_motivo_bloqueo(self, obj):
+        return getattr(obj, "motivo_bloqueo", None)
+
+    def get_asignaciones_vigentes(self, obj):
+        value = getattr(obj, "asignaciones_vigentes", [])
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return list(value)
+
     class Meta:
         model = CustomUser
-        fields = ("id", "username", "nombre_completo", "codigo", "rol_codigo", "rol_nombre", "activo")
+        fields = (
+            "id",
+            "username",
+            "nombre_completo",
+            "codigo",
+            "rol_codigo",
+            "rol_nombre",
+            "activo",
+            "elegible",
+            "motivo_bloqueo",
+            "asignaciones_vigentes",
+        )
         read_only_fields = fields
 
 

@@ -406,18 +406,29 @@ class SeedSummary:
 class Command(BaseCommand):
     help = "Carga los catalogos iniciales oficiales del sistema sin duplicar registros."
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--tipo-documento-codigo",
+            dest="tipo_documento_codigo",
+            help="Sincroniza únicamente la definición oficial del tipo documental indicado.",
+        )
+
     def handle(self, *args, **options):
         self.summary = SeedSummary()
         self.omitted_sections: list[str] = []
 
         try:
             with transaction.atomic():
-                self._seed_modalidades()
-                self._seed_estados_postulacion()
-                self._seed_estados_documento()
-                self._seed_tipos_documento()
-                self._seed_etapas_modalidad()
-                self._seed_official_matrix_catalogs()
+                tipo_documento_codigo = options.get("tipo_documento_codigo")
+                if tipo_documento_codigo is not None:
+                    self._seed_tipo_documento_codigo(tipo_documento_codigo)
+                else:
+                    self._seed_modalidades()
+                    self._seed_estados_postulacion()
+                    self._seed_estados_documento()
+                    self._seed_tipos_documento()
+                    self._seed_etapas_modalidad()
+                    self._seed_official_matrix_catalogs()
         except Exception as exc:
             self.summary.errors += 1
             self.stderr.write(self.style.ERROR(f"Error al cargar catalogos iniciales: {exc}"))
@@ -449,19 +460,38 @@ class Command(BaseCommand):
         )
 
     def _seed_tipos_documento(self) -> None:
-        self._upsert_records(
-            model=TipoDocumento,
-            records=OFFICIAL_TIPOS_DOCUMENTO,
-            defaults_fields=(
-                "nombre",
-                "descripcion",
-                "obligatorio",
-                "permite_multiple_version",
-                "tamano_maximo_mb",
-                "extensiones_permitidas",
-                "activo",
-            ),
-        )
+        for document_data in OFFICIAL_TIPOS_DOCUMENTO:
+            self._upsert_tipo_documento(document_data)
+
+    def _seed_tipo_documento_codigo(self, codigo: str) -> None:
+        codigo = (codigo or "").strip()
+        if not codigo:
+            raise CommandError("Debe indicar un código de tipo documental.")
+
+        definition = next((
+            document_data
+            for document_data in OFFICIAL_TIPOS_DOCUMENTO
+            if document_data["codigo"] == codigo
+        ), None)
+        payload = self._load_requirements_payload()
+        for modalidad_data in payload["modalidades"]:
+            if not isinstance(modalidad_data, dict):
+                continue
+            modalidad_codigo = modalidad_data.get("codigo_modalidad")
+            document_types = modalidad_data.get("tipos_documento")
+            if not isinstance(document_types, list):
+                continue
+            for document_data in document_types:
+                if not isinstance(document_data, dict) or document_data.get("codigo") != codigo:
+                    continue
+                if not isinstance(modalidad_codigo, str) or not modalidad_codigo.strip():
+                    raise CommandError("La definición seleccionada no tiene modalidad oficial válida.")
+                definition = self._validate_tipo_documento_data(document_data, modalidad_codigo)
+
+        if definition is None:
+            raise CommandError(f"No existe una definición oficial para el tipo documental '{codigo}'.")
+
+        self._upsert_tipo_documento(definition)
 
     def _seed_etapas_modalidad(self) -> None:
         for codigo_modalidad, etapas in OFFICIAL_ETAPAS_MODALIDAD.items():

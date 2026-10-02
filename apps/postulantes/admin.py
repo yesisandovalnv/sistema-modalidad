@@ -110,7 +110,7 @@ class PostulacionAdmin(admin.ModelAdmin):
         "fecha_postulacion",
     )
     ordering = ("-fecha_postulacion",)
-    readonly_fields = ("estado_actual", "fecha_postulacion", "created_at", "updated_at")
+    readonly_fields = ("estado_actual", "fecha_postulacion", "regimen_workflow", "created_at", "updated_at")
 
     @admin.display(boolean=True, description="Revisión final aprobada")
     def revision_final_aprobada(self,obj): return obj.seguimientos_etapa.filter(etapa__codigo="REVISION_FINAL_POST_PUBLICA",estado="APROBADA",activo=True).exists()

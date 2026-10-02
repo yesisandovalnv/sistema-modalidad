@@ -5,6 +5,7 @@ from typing import Iterable
 from django.core.exceptions import ValidationError
 from core.permissions import is_staff_user
 from django.db import transaction
+from django.db.models.functions import Upper, Trim
 from django.utils import timezone
 
 from apps.postulantes.models import AsignacionPostulacion, EventoDefensa, Postulacion, SeguimientoEtapa
@@ -52,14 +53,19 @@ class AsignacionService:
             seguimiento_bloqueado = AsignacionService._bloquear_seguimiento_opcional(seguimiento_etapa)
 
             AsignacionService._validar_contexto_seguimiento(postulacion, seguimiento_bloqueado)
-            AsignacionService._validar_reglas_actor(postulacion, usuario_asignado, tipo_participacion, orden_cargo)
+            regla_ocupacion = AsignacionService._obtener_regla_ocupacion_actor(
+                postulacion,
+                tipo_participacion,
+                seguimiento_bloqueado,
+            )
 
             asignaciones_activas = AsignacionPostulacion.objects.select_for_update().filter(
                 postulacion=postulacion, activo=True,
             )
             asignaciones_activas_tipo = asignaciones_activas.filter(tipo_participacion=tipo_participacion)
-            activos_mismo_contexto = AsignacionService._filtrar_por_contexto(
-                asignaciones_activas_tipo,
+            activos_mismo_contexto = AsignacionService._obtener_asignaciones_tipo_contexto(
+                asignaciones_activas,
+                tipo_participacion,
                 seguimiento_bloqueado,
             )
 
@@ -79,6 +85,12 @@ class AsignacionService:
                 usuario_asignado=usuario_asignado,
                 queryset_activas=asignaciones_activas,
             )
+            AsignacionService._validar_ocupacion_actor(
+                usuario_asignado,
+                regla_ocupacion,
+                asignaciones_activas,
+            )
+            AsignacionService._validar_reglas_actor(postulacion, usuario_asignado, tipo_participacion, orden_cargo)
 
             asignacion = AsignacionPostulacion.objects.create(
                 postulacion=postulacion,
@@ -103,6 +115,78 @@ class AsignacionService:
             publish_domain_event(EventTypes.ACTOR_ASIGNADO, asignacion, designado_por, postulacion,
                 {"usuario_id": usuario_asignado.pk, "actor_tipo": tipo_participacion}, f"ACTOR_ASIGNADO:{asignacion.pk}")
             return asignacion
+
+    @staticmethod
+    def obtener_candidatos_elegibles(
+        postulacion: Postulacion,
+        tipo_participacion: str,
+        orden_cargo: int | None,
+        seguimiento_etapa: SeguimientoEtapa | None,
+        asignacion_actual: AsignacionPostulacion | None = None,
+        regla_ocupacion_actor: dict | None = None,
+    ):
+        """Proyecta las reglas actuales de asignación sobre un queryset de candidatos."""
+        AsignacionService._validar_postulacion(postulacion)
+        tipo_participacion = AsignacionService._normalizar_tipo_participacion(tipo_participacion)
+        AsignacionService._validar_contexto_seguimiento(postulacion, seguimiento_etapa)
+        regla_ocupacion = regla_ocupacion_actor or AsignacionService._obtener_regla_ocupacion_actor(
+            postulacion,
+            tipo_participacion,
+            seguimiento_etapa,
+        )
+
+        if tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL and orden_cargo is None:
+            raise ValidationError("El tribunal requiere un orden de cargo.")
+        if asignacion_actual is not None and (
+            asignacion_actual.postulacion_id != postulacion.pk
+            or not asignacion_actual.activo
+            or asignacion_actual.tipo_participacion != tipo_participacion
+            or asignacion_actual.orden_cargo != orden_cargo
+            or asignacion_actual.seguimiento_etapa_id != getattr(seguimiento_etapa, "pk", None)
+        ):
+            raise ValidationError("La asignación actual no corresponde a esta posición.")
+
+        candidatos = AsignacionService._filtrar_usuarios_base_elegibles(
+            CustomUser.all_objects.filter(is_active=True, activo=True, role__isnull=False),
+            postulacion,
+        ).select_related("role")
+
+        asignaciones_activas = AsignacionPostulacion.objects.filter(
+            postulacion=postulacion,
+            activo=True,
+        )
+        if asignacion_actual is not None:
+            asignaciones_activas = asignaciones_activas.exclude(pk=asignacion_actual.pk)
+            candidatos = candidatos.exclude(pk=asignacion_actual.usuario_id)
+
+        asignaciones_tipo_contexto = AsignacionService._obtener_asignaciones_tipo_contexto(
+            asignaciones_activas,
+            tipo_participacion,
+            seguimiento_etapa,
+        )
+        if not AsignacionService._ocupacion_actor_aplica(regla_ocupacion):
+            candidatos = candidatos.exclude(pk__in=asignaciones_tipo_contexto.values("usuario_id"))
+
+        if (
+            tipo_participacion in AsignacionService.SINGLE_ACTIVE_TYPES
+            and asignacion_actual is None
+            and asignaciones_activas.filter(tipo_participacion=tipo_participacion).exists()
+        ):
+            return candidatos.none()
+
+        for candidato in candidatos:
+            estado = AsignacionService._evaluar_ocupacion_vigente(
+                postulacion=postulacion,
+                usuario=candidato,
+                asignacion_actual=asignacion_actual,
+                queryset_activas=asignaciones_activas,
+                regla_ocupacion=regla_ocupacion,
+            )
+            candidato.elegible = estado["elegible"]
+            candidato.motivo_bloqueo = estado["motivo_bloqueo"]
+            candidato.asignaciones_vigentes = estado["asignaciones_vigentes"]
+
+        return candidatos
 
     @staticmethod
     def finalizar_asignacion(
@@ -157,6 +241,8 @@ class AsignacionService:
         with transaction.atomic():
             asignacion_actual = AsignacionService._bloquear_asignacion(asignacion_actual.pk)
             AsignacionService._validar_asignacion_activa(asignacion_actual)
+            if nuevo_usuario.pk == asignacion_actual.usuario_id:
+                raise ValidationError("La persona actual no puede ser su propio reemplazo.")
 
             AsignacionService.finalizar_asignacion(
                 asignacion=asignacion_actual,
@@ -271,12 +357,106 @@ class AsignacionService:
         if usuario_asignado.pk == postulacion.estudiante_id:
             raise ValidationError("El estudiante de la postulación no puede ser asignado como actor académico.")
 
-        role_code = ((getattr(usuario_asignado.role, "codigo", "") or "")).strip().upper()
-        if role_code in AsignacionService.STUDENT_ROLE_CODES or not role_code:
+        if not AsignacionService._filtrar_usuarios_base_elegibles(
+            CustomUser.all_objects.filter(pk=usuario_asignado.pk),
+            postulacion,
+        ).exists():
             raise ValidationError("El usuario asignado no tiene un rol autorizado para esta participación.")
 
         if tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL and orden_cargo is None:
             raise ValidationError("El tribunal requiere un orden de cargo.")
+
+    @staticmethod
+    @staticmethod
+    def _describir_asignacion_vigente(asignacion: AsignacionPostulacion) -> str:
+        if asignacion.tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL:
+            if asignacion.orden_cargo is not None:
+                return f"Tribunal {asignacion.orden_cargo}"
+            return "Tribunal"
+        if asignacion.tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.TUTOR:
+            return "Tutor"
+        if asignacion.tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.DOCENTE_MODALIDAD:
+            return "Docente de modalidad"
+        if asignacion.tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.PRESIDENTE:
+            return "Presidente"
+        if asignacion.tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.SECRETARIO:
+            return "Secretario"
+        return asignacion.get_tipo_participacion_display() or asignacion.tipo_participacion.title()
+
+    @staticmethod
+    def _evaluar_ocupacion_vigente(
+        postulacion: Postulacion,
+        usuario: CustomUser | int,
+        asignacion_actual: AsignacionPostulacion | None = None,
+        queryset_activas: Iterable[AsignacionPostulacion] | None = None,
+        regla_ocupacion: dict | None = None,
+    ) -> dict:
+        usuario_id = usuario.pk if isinstance(usuario, CustomUser) else int(usuario)
+        if not AsignacionService._ocupacion_actor_aplica(regla_ocupacion):
+            return {"elegible": True, "motivo_bloqueo": None, "asignaciones_vigentes": []}
+        queryset = queryset_activas or AsignacionPostulacion.objects.filter(postulacion=postulacion, activo=True)
+        if asignacion_actual is not None:
+            queryset = queryset.exclude(pk=asignacion_actual.pk)
+        relevantes = regla_ocupacion.get("relevantes") or tuple(
+            choice for choice, _label in AsignacionPostulacion.TipoParticipacionChoices.choices
+        )
+        asignaciones = list(
+            queryset.filter(usuario_id=usuario_id, tipo_participacion__in=relevantes)
+            .select_related("seguimiento_etapa")
+            .order_by("tipo_participacion", "orden_cargo", "pk")
+        )
+        if not asignaciones:
+            return {"elegible": True, "motivo_bloqueo": None, "asignaciones_vigentes": []}
+        return {
+            "elegible": False,
+            "motivo_bloqueo": regla_ocupacion.get(
+                "motivo",
+                "YA_TIENE_ASIGNACION_VIGENTE_EN_POSTULACION",
+            ),
+            "asignaciones_vigentes": [
+                AsignacionService._describir_asignacion_vigente(asignacion)
+                for asignacion in asignaciones
+            ],
+        }
+
+    @staticmethod
+    def _obtener_regla_ocupacion_actor(
+        postulacion: Postulacion,
+        tipo_participacion: str,
+        seguimiento_etapa: SeguimientoEtapa | None,
+    ) -> dict | None:
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+
+        policy = ModalidadPolicyRegistry.get(postulacion)
+        configuracion = policy.get_configuracion_actores(postulacion, seguimiento_etapa) or {}
+        for grupo in configuracion.get("grupos", ()):
+            if grupo.get("tipo_participacion") != tipo_participacion:
+                continue
+            if grupo.get("ambito") == "ETAPA":
+                if (
+                    seguimiento_etapa is None
+                    or grupo.get("codigo_etapa") != seguimiento_etapa.etapa.codigo
+                ):
+                    continue
+            return grupo.get("ocupacion_actor")
+        return None
+
+    @staticmethod
+    def _ocupacion_actor_aplica(regla_ocupacion: dict | None) -> bool:
+        return isinstance(regla_ocupacion, dict) and regla_ocupacion.get("aplica") is True
+
+    @staticmethod
+    def _validar_ocupacion_actor(usuario, regla_ocupacion, queryset_activas) -> None:
+        if not AsignacionService._ocupacion_actor_aplica(regla_ocupacion):
+            return
+        relevantes = regla_ocupacion.get("relevantes") or tuple(
+            choice for choice, _label in AsignacionPostulacion.TipoParticipacionChoices.choices
+        )
+        if queryset_activas.filter(usuario=usuario, tipo_participacion__in=relevantes).exists():
+            raise ValidationError(
+                "El usuario ya tiene otra asignación vigente en la misma postulación.",
+                code=regla_ocupacion.get("motivo", "ocupacion_actor_vigente"),
+            )
 
     @staticmethod
     def _validar_reglas_modalidad(
@@ -321,6 +501,29 @@ class AsignacionService:
         if seguimiento_etapa is None:
             return queryset.filter(seguimiento_etapa__isnull=True)
         return queryset.filter(seguimiento_etapa=seguimiento_etapa)
+
+    @staticmethod
+    def _filtrar_usuarios_base_elegibles(queryset, postulacion: Postulacion):
+        return queryset.annotate(
+            _assignment_role_code=Upper(Trim("role__codigo")),
+        ).exclude(
+            pk=postulacion.estudiante_id,
+        ).exclude(
+            _assignment_role_code__in=AsignacionService.STUDENT_ROLE_CODES,
+        ).exclude(
+            _assignment_role_code="",
+        )
+
+    @staticmethod
+    def _obtener_asignaciones_tipo_contexto(
+        queryset_activas,
+        tipo_participacion: str,
+        seguimiento_etapa: SeguimientoEtapa | None,
+    ):
+        return AsignacionService._filtrar_por_contexto(
+            queryset_activas.filter(tipo_participacion=tipo_participacion),
+            seguimiento_etapa,
+        )
 
     @staticmethod
     def _combinar_observaciones(actuales: str, nuevas: str) -> str:
@@ -401,7 +604,7 @@ class AsignacionService:
     def _validar_usuario_asignado(usuario: CustomUser) -> None:
         if not isinstance(usuario, CustomUser) or not usuario.pk:
             raise ValidationError("El usuario asignado es obligatorio.")
-        if not usuario.is_active:
+        if not usuario.is_active or not usuario.activo:
             raise ValidationError("No se puede asignar un usuario inactivo.")
 
     @staticmethod

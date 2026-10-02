@@ -16,6 +16,7 @@ from apps.modalidades.validators import ModalidadConfigurationValidator
 from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.models import (
     AsignacionPostulacion,
+    DecisionAcademicaEtapa,
     EstadoPostulacion,
     DictamenRevisionDocumento,
     HistorialEstado,
@@ -29,6 +30,8 @@ from apps.postulantes.permissions import (IsAssignmentAdminOrRelatedReadOnly,
 from apps.postulantes.serializers import (
     AsignacionPostulacionSerializer,
     AsignarActorSerializer,
+    DecisionAcademicaEtapaSerializer,
+    RegistrarDecisionAcademicaSerializer,
     ActualizarEvidenciaInformeRevisionTribunalSerializer,
     AprobarSeguimientoEtapaSerializer,
     EstadoPostulacionSerializer,
@@ -48,6 +51,7 @@ from apps.postulantes.serializers import (
     SeguimientoEtapaSerializer,
 )
 from apps.postulantes.services import PostulacionService
+from apps.postulantes.decisiones_academicas import DecisionAcademicaEtapaService
 from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
 from apps.postulantes.dictamenes_revision import DictamenRevisionDocumentoService
 from apps.postulantes.workflow import WorkflowService
@@ -55,7 +59,9 @@ from apps.documentos.models import TipoDocumento
 from apps.documentos.serializers import TipoDocumentoHistoricoSerializer, SubirDocumentoHistoricoSerializer, VersionDocumentoSerializer
 from apps.documentos.services import DocumentoService
 from apps.postulantes.models import SeguimientoEtapa
+from core.pagination import StandardResultsSetPagination
 from core.permissions import IsStaff, is_staff_user
+from core.responses import error_response
 
 
 def _assignment_validation_error(exc):
@@ -260,7 +266,6 @@ class PostulacionViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="documentos-aplicables")
     def documentos_aplicables(self, request, pk=None):
         """Retorna los tipos de documentos que pueden cargarse en la etapa actual de la postulación."""
-        from apps.documentos.models import TipoDocumento
         postulacion = self.get_object()
         
         etapa_codigo = None
@@ -277,6 +282,25 @@ class PostulacionViewSet(viewsets.ModelViewSet):
                         TipoDocumento.objects.filter(codigo__in=codigos_permitidos, activo=True)
                         .values("id", "codigo", "nombre")
                     )
+                    codigos_recuperados = {item["codigo"] for item in documentos_aplicables}
+                    codigos_faltantes = list(dict.fromkeys(
+                        codigo for codigo in codigos_permitidos if codigo not in codigos_recuperados
+                    ))
+                    if codigos_faltantes:
+                        return error_response(
+                            message=(
+                                "Configuración documental incompleta para "
+                                f"{postulacion.modalidad.codigo}/{etapa_codigo}; "
+                                f"faltan tipos documentales activos: {', '.join(codigos_faltantes)}."
+                            ),
+                            data={
+                                "postulacion_id": postulacion.pk,
+                                "modalidad": postulacion.modalidad.codigo,
+                                "etapa_actual": etapa_codigo,
+                                "codigos_faltantes": codigos_faltantes,
+                            },
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        )
         
         return Response({
             "postulacion_id": postulacion.pk,
@@ -424,6 +448,88 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         ))
         serializer = AsignacionPostulacionSerializer(queryset, many=True, context=self.get_serializer_context())
         return Response(serializer.data)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("posicion", OpenApiTypes.STR, OpenApiParameter.QUERY, required=True),
+            OpenApiParameter("accion", OpenApiTypes.STR, OpenApiParameter.QUERY, required=True),
+            OpenApiParameter("search", OpenApiTypes.STR, OpenApiParameter.QUERY),
+            OpenApiParameter("ordering", OpenApiTypes.STR, OpenApiParameter.QUERY),
+            OpenApiParameter("page", OpenApiTypes.INT, OpenApiParameter.QUERY),
+            OpenApiParameter("page_size", OpenApiTypes.INT, OpenApiParameter.QUERY),
+        ],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    @action(detail=True, methods=["get"], url_path="candidatos-asignacion")
+    def candidatos_asignacion(self, request, pk=None):
+        if not is_staff_user(request.user):
+            raise PermissionDenied("No tiene permisos para consultar candidatos de asignación.")
+
+        postulacion = self._get_postulacion_for_assignment_access(pk=pk)
+        posicion_clave = (request.query_params.get("posicion") or "").strip()
+        accion = (request.query_params.get("accion") or "").strip().upper()
+        if not posicion_clave:
+            raise DRFValidationError({"posicion": "La clave de posición es obligatoria."})
+        if accion not in {"ASIGNAR", "REEMPLAZAR"}:
+            raise DRFValidationError({"accion": "La acción debe ser ASIGNAR o REEMPLAZAR."})
+
+        contract = FlujoPostulacionSerializer(
+            postulacion,
+            context=self.get_serializer_context(),
+        ).get_gestion_actores(postulacion)
+        position = next(
+            (item for item in contract.get("posiciones", []) if item["clave"] == posicion_clave),
+            None,
+        )
+        if position is None:
+            raise DRFValidationError({"posicion": "La posición no existe en la configuración vigente de esta postulación."})
+        if position.get("habilitada") is False or accion not in position.get("acciones_permitidas", []):
+            raise DRFValidationError({"accion": "La acción no está permitida para esta posición en su contexto actual."})
+
+        asignacion_actual = None
+        if accion == "REEMPLAZAR":
+            asignacion_actual = AsignacionPostulacion.objects.filter(
+                pk=position.get("asignacion_actual"),
+                postulacion=postulacion,
+                activo=True,
+            ).select_related("usuario").first()
+            if asignacion_actual is None:
+                raise DRFValidationError({"posicion": "La asignación actual ya no corresponde a esta posición."})
+
+        try:
+            queryset = AsignacionService.obtener_candidatos_elegibles(
+                postulacion=postulacion,
+                tipo_participacion=position["tipo_participacion"],
+                orden_cargo=position.get("orden_cargo"),
+                seguimiento_etapa=SeguimientoEtapa.objects.filter(
+                    pk=position.get("seguimiento_etapa"),
+                    postulacion=postulacion,
+                ).first() if position.get("seguimiento_etapa") is not None else None,
+                asignacion_actual=asignacion_actual,
+                regla_ocupacion_actor=position.get("ocupacion_actor"),
+            )
+        except DjangoValidationError as exc:
+            raise _assignment_validation_error(exc) from exc
+
+        from apps.usuarios.serializers import AssignmentCandidateSerializer
+        from apps.usuarios.views import AssignmentCandidateViewSet
+
+        queryset = AssignmentCandidateViewSet.apply_catalog_filters(queryset, request)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        for usuario in page or []:
+            estado = AsignacionService._evaluar_ocupacion_vigente(
+                postulacion=postulacion,
+                usuario=usuario,
+                asignacion_actual=asignacion_actual,
+                queryset_activas=AsignacionPostulacion.objects.filter(postulacion=postulacion, activo=True),
+                regla_ocupacion=position.get("ocupacion_actor"),
+            )
+            usuario.elegible = estado["elegible"]
+            usuario.motivo_bloqueo = estado["motivo_bloqueo"]
+            usuario.asignaciones_vigentes = estado["asignaciones_vigentes"]
+        serializer = AssignmentCandidateSerializer(page, many=True, context=self.get_serializer_context())
+        return paginator.get_paginated_response(serializer.data)
 
     @extend_schema(request=AsignarActorSerializer, responses={201: AsignacionPostulacionSerializer})
     @action(detail=True, methods=["post"], url_path="asignaciones/asignar", serializer_class=AsignarActorSerializer)
@@ -665,6 +771,57 @@ class SeguimientoEtapaViewSet(viewsets.ReadOnlyModelViewSet):
             context=self.get_serializer_context(),
         )
         return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(responses={200: DecisionAcademicaEtapaSerializer(many=True)})
+    @action(detail=True, methods=["get"], url_path="decisiones-academicas")
+    def decisiones_academicas(self, request, pk=None):
+        seguimiento = self.get_object()
+        decisions = DecisionAcademicaEtapa.all_objects.filter(
+            seguimiento_etapa=seguimiento,
+        ).select_related("registrado_por").prefetch_related(
+            "participaciones__asignacion__usuario",
+        ).order_by("fecha_decision", "pk")
+        serializer = DecisionAcademicaEtapaSerializer(
+            decisions,
+            many=True,
+            context=self.get_serializer_context(),
+        )
+        return Response(serializer.data)
+
+    @extend_schema(
+        request=RegistrarDecisionAcademicaSerializer,
+        responses={200: DecisionAcademicaEtapaSerializer, 201: DecisionAcademicaEtapaSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="registrar-decision",
+        serializer_class=RegistrarDecisionAcademicaSerializer,
+    )
+    def registrar_decision(self, request, pk=None):
+        seguimiento = self.get_object()
+        if not is_staff_user(request.user):
+            raise PermissionDenied("Solo un usuario administrativo puede registrar decisiones académicas.")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = serializer.validated_data
+        replacing = bool(validated_data.get("reemplaza_decision"))
+        try:
+            decision = DecisionAcademicaEtapaService.registrar(
+                seguimiento=seguimiento,
+                registrado_por=request.user,
+                **validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise _assignment_validation_error(exc) from exc
+        response_serializer = DecisionAcademicaEtapaSerializer(
+            decision,
+            context=self.get_serializer_context(),
+        )
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_200_OK if replacing else status.HTTP_201_CREATED,
+        )
 
     @extend_schema(request=None, responses={200: SeguimientoEtapaSerializer})
     @action(detail=True, methods=["post"], url_path="iniciar")

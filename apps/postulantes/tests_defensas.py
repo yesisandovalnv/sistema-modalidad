@@ -32,8 +32,8 @@ class DefensaMixin:
         self.mod=Modalidad.objects.create(codigo="PROYECTO_GRADO",nombre="Proyecto grado defensa")
         self.period=Periodo.objects.create(nombre="2026-DEF",gestion=2026,semestre="I",fecha_inicio="2026-01-01",fecha_fin="2026-12-31")
         state=EstadoPostulacion.objects.create(codigo="REGDEF",nombre="Registrada defensa")
-        self.post=Postulacion.objects.create(codigo="P-DEF",estudiante=self.student,modalidad=self.mod,periodo=self.period,estado_actual=state)
-        self.other_post=Postulacion.objects.create(codigo="P-OTRA-DEF",estudiante=self.other,modalidad=self.mod,periodo=self.period,estado_actual=state)
+        self.post=Postulacion.objects.create(codigo="P-DEF",estudiante=self.student,modalidad=self.mod,periodo=self.period,estado_actual=state,regimen_workflow=Postulacion.RegimenWorkflowChoices.PG_LEGACY)
+        self.other_post=Postulacion.objects.create(codigo="P-OTRA-DEF",estudiante=self.other,modalidad=self.mod,periodo=self.period,estado_actual=state,regimen_workflow=Postulacion.RegimenWorkflowChoices.PG_LEGACY)
         self.follow={}
         for order,code in enumerate(("PERFIL_PROYECTO","DEFENSA_PRIVADA","DEFENSA_PUBLICA","REVISION_FINAL_POST_PUBLICA"),1):
             stage=EtapaModalidad.objects.create(modalidad=self.mod,codigo=code,nombre=code,orden=order,origen_normativo="Reglamento")
@@ -315,6 +315,37 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
     def test_programacion_y_auditoria(self):
         ev=EventoDefensaService.programar_evento(self.post,self.follow["PERFIL_PROYECTO"],"DEFENSA_PERFIL",timezone.now(),self.admin,lugar="Sala")
         self.assertEqual(ev.tipo_evento,"DEFENSA_PERFIL"); self.assertTrue(AuditLog.objects.filter(accion="PROGRAM",modulo="DEFENSAS").exists())
+
+    def test_contrato_actual_reutiliza_tribunales_de_perfil_para_programar_privada_y_publica(self):
+        for order, assignment in enumerate(self.assign["TRIBUNAL"], 1):
+            assignment.orden_cargo = order
+            assignment.seguimiento_etapa = self.follow["PERFIL_PROYECTO"]
+            assignment.save(update_fields=["orden_cargo", "seguimiento_etapa"])
+
+        self.follow["PERFIL_PROYECTO"].estado = SeguimientoEtapa.EstadoChoices.APROBADA
+        self.follow["PERFIL_PROYECTO"].save(update_fields=["estado"])
+        privada = EventoDefensaService.programar_evento(
+            self.post, self.follow["DEFENSA_PRIVADA"], "DEFENSA_PRIVADA",
+            timezone.now(), self.admin, lugar="Sala",
+        )
+
+        self.follow["DEFENSA_PRIVADA"].estado = SeguimientoEtapa.EstadoChoices.APROBADA
+        self.follow["DEFENSA_PRIVADA"].save(update_fields=["estado"])
+        publica = EventoDefensaService.programar_evento(
+            self.post, self.follow["DEFENSA_PUBLICA"], "DEFENSA_PUBLICA",
+            timezone.now() + timedelta(hours=49), self.admin, lugar="Sala",
+        )
+
+        self.assertEqual(privada.tipo_evento, "DEFENSA_PRIVADA")
+        self.assertEqual(publica.tipo_evento, "DEFENSA_PUBLICA")
+        self.assertEqual(
+            set(AsignacionPostulacion.objects.filter(
+                postulacion=self.post,
+                tipo_participacion="TRIBUNAL",
+                activo=True,
+            ).values_list("seguimiento_etapa__etapa__codigo", flat=True)),
+            {"PERFIL_PROYECTO"},
+        )
 
     def test_programacion_rechaza_anteriores_y_48_horas(self):
         with self.assertRaises(ValidationError): EventoDefensaService.programar_evento(self.post,self.follow["DEFENSA_PRIVADA"],"DEFENSA_PRIVADA",timezone.now(),self.admin,lugar="S")
@@ -666,6 +697,21 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         for kind,roles in cases:
             ev=self.event(kind,"EN_CURSO"); parts=self.add(ev,roles); self.assertTrue(EventoDefensaService.validar_quorum(ev)["valido"])
             parts[-1].presente=False; parts[-1].save(); self.assertFalse(EventoDefensaService.validar_quorum(ev)["valido"])
+
+    def test_contrato_actual_quorum_defensa_perfil_exige_dos_tribunales_presentes(self):
+        evento = self.event("DEFENSA_PERFIL", "EN_CURSO")
+        participantes = self.add(evento, ["TRIBUNAL", "TRIBUNAL"])
+
+        con_dos = EventoDefensaService.validar_quorum(evento)
+        participantes[1].presente = False
+        participantes[1].save(update_fields=["presente"])
+        con_uno = EventoDefensaService.validar_quorum(evento)
+
+        self.assertTrue(con_dos["valido"])
+        self.assertEqual(con_dos["detalle"]["TRIBUNAL"], 2)
+        self.assertFalse(con_uno["valido"])
+        self.assertEqual(con_uno["detalle"]["TRIBUNAL"], 1)
+        self.assertEqual(con_uno["faltantes"]["TRIBUNAL"], 1)
 
     def test_quorum_publico_no_cuenta_dos_roles_de_la_misma_persona(self):
         self.assign["SECRETARIO"][0].usuario = self.assign["PRESIDENTE"][0].usuario

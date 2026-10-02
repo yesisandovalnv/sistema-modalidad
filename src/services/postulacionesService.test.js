@@ -301,12 +301,61 @@ describe('postulacionesService', () => {
     })
   })
 
+  it('consulta candidatos elegibles con clave de posición y paginación contextual', async () => {
+    const signal = new AbortController().signal
+    apiClient.get.mockResolvedValue({ data: { count: 1, next: null, previous: null, results: [] } })
+    await postulacionesService.obtenerCandidatosElegibles(7, {
+      posicion: 'TRIBUNAL_PERFIL_2',
+      accion: 'ASIGNAR',
+      search: 'Chau',
+      ordering: 'apellido_paterno',
+      page: 2,
+      page_size: 20,
+    }, signal)
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/postulaciones/7/candidatos-asignacion/', {
+      params: {
+        posicion: 'TRIBUNAL_PERFIL_2',
+        accion: 'ASIGNAR',
+        search: 'Chau',
+        ordering: 'apellido_paterno',
+        page: 2,
+        page_size: 20,
+      },
+      signal,
+    })
+  })
+
   it('crea una asignación con el payload intacto', async () => {
     const signal = new AbortController().signal
     const payload = { usuario: 41, tipo_participacion: 'TRIBUNAL', orden_cargo: 2, seguimiento_etapa: 4, observaciones: 'Revisión previa' }
     apiClient.post.mockResolvedValue({ data: { id: 90, ...payload } })
     await expect(postulacionesService.asignarActor(2, payload, signal)).resolves.toMatchObject({ id: 90 })
     expect(apiClient.post).toHaveBeenCalledWith('/api/v1/postulaciones/2/asignaciones/asignar/', payload, { signal })
+  })
+
+  it('reemplaza un actor mediante la acción existente y conserva el payload', async () => {
+    const signal = new AbortController().signal
+    const payload = { nuevo_usuario: 42, observaciones: 'Cambio de designación' }
+    apiClient.post.mockResolvedValue({ data: { id: 91, usuario: 42 } })
+    await expect(postulacionesService.reemplazarActor(90, payload, signal)).resolves.toMatchObject({ id: 91 })
+    expect(apiClient.post).toHaveBeenCalledWith('/api/v1/asignaciones/90/reemplazar/', payload, { signal })
+  })
+
+  it('registra una decisión académica por el endpoint existente', async () => {
+    const signal = new AbortController().signal
+    const payload = {
+      codigo: 'PROPUESTA_APROBADA',
+      resultado: 'APROBADA',
+      observaciones: 'Aprobada por composición formal.',
+      participantes: [
+        { asignacion: 51, rol: 'TRIBUNAL', orden: 1 },
+        { asignacion: 52, rol: 'TRIBUNAL', orden: 2 },
+        { asignacion: 53, rol: 'TRIBUNAL', orden: 3 },
+      ],
+    }
+    apiClient.post.mockResolvedValue({ data: { id: 7, ...payload } })
+    await expect(postulacionesService.registrarDecisionAcademica(12, payload, signal)).resolves.toMatchObject({ id: 7 })
+    expect(apiClient.post).toHaveBeenCalledWith('/api/v1/seguimientos-etapa/12/registrar-decision/', payload, { signal })
   })
 
   it('conserva los errores por campo al rechazar una asignación', async () => {

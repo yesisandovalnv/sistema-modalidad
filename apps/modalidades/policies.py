@@ -31,6 +31,19 @@ class EtapaDefinition:
     capacidades_requeridas: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class DecisionAcademicaDefinition:
+    codigo: str
+    resultados: tuple[str, ...]
+    nombre: str | None = None
+    roles_participantes: tuple[str, ...] = ()
+    participantes_minimos: int = 0
+    participantes_maximos: int | None = None
+    ordenes_requeridos: tuple[int, ...] = ()
+    regimen_workflow_requerido: str | None = None
+    validar_composicion_asignaciones: bool = False
+
+
 @dataclass
 class ModalidadCapabilities:
     codigo: str
@@ -143,6 +156,9 @@ class BaseModalidadPolicy(ABC):
     def permite_evaluaciones(self): return bool(self.evaluacion_policy and self.evaluacion_policy.get_tipos_evaluacion())
     def get_tipos_evaluacion(self): return tuple(self.evaluacion_policy.get_tipos_evaluacion()) if self.evaluacion_policy else ()
     def get_reglas_asignacion(self): return {}
+    def get_decisiones_academicas_permitidas(self, codigo_etapa: str) -> tuple[DecisionAcademicaDefinition, ...]:
+        """Declara las decisiones académicas habilitadas para una etapa; cerrado por defecto."""
+        return ()
     def get_condiciones_requeridas(self, fase=None): return tuple(self.requisitos_policy.get_condiciones_requeridas(fase)) if self.requisitos_policy else ()
     def get_entregas_requeridas(self, fase=None): return tuple(self.requisitos_policy.get_entregas_requeridas(fase)) if self.requisitos_policy else ()
     def get_documentos_requeridos(self, fase=None): return tuple(self.requisitos_policy.get_documentos_requeridos(fase)) if self.requisitos_policy else ()
@@ -163,6 +179,14 @@ class BaseModalidadPolicy(ABC):
             .values_list("etapa__codigo", flat=True)
             .first()
         )
+    def get_configuracion_actores(self, postulacion=None, seguimiento=None):
+        """Contrato canónico para la composición formal de actores por modalidad.
+
+        La implementación por defecto es explícitamente vacía para mantener compatibilidad
+        con modalidades que aún no implementan este contrato. Las políticas concretas pueden
+        devolver grupos de posiciones con metadatos formales y precondiciones académicas.
+        """
+        return {}
     def get_orientacion_etapa_actual(self, *, postulacion, seguimiento): return None
     def get_cierre_policy(self): return None
     def get_revision_tribunal_previa_policy(self): return None

@@ -219,3 +219,10 @@ class AssignmentCandidateViewSet(viewsets.ReadOnlyModelViewSet):
         if role_code:
             queryset = queryset.filter(role__codigo__iexact=role_code)
         return queryset
+
+    @classmethod
+    def apply_catalog_filters(cls, queryset, request):
+        view = cls()
+        for backend in cls.filter_backends:
+            queryset = backend().filter_queryset(request, queryset, view)
+        return queryset

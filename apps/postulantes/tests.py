@@ -17,6 +17,7 @@ from apps.modalidades.policies import ModalidadPolicyRegistry
 from apps.notificaciones.events import EventTypes
 from apps.postulantes.models import (
     AsignacionPostulacion,
+    DecisionAcademicaEtapa,
     EstadoPostulacion,
     EventoDefensa,
     HistorialEstado,
@@ -25,6 +26,7 @@ from apps.postulantes.models import (
     SeguimientoEtapa,
 )
 from apps.postulantes.services import PostulacionService
+from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import AuditLog, Role
 
@@ -112,19 +114,94 @@ class TestCrearPostulacion(APITestCase):
         self.assertEqual(response.data["estado_actual_detalle"]["codigo"], "EN_PROCESO")
 
         postulacion = Postulacion.objects.get(pk=response.data["id"])
+        self.assertEqual(postulacion.regimen_workflow, Postulacion.RegimenWorkflowChoices.PG_HITOS_V1)
         flujo = self.client.get(f"/api/v1/postulaciones/{postulacion.pk}/flujo/", format="json")
         self.assertEqual(flujo.status_code, status.HTTP_200_OK)
-        self.assertEqual(flujo.data["porcentaje_avance"], 12.5)
+        self.assertEqual(flujo.data["porcentaje_avance"], 0.0)
         estados = {etapa["codigo"]: etapa["estado"] for etapa in flujo.data["etapas"]}
         self.assertEqual(len(estados), 8)
-        self.assertEqual(estados["INSCRIPCION"], "APROBADA")
-        self.assertEqual(estados["PERFIL_PROYECTO"], "EN_PROCESO")
+        self.assertEqual(estados["INSCRIPCION"], "EN_PROCESO")
+        self.assertEqual(estados["PERFIL_PROYECTO"], "PENDIENTE")
         self.assertTrue(all(estado == "PENDIENTE" for estado in list(estados.values())[2:]))
         self.assertEqual(SeguimientoEtapa.objects.filter(postulacion=postulacion).count(), 8)
         self.assertEqual(
             sum(call.args[0] == EventTypes.ETAPA_INICIADA for call in publish.call_args_list),
-            2,
+            1,
         )
+
+    def test_registrar_propuesta_aprobada_por_endpoint_existente(self):
+        response = self.client.post(
+            "/api/v1/postulaciones/",
+            {
+                "codigo": "POST-HITOS-API",
+                "estudiante": self.estudiante.id,
+                "modalidad": self.modalidad.id,
+                "periodo": self.periodo.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        postulacion = Postulacion.objects.get(pk=response.data["id"])
+        seguimiento = postulacion.seguimientos_etapa.get(etapa__codigo="PERFIL_PROYECTO")
+        docentes = [
+            User.objects.create_user(
+                username=f"decision-tribunal-{index}",
+                role=canonical_role("DOCENTE"),
+            )
+            for index in range(1, 4)
+        ]
+        assignments = [
+            AsignacionService.asignar_actor(
+                postulacion,
+                docente,
+                "TRIBUNAL",
+                self.estudiante,
+                orden_cargo=orden,
+                seguimiento_etapa=seguimiento,
+            )
+            for orden, docente in enumerate(docentes, start=1)
+        ]
+        endpoint = f"/api/v1/seguimientos-etapa/{seguimiento.pk}/registrar-decision/"
+        incomplete = self.client.post(
+            endpoint,
+            {
+                "codigo": "PROPUESTA_APROBADA",
+                "resultado": "APROBADA",
+                "participantes": [
+                    {"asignacion": item.pk, "rol": "TRIBUNAL", "orden": order}
+                    for order, item in enumerate(assignments[:2], start=1)
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(incomplete.status_code, status.HTTP_400_BAD_REQUEST)
+
+        decision_response = self.client.post(
+            endpoint,
+            {
+                "codigo": "PROPUESTA_APROBADA",
+                "resultado": "APROBADA",
+                "participantes": [
+                    {"asignacion": item.pk, "rol": "TRIBUNAL", "orden": order}
+                    for order, item in enumerate(assignments, start=1)
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(decision_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(decision_response.data["codigo"], "PROPUESTA_APROBADA")
+        self.assertEqual(decision_response.data["resultado"], "APROBADA")
+        self.assertEqual(DecisionAcademicaEtapa.objects.filter(
+            seguimiento_etapa=seguimiento,
+            codigo="PROPUESTA_APROBADA",
+            resultado="APROBADA",
+        ).count(), 1)
+        self.assertTrue(AuditLog.objects.filter(
+            accion="REGISTER_ACADEMIC_DECISION",
+            modulo="DECISION_ACADEMICA",
+            descripcion__contains="PROPUESTA_APROBADA",
+        ).exists())
 
     @patch(
         "apps.postulantes.proyecto_grado_workflow.ProyectoGradoWorkflowOrchestrator.inicializar_proceso",
@@ -163,11 +240,27 @@ class TestCrearPostulacion(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         historico = Postulacion.objects.get(pk=response.data["id"])
         self.assertEqual(historico.tipo_registro, Postulacion.TipoRegistroChoices.HISTORICO)
+        self.assertEqual(historico.regimen_workflow, Postulacion.RegimenWorkflowChoices.PG_LEGACY)
         self.assertEqual(historico.vigencia, Postulacion.VigenciaChoices.CERRADA)
         self.assertEqual(historico.estado_actual, self.estado_concluida)
         self.assertFalse(SeguimientoEtapa.objects.filter(postulacion=historico).exists())
         self.assertTrue(AuditLog.objects.filter(accion="crear_postulacion_historica", modulo="postulaciones").exists())
         self.assertTrue(HistorialEstado.objects.filter(postulacion=historico, estado_nuevo=self.estado_concluida).exists())
+
+    def test_otra_modalidad_no_recibe_regimen_de_proyecto(self):
+        otra_modalidad = Modalidad.objects.create(
+            codigo="TRABAJO_DIRIGIDO",
+            nombre="Trabajo Dirigido",
+        )
+        postulacion = Postulacion.objects.create(
+            codigo="OTRA-MODALIDAD-SIN-REGIMEN",
+            estudiante=self.estudiante_sin_admin,
+            modalidad=otra_modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+
+        self.assertIsNone(postulacion.regimen_workflow)
 
     def test_estudiante_no_puede_crear_historico(self) -> None:
         token = RefreshToken.for_user(self.estudiante_sin_admin).access_token

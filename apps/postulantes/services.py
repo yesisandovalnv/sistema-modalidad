@@ -117,7 +117,10 @@ class PostulacionService:
                 usuario=usuario,
                 accion="crear_postulacion",
                 modulo="postulaciones",
-                descripcion=f"Se creó la postulación {postulacion.codigo} para el estudiante {estudiante}",
+                descripcion=(
+                    f"Se creó la postulación {postulacion.codigo} para el estudiante {estudiante}; "
+                    f"régimen de workflow {postulacion.regimen_workflow or 'NO_APLICA'}."
+                ),
             )
 
             return postulacion
@@ -173,7 +176,10 @@ class PostulacionService:
                 usuario=usuario,
                 accion="crear_postulacion_historica",
                 modulo="postulaciones",
-                descripcion=f"Se incorporó la postulación histórica {historico.codigo} para el estudiante {estudiante}",
+                descripcion=(
+                    f"Se incorporó la postulación histórica {historico.codigo} para el estudiante {estudiante}; "
+                    f"régimen de workflow {historico.regimen_workflow or 'NO_APLICA'}."
+                ),
             )
             return historico
 

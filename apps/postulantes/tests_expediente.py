@@ -62,6 +62,7 @@ class ExpedienteAccessContractTests(TestCase):
             modalidad=cls.modalidad,
             periodo=cls.periodo,
             estado_actual=cls.estado,
+            regimen_workflow=Postulacion.RegimenWorkflowChoices.PG_LEGACY,
         )
         cls.ajena = Postulacion.objects.create(
             codigo="EXP-002",
@@ -222,6 +223,83 @@ class ExpedienteAccessContractTests(TestCase):
         self.assertEqual(data["etapa_actual"]["codigo"], "PERFIL_PROYECTO")
         self.assertEqual(data["porcentaje_avance"], 66.67)
         self.assertEqual([item["codigo"] for item in data["etapas"]], ["INSCRIPCION", "PERFIL_PROYECTO", "DEFENSA_PUBLICA"])
+
+    def test_flow_exposes_gestion_actores_para_perfil(self):
+        tribunal_1 = AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion,
+            usuario=self.assigned,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
+            orden_cargo=1,
+            designado_por=self.staff,
+            seguimiento_etapa=self.postulacion.seguimientos_etapa.get(etapa__codigo="PERFIL_PROYECTO"),
+        )
+        tribunal_2 = AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion,
+            usuario=self.historical,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
+            orden_cargo=2,
+            designado_por=self.staff,
+            seguimiento_etapa=self.postulacion.seguimientos_etapa.get(etapa__codigo="PERFIL_PROYECTO"),
+        )
+        AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion,
+            usuario=self.unassigned,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL,
+            orden_cargo=3,
+            designado_por=self.staff,
+            seguimiento_etapa=self.postulacion.seguimientos_etapa.get(etapa__codigo="PERFIL_PROYECTO"),
+        )
+        data = self.client_for(self.staff).get(self.urls()[1]).data
+        self.assertIn("gestion_actores", data)
+        gestion = data["gestion_actores"]
+        self.assertEqual(gestion["contexto"]["codigo_etapa"], "PERFIL_PROYECTO")
+        self.assertEqual(gestion["contexto"]["regimen_workflow"], "PG_LEGACY")
+        posiciones = gestion["posiciones"]
+        self.assertEqual(len(posiciones), 4)
+        tribunal_positions = [item for item in posiciones if item["tipo_participacion"] == "TRIBUNAL"]
+        self.assertEqual([item["orden_cargo"] for item in tribunal_positions], [1, 2, 3])
+        self.assertTrue(all(item["obligatoriedad"] for item in tribunal_positions))
+        self.assertEqual([item["estado_ocupacion"] for item in tribunal_positions], ["ASIGNADA", "ASIGNADA", "ASIGNADA"])
+        self.assertTrue(all(item["habilitada"] for item in tribunal_positions))
+        self.assertTrue(all(item["bloqueo"] is None for item in tribunal_positions))
+        self.assertTrue(all(item["precondicion"] is None for item in tribunal_positions))
+        tutor = next(item for item in posiciones if item["tipo_participacion"] == "TUTOR")
+        self.assertEqual(tutor["ambito"], "POSTULACION")
+        self.assertTrue(tutor["obligatoriedad"])
+        self.assertEqual(tutor["estado_ocupacion"], "ASIGNADA")
+        self.assertIsNone(tutor["precondicion"])
+        self.assertIsNone(tutor["bloqueo"])
+        self.assertEqual(tribunal_positions[0]["acciones_permitidas"], ["REEMPLAZAR", "FINALIZAR"])
+
+    def test_flow_proyecta_tutor_hitos_pendiente_como_bloqueado(self):
+        self.postulacion.regimen_workflow = Postulacion.RegimenWorkflowChoices.PG_HITOS_V1
+        self.postulacion.save(update_fields=["regimen_workflow", "updated_at"])
+        AsignacionPostulacion.objects.filter(
+            postulacion=self.postulacion,
+            tipo_participacion=AsignacionPostulacion.TipoParticipacionChoices.TUTOR,
+            activo=True,
+        ).update(activo=False)
+
+        data = self.client_for(self.staff).get(self.urls()[1]).data
+        tutor = next(
+            item for item in data["gestion_actores"]["posiciones"]
+            if item["tipo_participacion"] == "TUTOR"
+        )
+
+        self.assertEqual(tutor["precondicion"]["codigo"], "PROPUESTA_APROBADA")
+        self.assertTrue(tutor["precondicion"]["requerido"])
+        self.assertEqual(tutor["precondicion"]["estado"], "PENDIENTE")
+        self.assertEqual(tutor["precondicion"]["enforcement"], "ACTIVO")
+        self.assertFalse(tutor["habilitada"])
+        self.assertEqual(tutor["bloqueo"]["codigo"], "PROPUESTA_NO_APROBADA")
+        self.assertEqual(tutor["estado_ocupacion"], "VACANTE")
+        self.assertEqual(tutor["acciones_permitidas"], [])
+
+    def test_flow_omits_writing_actions_for_regular_user(self):
+        data = self.client_for(self.owner).get(self.urls()[1]).data
+        gestion = data["gestion_actores"]
+        for item in gestion["posiciones"]:
+            self.assertEqual(item["acciones_permitidas"], [])
 
     def test_matriz_canonicamente_autorizada_en_los_cuatro_endpoints(self):
         for user in (self.staff, self.superuser, self.owner, self.assigned, self.historical):

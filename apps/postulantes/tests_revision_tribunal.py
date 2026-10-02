@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework import status
-from rest_framework.test import APITestCase, APITransactionTestCase
+from rest_framework.test import APIRequestFactory, APITestCase, APITransactionTestCase
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
@@ -19,6 +19,7 @@ from apps.postulantes.models import (
     SeguimientoEtapa,
 )
 from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
+from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import AuditLog, Role
 
@@ -117,6 +118,14 @@ class RevisionTribunalFixtureMixin:
             evidencia_version=self.evidencia,
             usuario=self.admin,
         )
+
+    def serializar_flujo(self, usuario):
+        request = APIRequestFactory().get("/")
+        request.user = usuario
+        return FlujoPostulacionSerializer(
+            self.postulacion,
+            context={"request": request},
+        ).data
 
     def nueva_version_evidencia(self):
         self.evidencia.es_version_actual = False
@@ -373,10 +382,81 @@ class RevisionTribunalServiceTest(RevisionTribunalFixtureMixin, TestCase):
 
         self.assertEqual(aprobado.estado, SeguimientoEtapa.EstadoChoices.APROBADA)
 
+    def test_flujo_proyecta_aprobacion_generica_cuando_policy_y_workflow_habilitan_aprobar(self):
+        self.registrar()
+
+        flow = self.serializar_flujo(self.admin)
+        orientation = flow["orientacion_etapa_actual"]
+
+        self.assertIn("aprobar", flow["etapa_actual"]["acciones_permitidas"])
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+        self.assertEqual(orientation["siguiente_accion"]["titulo"], "Aprobar Revisión de Tribunal Previa")
+        self.assertEqual(orientation["siguiente_accion"]["estado"], "DISPONIBLE")
+
+    def test_flujo_no_proyecta_aprobacion_generica_sin_permiso_o_validacion(self):
+        self.registrar()
+
+        student_flow = self.serializar_flujo(self.student)
+        self.assertNotIn("aprobar", student_flow["etapa_actual"]["acciones_permitidas"])
+        self.assertIsNone(student_flow["orientacion_etapa_actual"]["siguiente_accion"])
+        self.assertIn("personal responsable", student_flow["orientacion_etapa_actual"]["mensaje"])
+
+        self.seguimiento.estado = SeguimientoEtapa.EstadoChoices.PENDIENTE
+        self.seguimiento.save(update_fields=["estado", "updated_at"])
+        pending_flow = self.serializar_flujo(self.admin)
+        self.assertNotIn("aprobar", pending_flow["etapa_actual"]["acciones_permitidas"])
+        self.assertIsNone(pending_flow["orientacion_etapa_actual"])
+
+    def test_flujo_conserva_orientacion_especifica_de_evidencia_obsoleta(self):
+        self.registrar()
+        self.nueva_version_evidencia()
+
+        flow = self.serializar_flujo(self.admin)
+
+        self.assertEqual(
+            flow["orientacion_etapa_actual"]["siguiente_accion"]["codigo"],
+            "ACTUALIZAR_INFORME_TRIBUNAL",
+        )
+        self.assertNotIn("aprobar", flow["etapa_actual"]["acciones_permitidas"])
+
+    def test_orientacion_especifica_conserva_mensaje_pero_filtra_aprobacion_no_permitida(self):
+        specific_orientation = {
+            "operacion": "ORIENTAR_ETAPA",
+            "mensaje": "La revisión tiene información específica.",
+            "requisitos": [{"tipo": "ACADEMICO", "codigo": "REVISION", "cumplido": True}],
+            "siguiente_accion": {
+                "codigo": "APROBAR_ETAPA",
+                "titulo": "Aprobar revisión",
+                "estado": "DISPONIBLE",
+            },
+        }
+        with patch.object(ProyectoGradoPolicy, "get_orientacion_etapa_actual", return_value=specific_orientation):
+            flow = self.serializar_flujo(self.student)
+
+        orientation = flow["orientacion_etapa_actual"]
+        self.assertIsNone(orientation["siguiente_accion"])
+        self.assertEqual(orientation["requisitos"], specific_orientation["requisitos"])
+        self.assertIn("La revisión tiene información específica.", orientation["mensaje"])
+        self.assertIn("personal responsable", orientation["mensaje"])
+
     def test_policy_bloquea_informe_insuficiente(self):
         self.registrar("INSUFICIENTE", "Falta sustento técnico.")
         with self.assertRaisesMessage(ValidationError, "declara el trabajo INSUFICIENTE"):
             WorkflowService.aprobar_etapa(self.seguimiento, self.admin)
+
+        flow = self.serializar_flujo(self.admin)
+        self.assertNotIn("aprobar", flow["etapa_actual"]["acciones_permitidas"])
+        self.assertIsNone(flow["orientacion_etapa_actual"])
+
+    def test_etapa_aprobada_no_proyecta_aprobacion_generica(self):
+        self.registrar()
+        self.seguimiento.estado = SeguimientoEtapa.EstadoChoices.APROBADA
+        self.seguimiento.save(update_fields=["estado", "updated_at"])
+
+        flow = self.serializar_flujo(self.admin)
+
+        self.assertNotIn("aprobar", flow["etapa_actual"]["acciones_permitidas"])
+        self.assertIsNone(flow["orientacion_etapa_actual"])
 
 
 class RevisionTribunalFlowApiTransactionTest(RevisionTribunalFixtureMixin, APITransactionTestCase):

@@ -175,6 +175,10 @@ class Postulacion(BaseModel):
         SEGUIMIENTO = "SEGUIMIENTO", "Proceso con seguimiento"
         HISTORICO = "HISTORICO", "Registro histórico"
 
+    class RegimenWorkflowChoices(models.TextChoices):
+        PG_LEGACY = "PG_LEGACY", "Proyecto de Grado legacy"
+        PG_HITOS_V1 = "PG_HITOS_V1", "Proyecto de Grado con hitos v1"
+
     codigo = models.CharField(
         max_length=30,
         unique=True,
@@ -227,6 +231,13 @@ class Postulacion(BaseModel):
         default=TipoRegistroChoices.SEGUIMIENTO,
         verbose_name="Tipo de registro",
     )
+    regimen_workflow = models.CharField(
+        max_length=20,
+        choices=RegimenWorkflowChoices.choices,
+        blank=True,
+        null=True,
+        verbose_name="Régimen del workflow",
+    )
     fecha_baja = models.DateTimeField(
         null=True,
         blank=True,
@@ -252,6 +263,16 @@ class Postulacion(BaseModel):
     @classmethod
     def vigentes(cls):
         return cls.all_objects.filter(vigencia=cls.VigenciaChoices.VIGENTE)
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and self.regimen_workflow is None and self.modalidad_id:
+            if self.modalidad.codigo == "PROYECTO_GRADO":
+                self.regimen_workflow = (
+                    self.RegimenWorkflowChoices.PG_LEGACY
+                    if self.tipo_registro == self.TipoRegistroChoices.HISTORICO
+                    else self.RegimenWorkflowChoices.PG_HITOS_V1
+                )
+        return super().save(*args, **kwargs)
 
     class Meta:
         """Configuración del modelo para administración y consultas."""
@@ -536,6 +557,110 @@ class AsignacionPostulacion(BaseModel):
     def __str__(self) -> str:
         """Retorna una representación legible de la asignación."""
         return f"{self.postulacion.codigo} - {self.tipo_participacion} - {self.usuario}"
+
+
+class DecisionAcademicaEtapa(BaseModel):
+    """Registro versionable de una decisión académica declarada por policy."""
+
+    seguimiento_etapa = models.ForeignKey(
+        SeguimientoEtapa,
+        on_delete=models.PROTECT,
+        related_name="decisiones_academicas",
+    )
+    codigo = models.CharField(max_length=80)
+    resultado = models.CharField(max_length=80)
+    fecha_decision = models.DateTimeField(default=timezone.now)
+    registrado_por = models.ForeignKey(
+        CustomUser,
+        on_delete=models.PROTECT,
+        related_name="decisiones_academicas_registradas",
+    )
+    observaciones = models.TextField(blank=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["fecha_decision", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["seguimiento_etapa", "codigo"],
+                condition=models.Q(activo=True),
+                name="unique_decision_academica_activa",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["seguimiento_etapa", "activo"], name="idx_decision_seg_activo"),
+        ]
+
+    def clean(self):
+        super().clean()
+        self.codigo = (self.codigo or "").strip()
+        self.resultado = (self.resultado or "").strip()
+        self.observaciones = (self.observaciones or "").strip()
+        errors = {}
+        if not self.codigo:
+            errors["codigo"] = "El código de decisión es obligatorio."
+        if not self.resultado:
+            errors["resultado"] = "El resultado de decisión es obligatorio."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class ParticipacionDecisionAcademica(BaseModel):
+    """Actor asignado que participa en una decisión académica concreta."""
+
+    decision = models.ForeignKey(
+        DecisionAcademicaEtapa,
+        on_delete=models.CASCADE,
+        related_name="participaciones",
+    )
+    asignacion = models.ForeignKey(
+        AsignacionPostulacion,
+        on_delete=models.PROTECT,
+        related_name="participaciones_decision_academica",
+    )
+    rol = models.CharField(max_length=60)
+    orden = models.PositiveIntegerField(null=True, blank=True)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["orden", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["decision", "asignacion"],
+                name="unique_asignacion_participacion_decision",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(orden__isnull=True) | models.Q(orden__gte=1),
+                name="check_decision_participante_orden_gte_1",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        self.rol = (self.rol or "").strip().upper()
+        errors = {}
+        if not self.rol:
+            errors["rol"] = "El rol del participante es obligatorio."
+        if (
+            self.decision_id
+            and self.asignacion_id
+            and self.decision.seguimiento_etapa.postulacion_id != self.asignacion.postulacion_id
+        ):
+            errors["asignacion"] = "La asignación debe pertenecer a la postulación de la decisión."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class CondicionPostulacion(BaseModel):

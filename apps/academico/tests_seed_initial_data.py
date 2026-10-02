@@ -5,14 +5,16 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
 
+from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from apps.academico.models import EtapaModalidad, Modalidad, ModalidadRequisito, Requisito
-from apps.documentos.models import EstadoDocumento, TipoDocumento
-from apps.postulantes.models import EstadoPostulacion
+from apps.academico.models import EtapaModalidad, Modalidad, ModalidadRequisito, Periodo, Requisito
+from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento
+from apps.postulantes.models import EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.academico.management.commands.seed_initial_data import OFFICIAL_TIPOS_DOCUMENTO
 
 
 class SeedInitialDataCommandTest(TestCase):
@@ -450,6 +452,131 @@ class OfficialProyectoGradoDocumentTypesSeedTest(TestCase):
         self.assertEqual(TipoDocumento.objects.filter(codigo__in=self.EXPECTED_CODES).count(), 7)
         self.assertIn("Creados: 0", second_stdout)
         self.assertIn("Existentes: 274", second_stdout)
+
+    def test_selective_document_type_seed_isolated_and_idempotent(self) -> None:
+        user = get_user_model().objects.create_user(username="selective-seed-student")
+        modalidad = Modalidad.objects.create(
+            codigo="PROYECTO_GRADO",
+            nombre="Modalidad centinela",
+            descripcion="Descripción que debe preservarse",
+        )
+        periodo = Periodo.objects.create(
+            nombre="2026-SELECTIVE-SEED", gestion=2026, semestre="II",
+            fecha_inicio="2026-07-01", fecha_fin="2026-12-31",
+        )
+        estado_postulacion = EstadoPostulacion.objects.create(
+            codigo="REGISTRADA", nombre="Estado de postulación centinela",
+        )
+        estado_documento = EstadoDocumento.objects.create(
+            codigo="ENV", nombre="Estado documental centinela",
+        )
+        etapa = EtapaModalidad.objects.create(
+            modalidad=modalidad, codigo="INSCRIPCION", nombre="Etapa centinela",
+            orden=1, obligatoria=True, origen_normativo="Origen centinela",
+        )
+        requisito = Requisito.objects.create(
+            codigo="REQUISITO_CENTINELA", nombre="Requisito centinela",
+            descripcion="Descripción centinela", obligatorio=False,
+        )
+        ModalidadRequisito.objects.create(modalidad=modalidad, requisito=requisito, orden=7)
+        postulation = Postulacion.objects.create(
+            codigo="POST-SELECTIVE-SEED", estudiante=user, modalidad=modalidad,
+            periodo=periodo, estado_actual=estado_postulacion,
+        )
+        seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=postulation, etapa=etapa, estado="EN_PROCESO",
+        )
+        other_type = TipoDocumento.objects.create(
+            codigo="TIPO_CENTINELA", nombre="Nombre centinela", descripcion="Descripción centinela",
+            obligatorio=False, permite_multiple_version=False, tamano_maximo_mb=3,
+            extensiones_permitidas="zip", activo=False,
+        )
+        documento = DocumentoPostulacion.objects.create(
+            postulacion=postulation, tipo_documento=other_type, estado=estado_documento,
+        )
+
+        def snapshot(model):
+            return list(model.all_objects.order_by("pk").values())
+
+        untouched_before = {
+            "modalidades": snapshot(Modalidad),
+            "estados_postulacion": snapshot(EstadoPostulacion),
+            "estados_documento": snapshot(EstadoDocumento),
+            "etapas": snapshot(EtapaModalidad),
+            "requisitos": snapshot(Requisito),
+            "modalidad_requisitos": snapshot(ModalidadRequisito),
+            "postulaciones": snapshot(Postulacion),
+            "seguimientos": snapshot(SeguimientoEtapa),
+            "documentos": snapshot(DocumentoPostulacion),
+        }
+        other_type_before = list(TipoDocumento.all_objects.filter(pk=other_type.pk).values())
+        self.assertFalse(TipoDocumento.all_objects.filter(codigo="CARTA_SOLICITUD_PROYECTO").exists())
+
+        call_command("seed_initial_data", tipo_documento_codigo="CARTA_SOLICITUD_PROYECTO", verbosity=0)
+
+        official = next(
+            item for item in OFFICIAL_TIPOS_DOCUMENTO
+            if item["codigo"] == "CARTA_SOLICITUD_PROYECTO"
+        )
+        carta = TipoDocumento.all_objects.get(codigo="CARTA_SOLICITUD_PROYECTO")
+        self.assertEqual(TipoDocumento.all_objects.filter(codigo="CARTA_SOLICITUD_PROYECTO").count(), 1)
+        for field in (
+            "nombre", "descripcion", "obligatorio", "permite_multiple_version",
+            "tamano_maximo_mb", "extensiones_permitidas",
+        ):
+            self.assertEqual(getattr(carta, field), official[field])
+        self.assertTrue(carta.activo)
+        self.assertEqual(list(TipoDocumento.all_objects.filter(pk=other_type.pk).values()), other_type_before)
+        self.assertEqual(
+            {key: snapshot({
+                "modalidades": Modalidad,
+                "estados_postulacion": EstadoPostulacion,
+                "estados_documento": EstadoDocumento,
+                "etapas": EtapaModalidad,
+                "requisitos": Requisito,
+                "modalidad_requisitos": ModalidadRequisito,
+                "postulaciones": Postulacion,
+                "seguimientos": SeguimientoEtapa,
+                "documentos": DocumentoPostulacion,
+            }[key]) for key in untouched_before},
+            untouched_before,
+        )
+
+        TipoDocumento.all_objects.filter(pk=carta.pk).update(
+            nombre="Nombre desalineado",
+            descripcion="Descripción desalineada",
+            obligatorio=False,
+            permite_multiple_version=False,
+            tamano_maximo_mb=1,
+            extensiones_permitidas="txt",
+            activo=False,
+        )
+        call_command("seed_initial_data", tipo_documento_codigo="CARTA_SOLICITUD_PROYECTO", verbosity=0)
+        carta.refresh_from_db()
+        for field in (
+            "nombre", "descripcion", "obligatorio", "permite_multiple_version",
+            "tamano_maximo_mb", "extensiones_permitidas",
+        ):
+            self.assertEqual(getattr(carta, field), official[field])
+        self.assertTrue(carta.activo)
+
+        carta_id = carta.pk
+        call_command("seed_initial_data", tipo_documento_codigo="CARTA_SOLICITUD_PROYECTO", verbosity=0)
+        self.assertEqual(TipoDocumento.all_objects.filter(codigo="CARTA_SOLICITUD_PROYECTO").count(), 1)
+        self.assertEqual(TipoDocumento.all_objects.get(codigo="CARTA_SOLICITUD_PROYECTO").pk, carta_id)
+        self.assertEqual(list(TipoDocumento.all_objects.filter(pk=other_type.pk).values()), other_type_before)
+        models = {
+            "modalidades": Modalidad,
+            "estados_postulacion": EstadoPostulacion,
+            "estados_documento": EstadoDocumento,
+            "etapas": EtapaModalidad,
+            "requisitos": Requisito,
+            "modalidad_requisitos": ModalidadRequisito,
+            "postulaciones": Postulacion,
+            "seguimientos": SeguimientoEtapa,
+            "documentos": DocumentoPostulacion,
+        }
+        self.assertEqual({key: snapshot(model) for key, model in models.items()}, untouched_before)
 
 
 class OfficialTesisGradoSeedTest(TestCase):
