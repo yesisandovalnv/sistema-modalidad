@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthContext } from '../../context/AuthContext'
+import apiClient from '../../services/api'
 import PostulantesPage from './PostulantesPage'
 import { crudService, listAll } from '../../services/crudService'
 import { postulacionesService } from '../../services/postulacionesService'
@@ -19,6 +20,9 @@ vi.mock('../../services/crudService', () => ({
 }))
 vi.mock('../../services/postulacionesService', () => ({
   postulacionesService: { obtenerDetalle: vi.fn() },
+}))
+vi.mock('../../services/api', () => ({
+  default: { get: vi.fn() },
 }))
 
 const application = {
@@ -49,7 +53,14 @@ function setup({ canManage = false } = {}) {
 }
 
 describe('PostulantesPage US-007', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    apiClient.get.mockImplementation((url) => Promise.resolve({
+      data: url.endsWith('/flujo/')
+        ? { etapa_actual: { nombre: 'Cierre Documental', estado: 'APROBADA' } }
+        : { nota_final: '99.1' },
+    }))
+  })
 
   it('muestra detalle legible en solo lectura sin cargar catálogos', async () => {
     setup()
@@ -63,8 +74,13 @@ describe('PostulantesPage US-007', () => {
     expect(within(dialog).getByText('Proyecto de Grado')).toBeInTheDocument()
     expect(within(dialog).getByText('Gestión 2026 - Semestre II')).toBeInTheDocument()
     expect(within(dialog).getByText('Registrada')).toBeInTheDocument()
+    expect(within(dialog).getByText('Estado técnico')).toBeInTheDocument()
+    expect(await within(dialog).findByText('Cierre Documental — Aprobada')).toBeInTheDocument()
+    expect(within(dialog).getByText('99.1')).toBeInTheDocument()
     expect(within(dialog).getByRole('note')).toHaveTextContent(/no sustituyen actos/i)
     expect(postulacionesService.obtenerDetalle).toHaveBeenCalledTimes(1)
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/postulaciones/71/flujo/', expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    expect(apiClient.get).toHaveBeenCalledWith('/api/v1/postulaciones/71/resultado-final/', expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(screen.getByRole('link', { name: 'Abrir expediente' })).toHaveAttribute('href', '/postulaciones/71')
     expect(screen.queryByRole('button', { name: /Eliminar/i })).not.toBeInTheDocument()
   })
@@ -80,6 +96,44 @@ describe('PostulantesPage US-007', () => {
     expect(within(dialog).queryByRole('combobox', { name: 'Modalidad' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('combobox', { name: /Semestre/ })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: /Eliminar/i })).not.toBeInTheDocument()
+  })
+
+  it('omite el resultado final cuando la nota canónica es null', async () => {
+    apiClient.get.mockImplementation((url) => Promise.resolve({
+      data: url.endsWith('/flujo/')
+        ? { etapa_actual: { nombre: 'Defensa Privada', estado: 'EN_PROCESO' } }
+        : { nota_final: null },
+    }))
+    setup()
+    await userEvent.click(await screen.findByRole('button', { name: 'Detalle' }))
+    const dialog = screen.getByRole('dialog')
+    expect(await within(dialog).findByText('Defensa Privada — En proceso')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Resultado final')).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Registrada')).toBeInTheDocument()
+  })
+
+  it('mantiene el detalle disponible si faltan etapa actual y resultado opcional', async () => {
+    apiClient.get.mockRejectedValue(new Error('Datos opcionales no disponibles.'))
+    setup()
+    await userEvent.click(await screen.findByRole('button', { name: 'Detalle' }))
+    const dialog = screen.getByRole('dialog')
+    expect(await within(dialog).findByText('Descripción vigente.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Registrada')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Etapa actual')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('Resultado final')).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('omite etapa actual cuando el flujo no devuelve una etapa actual', async () => {
+    apiClient.get.mockImplementation((url) => Promise.resolve({
+      data: url.endsWith('/flujo/') ? { etapa_actual: null } : { nota_final: null },
+    }))
+    setup()
+    await userEvent.click(await screen.findByRole('button', { name: 'Detalle' }))
+    const dialog = screen.getByRole('dialog')
+    expect(await within(dialog).findByText('Descripción vigente.')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Etapa actual')).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Registrada')).toBeInTheDocument()
   })
 
   it('envía un único PATCH con campos básicos y previene doble envío', async () => {

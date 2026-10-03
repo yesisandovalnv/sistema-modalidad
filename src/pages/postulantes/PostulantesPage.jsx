@@ -4,6 +4,8 @@ import { Button } from '../../components/ui/button'
 import { DataState, Field, Modal, PageHeader, Pager, SearchBar } from '../../components/crud/CrudShell'
 import { crudService, endpoints, listAll } from '../../services/crudService'
 import { useAuth } from '../../hooks/useAuth'
+import apiClient from '../../services/api'
+import { formatCodeLabel } from '../../lib/utils'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { postulacionesService } from '../../services/postulacionesService'
 
@@ -29,6 +31,7 @@ export default function PostulantesPage() {
   const [catalogError, setCatalogError] = useState('')
   const [selected, setSelected] = useState(null)
   const [detail, setDetail] = useState(null)
+  const [academicDetail, setAcademicDetail] = useState(null)
   const [detailRevision, setDetailRevision] = useState(0)
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState(null)
@@ -137,6 +140,27 @@ export default function PostulantesPage() {
       })
     return () => controller.abort()
   }, [detailId, detailRevision])
+
+  useEffect(() => {
+    if (!detailId) {
+      setAcademicDetail(null)
+      return undefined
+    }
+    const controller = new AbortController()
+    setAcademicDetail({ id: detailId, flow: null, result: null })
+    Promise.allSettled([
+      apiClient.get(`/api/v1/postulaciones/${detailId}/flujo/`, { signal: controller.signal }),
+      apiClient.get(`/api/v1/postulaciones/${detailId}/resultado-final/`, { signal: controller.signal }),
+    ]).then(([flow, result]) => {
+      if (controller.signal.aborted) return
+      setAcademicDetail({
+        id: detailId,
+        flow: flow.status === 'fulfilled' ? flow.value.data : null,
+        result: result.status === 'fulfilled' ? result.value.data : null,
+      })
+    })
+    return () => controller.abort()
+  }, [detailId])
 
   const activePeriods = useMemo(
     () => [...catalogs.periodos].sort(
@@ -397,6 +421,15 @@ export default function PostulantesPage() {
                   <Info label="Modalidad" value={modalityLabel(detail.data)} />
                   <Info label="Gestión y semestre" value={periodLabel(detail.data)} />
                   <Info label="Estado técnico" value={stateLabel(detail.data)} />
+                  {academicDetail?.id === detail.data.id && academicDetail.flow?.etapa_actual && (
+                    <Info
+                      label="Etapa actual"
+                      value={`${academicDetail.flow.etapa_actual.nombre} — ${formatCodeLabel(academicDetail.flow.etapa_actual.estado)}`}
+                    />
+                  )}
+                  {academicDetail?.id === detail.data.id && academicDetail.result?.nota_final != null && (
+                    <Info label="Resultado final" value={academicDetail.result.nota_final} />
+                  )}
                   <Info label="Observaciones generales" value={detail.data.observaciones_generales || 'Sin observaciones generales.'} />
                 </dl>
               </div>

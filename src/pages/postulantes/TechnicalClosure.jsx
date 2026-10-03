@@ -60,7 +60,7 @@ export default function TechnicalClosure({ postulacion, initialClosure, resultad
     setAction((current) => ({ ...current, submitting: true, error: '', fields: {} }))
     try {
       const data = await postulacionesService[config.method](postulacion, value, controller.current.signal)
-      setState({ data, loading: false, error: '' }); setAction(null); onChanged?.()
+      setState({ data, loading: false, error: '' }); setAction(null); onChanged?.(data)
     } catch (error) {
       if (!error.canceled) setAction((current) => ({ ...current, submitting: false, error: error.message, fields: error.fields || {} }))
     }

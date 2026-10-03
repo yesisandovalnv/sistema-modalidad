@@ -23,6 +23,12 @@ const { humanizeRequirementCode } = vi.hoisted(() => {
   return { humanizeRequirementCode }
 })
 
+function deferred() {
+  let resolve
+  const promise = new Promise((done) => { resolve = done })
+  return { promise, resolve }
+}
+
 vi.mock('../../services/postulacionesService', () => ({
   humanizeRequirementCode,
   postulacionesService: {
@@ -33,8 +39,8 @@ vi.mock('../../services/postulacionesService', () => ({
     finalizarDefensa: vi.fn(), suspenderDefensa: vi.fn(), cancelarDefensa: vi.fn(), reprogramarDefensa: vi.fn(),
     registrarEvaluacionDefensa: vi.fn(), consolidarEvaluacionDefensa: vi.fn(), obtenerDefensa: vi.fn(),
     obtenerAsignacionesCandidatas: vi.fn(), agregarParticipanteDefensa: vi.fn(), retirarParticipanteDefensa: vi.fn(), registrarAsistenciaDefensa: vi.fn(),
-    obtenerCondiciones: vi.fn(), verificarCondicion: vi.fn(), rechazarCondicion: vi.fn(),
-    obtenerEntregas: vi.fn(), crearEntregaFisica: vi.fn(), registrarEntrega: vi.fn(),
+    obtenerCondiciones: vi.fn(), verificarCondicion: vi.fn(), verificarCondiciones: vi.fn(), rechazarCondicion: vi.fn(),
+    obtenerEntregas: vi.fn(), crearEntregaFisica: vi.fn(), registrarEntrega: vi.fn(), registrarEntregas: vi.fn(),
     obtenerCierre: vi.fn(), aprobarRevisionFinal: vi.fn(), aprobarCierreDocumental: vi.fn(),
     concluirPostulacion: vi.fn(), reabrirCierre: vi.fn(),
     obtenerCandidatosAsignacion: vi.fn(), obtenerCandidatosElegibles: vi.fn(), obtenerTribunalesActivos: vi.fn(), asignarActor: vi.fn(), reemplazarActor: vi.fn(), finalizarAsignacion: vi.fn(), registrarDecisionAcademica: vi.fn(),
@@ -421,6 +427,8 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerCondiciones.mockResolvedValue({ count: 0, results: [] })
     postulacionesService.obtenerEntregas.mockResolvedValue({ count: 0, results: [] })
     postulacionesService.crearEntregaFisica.mockResolvedValue({ id: 99 })
+    postulacionesService.verificarCondiciones.mockResolvedValue([])
+    postulacionesService.registrarEntregas.mockResolvedValue([])
     postulacionesService.obtenerCierre.mockResolvedValue(closureResponse)
     postulacionesService.aprobarRevisionFinal.mockResolvedValue({ ...closureResponse, revision_final_aprobada: true, puede_aprobar_revision_final: false, puede_aprobar_cierre: true })
     postulacionesService.aprobarCierreDocumental.mockResolvedValue({ ...closureResponse, revision_final_aprobada: true, cierre_documental_aprobado: true, puede_aprobar_revision_final: false, puede_aprobar_cierre: false, puede_concluir: true })
@@ -1380,11 +1388,18 @@ describe('ExpedientePage US-008', () => {
   it('completa 3/4 a 4/4 al registrar la recepción física del fólder', async () => {
     let folderReceived = false
     let delivery = null
+    let deliveryLoads = 0
+    const creation = deferred()
+    const refreshedDeliveries = deferred()
     postulacionesService.obtenerExpediente.mockImplementation(async () => inscriptionStageResponse(folderReceived ? 4 : 3))
-    postulacionesService.obtenerEntregas.mockImplementation(async () => ({ results: delivery ? [delivery] : [] }))
-    postulacionesService.crearEntregaFisica.mockImplementation(async () => {
+    postulacionesService.obtenerEntregas.mockImplementation(() => {
+      deliveryLoads += 1
+      if (deliveryLoads <= 2) return Promise.resolve({ results: [] })
+      return refreshedDeliveries.promise
+    })
+    postulacionesService.crearEntregaFisica.mockImplementation(() => {
       delivery = { id: 99, codigo: 'FOLDER_AMARILLO', nombre: 'Fólder amarillo rotulado con nombre y modalidad', estado: 'PENDIENTE', estado_display: 'Pendiente de recepción', cantidad: 1, cantidad_recibida: 0 }
-      return delivery
+      return creation.promise.then(() => delivery)
     })
     postulacionesService.registrarEntrega.mockImplementation(async () => {
       folderReceived = true
@@ -1393,10 +1408,32 @@ describe('ExpedientePage US-008', () => {
     renderApplicationManagerPage()
 
     expect(await screen.findByText('3 de 4 cumplidos')).toBeInTheDocument()
+    const physicalSection = document.getElementById('inscripcion-entregas')
+    window.history.replaceState(window.history.state, '', '#inscripcion-entregas')
+    const hash = window.location.hash
     const folder = await screen.findByText('Fólder amarillo rotulado con nombre y modalidad')
     const item = folder.closest('li')
     await userEvent.click(within(item).getByRole('button', { name: 'Registrar recepción' }))
-    const form = await within(item).findByRole('form', { name: 'Registrar entrega: Fólder amarillo rotulado con nombre y modalidad' })
+    await waitFor(() => expect(postulacionesService.crearEntregaFisica).toHaveBeenCalledTimes(1))
+    expect(within(item).getByRole('button', { name: 'Preparando…' })).toBeDisabled()
+    expect(postulacionesService.registrarEntrega).not.toHaveBeenCalled()
+    const expedienteLoads = postulacionesService.obtenerExpediente.mock.calls.length
+
+    await act(async () => creation.resolve())
+    await waitFor(() => expect(postulacionesService.obtenerEntregas).toHaveBeenCalledTimes(3))
+    expect(screen.queryByRole('form', { name: 'Registrar entrega: Fólder amarillo rotulado con nombre y modalidad' })).not.toBeInTheDocument()
+    await act(async () => refreshedDeliveries.resolve({ results: [delivery] }))
+    const form = await screen.findByRole('form', { name: 'Registrar entrega: Fólder amarillo rotulado con nombre y modalidad' })
+    expect(form).toBeVisible()
+    expect(form.isConnected).toBe(true)
+    expect(document.getElementById('inscripcion-entregas')).toBe(physicalSection)
+    expect(window.location.hash).toBe(hash)
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(expedienteLoads)
+    expect(postulacionesService.registrarEntrega).not.toHaveBeenCalled()
+    expect(screen.getByText('Estado: Pendiente de recepción')).toBeInTheDocument()
+    expect(screen.getByText('Cantidad recibida: 0')).toBeInTheDocument()
+    expect(screen.getByText('Receptor: Pendiente')).toBeInTheDocument()
+    expect(within(form).getByRole('button', { name: 'Guardar' })).toBeEnabled()
     await userEvent.click(within(form).getByRole('button', { name: 'Guardar' }))
 
     expect(await screen.findByText('4 de 4 cumplidos')).toBeInTheDocument()
@@ -1728,6 +1765,96 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('ACTA')).toBeInTheDocument()
     expect(screen.getByText('EJEMPLARES')).toBeInTheDocument()
     expect(screen.getByText('INFORME')).toBeInTheDocument()
+  })
+
+  it('restaura condiciones técnicas después del refresh por verificar condiciones seleccionadas', async () => {
+    const refreshedExpediente = deferred()
+    const pendingConditions = [
+      { id: 101, nombre: 'Condición uno', estado: 'PENDIENTE', estado_display: 'Pendiente' },
+      { id: 102, nombre: 'Condición dos', estado: 'PENDIENTE', estado_display: 'Pendiente' },
+    ]
+    const closureStage = projectStageResponse('CIERRE_DOCUMENTAL')
+    postulacionesService.obtenerExpediente
+      .mockResolvedValueOnce(closureStage)
+      .mockReturnValueOnce(refreshedExpediente.promise)
+    postulacionesService.obtenerCondiciones
+      .mockResolvedValueOnce({ results: pendingConditions })
+      .mockResolvedValue({ results: pendingConditions.map((item) => ({ ...item, estado: 'CUMPLE', estado_display: 'Cumple' })) })
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+    window.history.replaceState(window.history.state, '', window.location.pathname)
+    renderClosureManagerPage()
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Seleccionar pendientes' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Verificar seleccionadas (2)' }))
+
+    await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole('heading', { name: 'Condiciones y entregas técnicas' })).not.toBeInTheDocument()
+    expect(window.location.hash).toBe('#condiciones-tecnicas')
+    expect(scrollIntoView).not.toHaveBeenCalled()
+
+    await act(async () => refreshedExpediente.resolve(closureStage))
+
+    await screen.findByRole('heading', { name: 'Condiciones y entregas técnicas' })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+    expect(window.location.hash).toBe('#condiciones-tecnicas')
+  })
+
+  it('restaura condiciones técnicas después del refresh por registrar entregas seleccionadas', async () => {
+    const refreshedExpediente = deferred()
+    const pendingDeliveries = [
+      { id: 201, codigo: 'CD_RESPALDO', nombre: 'CD de respaldo', estado: 'PENDIENTE', estado_display: 'Pendiente', cantidad: 1, cantidad_recibida: 0 },
+      { id: 202, codigo: 'EJEMPLARES_IMPRESOS', nombre: 'Ejemplares impresos', estado: 'PENDIENTE', estado_display: 'Pendiente', cantidad: 2, cantidad_recibida: 0 },
+    ]
+    const closureStage = projectStageResponse('CIERRE_DOCUMENTAL')
+    postulacionesService.obtenerExpediente
+      .mockResolvedValueOnce(closureStage)
+      .mockReturnValueOnce(refreshedExpediente.promise)
+    postulacionesService.obtenerEntregas
+      .mockResolvedValueOnce({ results: pendingDeliveries })
+      .mockResolvedValue({ results: pendingDeliveries.map((item) => ({ ...item, estado: 'COMPLETA', estado_display: 'Completa', cantidad_recibida: item.cantidad })) })
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+    window.history.replaceState(window.history.state, '', window.location.pathname)
+    renderClosureManagerPage()
+
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Seleccionar pendientes (entregas)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar seleccionadas (2)' }))
+    const form = screen.getByRole('form', { name: 'Registrar entregas seleccionadas (2)' })
+    await userEvent.type(within(form).getByLabelText('Cantidad recibida: CD de respaldo'), '1')
+    await userEvent.type(within(form).getByLabelText('Cantidad recibida: Ejemplares impresos'), '2')
+    await userEvent.click(within(form).getByRole('button', { name: 'Guardar lotes' }))
+
+    await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole('heading', { name: 'Condiciones y entregas técnicas' })).not.toBeInTheDocument()
+    expect(window.location.hash).toBe('#condiciones-tecnicas')
+    expect(scrollIntoView).not.toHaveBeenCalled()
+
+    await act(async () => refreshedExpediente.resolve(closureStage))
+
+    await screen.findByRole('heading', { name: 'Condiciones y entregas técnicas' })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+    expect(window.location.hash).toBe('#condiciones-tecnicas')
+  })
+
+  it('no restaura condiciones técnicas durante un refresh ajeno a esa sección', async () => {
+    const closureStage = projectStageResponse('CIERRE_DOCUMENTAL')
+    postulacionesService.obtenerExpediente
+      .mockRejectedValueOnce({ message: 'No se pudo cargar temporalmente.' })
+      .mockResolvedValueOnce(closureStage)
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+    window.history.replaceState(window.history.state, '', '#documentos')
+    renderClosureManagerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reintentar' }))
+
+    await screen.findByRole('heading', { name: 'Condiciones y entregas técnicas' })
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2)
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(window.location.hash).toBe('#documentos')
   })
 
   it('oculta Programar defensa mientras la orientación reporta precondiciones pendientes', async () => {
@@ -4440,6 +4567,7 @@ describe('ExpedientePage US-008', () => {
     await userEvent.click(within(detail).getByRole('button', { name: 'Iniciar defensa' }))
     const start = screen.getByRole('dialog', { name: 'Iniciar defensa' })
 
+    expect(start).toHaveClass('bg-black/25')
     expect(within(start).getByText('Confirma los participantes presentes antes de iniciar la defensa.')).toBeInTheDocument()
     expect(within(start).getByRole('checkbox', { name: 'Tribunal Pendiente — Tribunal' })).toBeChecked()
     expect(within(start).getByRole('checkbox', { name: 'Tribunal Pendiente 2 — Tribunal' })).toBeChecked()
@@ -5070,18 +5198,64 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('button', { name: 'Aprobar Revisión de Tribunal Previa' })).not.toBeInTheDocument()
   })
 
-  it('aprueba revisión final con confirmación y actualización parcial', async () => {
+  it('aprueba revisión final con confirmación y refresh canónico sin navegación final', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    const refreshed = { ...response, cierre: { data: { ...closureResponse, revision_final_aprobada: true, puede_aprobar_revision_final: false, puede_aprobar_cierre: true }, error: '' } }
+    postulacionesService.obtenerExpediente.mockResolvedValueOnce(response).mockResolvedValueOnce(refreshed)
+    window.history.replaceState(window.history.state, '', '#condiciones-tecnicas')
     renderClosureManagerPage()
     await userEvent.click(await screen.findByRole('button', { name: 'Aprobar revisión final' }))
     await userEvent.type(screen.getByLabelText('Observaciones'), 'Revisión técnica completa')
     await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
     await waitFor(() => expect(postulacionesService.aprobarRevisionFinal).toHaveBeenCalledWith(7, 'Revisión técnica completa', expect.any(AbortSignal)))
     expect(confirm).toHaveBeenCalledTimes(1)
-    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
     expect(await screen.findByText('Aprobada')).toBeInTheDocument()
+    expect(window.location.hash).toBe('#condiciones-tecnicas')
     confirm.mockRestore()
+  })
+
+  it('concluye con refetch canónico demorado y restaura únicamente el resumen final', async () => {
+    const readyToConclude = {
+      ...response,
+      cierre: { data: { ...closureResponse, revision_final_aprobada: true, cierre_documental_aprobado: true, puede_aprobar_revision_final: false, puede_aprobar_cierre: false, puede_concluir: true }, error: '' },
+    }
+    const concludedClosure = { ...readyToConclude.cierre.data, estado_general: 'CONCLUIDA', etapa_actual: null, concluida: true, puede_concluir: false }
+    const concludedExpediente = {
+      ...readyToConclude,
+      detalle: { ...response.detalle, estado_actual_detalle: { codigo: 'CONCLUIDA', nombre: 'Concluida' } },
+      flujo: { ...response.flujo, etapa_actual: null },
+      cierre: { data: concludedClosure, error: '' },
+    }
+    const refreshedExpediente = deferred()
+    postulacionesService.obtenerExpediente
+      .mockResolvedValueOnce(readyToConclude)
+      .mockReturnValueOnce(refreshedExpediente.promise)
+    postulacionesService.concluirPostulacion.mockResolvedValue(concludedClosure)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const scrolledIds = []
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(function scrollIntoView() { scrolledIds.push(this.id) }),
+    })
+    window.history.replaceState(window.history.state, '', '#condiciones-tecnicas')
+    renderClosureManagerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Concluir técnicamente' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+
+    await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
+    expect(window.location.hash).toBe('#resumen')
+    expect(screen.queryByText('✓ Expediente concluido')).not.toBeInTheDocument()
+    expect(scrolledIds).toEqual([])
+
+    await act(async () => refreshedExpediente.resolve(concludedExpediente))
+
+    expect(await screen.findByText('✓ Expediente concluido')).toBeInTheDocument()
+    expect(screen.getByText('Nota final: 84.00')).toBeInTheDocument()
+    expect(screen.getAllByText('APROBACIÓN PLENA').length).toBeGreaterThan(0)
+    expect(window.location.hash).toBe('#resumen')
+    expect(scrolledIds).toEqual(['resumen'])
   })
 
   it('exige motivo al reabrir y conserva errores funcionales por campo', async () => {

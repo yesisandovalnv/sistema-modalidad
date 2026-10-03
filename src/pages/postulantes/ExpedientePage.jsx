@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PageHeader, DataState, Modal } from '../../components/crud/CrudShell'
 import { Card } from '../../components/ui/card'
@@ -65,6 +65,7 @@ export default function ExpedientePage() {
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
   const [closureRevision, setClosureRevision] = useState(0)
+  const pendingSectionRestore = useRef(null)
   const [history, setHistory] = useState({ data: null, loading: true, error: '' })
   const [historyRevision, setHistoryRevision] = useState(0)
   const [historyView, setHistoryView] = useState({ id: null, page: 1 })
@@ -238,6 +239,13 @@ export default function ExpedientePage() {
     load(controller.signal)
     return () => controller.abort()
   }, [load, revision])
+  useLayoutEffect(() => {
+    if (loading || !data || !pendingSectionRestore.current) return
+    const section = document.getElementById(pendingSectionRestore.current)
+    if (!section) return
+    pendingSectionRestore.current = null
+    section.scrollIntoView({ block: 'start' })
+  }, [data, loading])
   useEffect(() => {
     if (data?.detalle?.modalidad_detalle?.codigo !== 'EXAMEN_GRADO') {
       setExamen(null)
@@ -1374,9 +1382,9 @@ export default function ExpedientePage() {
         stages={flujo.etapas}
         canManage={canManageClosure}
         refreshToken={closureRevision}
-        onChanged={() => setHistoryRevision((value) => value + 1)}
+        onChanged={(updatedClosure) => { if (updatedClosure?.concluida === true) { pendingSectionRestore.current = 'resumen'; window.history.replaceState(window.history.state, '', '#resumen') }; setHistoryRevision((value) => value + 1); setRevision((value) => value + 1) }}
         />
-        <ClosureRequirements postulacion={detalle.id} canManage={canManageClosure} deliveryCodes={Array.isArray(cierre.data?.entregas_requeridas) ? cierre.data.entregas_requeridas : null} onChanged={() => { setStageApproval({ submitting: false, error: '', fields: {} }); setClosureRevision((value) => value + 1); setRevision((value) => value + 1) }} />
+        <ClosureRequirements postulacion={detalle.id} canManage={canManageClosure} deliveryCodes={Array.isArray(cierre.data?.entregas_requeridas) ? cierre.data.entregas_requeridas : null} onChanged={() => { pendingSectionRestore.current = 'condiciones-tecnicas'; window.history.replaceState(window.history.state, '', '#condiciones-tecnicas'); setStageApproval({ submitting: false, error: '', fields: {} }); setClosureRevision((value) => value + 1); setRevision((value) => value + 1) }} />
       </div>
     </div>
   </details>
@@ -2878,7 +2886,7 @@ function DefenseOperationDialog({ operation, stages, quorum, onSubmit, onClose }
     return onSubmit(event, decisions)
   }
 
-  return <Modal title={titles[operation.action]} onClose={onClose}>
+  return <Modal title={titles[operation.action]} onClose={onClose} overlayClassName={operation.action === 'iniciar' ? 'bg-black/25' : undefined}>
     <form className="mt-4 grid gap-4" onSubmit={submit} noValidate>
       {operation.action === 'programar' ? <>
         {operation.programmingContext ? <>

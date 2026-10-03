@@ -183,7 +183,6 @@ export default function ClosureRequirements({
       setDeliveryCreation({ codigo: '', submitting: false, error: '' })
       await load()
       setAction({ kind: 'entrega', operation: 'registrar', item: created, submitting: false, error: '' })
-      onChanged?.()
     } catch (error) {
       if (!error.canceled) setDeliveryCreation({ codigo: requirement.codigo, submitting: false, error: error.message })
     } finally { submitting.current = false }

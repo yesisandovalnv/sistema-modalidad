@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ClosureRequirements from './ClosureRequirements'
@@ -491,9 +491,28 @@ describe('ClosureRequirements', () => {
       await waitFor(() => expect(within(item).queryByRole('form')).not.toBeInTheDocument())
     })
 
-    it('crea el control físico de Inscripción sin mostrar las condiciones del cierre', async () => {
-      postulacionesService.crearEntregaFisica.mockResolvedValue({})
-      postulacionesService.obtenerEntregas.mockResolvedValue({ results: [] })
+    it('crea el control físico pendiente y abre su formulario tras una respuesta demorada', async () => {
+      const creation = deferred()
+      const refreshedDeliveries = deferred()
+      const delivery = {
+        id: 99,
+        codigo: 'FOLDER_AMARILLO',
+        nombre: 'Fólder amarillo rotulado con nombre y modalidad',
+        estado: 'PENDIENTE',
+        estado_display: 'Pendiente',
+        cantidad: 1,
+        cantidad_recibida: 0,
+        fecha_entrega: null,
+        recibido_por_nombre: null,
+      }
+      let deliveryLoads = 0
+      postulacionesService.crearEntregaFisica.mockReturnValue(creation.promise)
+      postulacionesService.obtenerEntregas.mockImplementation(() => {
+        deliveryLoads += 1
+        return deliveryLoads === 1
+          ? Promise.resolve({ results: [] })
+          : refreshedDeliveries.promise
+      })
       const onChanged = vi.fn()
       render(<ClosureRequirements
         postulacion={7}
@@ -520,7 +539,20 @@ describe('ClosureRequirements', () => {
         1,
         expect.any(AbortSignal),
       ))
-      expect(onChanged).toHaveBeenCalledTimes(1)
+      expect(within(item).getByRole('button', { name: 'Preparando…' })).toBeDisabled()
+      expect(postulacionesService.registrarEntrega).not.toHaveBeenCalled()
+      await act(async () => creation.resolve(delivery))
+      await waitFor(() => expect(postulacionesService.obtenerEntregas).toHaveBeenCalledTimes(2))
+      expect(screen.queryByRole('form', { name: 'Registrar entrega: Fólder amarillo rotulado con nombre y modalidad' })).not.toBeInTheDocument()
+
+      await act(async () => refreshedDeliveries.resolve({ results: [delivery] }))
+      const form = await screen.findByRole('form', { name: 'Registrar entrega: Fólder amarillo rotulado con nombre y modalidad' })
+      expect(form).toBeVisible()
+      expect(screen.getByText('Estado: Pendiente')).toBeInTheDocument()
+      expect(screen.getByText('Cantidad recibida: 0')).toBeInTheDocument()
+      expect(screen.getByText('Receptor: Pendiente')).toBeInTheDocument()
+      expect(postulacionesService.registrarEntrega).not.toHaveBeenCalled()
+      expect(onChanged).not.toHaveBeenCalled()
     })
   })
 })
