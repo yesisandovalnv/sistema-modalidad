@@ -396,8 +396,8 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.actualizarEvidenciaInformeRevisionTribunal.mockResolvedValue({ id: 771, resultado: 'SUFICIENTE', evidencia_version: 603, activo: true })
     postulacionesService.obtenerDictamenesRevision.mockResolvedValue([])
     postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
-      { id: 4, codigo: 'INFORME_FINAL', nombre: 'Informe final' },
-      { id: 5, codigo: 'ACTA_DEFENSA', nombre: 'Acta de Defensa' },
+      { id: 4, codigo: 'INFORME_FINAL', nombre: 'Informe final', capacidad_carga: { permitida: true } },
+      { id: 5, codigo: 'ACTA_DEFENSA', nombre: 'Acta de Defensa', capacidad_carga: { permitida: true } },
     ] })
     postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([
       { id: 21, codigo: 'ACTA_DEFENSA', nombre: 'Acta de defensa histórica' },
@@ -1347,9 +1347,9 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerExpediente.mockImplementation(async () => inscriptionStageResponse(uploadedDocuments))
     postulacionesService.cargarDocumento.mockImplementation(async () => { uploadedDocuments += 1 })
     postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
-      { id: 41, codigo: 'CARTA_SOLICITUD_PROYECTO', nombre: 'Carta de Solicitud de Proyecto de Grado' },
-      { id: 42, codigo: 'MATRICULA_VIGENTE', nombre: 'Comprobante de Matrícula Vigente' },
-      { id: 43, codigo: 'HISTORIAL_PRERREQ', nombre: 'Historial Académico de Prerrequisitos' },
+      { id: 41, codigo: 'CARTA_SOLICITUD_PROYECTO', nombre: 'Carta de Solicitud de Proyecto de Grado', capacidad_carga: { permitida: true } },
+      { id: 42, codigo: 'MATRICULA_VIGENTE', nombre: 'Comprobante de Matrícula Vigente', capacidad_carga: { permitida: true } },
+      { id: 43, codigo: 'HISTORIAL_PRERREQ', nombre: 'Historial Académico de Prerrequisitos', capacidad_carga: { permitida: true } },
     ] })
     renderOwnerPage()
 
@@ -1508,7 +1508,7 @@ describe('ExpedientePage US-008', () => {
     }
     postulacionesService.obtenerExpediente.mockReset().mockResolvedValueOnce(beforeUpload).mockResolvedValueOnce(afterUpload)
     postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
-      { id: 23, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final' },
+      { id: 23, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final', capacidad_carga: { permitida: true } },
     ] })
     let resolveUpload
     postulacionesService.cargarDocumento.mockReturnValue(new Promise((resolve) => { resolveUpload = resolve }))
@@ -1555,7 +1555,7 @@ describe('ExpedientePage US-008', () => {
       },
     })
     postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
-      { id: 23, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final' },
+      { id: 23, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final', capacidad_carga: { permitida: true } },
     ] })
     postulacionesService.cargarDocumento.mockRejectedValue({ status: 400, message: 'Carga rechazada.' })
     const auth = {
@@ -2109,10 +2109,10 @@ describe('ExpedientePage US-008', () => {
       ] },
     })
     postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
-      { id: 10, codigo: 'PERFIL_TESIS', nombre: 'Perfil de Tesis' },
-      { id: 11, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final' },
-      { id: 12, codigo: 'INFORME_TUTOR_TESIS', nombre: 'Informe del Tutor de Tesis' },
-      { id: 13, codigo: 'INFORME_TRIB_TESIS', nombre: 'Informe del Tribunal de Tesis' },
+      { id: 10, codigo: 'PERFIL_TESIS', nombre: 'Perfil de Tesis', capacidad_carga: { permitida: true } },
+      { id: 11, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final', capacidad_carga: { permitida: true } },
+      { id: 12, codigo: 'INFORME_TUTOR_TESIS', nombre: 'Informe del Tutor de Tesis', capacidad_carga: { permitida: true } },
+      { id: 13, codigo: 'INFORME_TRIB_TESIS', nombre: 'Informe del Tribunal de Tesis', capacidad_carga: { permitida: true } },
     ] })
     const auth = { user: { id: 3, rol: { codigo: 'EST' } }, roleCode: 'EST', hasPermission: (name) => name === 'puede_cargar_documentos' }
     render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
@@ -2129,9 +2129,9 @@ describe('ExpedientePage US-008', () => {
 
   it('reserva la Hoja de observaciones para la carga contextual de Defensa de Perfil', async () => {
     postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
-      { id: 10, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final' },
-      { id: 11, codigo: 'OBSERVACIONES_DEFENSA_PERFIL', nombre: 'Hoja de observaciones de Defensa de Perfil' },
-      { id: 12, codigo: 'INFORME_FINAL_TUTOR', nombre: 'Informe Final del Tutor' },
+      { id: 10, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final', capacidad_carga: { permitida: true } },
+      { id: 11, codigo: 'OBSERVACIONES_DEFENSA_PERFIL', nombre: 'Hoja de observaciones de Defensa de Perfil', capacidad_carga: { permitida: true } },
+      { id: 12, codigo: 'INFORME_FINAL_TUTOR', nombre: 'Informe Final del Tutor', capacidad_carga: { permitida: true } },
     ] })
     renderDefenseDocumentsAdminPage()
 
@@ -3883,6 +3883,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('Versión actual')).toBeInTheDocument()
     expect(screen.getByText('informe-largo.pdf')).toBeInTheDocument()
     expect(screen.getByText('2.0 KB')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Ver', exact: true })).toHaveLength(2)
     expect(screen.getAllByRole('button', { name: 'Descargar' })).toHaveLength(2)
     expect(postulacionesService.obtenerVersiones).toHaveBeenCalledWith(31, 1, expect.any(AbortSignal))
     await userEvent.click(screen.getAllByRole('button', { name: 'Ver observaciones' })[0])
@@ -3912,6 +3913,76 @@ describe('ExpedientePage US-008', () => {
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
     expect(click).toHaveBeenCalledTimes(1)
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:documento')
+  })
+
+  it('abre la versión seleccionada en una pestaña nueva usando el blob autenticado', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    const blob = new Blob(['%PDF-1.4'], { type: 'application/pdf' })
+    const deferredDownload = deferred()
+    postulacionesService.descargarVersion.mockReturnValue(deferredDownload.promise)
+    let cleanupPreview
+    const previewWindow = {
+      closed: false,
+      opener: window,
+      location: { replace: vi.fn() },
+      close: vi.fn(),
+    }
+    const open = vi.spyOn(window, 'open').mockReturnValue(previewWindow)
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const setInterval = vi.spyOn(window, 'setInterval').mockImplementation((callback) => {
+      cleanupPreview = callback
+      return 41
+    })
+    const clearInterval = vi.spyOn(window, 'clearInterval').mockImplementation(() => {})
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Ver', exact: true }))[1])
+
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank')
+    expect(previewWindow.opener).toBeNull()
+    expect(postulacionesService.descargarVersion).toHaveBeenCalledWith(302, 'informe-final.pdf')
+    expect(createObjectURL).not.toHaveBeenCalled()
+    await act(async () => deferredDownload.resolve({ blob, filename: 'informe-final.pdf' }))
+
+    expect(createObjectURL).toHaveBeenCalledWith(blob)
+    expect(previewWindow.location.replace).toHaveBeenCalledWith('blob:preview')
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    previewWindow.closed = true
+    act(() => cleanupPreview())
+    expect(clearInterval).toHaveBeenCalledWith(41)
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:preview')
+    open.mockRestore()
+    createObjectURL.mockRestore()
+    revokeObjectURL.mockRestore()
+    setInterval.mockRestore()
+    clearInterval.mockRestore()
+  })
+
+  it('cierra la pestaña reservada y muestra el error si falla la vista previa', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.descargarVersion.mockRejectedValue({ status: 403, message: 'No tienes autorización para descargar este archivo.' })
+    const previewWindow = {
+      closed: false,
+      opener: window,
+      location: { replace: vi.fn() },
+      close: vi.fn(function close() { this.closed = true }),
+    }
+    const open = vi.spyOn(window, 'open').mockReturnValue(previewWindow)
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))
+
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Ver', exact: true }))[0])
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No tienes autorización para descargar este archivo.')
+    expect(postulacionesService.descargarVersion).toHaveBeenCalledWith(301, 'informe-largo.pdf')
+    expect(previewWindow.close).toHaveBeenCalledOnce()
+    expect(previewWindow.location.replace).not.toHaveBeenCalled()
+    expect(createObjectURL).not.toHaveBeenCalled()
+    open.mockRestore()
+    createObjectURL.mockRestore()
   })
 
   it('muestra un error limpio cuando falla la descarga', async () => {
@@ -4030,6 +4101,19 @@ describe('ExpedientePage US-008', () => {
     expect(within(dialog).getByText('No hay tipos documentales activos disponibles.')).toBeVisible()
     expect(within(dialog).getByRole('button', { name: 'Cargar 0 documentos' })).toBeDisabled()
     expect(dialog.querySelectorAll('input[type="file"]')).toHaveLength(0)
+  })
+
+  it('ofrece en carga múltiple únicamente documentos con capacidad permitida', async () => {
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
+      { id: 41, codigo: 'CARTA_SOLICITUD', nombre: 'Carta de Solicitud', capacidad_carga: { permitida: true, codigo: 'RECHAZADO' } },
+      { id: 42, codigo: 'MATRICULA_VIGENTE', nombre: 'Matrícula Vigente', capacidad_carga: { permitida: false, codigo: 'DOCUMENTO_APROBADO' } },
+    ] })
+    renderOwnerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+
+    expect(await screen.findByLabelText('Carta de Solicitud')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Matrícula Vigente')).not.toBeInTheDocument()
   })
 
   it('carga un documento inicial con postulación contextual y tipo por nombre', async () => {

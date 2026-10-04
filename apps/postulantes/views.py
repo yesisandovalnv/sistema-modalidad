@@ -55,7 +55,7 @@ from apps.postulantes.decisiones_academicas import DecisionAcademicaEtapaService
 from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
 from apps.postulantes.dictamenes_revision import DictamenRevisionDocumentoService
 from apps.postulantes.workflow import WorkflowService
-from apps.documentos.models import TipoDocumento
+from apps.documentos.models import DocumentoPostulacion, TipoDocumento
 from apps.documentos.serializers import TipoDocumentoHistoricoSerializer, SubirDocumentoHistoricoSerializer, VersionDocumentoSerializer
 from apps.documentos.services import DocumentoService
 from apps.postulantes.models import SeguimientoEtapa
@@ -277,30 +277,70 @@ class PostulacionViewSet(viewsets.ModelViewSet):
             etapa_codigo = policy.resolver_contexto_documental(postulacion)
             if etapa_codigo:
                 codigos_permitidos = policy.get_documentos_aplicables_en_etapa(etapa_codigo)
-                if codigos_permitidos:
-                    documentos_aplicables = list(
-                        TipoDocumento.objects.filter(codigo__in=codigos_permitidos, activo=True)
-                        .values("id", "codigo", "nombre")
+                tipos_aplicables = list(
+                    TipoDocumento.objects.filter(codigo__in=codigos_permitidos, activo=True)
+                )
+                codigos_recuperados = {tipo.codigo for tipo in tipos_aplicables}
+                codigos_faltantes = list(dict.fromkeys(
+                    codigo for codigo in codigos_permitidos if codigo not in codigos_recuperados
+                ))
+                if codigos_faltantes:
+                    return error_response(
+                        message=(
+                            "Configuración documental incompleta para "
+                            f"{postulacion.modalidad.codigo}/{etapa_codigo}; "
+                            f"faltan tipos documentales activos: {', '.join(codigos_faltantes)}."
+                        ),
+                        data={
+                            "postulacion_id": postulacion.pk,
+                            "modalidad": postulacion.modalidad.codigo,
+                            "etapa_actual": etapa_codigo,
+                            "codigos_faltantes": codigos_faltantes,
+                        },
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
-                    codigos_recuperados = {item["codigo"] for item in documentos_aplicables}
-                    codigos_faltantes = list(dict.fromkeys(
-                        codigo for codigo in codigos_permitidos if codigo not in codigos_recuperados
-                    ))
-                    if codigos_faltantes:
-                        return error_response(
-                            message=(
-                                "Configuración documental incompleta para "
-                                f"{postulacion.modalidad.codigo}/{etapa_codigo}; "
-                                f"faltan tipos documentales activos: {', '.join(codigos_faltantes)}."
-                            ),
-                            data={
-                                "postulacion_id": postulacion.pk,
-                                "modalidad": postulacion.modalidad.codigo,
-                                "etapa_actual": etapa_codigo,
-                                "codigos_faltantes": codigos_faltantes,
-                            },
-                            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+
+                documento_service = DocumentoService()
+                documentos_existentes = list(
+                    DocumentoPostulacion.all_objects.filter(postulacion=postulacion)
+                    .select_related("estado", "tipo_documento")
+                )
+                tipos_aplicables_ids = {tipo.pk for tipo in tipos_aplicables}
+                for documento in documentos_existentes:
+                    if (
+                        documento.activo
+                        and documento.tipo_documento.activo
+                        and documento.tipo_documento_id not in tipos_aplicables_ids
+                    ):
+                        capacidad = documento_service.obtener_capacidad_carga(
+                            postulacion=postulacion,
+                            tipo_documento=documento.tipo_documento,
+                            usuario=request.user,
+                            documento=documento,
+                            policy=policy,
                         )
+                        if capacidad.get("excepcion_aplicabilidad", False):
+                            tipos_aplicables.append(documento.tipo_documento)
+                            tipos_aplicables_ids.add(documento.tipo_documento_id)
+
+                documentos_aplicables = [
+                    {"id": tipo.pk, "codigo": tipo.codigo, "nombre": tipo.nombre}
+                    for tipo in tipos_aplicables
+                ]
+                tipos_por_id = {tipo.pk: tipo for tipo in tipos_aplicables}
+                documentos_por_tipo = {
+                    documento.tipo_documento_id: documento
+                    for documento in documentos_existentes
+                    if documento.tipo_documento_id in tipos_por_id
+                }
+                for item in documentos_aplicables:
+                    item["capacidad_carga"] = documento_service.obtener_capacidad_carga(
+                        postulacion=postulacion,
+                        tipo_documento=tipos_por_id[item["id"]],
+                        usuario=request.user,
+                        documento=documentos_por_tipo.get(item["id"]),
+                        policy=policy,
+                    )
         
         return Response({
             "postulacion_id": postulacion.pk,

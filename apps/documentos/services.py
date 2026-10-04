@@ -24,6 +24,85 @@ from core.permissions import is_staff_user
 class DocumentoService:
     """Servicio centralizado para la lógica de negocio del módulo Documentos."""
 
+    def obtener_capacidad_carga(
+        self,
+        *,
+        postulacion: Postulacion,
+        tipo_documento: TipoDocumento,
+        usuario: Any,
+        documento: Optional[DocumentoPostulacion] = None,
+        policy=None,
+    ) -> Dict[str, Any]:
+        """Resuelve si el actor puede crear ahora una versión sin alterar la aplicabilidad académica."""
+        es_staff = is_staff_user(usuario)
+        if not es_staff and usuario != postulacion.estudiante:
+            return {
+                "permitida": False,
+                "codigo": "NO_AUTORIZADO",
+                "mensaje": "El usuario no tiene permisos para cargar este documento.",
+            }
+
+        if documento is not None and not documento.activo:
+            return {
+                "permitida": False,
+                "codigo": "DOCUMENTO_INACTIVO",
+                "mensaje": "El documento se encuentra inactivo y no admite nuevas versiones.",
+            }
+
+        if documento is None:
+            return {
+                "permitida": True,
+                "codigo": "SIN_DOCUMENTO",
+                "mensaje": "El documento todavía no fue cargado.",
+            }
+
+        estado_codigo = getattr(getattr(documento, "estado", None), "codigo", None)
+        if estado_codigo == "REC":
+            codigo = "RECHAZADO"
+            permitida_estudiante = True
+            mensaje = "El documento fue rechazado y admite una nueva versión."
+        elif documento.requiere_correccion and estado_codigo == "APR":
+            if policy is None:
+                from apps.modalidades.policies import ModalidadPolicyRegistry
+                policy = ModalidadPolicyRegistry.get(postulacion)
+            permitida_estudiante = bool(policy.permite_observacion_post_aprobacion(documento))
+            codigo = "CORRECCION_POST_APROBACION" if permitida_estudiante else "DOCUMENTO_APROBADO"
+            mensaje = (
+                "La corrección post-aprobación autoriza una nueva versión."
+                if permitida_estudiante
+                else "El documento aprobado no tiene una corrección post-aprobación autorizada."
+            )
+        elif documento.requiere_correccion:
+            codigo = "CORRECCION_REQUERIDA"
+            permitida_estudiante = True
+            mensaje = "El documento requiere corrección y admite una nueva versión."
+        elif estado_codigo == "ENV":
+            codigo = "ESPERANDO_REVISION"
+            permitida_estudiante = False
+            mensaje = "El documento está pendiente de revisión administrativa."
+        elif estado_codigo == "APR":
+            codigo = "DOCUMENTO_APROBADO"
+            permitida_estudiante = False
+            mensaje = "El documento está aprobado y no requiere corrección."
+        else:
+            codigo = "ESTADO_NO_CARGABLE"
+            permitida_estudiante = False
+            mensaje = "El estado actual del documento no admite una nueva versión."
+
+        if es_staff:
+            return {
+                "permitida": True,
+                "codigo": codigo,
+                "mensaje": "La carga administrativa está disponible cuando las reglas académicas vigentes la permitan.",
+                **({"excepcion_aplicabilidad": True} if codigo == "CORRECCION_POST_APROBACION" else {}),
+            }
+        return {
+            "permitida": permitida_estudiante,
+            "codigo": codigo,
+            "mensaje": mensaje,
+            **({"excepcion_aplicabilidad": True} if codigo == "CORRECCION_POST_APROBACION" else {}),
+        }
+
     @staticmethod
     def obtener_tipos_documentales_historicos(modalidad):
         """Resuelve los tipos activos de la matriz documental de una modalidad."""
@@ -93,6 +172,13 @@ class DocumentoService:
             from apps.modalidades.policies import ModalidadPolicyRegistry
             if ModalidadPolicyRegistry.has_policy(postulacion):
                 policy = ModalidadPolicyRegistry.get(postulacion)
+                capacidad_carga = self.obtener_capacidad_carga(
+                    postulacion=postulacion,
+                    tipo_documento=tipo_documento,
+                    usuario=usuario,
+                    documento=documento,
+                    policy=policy,
+                )
                 es_carga_especial = bool(policy.evento_policy and (
                     evento_defensa is not None
                     or policy.evento_policy.requiere_vinculo_evento_documento(tipo_documento)
@@ -109,7 +195,10 @@ class DocumentoService:
                             "No se puede cargar un documento ordinario sin un contexto académico válido."
                         )
                     documentos_permitidos = policy.get_documentos_aplicables_en_etapa(etapa_actual_codigo)
-                    if tipo_documento.codigo not in documentos_permitidos:
+                    if (
+                        tipo_documento.codigo not in documentos_permitidos
+                        and not capacidad_carga.get("excepcion_aplicabilidad", False)
+                    ):
                         raise ValidationError(
                             f"El tipo '{tipo_documento.nombre}' no puede cargarse en la etapa '{etapa_actual_codigo}'. "
                             f"Tipos permitidos: {', '.join(documentos_permitidos) or 'ninguno'}."
@@ -120,6 +209,10 @@ class DocumentoService:
                 raise ValidationError(
                     "La modalidad no tiene una policy académica configurada para cargar documentos."
                 )
+            if not capacidad_carga["permitida"]:
+                if capacidad_carga["codigo"] == "NO_AUTORIZADO":
+                    raise PermissionDenied(capacidad_carga["mensaje"])
+                raise ValidationError(capacidad_carga["mensaje"])
             es_carga_inicial = documento is None
             if es_carga_inicial:
                 documento = DocumentoPostulacion.objects.create(

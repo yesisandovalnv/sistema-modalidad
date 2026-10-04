@@ -833,11 +833,14 @@ class TestDocumentoUpload(DocumentoAPITestCase):
     def test_nueva_version_actualiza_estados_de_version_y_no_duplica_documento(self) -> None:
         """Una segunda subida debe crear la versión 2 sin duplicar el documento."""
         self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion, tipo_documento=self.tipo_pdf)
+        documento.estado = self.estado_rec
+        documento.requiere_correccion = True
+        documento.save(update_fields=["estado", "requiere_correccion"])
         response = self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(name="documento_v2.pdf"))
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
-        documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion, tipo_documento=self.tipo_pdf)
         self.assertEqual(DocumentoPostulacion.objects.filter(postulacion=self.postulacion, tipo_documento=self.tipo_pdf).count(), 1)
 
         versiones = VersionDocumento.objects.filter(documento=documento).order_by("numero_version")
@@ -848,6 +851,9 @@ class TestDocumentoUpload(DocumentoAPITestCase):
     def test_fallo_posterior_al_guardado_revierte_registros_y_elimina_solo_archivo_nuevo(self) -> None:
         self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
         documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion, tipo_documento=self.tipo_pdf)
+        documento.estado = self.estado_rec
+        documento.requiere_correccion = True
+        documento.save(update_fields=["estado", "requiere_correccion"])
         anterior = VersionDocumento.objects.get(documento=documento)
         ruta_anterior = Path(anterior.archivo.path)
         archivos_antes = set(self._tmp_media.rglob("*.pdf"))
@@ -864,6 +870,134 @@ class TestDocumentoUpload(DocumentoAPITestCase):
         self.assertTrue(anterior.es_version_actual)
         self.assertTrue(ruta_anterior.exists())
         self.assertEqual(set(self._tmp_media.rglob("*.pdf")), archivos_antes)
+
+    def test_estudiante_no_puede_subir_segunda_version_enviada_sin_correccion(self) -> None:
+        first = self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+
+        second = self.upload_document(
+            self.student_user, self.postulacion.id, self.tipo_pdf.id,
+            self.create_pdf_file(name="documento-v2.pdf"),
+        )
+
+        self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("pendiente de revisión", str(second.data))
+
+    def test_estudiante_puede_subir_nueva_version_rechazada(self) -> None:
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion, tipo_documento=self.tipo_pdf)
+        documento.estado = self.estado_rec
+        documento.requiere_correccion = True
+        documento.save(update_fields=["estado", "requiere_correccion"])
+
+        response = self.upload_document(
+            self.student_user, self.postulacion.id, self.tipo_pdf.id,
+            self.create_pdf_file(name="corregido.pdf"),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_estudiante_no_puede_subir_aprobado_sin_correccion(self) -> None:
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion, tipo_documento=self.tipo_pdf)
+        documento.estado = self.estado_apr
+        documento.requiere_correccion = False
+        documento.save(update_fields=["estado", "requiere_correccion"])
+
+        response = self.upload_document(
+            self.student_user, self.postulacion.id, self.tipo_pdf.id,
+            self.create_pdf_file(name="aprobado-v2.pdf"),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("aprobado", str(response.data))
+
+    def test_estudiante_no_puede_subir_aprobado_con_flag_no_autorizado(self) -> None:
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion, tipo_documento=self.tipo_pdf)
+        documento.estado = self.estado_apr
+        documento.requiere_correccion = True
+        documento.save(update_fields=["estado", "requiere_correccion"])
+
+        capacidad = DocumentoService().obtener_capacidad_carga(
+            postulacion=self.postulacion,
+            tipo_documento=self.tipo_pdf,
+            usuario=self.student_user,
+            documento=documento,
+        )
+        response = self.upload_document(
+            self.student_user, self.postulacion.id, self.tipo_pdf.id,
+            self.create_pdf_file(name="aprobado-inconsistente-v2.pdf"),
+        )
+
+        self.assertEqual(capacidad["codigo"], "DOCUMENTO_APROBADO")
+        self.assertFalse(capacidad["permitida"])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_staff_conserva_nueva_version_sobre_documento_aprobado(self) -> None:
+        self.upload_document(self.admin_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+
+        response = self.upload_document(
+            self.admin_user, self.postulacion.id, self.tipo_pdf.id,
+            self.create_pdf_file(name="admin-v2.pdf"),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_documentos_aplicables_expone_capacidad_sin_ocultar_el_tipo(self) -> None:
+        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
+        self.authenticate_user(self.student_user)
+
+        response = self.client.get(
+            f"/api/v1/postulaciones/{self.postulacion.pk}/documentos-aplicables/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["documentos_aplicables"]), 1)
+        item = response.data["documentos_aplicables"][0]
+        self.assertEqual(item["codigo"], "PDF")
+        self.assertEqual(item["capacidad_carga"]["codigo"], "ESPERANDO_REVISION")
+        self.assertFalse(item["capacidad_carga"]["permitida"])
+
+    def test_documento_inactivo_se_anuncia_y_rechaza_sin_reactivarlo_ni_duplicarlo(self) -> None:
+        first = self.upload_document(
+            self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(),
+        )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(
+            postulacion=self.postulacion, tipo_documento=self.tipo_pdf,
+        )
+        documento.activo = False
+        documento.save(update_fields=["activo"])
+
+        self.authenticate_user(self.student_user)
+        applicable = self.client.get(
+            f"/api/v1/postulaciones/{self.postulacion.pk}/documentos-aplicables/"
+        )
+        item = applicable.data["documentos_aplicables"][0]
+        self.assertEqual(item["capacidad_carga"]["codigo"], "DOCUMENTO_INACTIVO")
+        self.assertFalse(item["capacidad_carga"]["permitida"])
+
+        for user, filename in (
+            (self.student_user, "inactivo-estudiante.pdf"),
+            (self.admin_user, "inactivo-admin.pdf"),
+        ):
+            with self.subTest(user=user.username):
+                response = self.upload_document(
+                    user, self.postulacion.id, self.tipo_pdf.id,
+                    self.create_pdf_file(name=filename),
+                )
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        documento.refresh_from_db()
+        self.assertFalse(documento.activo)
+        self.assertEqual(
+            DocumentoPostulacion.all_objects.filter(
+                postulacion=self.postulacion, tipo_documento=self.tipo_pdf,
+            ).count(),
+            1,
+        )
+        self.assertEqual(VersionDocumento.all_objects.filter(documento=documento).count(), 1)
 
     def test_fallo_en_primera_version_no_deja_documento_ni_archivo(self) -> None:
         with patch("apps.documentos.services.DocumentoService._registrar_auditoria", side_effect=RuntimeError("fallo posterior")):

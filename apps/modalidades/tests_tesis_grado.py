@@ -12,6 +12,7 @@ from apps.modalidades.policies import ModalidadPolicyRegistry
 from apps.modalidades.tesis_grado import TesisGradoEvaluacionPolicy, TesisGradoPolicy
 from apps.documentos.models import (ConfirmacionCorreccionDocumento, DocumentoPostulacion,
     EstadoDocumento, ObservacionDocumento, TipoDocumento, VersionDocumento)
+from apps.documentos.services import DocumentoService
 from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.models import (
     AsignacionPostulacion, EstadoPostulacion, EvaluacionDefensa, EventoDefensa,
@@ -86,10 +87,172 @@ class TesisGradoPolicyTest(TestCase):
             "id": TipoDocumento.objects.get(codigo="ACTA_DEFENSA").pk,
             "codigo": "ACTA_DEFENSA",
             "nombre": "Acta de Defensa",
+            "capacidad_carga": {
+                "permitida": True,
+                "codigo": "SIN_DOCUMENTO",
+                "mensaje": "El documento todavía no fue cargado.",
+            },
         }])
 
         self.postulacion.estado_actual = EstadoPostulacion.objects.get(codigo="CONCLUIDA")
         self.assertIsNone(policy.resolver_contexto_documental(self.postulacion))
+
+    def test_capacidad_preserva_correccion_post_aprobacion_de_documento_final(self):
+        tipo = TipoDocumento.objects.get(codigo="DOCUMENTO_FINAL")
+        documento = DocumentoPostulacion.objects.create(
+            postulacion=self.postulacion,
+            tipo_documento=tipo,
+            estado=EstadoDocumento.objects.get(codigo="APR"),
+            requiere_correccion=True,
+        )
+        policy = ModalidadPolicyRegistry.get(self.postulacion)
+        service = DocumentoService()
+
+        bloqueada = service.obtener_capacidad_carga(
+            postulacion=self.postulacion,
+            tipo_documento=tipo,
+            usuario=self.student,
+            documento=documento,
+            policy=policy,
+        )
+        self.assertFalse(bloqueada["permitida"])
+        self.assertEqual(bloqueada["codigo"], "DOCUMENTO_APROBADO")
+
+        evento = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=self.seguimientos["DEFENSA_PRIVADA"],
+            tipo_evento="DEFENSA_PRIVADA",
+            estado="FINALIZADA",
+            fecha_programada="2026-08-01T10:00:00Z",
+            fecha_fin_real="2026-08-01T11:00:00Z",
+            lugar="Sala",
+            programado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=evento,
+            tipo_evaluacion="RESULTADO_FINAL",
+            modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",
+            es_resultado_final_evento=True,
+            registrado_por=self.admin,
+        )
+
+        permitida = service.obtener_capacidad_carga(
+            postulacion=self.postulacion,
+            tipo_documento=tipo,
+            usuario=self.student,
+            documento=documento,
+            policy=policy,
+        )
+        self.assertTrue(permitida["permitida"])
+        self.assertEqual(permitida["codigo"], "CORRECCION_POST_APROBACION")
+        self.assertTrue(permitida["excepcion_aplicabilidad"])
+
+    def test_correccion_post_aprobacion_es_aplicable_y_admite_subida_real(self):
+        self.postulacion.seguimientos_etapa.update(estado=SeguimientoEtapa.EstadoChoices.APROBADA)
+        tipo = TipoDocumento.objects.get(codigo="DOCUMENTO_FINAL")
+        documento = DocumentoPostulacion.objects.create(
+            postulacion=self.postulacion,
+            tipo_documento=tipo,
+            estado=EstadoDocumento.objects.get(codigo="APR"),
+            requiere_correccion=True,
+        )
+        VersionDocumento.objects.create(
+            documento=documento,
+            subido_por=self.student,
+            numero_version=1,
+            archivo=SimpleUploadedFile("final-v1.pdf", b"%PDF-1.4", content_type="application/pdf"),
+            nombre_original="final-v1.pdf",
+            tamano_bytes=8,
+            hash_sha256="0" * 64,
+            es_version_actual=True,
+        )
+        evento = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=self.seguimientos["DEFENSA_PRIVADA"],
+            tipo_evento="DEFENSA_PRIVADA",
+            estado="FINALIZADA",
+            fecha_programada="2026-08-01T10:00:00Z",
+            fecha_fin_real="2026-08-01T11:00:00Z",
+            lugar="Sala",
+            programado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=evento,
+            tipo_evaluacion="RESULTADO_FINAL",
+            modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",
+            es_resultado_final_evento=True,
+            registrado_por=self.admin,
+        )
+        client = APIClient()
+        client.force_authenticate(self.student)
+
+        applicable = client.get(
+            f"/api/v1/postulaciones/{self.postulacion.pk}/documentos-aplicables/"
+        )
+        item = next(
+            item for item in applicable.data["documentos_aplicables"]
+            if item["codigo"] == "DOCUMENTO_FINAL"
+        )
+        self.assertTrue(item["capacidad_carga"]["permitida"])
+        self.assertTrue(item["capacidad_carga"]["excepcion_aplicabilidad"])
+
+        uploaded = client.post(
+            "/api/v1/documentos/documentos/subir/",
+            {
+                "postulacion_id": self.postulacion.pk,
+                "tipo_documento_id": tipo.pk,
+                "archivo": SimpleUploadedFile(
+                    "final-v2.pdf", b"%PDF-1.4 nueva", content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(uploaded.status_code, 201)
+        self.assertEqual(documento.versiones.count(), 2)
+
+    def test_correccion_post_aprobacion_no_relaja_otros_documentos_ni_condicion_policy(self):
+        self.postulacion.seguimientos_etapa.update(estado=SeguimientoEtapa.EstadoChoices.APROBADA)
+        tipo_final = TipoDocumento.objects.get(codigo="DOCUMENTO_FINAL")
+        documento = DocumentoPostulacion.objects.create(
+            postulacion=self.postulacion,
+            tipo_documento=tipo_final,
+            estado=EstadoDocumento.objects.get(codigo="APR"),
+            requiere_correccion=True,
+        )
+        client = APIClient()
+        client.force_authenticate(self.student)
+
+        blocked = client.post(
+            "/api/v1/documentos/documentos/subir/",
+            {
+                "postulacion_id": self.postulacion.pk,
+                "tipo_documento_id": tipo_final.pk,
+                "archivo": SimpleUploadedFile("final.pdf", b"%PDF-1.4", content_type="application/pdf"),
+            },
+            format="multipart",
+        )
+        self.assertEqual(blocked.status_code, 400)
+        self.assertEqual(documento.versiones.count(), 0)
+
+        tipo_ordinario = TipoDocumento.objects.get(codigo="INFORME_TUTOR_TESIS")
+        ordinary = client.post(
+            "/api/v1/documentos/documentos/subir/",
+            {
+                "postulacion_id": self.postulacion.pk,
+                "tipo_documento_id": tipo_ordinario.pk,
+                "archivo": SimpleUploadedFile("informe.pdf", b"%PDF-1.4", content_type="application/pdf"),
+            },
+            format="multipart",
+        )
+        self.assertEqual(ordinary.status_code, 400)
+        self.assertFalse(
+            DocumentoPostulacion.all_objects.filter(
+                postulacion=self.postulacion, tipo_documento=tipo_ordinario,
+            ).exists()
+        )
 
     def _crear_documento_version(self, codigo, numero=1, actual=True):
         documento = DocumentoPostulacion.objects.create(

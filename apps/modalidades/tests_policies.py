@@ -314,6 +314,14 @@ class ProyectoGradoDocumentosAplicablesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual({item["codigo"] for item in response.data["documentos_aplicables"]}, set(codes))
+        self.assertTrue(all(
+            item["capacidad_carga"] == {
+                "permitida": True,
+                "codigo": "SIN_DOCUMENTO",
+                "mensaje": "El documento todavía no fue cargado.",
+            }
+            for item in response.data["documentos_aplicables"]
+        ))
 
     def test_endpoint_reporta_tipo_declarado_inexistente(self):
         codes = ("POLICY_MISSING_A", "POLICY_MISSING_B", "POLICY_MISSING_C")

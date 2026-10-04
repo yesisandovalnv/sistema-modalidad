@@ -8,12 +8,16 @@ import { postulacionesService } from '../../services/postulacionesService'
 
 vi.mock('../../services/crudService', () => ({
   endpoints: { documentos: '/documentos/', tiposDocumento: '/tipos-documento/', postulaciones: '/postulaciones/' },
-  crudService: { list: vi.fn(), create: vi.fn() },
+  crudService: { list: vi.fn() },
   listAll: vi.fn(),
 }))
 
 vi.mock('../../services/postulacionesService', () => ({
-  postulacionesService: { obtenerDocumentosAplicables: vi.fn() },
+  postulacionesService: {
+    obtenerDocumentosAplicables: vi.fn(),
+    cargarDocumento: vi.fn(),
+    obtenerDefensas: vi.fn(),
+  },
 }))
 
 const application = {
@@ -27,9 +31,11 @@ const secondApplication = {
   estudiante_detalle: { ru: '20260002', nombre_completo: 'Bruno Perez' },
 }
 const documentType = { id: 3, codigo: 'PERFIL', nombre: 'Perfil de modalidad de graduación' }
-const applicableType = { id: 8, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final' }
-const secondApplicableType = { id: 9, codigo: 'INFORME_FINAL', nombre: 'Informe final' }
+const allowed = { permitida: true, codigo: 'SIN_DOCUMENTO', mensaje: 'El documento todavía no fue cargado.' }
+const applicableType = { id: 8, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final', capacidad_carga: allowed }
+const secondApplicableType = { id: 9, codigo: 'INFORME_FINAL', nombre: 'Informe final', capacidad_carga: allowed }
 const auth = { hasPermission: (permission) => permission === 'puede_cargar_documentos' }
+const studentAuth = { ...auth, roleCode: 'ESTUDIANTE' }
 const humanApplication = {
   id: 45,
   codigo: 'PG-2026-011',
@@ -41,43 +47,43 @@ const documentRow = {
   postulacion: 45,
   tipo_documento: 9,
   tipo_documento_nombre: 'Documento Final',
-  estado: 4,
   estado_nombre: 'Aprobado',
   fecha_subida: '2026-09-14T10:00:00Z',
   requiere_correccion: false,
   versiones: [{ id: 201, es_version_actual: true }],
 }
 
-function setup({ availableApplications = [application], applicableResponse = { documentos_aplicables: [applicableType] }, rows = [], pageAuth = auth } = {}) {
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function setup({
+  availableApplications = [application],
+  applicableResponse = { documentos_aplicables: [applicableType, secondApplicableType] },
+  rows = [],
+  pageAuth = studentAuth,
+} = {}) {
   crudService.list.mockImplementation((path) => Promise.resolve(path === endpoints.tiposDocumento
     ? { count: 1, next: null, previous: null, results: [documentType] }
-    : path === endpoints.documentos ? { count: rows.length, next: null, previous: null, results: rows } : { count: 0, next: null, previous: null, results: [] }))
+    : { count: rows.length, next: null, previous: null, results: rows }))
   listAll.mockResolvedValue(availableApplications)
   postulacionesService.obtenerDocumentosAplicables.mockResolvedValue(applicableResponse)
-  crudService.create.mockResolvedValue({ id: 10 })
+  postulacionesService.cargarDocumento.mockResolvedValue({ id: 10 })
+  postulacionesService.obtenerDefensas.mockResolvedValue({ results: [], next: null })
   return render(<AuthContext.Provider value={pageAuth}><DocumentosPage /></AuthContext.Provider>)
 }
 
 describe('Subir documento', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('carga las postulaciones accesibles y muestra una etiqueta entendible', async () => {
-    setup()
-    await userEvent.click(await screen.findByRole('button', { name: 'Subir documento' }))
-
-    expect(listAll).toHaveBeenCalledWith(
-      endpoints.postulaciones,
-      { ordering: '-created_at' },
-      expect.any(AbortSignal),
-    )
-    expect(screen.queryByLabelText('ID de postulación')).not.toBeInTheDocument()
-    expect(screen.getByRole('option', {
-      name: 'PG-2026-001 - 20260001 - Ana Maria Quispe Mamani',
-    })).toBeInTheDocument()
-  })
-
-  it('admin muestra datos humanos de postulación, modalidad, estado y conserva acciones', async () => {
-    setup({ availableApplications: [humanApplication], rows: [documentRow] })
+  it('conserva la presentación humanizada y las acciones de la página', async () => {
+    setup({ availableApplications: [humanApplication], rows: [documentRow], pageAuth: auth })
 
     expect(await screen.findByText('PG-2026-011')).toBeInTheDocument()
     expect(screen.getByText('Andrea Molina Martines')).toBeInTheDocument()
@@ -86,186 +92,244 @@ describe('Subir documento', () => {
     expect(screen.getByText('No requerida')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Detalle' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Subir documento' })).toBeInTheDocument()
-    expect(screen.queryByText('45')).not.toBeInTheDocument()
-    expect(screen.queryByText('4')).not.toBeInTheDocument()
-    expect(crudService.list).toHaveBeenCalledTimes(2)
-    expect(listAll).toHaveBeenCalledTimes(1)
   })
 
-  it('estudiante ve Mis documentos con código y modalidad sin repetir su nombre', async () => {
-    const studentAuth = { ...auth, roleCode: 'ESTUDIANTE' }
-    setup({ availableApplications: [humanApplication], rows: [documentRow], pageAuth: studentAuth })
-
-    expect(await screen.findByRole('heading', { name: 'Mis documentos' })).toBeInTheDocument()
-    expect(screen.getByText('PG-2026-011')).toBeInTheDocument()
-    expect(screen.getByText('Proyecto de Grado')).toBeInTheDocument()
-    expect(screen.getByText('Aprobado')).toBeInTheDocument()
-    expect(screen.queryByText('Andrea Molina Martines')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Subir documento' })).toBeInTheDocument()
-  })
-
-  it('admin abre detalle humanizado sin requests adicionales', async () => {
+  it('conserva el detalle y la observación general existentes', async () => {
     const user = userEvent.setup()
-    setup({ availableApplications: [humanApplication], rows: [documentRow] })
+    setup({
+      availableApplications: [humanApplication],
+      rows: [{ ...documentRow, observacion_general: 'Falta la firma del tutor.' }],
+      pageAuth: auth,
+    })
     await user.click(await screen.findByRole('button', { name: 'Detalle' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Detalle del documento' })
     expect(within(dialog).getByText('PG-2026-011')).toBeInTheDocument()
     expect(within(dialog).getByText('Andrea Molina Martines')).toBeInTheDocument()
     expect(within(dialog).getByText('Proyecto de Grado')).toBeInTheDocument()
-    expect(within(dialog).getByText('Aprobado')).toBeInTheDocument()
-    expect(within(dialog).getByText('Documento Final')).toBeInTheDocument()
-    expect(within(dialog).getByText('No requerida')).toBeInTheDocument()
-    expect(within(dialog).getByText('Versiones')).toBeInTheDocument()
-    expect(within(dialog).getByText('1')).toBeInTheDocument()
-    expect(within(dialog).queryByText('45')).not.toBeInTheDocument()
-    expect(within(dialog).queryByText('4')).not.toBeInTheDocument()
-    expect(crudService.list).toHaveBeenCalledTimes(2)
-    expect(listAll).toHaveBeenCalledTimes(1)
+    expect(within(dialog).getByText('Falta la firma del tutor.')).toBeInTheDocument()
+  })
+
+  it('abre el UploadDialog compartido y resuelve automáticamente la única postulación del estudiante', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+
+    expect(screen.getByRole('dialog', { name: 'Cargar documento' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Postulación')).not.toBeInTheDocument()
+    await waitFor(() => expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledWith('2', expect.any(AbortSignal)))
+    expect(screen.getByLabelText('Documento Final')).toBeInTheDocument()
+    expect(screen.getByLabelText('Informe final')).toBeInTheDocument()
+    expect(screen.queryByText(documentType.nombre)).not.toBeInTheDocument()
+  })
+
+  it('mantiene la selección explícita cuando existen varias postulaciones accesibles', async () => {
+    const user = userEvent.setup()
+    setup({ availableApplications: [application, secondApplication] })
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+
+    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+    await user.selectOptions(screen.getByLabelText('Postulación'), '4')
+
+    await waitFor(() => expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledWith('4', expect.any(AbortSignal)))
+    expect(screen.getByLabelText('Documento Final')).toBeInTheDocument()
+  })
+
+  it('limpia los documentos anteriores al cambiar de postulación', async () => {
+    const user = userEvent.setup()
+    setup({ availableApplications: [application, secondApplication], pageAuth: auth })
+    postulacionesService.obtenerDocumentosAplicables
+      .mockResolvedValueOnce({ documentos_aplicables: [applicableType] })
+      .mockResolvedValueOnce({ documentos_aplicables: [secondApplicableType]       })
+      await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+      const selector = screen.getByLabelText('Postulación')
+      await user.selectOptions(selector, '2')
+      expect(await screen.findByLabelText('Documento Final')).toBeInTheDocument()
+
+      await user.selectOptions(selector, '4')
+
+    expect(await screen.findByLabelText('Informe final')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Documento Final')).not.toBeInTheDocument()
+  })
+
+  it('permite seleccionar múltiples archivos, quitarlos y reemplazarlos', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+    const firstInput = await screen.findByLabelText('Documento Final')
+    const secondInput = screen.getByLabelText('Informe final')
+    const firstFile = new File(['primero'], 'primero.pdf', { type: 'application/pdf' })
+    const replacement = new File(['reemplazo'], 'reemplazo.pdf', { type: 'application/pdf' })
+
+    await user.upload(firstInput, firstFile)
+    await user.upload(secondInput, new File(['segundo'], 'segundo.pdf', { type: 'application/pdf' }))
+    expect(screen.getByText('2 documentos seleccionados')).toBeInTheDocument()
+    await user.click(within(firstInput.closest('div').parentElement).getByRole('button', { name: 'Quitar' }))
+    expect(screen.getByText('1 documento seleccionado')).toBeInTheDocument()
+    await user.upload(firstInput, replacement)
+
+    expect(screen.getByText('reemplazo.pdf')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cargar 2 documentos' })).toBeEnabled()
+  })
+
+  it('realiza la carga múltiple y refresca Mis documentos después de éxitos', async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+    await user.upload(await screen.findByLabelText('Documento Final'), new File(['uno'], 'uno.pdf'))
+    await user.upload(screen.getByLabelText('Informe final'), new File(['dos'], 'dos.pdf'))
+    await user.click(screen.getByRole('button', { name: 'Cargar 2 documentos' }))
+
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledTimes(2))
+    expect(postulacionesService.cargarDocumento).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      postulacionId: '2', tipoDocumentoId: 8,
+    }), expect.any(AbortSignal))
+    expect(await screen.findByText('2 documentos cargados correctamente.')).toBeInTheDocument()
+    await waitFor(() => expect(crudService.list).toHaveBeenCalledTimes(4))
+  })
+
+  it('conserva los fallidos y reintenta únicamente esos documentos', async () => {
+    const user = userEvent.setup()
+    setup()
+    postulacionesService.cargarDocumento
+      .mockResolvedValueOnce({ id: 1 })
+      .mockRejectedValueOnce({ message: 'Carga rechazada.' })
+      .mockResolvedValueOnce({ id: 2 })
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+    await user.upload(await screen.findByLabelText('Documento Final'), new File(['uno'], 'uno.pdf'))
+    await user.upload(screen.getByLabelText('Informe final'), new File(['dos'], 'dos.pdf'))
+    await user.click(screen.getByRole('button', { name: 'Cargar 2 documentos' }))
+
+    expect(await screen.findByText('1 documento cargado. 1 documento no pudo cargarse.')).toBeInTheDocument()
+    expect(screen.getByText('Carga rechazada.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Reintentar' }))
+
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledTimes(3))
+    expect(postulacionesService.cargarDocumento).toHaveBeenLastCalledWith(
+      expect.objectContaining({ postulacionId: '2', tipoDocumentoId: 9 }),
+      expect.any(AbortSignal),
+    )
+    expect(await screen.findByText('1 documento cargado correctamente.')).toBeInTheDocument()
+  })
+
+  it('bloquea la carga cuando no existen documentos aplicables o postulaciones accesibles', async () => {
+    const user = userEvent.setup()
+    setup({ availableApplications: [], applicableResponse: { documentos_aplicables: [] } })
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+
+    expect(screen.getByText('No existe una postulación disponible para subir documentos.')).toBeInTheDocument()
+    expect(screen.getByText('0 documentos seleccionados')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cargar 0 documentos' })).toBeDisabled()
     expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
   })
 
-  it('estudiante abre detalle sin repetir su nombre y sin requests adicionales', async () => {
+  it('solo genera inputs para documentos cuya capacidad de carga está permitida', async () => {
     const user = userEvent.setup()
-    setup({ availableApplications: [humanApplication], rows: [documentRow], pageAuth: { ...auth, roleCode: 'ESTUDIANTE' } })
+    setup({ applicableResponse: { documentos_aplicables: [
+      { ...applicableType, capacidad_carga: { permitida: false, codigo: 'DOCUMENTO_APROBADO', mensaje: 'El documento está aprobado.' } },
+      { ...secondApplicableType, capacidad_carga: { permitida: true, codigo: 'RECHAZADO', mensaje: 'El documento fue rechazado.' } },
+    ] } })
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+
+    expect(await screen.findByLabelText('Informe final')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Documento Final')).not.toBeInTheDocument()
+  })
+
+  it('muestra una orientación clara cuando ningún documento aplicable es cargable', async () => {
+    const user = userEvent.setup()
+    setup({ applicableResponse: { documentos_aplicables: [
+      { ...applicableType, capacidad_carga: { permitida: false, codigo: 'ESPERANDO_REVISION', mensaje: 'Pendiente de revisión.' } },
+    ] } })
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+
+    expect(await screen.findByText('No tienes documentos pendientes de carga o corrección.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cargar 0 documentos' })).toBeDisabled()
+  })
+
+  it('muestra errores de documentos aplicables sin recurrir al catálogo global', async () => {
+    const user = userEvent.setup()
+    setup()
+    postulacionesService.obtenerDocumentosAplicables.mockRejectedValue({ message: 'No se pudieron cargar los documentos aplicables.' })
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudieron cargar los documentos aplicables.')
+    expect(screen.queryByText(documentType.nombre)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cargar 0 documentos' })).toBeDisabled()
+  })
+
+  it('mantiene puede_cargar_documentos como condición de la acción', async () => {
+    setup({ pageAuth: { roleCode: 'ESTUDIANTE', hasPermission: () => false } })
+
+    expect(await screen.findByRole('heading', { name: 'Mis documentos' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Subir documento' })).not.toBeInTheDocument()
+  })
+
+  it('restaura el detalle del estudiante sin repetir su nombre ni hacer requests adicionales', async () => {
+    const user = userEvent.setup()
+    setup({ availableApplications: [humanApplication], rows: [documentRow] })
     await user.click(await screen.findByRole('button', { name: 'Detalle' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Detalle del documento' })
     expect(within(dialog).getByText('PG-2026-011')).toBeInTheDocument()
     expect(within(dialog).getByText('Proyecto de Grado')).toBeInTheDocument()
     expect(within(dialog).getByText('Aprobado')).toBeInTheDocument()
+    expect(within(dialog).getByText('Documento Final')).toBeInTheDocument()
+    expect(within(dialog).getByText('No requerida')).toBeInTheDocument()
+    expect(within(dialog).getByText('Versiones')).toBeInTheDocument()
     expect(within(dialog).queryByText('Andrea Molina Martines')).not.toBeInTheDocument()
     expect(crudService.list).toHaveBeenCalledTimes(2)
     expect(listAll).toHaveBeenCalledTimes(1)
     expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
   })
 
-  it('muestra la observación general solo cuando contiene texto', async () => {
+  it('no muestra el bloque de observacion cuando esta vacia', async () => {
     const user = userEvent.setup()
-    setup({ availableApplications: [humanApplication], rows: [{ ...documentRow, observacion_general: 'Falta la firma del tutor.' }] })
+    setup({
+      availableApplications: [humanApplication],
+      rows: [{ ...documentRow, observacion_general: '   ' }],
+    })
     await user.click(await screen.findByRole('button', { name: 'Detalle' }))
-    const dialog = screen.getByRole('dialog', { name: 'Detalle del documento' })
-    expect(within(dialog).getByText('Observación')).toBeInTheDocument()
-    expect(within(dialog).getByText('Falta la firma del tutor.')).toBeInTheDocument()
-  })
 
-  it('no muestra el bloque de observación cuando está vacío', async () => {
-    const user = userEvent.setup()
-    setup({ availableApplications: [humanApplication], rows: [{ ...documentRow, observacion_general: '   ' }] })
-    await user.click(await screen.findByRole('button', { name: 'Detalle' }))
     expect(screen.getByRole('dialog', { name: 'Detalle del documento' })).not.toHaveTextContent('Observación')
   })
 
-  it('no muestra el catálogo global al abrir el modal sin postulación', async () => {
+  it('impide Escape, backdrop y X mientras existe una carga activa', async () => {
+    const user = userEvent.setup()
+    const pending = deferred()
     setup()
-    await userEvent.click(await screen.findByRole('button', { name: 'Subir documento' }))
+    postulacionesService.cargarDocumento.mockReturnValue(pending.promise)
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+    await user.upload(await screen.findByLabelText('Documento Final'), new File(['uno'], 'uno.pdf'))
+    await user.click(screen.getByRole('button', { name: 'Cargar 1 documento' }))
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledTimes(1))
 
-    expect(screen.getByLabelText('Tipo de documento')).toHaveValue('')
-    expect(within(screen.getByLabelText('Tipo de documento')).getAllByRole('option')).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'Subir' })).toBeDisabled()
+    const dialog = screen.getByRole('dialog', { name: 'Cargar documento' })
+    fireEvent.keyDown(document, { key: 'Escape' })
+    fireEvent.mouseDown(dialog)
+    await user.click(within(dialog).getByRole('button', { name: 'Cerrar' }))
+
+    expect(screen.getByRole('dialog', { name: 'Cargar documento' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeDisabled()
+    pending.resolve({ id: 1 })
+    expect(await screen.findByText('1 documento cargado correctamente.')).toBeInTheDocument()
   })
 
-  it('consulta y muestra únicamente los tipos aplicables a la postulación seleccionada', async () => {
+  it('detiene el procesamiento al abortar sin registrar la cancelacion como fallo', async () => {
     const user = userEvent.setup()
-    setup()
+    const { unmount } = setup()
+    postulacionesService.cargarDocumento.mockImplementation((payload, signal) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject({ canceled: true, message: 'Cancelado' }), { once: true })
+    }))
     await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
-    await user.selectOptions(screen.getByLabelText('Postulación'), '2')
+    await user.upload(await screen.findByLabelText('Documento Final'), new File(['uno'], 'uno.pdf'))
+    await user.upload(screen.getByLabelText('Informe final'), new File(['dos'], 'dos.pdf'))
+    await user.click(screen.getByRole('button', { name: 'Cargar 2 documentos' }))
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledTimes(1))
 
-    await waitFor(() => expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledWith('2', expect.any(AbortSignal)))
-    expect(screen.getByRole('option', { name: 'Documento Final' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: documentType.nombre })).not.toBeInTheDocument()
-  })
+    unmount()
 
-  it('estudiante con una postulación la selecciona automáticamente y oculta el selector', async () => {
-    const user = userEvent.setup()
-    setup({ pageAuth: { ...auth, roleCode: 'ESTUDIANTE' } })
-    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
-
-    expect(screen.queryByLabelText('Postulación')).not.toBeInTheDocument()
-    await waitFor(() => expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledWith('2', expect.any(AbortSignal)))
-    expect(screen.getByLabelText('Tipo de documento')).toBeEnabled()
-  })
-
-  it('estudiante sin postulación ve un estado vacío y no puede subir', async () => {
-    const user = userEvent.setup()
-    setup({ availableApplications: [], pageAuth: { ...auth, roleCode: 'ESTUDIANTE' } })
-    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
-
-    expect(await screen.findByText('No existe una postulación disponible para subir documentos.')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Postulación')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Subir' })).toBeDisabled()
-    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
-  })
-
-  it('estudiante con varias postulaciones conserva el selector', async () => {
-    const user = userEvent.setup()
-    setup({ availableApplications: [application, secondApplication], pageAuth: { ...auth, roleCode: 'ESTUDIANTE' } })
-    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
-
-    expect(screen.getByLabelText('Postulación')).toBeInTheDocument()
-    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
-  })
-
-  it('muestra estado vacío y bloquea la carga cuando no hay tipos aplicables', async () => {
-    const user = userEvent.setup()
-    setup({ applicableResponse: { documentos_aplicables: [] } })
-    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
-    await user.selectOptions(screen.getByLabelText('Postulación'), '2')
-
-    expect(await screen.findByText('No hay tipos documentales disponibles para cargar en la etapa actual.')).toBeInTheDocument()
-    expect(screen.getByLabelText('Tipo de documento')).toHaveValue('')
-    expect(screen.getByRole('button', { name: 'Subir' })).toBeDisabled()
-  })
-
-  it('limpia tipos anteriores y consulta de nuevo al cambiar de postulación', async () => {
-    const user = userEvent.setup()
-    setup({ availableApplications: [application, secondApplication] })
-    postulacionesService.obtenerDocumentosAplicables
-      .mockReset()
-      .mockResolvedValueOnce({ documentos_aplicables: [applicableType] })
-      .mockResolvedValueOnce({ documentos_aplicables: [secondApplicableType] })
-    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
-    const applicationSelect = screen.getByLabelText('Postulación')
-    await user.selectOptions(applicationSelect, '2')
-    await screen.findByRole('option', { name: 'Documento Final' })
-    await user.selectOptions(screen.getByLabelText('Tipo de documento'), '8')
-    await user.selectOptions(applicationSelect, '4')
-
-    expect(screen.getByLabelText('Tipo de documento')).toHaveValue('')
-    expect(screen.queryByRole('option', { name: 'Documento Final' })).not.toBeInTheDocument()
-    expect(await screen.findByRole('option', { name: 'Informe final' })).toBeInTheDocument()
-    expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenLastCalledWith('4', expect.any(AbortSignal))
-  })
-
-  it('muestra error y no usa el catálogo global si falla documentos-aplicables', async () => {
-    const user = userEvent.setup()
-    setup()
-    postulacionesService.obtenerDocumentosAplicables.mockRejectedValue({ message: 'No se pudieron cargar los documentos aplicables.' })
-    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
-    await user.selectOptions(screen.getByLabelText('Postulación'), '2')
-
-    expect(await screen.findByText('No se pudieron cargar los documentos aplicables.')).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: documentType.nombre })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Subir' })).toBeDisabled()
-  })
-
-  it('envía el ID real seleccionado dentro del multipart existente', async () => {
-    const user = userEvent.setup()
-    setup()
-    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
-    await user.selectOptions(screen.getByLabelText('Postulación'), '2')
-    await waitFor(() => expect(screen.getByRole('option', { name: 'Documento Final' })).toBeInTheDocument())
-    await user.selectOptions(screen.getByLabelText('Tipo de documento'), '8')
-    await user.upload(screen.getByLabelText('Archivo'), new File(['contenido'], 'perfil.pdf', { type: 'application/pdf' }))
-    fireEvent.submit(screen.getByRole('button', { name: 'Subir' }).closest('form'))
-
-    await waitFor(() => expect(crudService.create).toHaveBeenCalledTimes(1))
-    const [path, body, config] = crudService.create.mock.calls[0]
-    expect(path).toBe('/documentos/subir/')
-    expect(body).toBeInstanceOf(FormData)
-    expect(body.get('postulacion_id')).toBe('2')
-    expect(body.get('tipo_documento_id')).toBe('8')
-    expect(body.get('archivo')).toBeInstanceOf(File)
-    expect(config).toBeUndefined()
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('Cancelado')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Cargar documento' })).not.toBeInTheDocument()
   })
 })
