@@ -34,6 +34,8 @@ class DocumentoService:
         policy=None,
     ) -> Dict[str, Any]:
         """Resuelve si el actor puede crear ahora una versión sin alterar la aplicabilidad académica."""
+        from apps.modalidades.policies import ActorCargaDocumento, ModalidadPolicyRegistry
+
         es_staff = is_staff_user(usuario)
         if not es_staff and usuario != postulacion.estudiante:
             return {
@@ -47,6 +49,25 @@ class DocumentoService:
                 "permitida": False,
                 "codigo": "DOCUMENTO_INACTIVO",
                 "mensaje": "El documento se encuentra inactivo y no admite nuevas versiones.",
+            }
+
+        if policy is None and ModalidadPolicyRegistry.has_policy(postulacion):
+            policy = ModalidadPolicyRegistry.get(postulacion)
+        etapa_codigo = policy.resolver_contexto_documental(postulacion) if policy else None
+        actores_permitidos = (
+            policy.get_actores_carga_documento(etapa_codigo, tipo_documento.codigo)
+            if policy and etapa_codigo else None
+        )
+        actor_actual = (
+            ActorCargaDocumento.ADMINISTRACION
+            if es_staff else ActorCargaDocumento.ESTUDIANTE
+        )
+        if actores_permitidos is not None and actor_actual not in actores_permitidos:
+            return {
+                "permitida": False,
+                "codigo": "ACTOR_CARGA_NO_AUTORIZADO",
+                "mensaje": "Este documento debe ser cargado por un actor autorizado.",
+                "actores_carga_permitidos": list(actores_permitidos),
             }
 
         if documento is None:
@@ -63,7 +84,6 @@ class DocumentoService:
             mensaje = "El documento fue rechazado y admite una nueva versión."
         elif documento.requiere_correccion and estado_codigo == "APR":
             if policy is None:
-                from apps.modalidades.policies import ModalidadPolicyRegistry
                 policy = ModalidadPolicyRegistry.get(postulacion)
             permitida_estudiante = bool(policy.permite_observacion_post_aprobacion(documento))
             codigo = "CORRECCION_POST_APROBACION" if permitida_estudiante else "DOCUMENTO_APROBADO"
@@ -210,7 +230,10 @@ class DocumentoService:
                     "La modalidad no tiene una policy académica configurada para cargar documentos."
                 )
             if not capacidad_carga["permitida"]:
-                if capacidad_carga["codigo"] == "NO_AUTORIZADO":
+                if capacidad_carga["codigo"] in {
+                    "NO_AUTORIZADO",
+                    "ACTOR_CARGA_NO_AUTORIZADO",
+                }:
                     raise PermissionDenied(capacidad_carga["mensaje"])
                 raise ValidationError(capacidad_carga["mensaje"])
             es_carga_inicial = documento is None

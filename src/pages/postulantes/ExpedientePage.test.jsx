@@ -5282,6 +5282,84 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('button', { name: 'Aprobar Revisión de Tribunal Previa' })).not.toBeInTheDocument()
   })
 
+  it.each([true, false])('orienta al cierre técnico con workflow completo aunque puede_concluir sea %s', async (puedeConcluir) => {
+    const completedStages = Array.from({ length: 8 }, (_, index) => ({
+      id: 100 + index,
+      codigo: `ETAPA_${index + 1}`,
+      nombre: index === 7 ? 'Cierre Documental' : `Etapa ${index + 1}`,
+      estado: 'APROBADA',
+      activo: true,
+    }))
+    const pendingClosure = {
+      ...response,
+      flujo: {
+        ...response.flujo,
+        etapa_actual: completedStages.at(-1),
+        porcentaje_avance: 100,
+        etapas: completedStages,
+        orientacion_etapa_actual: null,
+      },
+      cierre: {
+        data: {
+          ...closureResponse,
+          estado_general: 'EN_PROCESO',
+          etapa_actual: null,
+          cierre_documental_aprobado: true,
+          concluida: false,
+          puede_concluir: puedeConcluir,
+        },
+        error: '',
+      },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(pendingClosure)
+    postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue({ soportada: true, configuracion_valida: true, cierre_soportado: true })
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Flujo académico completado' })).toBeInTheDocument()
+    expect(screen.getByText('8 de 8 etapas completadas · 100% de etapas')).toBeInTheDocument()
+    expect(screen.getByText(/aún está en proceso y requiere completar el cierre técnico/i)).toBeInTheDocument()
+    expect(screen.queryByText('No existe una etapa actual disponible.')).not.toBeInTheDocument()
+    const manageClosure = screen.getByRole('link', { name: 'Gestionar cierre técnico' })
+    expect(manageClosure).toHaveAttribute('href', '#condiciones-tecnicas')
+    await userEvent.click(manageClosure)
+    expect(window.location.hash).toBe('#condiciones-tecnicas')
+  })
+
+  it('mantiene el estado concluido con prioridad sobre la orientación de cierre', async () => {
+    const completedStages = Array.from({ length: 8 }, (_, index) => ({ id: 200 + index, codigo: `ETAPA_${index + 1}`, nombre: `Etapa ${index + 1}`, estado: 'APROBADA', activo: true }))
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, estado_actual_detalle: { codigo: 'CONCLUIDA', nombre: 'Concluida' } },
+      flujo: { ...response.flujo, etapa_actual: completedStages.at(-1), porcentaje_avance: 100, etapas: completedStages, orientacion_etapa_actual: null },
+      cierre: { data: { ...closureResponse, estado_general: 'CONCLUIDA', cierre_documental_aprobado: true, concluida: true }, error: '' },
+    })
+    postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue({ soportada: true, configuracion_valida: true, cierre_soportado: true })
+
+    renderPage()
+
+    expect(await screen.findByText('✓ Expediente concluido')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Gestionar cierre técnico' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['cierre no soportado', { soportada: true, configuracion_valida: true, cierre_soportado: false }, { data: { ...closureResponse, cierre_documental_aprobado: true, concluida: false }, error: '' }],
+    ['payload de cierre no disponible', { soportada: true, configuracion_valida: true, cierre_soportado: true }, { data: null, error: 'Estado de cierre técnico todavía no disponible' }],
+  ])('conserva el fallback seguro cuando %s', async (_case, capabilities, cierre) => {
+    const completedStages = Array.from({ length: 8 }, (_, index) => ({ id: 300 + index, codigo: `ETAPA_${index + 1}`, nombre: `Etapa ${index + 1}`, estado: 'APROBADA', activo: true }))
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, etapa_actual: completedStages.at(-1), porcentaje_avance: 100, etapas: completedStages, orientacion_etapa_actual: null },
+      cierre,
+    })
+    postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue(capabilities)
+
+    renderPage()
+
+    expect(await screen.findByText('No existe una etapa actual disponible.')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Gestionar cierre técnico' })).not.toBeInTheDocument()
+  })
+
   it('aprueba revisión final con confirmación y refresh canónico sin navegación final', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const refreshed = { ...response, cierre: { data: { ...closureResponse, revision_final_aprobada: true, puede_aprobar_revision_final: false, puede_aprobar_cierre: true }, error: '' } }

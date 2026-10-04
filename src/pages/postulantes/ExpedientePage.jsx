@@ -487,6 +487,15 @@ export default function ExpedientePage() {
   const closureDetailsOpen = closureIsRelevant
     || (isProjectGrade && currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA')
   const completedStages = stages.filter((stage) => ['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)).length
+  const pendingTechnicalClosure = Boolean(
+    data.capacidades?.cierre_soportado === true
+    && stages.length > 0
+    && completedStages === stages.length
+    && safeProgress === 100
+    && cierre.data?.cierre_documental_aprobado === true
+    && cierre.data?.concluida === false
+    && cierre.data?.estado_general !== 'CONCLUIDA'
+  )
   const currentRequirements = flujo.orientacion_etapa_actual?.requisitos || []
   const pendingCurrentRequirements = currentRequirements.filter((item) => item.estado !== 'INFORMATIVO' && item.cumplido === false).length
   const currentOrientation = flujo.orientacion_etapa_actual
@@ -1512,7 +1521,7 @@ export default function ExpedientePage() {
       </Card>
 
       {!isHistorical && <ExpedienteNav />}
-      {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} pendingCurrentRequirements={pendingCurrentRequirements} onApproveStage={approveCurrentStage} canApproveStage={canManageApplications && orientationApprovalAvailable} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} resultado={resultado} concluded={isConcluded} defenses={defenses.data?.results || []} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageAssignments={canManageAssignments} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} hideRequirements={isProjectInscription} onCompleteAuthorities={() => setTeamAssignment({ mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '', results: {} })} onManageActors={openActorManagement} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
+      {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} pendingCurrentRequirements={pendingCurrentRequirements} onApproveStage={approveCurrentStage} canApproveStage={canManageApplications && orientationApprovalAvailable} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} workflowProgress={safeProgress} pendingTechnicalClosure={pendingTechnicalClosure} resultado={resultado} concluded={isConcluded} defenses={defenses.data?.results || []} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageAssignments={canManageAssignments} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} hideRequirements={isProjectInscription} onCompleteAuthorities={() => setTeamAssignment({ mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '', results: {} })} onManageActors={openActorManagement} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
 
       {!isHistorical && isProjectInscription && <InscriptionDocumentsSection
         requirements={inscriptionDocumentRequirements}
@@ -1681,11 +1690,22 @@ function clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, cur
   }
 }
 
-function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, completedStages = 0, totalStages = 0, resultado, concluded, defenses = [], isProjectGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, onCompleteAuthorities, onManageActors, onManageMissingActors }) {
+function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, resultado, concluded, defenses = [], isProjectGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, onCompleteAuthorities, onManageActors, onManageMissingActors }) {
   if (concluded) return <Card className="overflow-hidden border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
     <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-800 dark:text-emerald-200">✓ Expediente concluido</p>
     <p className="mt-3 font-medium">{cierreSoportado ? 'Todas las etapas académicas y el cierre documental se encuentran completados.' : 'Todas las etapas académicas se encuentran completadas.'}</p>
     <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Nota final: {resultado?.data?.nota_final ?? 'No registrada'}</strong>{resultado?.data?.clasificacion && <StatusBadge value={formatCode(resultado.data.clasificacion)} positive />}</div>
+  </Card>
+  if (pendingTechnicalClosure) return <Card className="overflow-hidden border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950">
+    <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800 dark:text-sky-200">Cierre técnico del expediente</p>
+    <section className="mt-4 rounded-xl border border-sky-200 bg-white/70 p-4 dark:border-sky-800 dark:bg-slate-900/60" aria-labelledby="technical-closure-guidance-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h3 id="technical-closure-guidance-title" className="text-lg font-bold">Flujo académico completado</h3><p className="mt-1 text-sm text-slate-500">{completedStages} de {totalStages} etapas completadas · {workflowProgress}% de etapas</p></div>
+        <StatusBadge value="Flujo académico completado" positive />
+      </div>
+    </section>
+    <p className="mt-4 text-sm">Todas las etapas del proceso académico fueron aprobadas. La postulación aún está en proceso y requiere completar el cierre técnico.</p>
+    <a className="mt-4 inline-block font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#condiciones-tecnicas">Gestionar cierre técnico</a>
   </Card>
   const stageMessage = currentStage?.estado === 'PENDIENTE'
     ? canManageApplications

@@ -235,6 +235,26 @@ describe('Subir documento', () => {
     expect(screen.queryByLabelText('Documento Final')).not.toBeInTheDocument()
   })
 
+  it('no ofrece documentos reservados a otro actor', async () => {
+    const user = userEvent.setup()
+    setup({ applicableResponse: { documentos_aplicables: [
+      {
+        id: 10,
+        codigo: 'INFORME_REVISION_TRIBUNAL_PREVIA',
+        nombre: 'Informe de Evaluación del Tribunal',
+        capacidad_carga: {
+          permitida: false,
+          codigo: 'ACTOR_CARGA_NO_AUTORIZADO',
+          actores_carga_permitidos: ['ADMINISTRACION'],
+        },
+      },
+    ] } })
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+
+    expect(screen.queryByLabelText('Informe de Evaluación del Tribunal')).not.toBeInTheDocument()
+    expect(screen.getByText('No tienes documentos pendientes de carga o corrección.')).toBeInTheDocument()
+  })
+
   it('muestra una orientación clara cuando ningún documento aplicable es cargable', async () => {
     const user = userEvent.setup()
     setup({ applicableResponse: { documentos_aplicables: [

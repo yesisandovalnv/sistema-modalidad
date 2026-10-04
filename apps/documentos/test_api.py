@@ -13,7 +13,13 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.academico.models import EtapaModalidad, Modalidad, ModalidadRequisito, Periodo, Requisito
-from apps.modalidades.policies import BaseModalidadPolicy, BaseRequisitosPolicy, EtapaDefinition, ModalidadPolicyRegistry
+from apps.modalidades.policies import (
+    ActorCargaDocumento,
+    BaseModalidadPolicy,
+    BaseRequisitosPolicy,
+    EtapaDefinition,
+    ModalidadPolicyRegistry,
+)
 from apps.notificaciones.models import Notificacion
 from apps.documentos.models import (
     DocumentoPostulacion,
@@ -163,6 +169,213 @@ class DocumentoAPITestCase(APITestCase):
             },
             format="multipart",
         )
+
+
+class TestDocumentUploadActorAuthorization(DocumentoAPITestCase):
+    def actor_policy(self):
+        return patch.object(
+            TestDocumentRequirementsPolicy,
+            "get_actores_carga_permitidos",
+            return_value=(ActorCargaDocumento.ADMINISTRACION,),
+        )
+
+    def test_estudiante_recibe_capacidad_denegada_sin_ocultar_documento_aplicable(self):
+        with self.actor_policy():
+            capacidad = DocumentoService().obtener_capacidad_carga(
+                postulacion=self.postulacion,
+                tipo_documento=self.tipo_pdf,
+                usuario=self.student_user,
+            )
+            self.authenticate_user(self.student_user)
+            response = self.client.get(
+                f"/api/v1/postulaciones/{self.postulacion.pk}/documentos-aplicables/"
+            )
+
+        self.assertFalse(capacidad["permitida"])
+        self.assertEqual(capacidad["codigo"], "ACTOR_CARGA_NO_AUTORIZADO")
+        self.assertEqual(
+            capacidad["actores_carga_permitidos"],
+            [ActorCargaDocumento.ADMINISTRACION],
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data["documentos_aplicables"]), 1)
+        self.assertEqual(
+            response.data["documentos_aplicables"][0]["capacidad_carga"],
+            capacidad,
+        )
+
+    def test_estudiante_no_puede_realizar_primera_carga_directa(self):
+        with self.actor_policy():
+            response = self.upload_document(
+                self.student_user,
+                self.postulacion.pk,
+                self.tipo_pdf.pk,
+                self.create_pdf_file(name="institucional.pdf"),
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(DocumentoPostulacion.objects.filter(
+            postulacion=self.postulacion,
+            tipo_documento=self.tipo_pdf,
+        ).exists())
+
+    def test_rechazo_o_correccion_no_elevan_privilegios_del_estudiante(self):
+        documento = DocumentoPostulacion.objects.create(
+            postulacion=self.postulacion,
+            tipo_documento=self.tipo_pdf,
+            estado=self.estado_rec,
+            requiere_correccion=True,
+        )
+
+        with self.actor_policy():
+            rechazada = self.upload_document(
+                self.student_user,
+                self.postulacion.pk,
+                self.tipo_pdf.pk,
+                self.create_pdf_file(name="rechazada.pdf"),
+            )
+            documento.estado = self.estado_env
+            documento.save(update_fields=["estado"])
+            correccion = self.upload_document(
+                self.student_user,
+                self.postulacion.pk,
+                self.tipo_pdf.pk,
+                self.create_pdf_file(name="correccion.pdf"),
+            )
+
+        self.assertEqual(rechazada.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(correccion.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(VersionDocumento.objects.filter(documento=documento).exists())
+
+    def test_administracion_conserva_primera_carga_y_nueva_version(self):
+        with self.actor_policy():
+            primera = self.upload_document(
+                self.admin_user,
+                self.postulacion.pk,
+                self.tipo_pdf.pk,
+                self.create_pdf_file(name="institucional-v1.pdf"),
+            )
+            segunda = self.upload_document(
+                self.admin_user,
+                self.postulacion.pk,
+                self.tipo_pdf.pk,
+                self.create_pdf_file(name="institucional-v2.pdf"),
+            )
+
+        self.assertEqual(primera.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(segunda.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(
+            postulacion=self.postulacion,
+            tipo_documento=self.tipo_pdf,
+        )
+        self.assertEqual(documento.versiones.count(), 2)
+        self.assertEqual(documento.versiones.filter(es_version_actual=True).count(), 1)
+
+
+class TestProyectoGradoHojaAprobacionActorAuthorization(DocumentoAPITestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.pg_student = User.objects.create_user(
+            username="estudiante-hoja-aprobacion",
+            password="estudiante123",
+            role=self.student_role,
+        )
+        self.pg_modalidad = Modalidad.objects.create(
+            codigo="PROYECTO_GRADO",
+            nombre="Proyecto de Grado hoja de aprobación",
+        )
+        self.pg_stage = EtapaModalidad.objects.create(
+            modalidad=self.pg_modalidad,
+            codigo="REVISION_FINAL_POST_PUBLICA",
+            nombre="Revisión Final Post Pública",
+            orden=7,
+            origen_normativo="Fixture de autorización documental",
+        )
+        self.pg_postulacion = Postulacion.objects.create(
+            codigo="POST-PG-HOJA-001",
+            estudiante=self.pg_student,
+            modalidad=self.pg_modalidad,
+            periodo=self.periodo,
+            estado_actual=self.estado_registrada,
+        )
+        SeguimientoEtapa.objects.create(
+            postulacion=self.pg_postulacion,
+            etapa=self.pg_stage,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+        )
+        self.hoja_aprobacion = TipoDocumento.objects.create(
+            codigo="HOJA_APROBACION",
+            nombre="Hoja de Aprobación",
+            extensiones_permitidas="pdf,doc,docx",
+            permite_multiple_version=False,
+        )
+
+    def upload_hoja(self, user, name):
+        return self.upload_document(
+            user,
+            self.pg_postulacion.pk,
+            self.hoja_aprobacion.pk,
+            self.create_pdf_file(name=name),
+        )
+
+    def test_estudiante_recibe_hoja_aplicable_pero_no_cargable_y_post_directo_403(self):
+        self.authenticate_user(self.pg_student)
+        applicable = self.client.get(
+            f"/api/v1/postulaciones/{self.pg_postulacion.pk}/documentos-aplicables/"
+        )
+        upload = self.upload_hoja(self.pg_student, "hoja-estudiante.pdf")
+
+        self.assertEqual(applicable.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(applicable.data["documentos_aplicables"]), 1)
+        item = applicable.data["documentos_aplicables"][0]
+        self.assertEqual(item["codigo"], "HOJA_APROBACION")
+        self.assertEqual(item["capacidad_carga"], {
+            "permitida": False,
+            "codigo": "ACTOR_CARGA_NO_AUTORIZADO",
+            "mensaje": "Este documento debe ser cargado por un actor autorizado.",
+            "actores_carga_permitidos": [ActorCargaDocumento.ADMINISTRACION],
+        })
+        self.assertEqual(upload.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(DocumentoPostulacion.objects.filter(
+            postulacion=self.pg_postulacion,
+            tipo_documento=self.hoja_aprobacion,
+        ).exists())
+
+    def test_rechazo_y_correccion_no_conceden_permiso_al_estudiante(self):
+        documento = DocumentoPostulacion.objects.create(
+            postulacion=self.pg_postulacion,
+            tipo_documento=self.hoja_aprobacion,
+            estado=self.estado_rec,
+            requiere_correccion=True,
+        )
+
+        rechazada = self.upload_hoja(self.pg_student, "hoja-rechazada.pdf")
+        documento.estado = self.estado_env
+        documento.save(update_fields=["estado"])
+        correccion = self.upload_hoja(self.pg_student, "hoja-correccion.pdf")
+
+        self.assertEqual(rechazada.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(correccion.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(VersionDocumento.objects.filter(documento=documento).exists())
+
+    def test_administracion_conserva_capacidad_primera_carga_y_versionado(self):
+        capacidad = DocumentoService().obtener_capacidad_carga(
+            postulacion=self.pg_postulacion,
+            tipo_documento=self.hoja_aprobacion,
+            usuario=self.admin_user,
+        )
+        primera = self.upload_hoja(self.admin_user, "hoja-admin-v1.pdf")
+        segunda = self.upload_hoja(self.admin_user, "hoja-admin-v2.pdf")
+
+        self.assertTrue(capacidad["permitida"])
+        self.assertEqual(primera.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(segunda.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(
+            postulacion=self.pg_postulacion,
+            tipo_documento=self.hoja_aprobacion,
+        )
+        self.assertEqual(documento.versiones.count(), 2)
+        self.assertEqual(documento.versiones.filter(subido_por=self.admin_user).count(), 2)
 
 
 class TestHistoricalDocumentUpload(DocumentoAPITestCase):

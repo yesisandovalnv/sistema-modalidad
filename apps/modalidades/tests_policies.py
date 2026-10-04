@@ -9,8 +9,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.academico.models import EtapaModalidad, Modalidad
 from apps.documentos.models import EstadoDocumento, TipoDocumento
 from apps.documentos.services import DocumentoService
-from apps.modalidades.policies import (BaseModalidadPolicy, EtapaDefinition,
-    DecisionAcademicaDefinition, ModalidadNoSoportadaError, ModalidadPolicyRegistry)
+from apps.modalidades.policies import (ActorCargaDocumento, BaseModalidadPolicy,
+    EtapaDefinition, DecisionAcademicaDefinition, ModalidadNoSoportadaError,
+    ModalidadPolicyRegistry)
 from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
 from apps.modalidades.trabajo_dirigido import TrabajoDirigidoPolicy
 from apps.modalidades.tesis_grado import TesisGradoPolicy
@@ -18,7 +19,7 @@ from apps.modalidades.validators import ModalidadConfigurationValidator
 from apps.postulantes.models import EstadoPostulacion, Postulacion, SeguimientoEtapa
 from apps.postulantes.workflow import WorkflowService
 from apps.academico.models import Periodo
-from apps.usuarios.models import CustomUser
+from apps.usuarios.models import CustomUser, Role
 
 
 class RegistryTests(TestCase):
@@ -149,6 +150,26 @@ class ProyectoGradoRequisitosTests(TestCase):
         resultado = self.requisitos_policy.get_documentos_requeridos("REVISION_TRIBUNAL_PREVIA")
         self.assertEqual(resultado, ("INFORME_REVISION_TRIBUNAL_PREVIA",))
 
+    def test_revision_tribunal_previa_reserva_informe_para_administracion(self):
+        actores = self.policy.get_actores_carga_documento(
+            "REVISION_TRIBUNAL_PREVIA",
+            "INFORME_REVISION_TRIBUNAL_PREVIA",
+        )
+        self.assertEqual(actores, (ActorCargaDocumento.ADMINISTRACION,))
+
+    def test_revision_final_post_publica_reserva_hoja_para_administracion(self):
+        actores = self.policy.get_actores_carga_documento(
+            "REVISION_FINAL_POST_PUBLICA",
+            "HOJA_APROBACION",
+        )
+        self.assertEqual(actores, (ActorCargaDocumento.ADMINISTRACION,))
+
+    def test_documento_no_clasificado_preserva_compatibilidad_temporal(self):
+        self.assertIsNone(self.policy.get_actores_carga_documento(
+            "DOCUMENTO_FINAL",
+            "DOCUMENTO_FINAL",
+        ))
+
     def test_etapa_no_configurada_es_fail_closed(self):
         """Verificar que etapas sin documentos configurados devuelven tupla vacía (fail-closed)."""
         # PERFIL_PROYECTO, DEFENSA_PRIVADA, DEFENSA_PUBLICA, etc.
@@ -251,6 +272,12 @@ class ProyectoGradoDocumentosAplicablesTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.admin = CustomUser.objects.create_superuser(username="documentos-pg-admin", password="x")
+        student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante documentos PG")
+        self.student = CustomUser.objects.create_user(
+            username="documentos-pg-estudiante",
+            password="x",
+            role=student_role,
+        )
         modalidad = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto documentos aplicables")
         periodo = Periodo.objects.create(
             nombre="2026-PGA", gestion=2026, semestre="I",
@@ -258,10 +285,15 @@ class ProyectoGradoDocumentosAplicablesTests(TestCase):
         )
         estado = EstadoPostulacion.objects.create(codigo="EN_PROCESO", nombre="En proceso documentos")
         self.postulacion = Postulacion.objects.create(
-            codigo="POST-DOCUMENTOS-PG", estudiante=self.admin,
+            codigo="POST-DOCUMENTOS-PG", estudiante=self.student,
             modalidad=modalidad, periodo=periodo, estado_actual=estado,
         )
         etapas = {
+            "REVISION_TRIBUNAL_PREVIA": EtapaModalidad.objects.create(
+                modalidad=modalidad, codigo="REVISION_TRIBUNAL_PREVIA",
+                nombre="Revisión del Tribunal", orden=4,
+                obligatoria=True, origen_normativo="Normativa",
+            ),
             "REVISION_FINAL_POST_PUBLICA": EtapaModalidad.objects.create(
                 modalidad=modalidad, codigo="REVISION_FINAL_POST_PUBLICA",
                 nombre="Revisión Final Post Pública", orden=7,
@@ -273,6 +305,11 @@ class ProyectoGradoDocumentosAplicablesTests(TestCase):
                 obligatoria=True, origen_normativo="Normativa",
             ),
         }
+        SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=etapas["REVISION_TRIBUNAL_PREVIA"],
+            estado="APROBADA",
+        )
         SeguimientoEtapa.objects.create(
             postulacion=self.postulacion,
             etapa=etapas["REVISION_FINAL_POST_PUBLICA"],
@@ -289,6 +326,33 @@ class ProyectoGradoDocumentosAplicablesTests(TestCase):
         self.acta = TipoDocumento.objects.create(codigo="ACTA_DEFENSA", nombre="Acta de Defensa")
         self.informe = TipoDocumento.objects.create(codigo="INFORME_FINAL_TUTOR", nombre="Informe Final del Tutor")
         self.ajeno = TipoDocumento.objects.create(codigo="DOCUMENTO_AJENO_CIERRE", nombre="Documento ajeno al cierre")
+
+    def test_estudiante_recibe_informe_tribunal_aplicable_pero_no_cargable(self):
+        SeguimientoEtapa.objects.filter(postulacion=self.postulacion).update(estado="APROBADA")
+        SeguimientoEtapa.objects.filter(
+            postulacion=self.postulacion,
+            etapa__codigo="REVISION_TRIBUNAL_PREVIA",
+        ).update(estado="EN_PROCESO")
+        TipoDocumento.objects.create(
+            codigo="INFORME_REVISION_TRIBUNAL_PREVIA",
+            nombre="Informe de Evaluación del Tribunal",
+        )
+        self.client.force_authenticate(self.student)
+
+        response = self.client.get(
+            f"/api/v1/postulaciones/{self.postulacion.pk}/documentos-aplicables/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["documentos_aplicables"]), 1)
+        item = response.data["documentos_aplicables"][0]
+        self.assertEqual(item["codigo"], "INFORME_REVISION_TRIBUNAL_PREVIA")
+        self.assertEqual(item["capacidad_carga"]["codigo"], "ACTOR_CARGA_NO_AUTORIZADO")
+        self.assertFalse(item["capacidad_carga"]["permitida"])
+        self.assertEqual(
+            item["capacidad_carga"]["actores_carga_permitidos"],
+            [ActorCargaDocumento.ADMINISTRACION],
+        )
 
     def _activar_cierre(self):
         SeguimientoEtapa.objects.filter(

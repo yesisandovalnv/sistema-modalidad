@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.modalidades.policies import (BaseEvaluacionPolicy, BaseEventoPolicy,
     BaseModalidadPolicy, BaseRequisitosPolicy, BaseRevisionTribunalPreviaPolicy,
-    DecisionAcademicaDefinition, EtapaDefinition)
+    ActorCargaDocumento, DecisionAcademicaDefinition, EtapaDefinition)
 
 
 STAGE_DATA = (
@@ -25,7 +25,7 @@ class ProyectoGradoEventoPolicy(BaseEventoPolicy):
     EVENT_STAGE = {"DEFENSA_PERFIL": "PERFIL_PROYECTO", "DEFENSA_PRIVADA": "DEFENSA_PRIVADA", "DEFENSA_PUBLICA": "DEFENSA_PUBLICA"}
     ASSIGNMENTS = {"DEFENSA_PERFIL": {"TRIBUNAL": 2}, "DEFENSA_PRIVADA": {"TRIBUNAL": 2, "DOCENTE_MODALIDAD": 1}, "DEFENSA_PUBLICA": {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1}}
     ASSIGNMENT_NAMES = {"TRIBUNAL": "Tribunales"}
-    MINIMUM_NOTICE_HOURS = {"DEFENSA_PUBLICA": 48}
+    MINIMUM_NOTICE_HOURS = {"DEFENSA_PUBLICA": 0}
     PUBLIC_ROLES = ("TRIBUNAL", "PRESIDENTE", "SECRETARIO")
     def get_tipos_evento(self): return tuple(self.EVENT_STAGE)
     def get_etapa_asociada(self, tipo_evento): return self.EVENT_STAGE.get(tipo_evento)
@@ -331,6 +331,14 @@ class ProyectoGradoRequisitosPolicy(BaseRequisitosPolicy):
     CONDITIONS = ("PLAN_ESTUDIOS", "ADMISION_COMPLETA", "SOLVENCIA_UNIVERSITARIA", "SOLVENCIA_BIBLIOTECA", "MATRICULA_VIGENTE", "PLAZO_MAXIMO")
     DELIVERIES = ("CD_RESPALDO", "EJEMPLARES_IMPRESOS", "TIMBRE_UNIVERSITARIO")
     DOCUMENTS = ("DOCUMENTO_FINAL", "ACTA_DEFENSA", "HOJA_APROBACION", "INFORME_FINAL_TUTOR")
+    ACTORES_CARGA_POR_ETAPA = {
+        "REVISION_TRIBUNAL_PREVIA": {
+            "INFORME_REVISION_TRIBUNAL_PREVIA": (ActorCargaDocumento.ADMINISTRACION,),
+        },
+        "REVISION_FINAL_POST_PUBLICA": {
+            "HOJA_APROBACION": (ActorCargaDocumento.ADMINISTRACION,),
+        },
+    }
     def get_condiciones_requeridas(self, fase=None):
         if fase == "INSCRIPCION":
             return ()
@@ -350,6 +358,8 @@ class ProyectoGradoRequisitosPolicy(BaseRequisitosPolicy):
         # Para compatibilidad, si no se especifica fase retorna todos los documentos requeridos
         # Otras etapas: no permiten carga de documentos
         return self.DOCUMENTS if fase is None else ()
+    def get_actores_carga_permitidos(self, fase, codigo_documento):
+        return self.ACTORES_CARGA_POR_ETAPA.get(fase, {}).get(codigo_documento)
 
 
 class ProyectoGradoPolicy(BaseModalidadPolicy):

@@ -18,6 +18,14 @@ class ModalidadNoSoportadaError(ValidationError):
         super().__init__(f"La modalidad '{codigo}' no tiene normativa específica configurada.", code="modalidad_no_soportada")
 
 
+class ActorCargaDocumento:
+    """Actores que el motor documental reconoce como responsables de una carga."""
+
+    ESTUDIANTE = "ESTUDIANTE"
+    ADMINISTRACION = "ADMINISTRACION"
+    TODOS = frozenset((ESTUDIANTE, ADMINISTRACION))
+
+
 @dataclass(frozen=True)
 class EtapaDefinition:
     codigo: str
@@ -125,6 +133,9 @@ class BaseRequisitosPolicy(ABC):
     def get_condiciones_requeridas(self, fase=None): return ()
     def get_entregas_requeridas(self, fase=None): return ()
     def get_documentos_requeridos(self, fase=None): return ()
+    def get_actores_carga_permitidos(self, fase, codigo_documento):
+        """Retorna actores explícitos o ``None`` para configuraciones aún no clasificadas."""
+        return None
     def validar_condicion(self, codigo, **kwargs): return codigo in self.get_condiciones_requeridas(kwargs.get("fase"))
     def validar_entrega(self, codigo, **kwargs): return codigo in self.get_entregas_requeridas(kwargs.get("fase"))
     def validar_documento(self, codigo, **kwargs): return codigo in self.get_documentos_requeridos(kwargs.get("fase"))
@@ -171,6 +182,14 @@ class BaseModalidadPolicy(ABC):
         if self.requisitos_policy:
             return tuple(self.requisitos_policy.get_documentos_requeridos(codigo_etapa))
         return ()
+    def get_actores_carga_documento(self, codigo_etapa: str, codigo_documento: str):
+        """Delega la responsabilidad de carga a la configuración documental de la modalidad."""
+        if self.requisitos_policy:
+            return self.requisitos_policy.get_actores_carga_permitidos(
+                codigo_etapa,
+                codigo_documento,
+            )
+        return None
     def resolver_contexto_documental(self, postulacion):
         """Resuelve la etapa operativa que gobierna la carga documental actual."""
         return (
