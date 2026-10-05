@@ -18,6 +18,18 @@ beforeEach(() => {
   usuariosService.listRoles.mockResolvedValue({ count: 3, next: null, previous: null, results: [role, teacherRole, adminRole] })
 })
 
+it('mantiene la tabla de usuarios clara y aplica el patrón existente de modo oscuro', async () => {
+  renderPage()
+
+  const header = (await screen.findByRole('columnheader', { name: 'Nombre completo' })).closest('thead')
+  const userRow = screen.getByText('Ana Pérez').closest('tr')
+
+  expect(header).toHaveClass('bg-slate-100', 'dark:bg-slate-800')
+  expect(userRow).toHaveClass('border-t', 'dark:border-slate-800')
+  expect(screen.getByRole('button', { name: 'Detalle' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Editar' })).toBeInTheDocument()
+})
+
 it('lista, busca, muestra detalle y activa/inactiva usuarios', async () => {
   usuariosService.updateUser.mockResolvedValue({ ...user, is_active: false })
   renderPage()

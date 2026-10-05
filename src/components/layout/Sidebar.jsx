@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth'
 import { useNotifications } from '../../hooks/useNotifications'
 
 const links = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: 'puede_ver_dashboard' },
+  { to: '/dashboard', label: 'Inicio', icon: LayoutDashboard, permission: 'puede_ver_dashboard' },
   { to: '/notificaciones', label: 'Notificaciones', icon: Bell, permission: 'puede_ver_notificaciones' },
   { to: '/postulantes', label: 'Postulantes', icon: Users, permission: 'puede_ver_postulaciones' },
   { to: '/documentos', label: 'Documentos', icon: FileText, permission: 'puede_ver_documentos' },
