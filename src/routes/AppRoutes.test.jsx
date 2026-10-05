@@ -17,12 +17,13 @@ vi.mock('../pages/postulantes/PostulantesPage', () => ({ default: () => <h1>Post
 vi.mock('../pages/dashboard/DashboardPage', () => ({ default: () => <h1>Dashboard cargado</h1> }))
 vi.mock('../pages/configuracion/ConfiguracionPage', () => ({ default: () => <h1>Configuración cargada</h1> }))
 vi.mock('../pages/modalidades/ModalidadesPage', () => ({ default: () => <h1>Modalidades cargadas</h1> }))
+vi.mock('../pages/profile/ProfilePage', () => ({ default: () => <h1>Mi perfil cargado</h1> }))
 
 beforeEach(() => vi.clearAllMocks())
 
-function renderRoute(hasPermission, path = '/postulaciones/7') {
+function renderRoute(hasPermission, path = '/postulaciones/7', isAuthenticated = true) {
   return render(
-    <AuthContext.Provider value={{ loading: false, isAuthenticated: true, hasPermission }}>
+    <AuthContext.Provider value={{ user: { rol: { nombre: 'Administración' } }, loading: false, isAuthenticated, hasPermission }}>
       <MemoryRouter initialEntries={[path]}><AppRoutes /></MemoryRouter>
     </AuthContext.Provider>,
   )
@@ -105,5 +106,18 @@ describe('ruta de modalidades', () => {
   it('responde 403 sin puede_ver_modalidades', () => {
     renderRoute(() => false, '/modalidades')
     expect(screen.getByRole('heading', { name: 'Acceso no autorizado' })).toBeInTheDocument()
+  })
+})
+
+describe('ruta de perfil', () => {
+  it('permite acceder a cualquier usuario autenticado sin permiso académico', () => {
+    renderRoute(() => false, '/perfil')
+    expect(screen.getByRole('heading', { name: 'Mi perfil cargado' })).toBeInTheDocument()
+  })
+
+  it('redirige a inicio de sesión cuando no hay sesión', () => {
+    renderRoute(() => false, '/perfil', false)
+    expect(screen.getByText('Inicio de sesión')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Mi perfil cargado' })).not.toBeInTheDocument()
   })
 })
