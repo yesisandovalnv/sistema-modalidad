@@ -390,6 +390,8 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
     modalidad = serializers.SerializerMethodField()
     etapa_actual = serializers.SerializerMethodField()
     porcentaje_avance = serializers.SerializerMethodField()
+    etapas_completadas = serializers.SerializerMethodField()
+    etapas_totales = serializers.SerializerMethodField()
     etapas = serializers.SerializerMethodField()
     orientacion_etapa_actual = serializers.SerializerMethodField()
     gestion_actores = serializers.SerializerMethodField()
@@ -403,6 +405,8 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
             "modalidad",
             "etapa_actual",
             "porcentaje_avance",
+            "etapas_completadas",
+            "etapas_totales",
             "etapas",
             "orientacion_etapa_actual",
             "gestion_actores",
@@ -449,16 +453,13 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
             return None
         return SeguimientoEtapaSerializer(actual, context=self.context).data
 
-    def get_porcentaje_avance(self, obj: Postulacion) -> float:
+    def _obtener_conteo_progreso(self, obj: Postulacion) -> tuple[int, int]:
         seguimientos = self._obtener_seguimientos(obj)
         etapas_obligatorias_ids = {
             seguimiento.etapa_id
             for seguimiento in seguimientos
             if seguimiento.etapa.obligatoria and seguimiento.etapa.activo
         }
-        if not etapas_obligatorias_ids:
-            return 0.0
-
         etapas_aprobadas_ids = {
             seguimiento.etapa_id
             for seguimiento in seguimientos
@@ -466,7 +467,19 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
             and seguimiento.etapa.obligatoria
             and seguimiento.etapa.activo
         }
-        return round((len(etapas_aprobadas_ids) / len(etapas_obligatorias_ids)) * 100, 2)
+        return len(etapas_aprobadas_ids), len(etapas_obligatorias_ids)
+
+    def get_porcentaje_avance(self, obj: Postulacion) -> float:
+        completadas, total = self._obtener_conteo_progreso(obj)
+        return round((completadas / total) * 100, 2) if total else 0.0
+
+    def get_etapas_completadas(self, obj: Postulacion) -> int:
+        completadas, _ = self._obtener_conteo_progreso(obj)
+        return completadas
+
+    def get_etapas_totales(self, obj: Postulacion) -> int:
+        _, total = self._obtener_conteo_progreso(obj)
+        return total
 
     def get_orientacion_etapa_actual(self, obj: Postulacion) -> dict | None:
         """Evalúa precondiciones operativas declaradas por el policy de modalidad."""

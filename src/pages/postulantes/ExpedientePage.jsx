@@ -517,6 +517,11 @@ export default function ExpedientePage() {
   const isConcluded = detalle.estado_actual_detalle?.codigo === 'CONCLUIDA'
     || cierre.data?.concluida === true
     || cierre.data?.estado_general === 'CONCLUIDA'
+  const isStudentView = auth?.roleCode === 'ESTUDIANTE'
+
+  if (isStudentView) {
+    return <StudentProcessView detalle={detalle} flujo={flujo} cierre={cierre} cierreSoportado={cierreSoportado} progress={safeProgress} />
+  }
 
   const initializeFlow = async () => {
     if (flowInitializationSubmitting.current) return
@@ -1612,6 +1617,83 @@ export default function ExpedientePage() {
       {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} canUpload={canUpload} canManageAssignments={canManageAssignments} tribunalReviewStage={tribunalReviewStage} activeActors={activeActors.data?.results || []} activeTribunals={activeTribunals} onRetryActiveTribunals={() => setActiveTribunalsRevision((value) => value + 1)} onDraftChange={updateTribunalReportDraft} onAssignMissing={(order) => setTribunalReportDialog((current) => ({ ...current, view: 'ASSIGN_MISSING_TRIBUNAL', assignment: { order, submitting: false, fields: {}, error: '' } }))} onBackToReport={() => setTribunalReportDialog((current) => ({ ...current, view: 'REGISTER_REPORT' }))} onSubmitMissing={submitMissingTribunal} onUploadEvidence={openTribunalEvidenceUpload} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
     </section>
   )
+}
+
+function StudentProcessView({ detalle, flujo, cierre, cierreSoportado, progress }) {
+  const currentStage = flujo.etapa_actual
+  const orientation = flujo.orientacion_etapa_actual
+  const requirements = orientation?.requisitos || []
+  const stages = flujo.etapas || []
+  const completed = flujo.etapas_completadas
+  const total = flujo.etapas_totales
+
+  return <section className="mx-auto max-w-4xl space-y-5" aria-labelledby="student-process-title">
+    <Card className="overflow-hidden border-slate-300 dark:border-slate-700">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Mi proceso</p>
+      <h1 id="student-process-title" className="mt-2 break-words text-3xl font-bold tracking-tight">{detalle.modalidad_detalle?.nombre || flujo.modalidad?.nombre || 'Proceso académico'}</h1>
+      <p className="mt-1 text-base font-medium">{detalle.codigo || EMPTY}</p>
+      <dl className="mt-6 grid gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2 dark:border-slate-800">
+        <Info label="Estado general" value={detalle.estado_actual_detalle?.nombre || detalle.estado_actual_detalle?.codigo} />
+        <Info label="Etapa actual" value={currentStage?.nombre || 'Sin etapa actual'} />
+      </dl>
+      <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
+        <div className="flex items-center justify-between gap-4 text-sm"><span className="font-semibold">Progreso académico</span><span>{progress === null ? EMPTY : `${progress}%`}</span></div>
+        {progress !== null && <progress className="mt-2 h-3 w-full" max="100" value={progress} aria-label="Progreso académico">{progress}%</progress>}
+        {Number.isInteger(completed) && Number.isInteger(total) && <p className="mt-2 text-sm text-slate-500">{completed} de {total} etapas completadas</p>}
+      </div>
+    </Card>
+
+    <Card className="overflow-hidden border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800 dark:text-sky-200">Etapa actual</p>
+      <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+        <h2 className="text-xl font-bold">{currentStage?.nombre || 'Sin etapa actual'}</h2>
+        {currentStage?.estado && <StatusBadge value={currentStage.estado_display || formatStatus(currentStage.estado)} positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(currentStage.estado)} />}
+      </div>
+      <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="student-orientation-title">
+        <h3 id="student-orientation-title" className="text-lg font-bold">Qué debes hacer ahora</h3>
+        <p className="mt-2 text-sm">{orientation?.mensaje || 'No hay una orientación pendiente para esta etapa.'}</p>
+        {orientation?.siguiente_accion && <div className="mt-4 rounded-lg border border-sky-200 bg-white/70 p-4 dark:border-sky-800 dark:bg-slate-900/60">
+          <p className="font-semibold">{orientation.siguiente_accion.titulo}</p>
+          {orientation.siguiente_accion.descripcion && <p className="mt-1 text-sm">{orientation.siguiente_accion.descripcion}</p>}
+          {orientation.siguiente_accion.estado && <p className="mt-2 text-sm font-medium">{orientation.siguiente_accion.estado_display || formatStatus(orientation.siguiente_accion.estado)}</p>}
+        </div>}
+        {requirements.length > 0 && <div className="mt-5"><h4 className="font-semibold">Requisitos relevantes</h4><ul className="mt-3 space-y-2">{requirements.map((requirement) => <li key={`${requirement.tipo}-${requirement.codigo}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 text-sm dark:border-sky-800 dark:bg-slate-900/60"><span className="font-medium">{requirement.nombre}</span><span>{requirement.estado_display || formatStatus(requirement.estado)}</span></li>)}</ul></div>}
+      </section>
+    </Card>
+
+    <Card className="overflow-hidden" aria-labelledby="student-stages-title">
+      <h2 id="student-stages-title" className="text-xl font-bold">Etapas del proceso</h2>
+      {stages.length === 0 ? <p className="mt-3 text-sm text-slate-500">El flujo académico todavía no fue inicializado.</p> : <ol className="mt-5">{stages.map((stage) => {
+        const isCurrent = stage.id === currentStage?.id
+        return <li key={stage.id} aria-current={isCurrent ? 'step' : undefined} className="relative flex gap-4 pb-5 last:pb-0">
+          <span aria-hidden="true" className="absolute bottom-0 left-[0.7rem] top-6 w-px bg-slate-200 last:hidden dark:bg-slate-700" />
+          <StageMarker state={stage.estado} />
+          <div className={`min-w-0 flex-1 rounded-lg border px-4 py-3 text-sm ${isCurrent ? 'border-sky-400 bg-sky-50 dark:border-sky-700 dark:bg-sky-950' : 'border-slate-200 dark:border-slate-700'}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2"><strong>{stage.nombre}</strong><StatusBadge value={stage.estado_display || formatStatus(stage.estado)} compact positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)} /></div>
+            {isCurrent && <p className="mt-1 font-medium text-sky-700 dark:text-sky-300">Etapa actual</p>}
+          </div>
+        </li>
+      })}</ol>}
+    </Card>
+
+    <StudentClosureSummary cierre={cierre} supported={cierreSoportado} />
+  </section>
+}
+
+function StudentClosureSummary({ cierre, supported }) {
+  const data = cierre?.data
+  let message = 'El estado del cierre técnico todavía no está disponible.'
+  if (!supported) message = 'Esta modalidad no requiere un cierre técnico gestionado por el sistema.'
+  else if (data?.concluida || data?.estado_general === 'CONCLUIDA') message = 'El proceso se encuentra concluido.'
+  else if (data?.cierre_documental_aprobado) message = 'El cierre documental está aprobado; la conclusión técnica permanece pendiente.'
+  else if (data) message = 'El cierre técnico permanece pendiente.'
+
+  return <Card className="overflow-hidden" aria-labelledby="student-closure-title">
+    <h2 id="student-closure-title" className="text-xl font-bold">Cierre técnico</h2>
+    <p className="mt-3 text-sm">{message}</p>
+    {supported && data?.estado_general && <p className="mt-2 text-sm text-slate-500">Estado general: {formatStatus(data.estado_general)}</p>}
+    {supported && cierre?.error && <p className="mt-2 text-sm text-slate-500">{cierre.error}</p>}
+  </Card>
 }
 
 function ExpedienteNav() {

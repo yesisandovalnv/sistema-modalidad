@@ -416,6 +416,58 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
         )
 
         self.assertEqual(serializer.data["porcentaje_avance"], 66.67)
+        self.assertEqual(serializer.data["etapas_completadas"], 2)
+        self.assertEqual(serializer.data["etapas_totales"], 3)
+
+    def test_conteo_progreso_comparte_semantica_con_porcentaje(self):
+        WorkflowService.inicializar_flujo(self.postulacion, self.admin)
+        SeguimientoEtapa.objects.filter(
+            postulacion=self.postulacion,
+            etapa=self.etapa_opcional,
+        ).update(estado=SeguimientoEtapa.EstadoChoices.APROBADA)
+        SeguimientoEtapa.objects.filter(
+            postulacion=self.postulacion,
+            etapa=self.etapa_perfil,
+            numero_intento=1,
+        ).update(estado=SeguimientoEtapa.EstadoChoices.RECHAZADA)
+        SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=self.etapa_perfil,
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA,
+            numero_intento=2,
+        )
+
+        data = FlujoPostulacionSerializer(self.postulacion, context={}).data
+
+        self.assertEqual(data["etapas_completadas"], 1)
+        self.assertEqual(data["etapas_totales"], 3)
+        self.assertEqual(data["porcentaje_avance"], 33.33)
+
+    def test_conteo_progreso_sin_flujo_es_cero(self):
+        data = FlujoPostulacionSerializer(self.postulacion, context={}).data
+
+        self.assertEqual(data["etapas_completadas"], 0)
+        self.assertEqual(data["etapas_totales"], 0)
+        self.assertEqual(data["porcentaje_avance"], 0.0)
+
+    def test_conteo_progreso_desde_ninguna_hasta_todas_las_obligatorias(self):
+        WorkflowService.inicializar_flujo(self.postulacion, self.admin)
+
+        data = FlujoPostulacionSerializer(self.postulacion, context={}).data
+        self.assertEqual(data["etapas_completadas"], 0)
+        self.assertEqual(data["etapas_totales"], 3)
+        self.assertEqual(data["porcentaje_avance"], 0.0)
+
+        SeguimientoEtapa.objects.filter(
+            postulacion=self.postulacion,
+            etapa__obligatoria=True,
+            etapa__activo=True,
+        ).update(estado=SeguimientoEtapa.EstadoChoices.APROBADA)
+
+        data = FlujoPostulacionSerializer(self.postulacion, context={}).data
+        self.assertEqual(data["etapas_completadas"], 3)
+        self.assertEqual(data["etapas_totales"], 3)
+        self.assertEqual(data["porcentaje_avance"], 100.0)
 
 
 class ProgrammingOrientationTest(WorkflowBaseMixin, TestCase):

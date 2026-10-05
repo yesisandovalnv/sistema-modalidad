@@ -138,6 +138,8 @@ const response = {
     modalidad: { id: 1, codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado' },
     etapa_actual: { codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto' },
     porcentaje_avance: 25,
+    etapas_completadas: 1,
+    etapas_totales: 4,
     etapas: [
       { id: 11, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', numero_intento: 1, activo: true },
       { id: 12, codigo: 'DEFENSA_PRIVADA', nombre: 'Defensa Privada', estado: 'OBSERVADA', numero_intento: 2, activo: true },
@@ -206,6 +208,11 @@ function renderPage() {
 
 function renderOwnerPage() {
   const auth = { user: { id: 3, rol: { codigo: 'EST' } }, roleCode: 'EST', hasPermission: (name) => name === 'puede_cargar_documentos' }
+  return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+}
+
+function renderStudentPage() {
+  const auth = { user: { id: 3, rol: { codigo: 'ESTUDIANTE' } }, roleCode: 'ESTUDIANTE', hasPermission: (name) => ['puede_ver_postulaciones', 'puede_ver_documentos', 'puede_cargar_documentos'].includes(name) }
   return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 }
 
@@ -440,6 +447,78 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.suspenderDefensa.mockResolvedValue({ ...defenseRows[1], estado: 'SUSPENDIDA', estado_display: 'Suspendida' })
     postulacionesService.cancelarDefensa.mockResolvedValue({ ...defenseRows[1], estado: 'CANCELADA', estado_display: 'Cancelada' })
     postulacionesService.reprogramarDefensa.mockResolvedValue({ ...defenseRows[1], fecha_programada: '2026-09-01T10:00:00Z' })
+  })
+
+  it('muestra al estudiante una presentación resumida guiada por el contrato multimodalidad', async () => {
+    const stages = Array.from({ length: 5 }, (_, index) => ({
+      id: 901 + index,
+      nombre: `Fase dinámica ${index + 1}`,
+      orden: index + 1,
+      estado: index < 2 ? 'APROBADA' : index === 2 ? 'EN_PROCESO' : 'PENDIENTE',
+      estado_display: index < 2 ? 'Aprobada' : index === 2 ? 'En proceso' : 'Pendiente',
+    }))
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, codigo: 'MOD-2030-01', modalidad_detalle: { id: 99, codigo: 'MODALIDAD_FUTURA', nombre: 'Modalidad futura' } },
+      flujo: {
+        ...response.flujo,
+        modalidad: { id: 99, codigo: 'MODALIDAD_FUTURA', nombre: 'Modalidad futura' },
+        porcentaje_avance: 40,
+        etapas_completadas: 2,
+        etapas_totales: 5,
+        etapa_actual: stages[2],
+        etapas: stages,
+        orientacion_etapa_actual: {
+          mensaje: 'Completa la actividad indicada por el engine.',
+          siguiente_accion: { titulo: 'Continuar actividad', descripcion: 'Sigue la orientación académica vigente.', estado: 'PENDIENTE', estado_display: 'Pendiente' },
+          requisitos: [{ tipo: 'ACADEMICO', codigo: 'REQUISITO_DINAMICO', nombre: 'Requisito dinámico', estado: 'PENDIENTE', estado_display: 'Pendiente' }],
+        },
+      },
+    })
+
+    renderStudentPage()
+
+    expect(await screen.findByRole('heading', { name: 'Modalidad futura' })).toBeInTheDocument()
+    expect(screen.getByText('MOD-2030-01')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Progreso académico' })).toHaveValue(40)
+    expect(screen.getByText('2 de 5 etapas completadas')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Fase dinámica 3' })).toBeInTheDocument()
+    expect(screen.getByText('Completa la actividad indicada por el engine.')).toBeInTheDocument()
+    expect(screen.getByText('Continuar actividad')).toBeInTheDocument()
+    expect(screen.getByText('Requisito dinámico')).toBeInTheDocument()
+    expect(screen.getAllByText('Fase dinámica 3').find((element) => element.closest('li'))?.closest('li')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByRole('heading', { name: 'Cierre técnico' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Secciones del expediente' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Documentos' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Defensas' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Gestión de actores' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Historial' })).not.toBeInTheDocument()
+  })
+
+  it('mantiene estable la vista estudiantil con orientación nula y flujo vacío', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, porcentaje_avance: 0, etapas_completadas: 0, etapas_totales: 0, etapa_actual: null, etapas: [], orientacion_etapa_actual: null },
+      cierre: { data: null, error: 'Estado de cierre técnico todavía no disponible' },
+    })
+
+    renderStudentPage()
+
+    expect(await screen.findByText('0 de 0 etapas completadas')).toBeInTheDocument()
+    expect(screen.getAllByText('Sin etapa actual').length).toBeGreaterThan(0)
+    expect(screen.getByText('No hay una orientación pendiente para esta etapa.')).toBeInTheDocument()
+    expect(screen.getByText('El flujo académico todavía no fue inicializado.')).toBeInTheDocument()
+    expect(screen.getByText('El estado del cierre técnico todavía no está disponible.')).toBeInTheDocument()
+  })
+
+  it('conserva el expediente operativo completo para administración', async () => {
+    renderPage()
+
+    expect(await screen.findByRole('navigation', { name: 'Secciones del expediente' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Documentos' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Defensas' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Gestión de actores' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Historial' })).toBeInTheDocument()
   })
 
   it('renderiza un expediente histórico como registro histórico y no como workflow operativo', async () => {
