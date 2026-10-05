@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthContext } from '../../context/AuthContext'
 import SeguimientoPage from './SeguimientoPage'
@@ -20,77 +21,183 @@ const seguimiento = {
   nombre: 'Inscripción',
   estado: 'EN_PROCESO',
   numero_intento: 1,
+  obligatoria: true,
   fecha_inicio: '2026-09-10T10:00:00Z',
   fecha_fin: null,
   observaciones: 'Revisar requisitos.',
   acciones_permitidas: ['aprobar', 'observar', 'rechazar'],
 }
 
-function renderPage(canManage = true) {
-  crudService.list.mockResolvedValue({ count: 1, next: null, previous: null, results: [seguimiento] })
+function renderPage({ canManage = true, rows = [seguimiento], withRoutes = false } = {}) {
+  crudService.list.mockResolvedValue({ count: rows.length, next: null, previous: null, results: rows })
   crudService.action.mockResolvedValue(seguimiento)
-  return render(<AuthContext.Provider value={{ hasPermission: (permission) => canManage && permission === 'puede_gestionar_seguimiento' }}><SeguimientoPage /></AuthContext.Provider>)
+  const page = <AuthContext.Provider value={{ hasPermission: (permission) => canManage && permission === 'puede_gestionar_seguimiento' }}><SeguimientoPage /></AuthContext.Provider>
+  return render(<MemoryRouter initialEntries={['/seguimiento']}>
+    {withRoutes ? <Routes><Route path="/seguimiento" element={page} /><Route path="/postulaciones/:id" element={<h1>Expediente correcto</h1>} /></Routes> : page}
+  </MemoryRouter>)
+}
+
+async function openDetail(buttonName = 'Gestionar') {
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: buttonName }))
+  return { user, dialog: screen.getByRole('dialog', { name: 'Inscripción' }) }
 }
 
 describe('SeguimientoPage', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('muestra datos humanos en la tarjeta y no identifica la postulación por ID', async () => {
+  it('carga el listado y muestra los datos humanos sin destacar el intento inicial', async () => {
     renderPage()
-
-    expect(await screen.findByText(/PG-2026-003/)).toBeInTheDocument()
+    expect(await screen.findByText('PG-2026-003', { exact: false })).toBeInTheDocument()
     expect(screen.getByText(/Ana Maria Quispe Mamani/)).toBeInTheDocument()
     expect(screen.getByText(/Proyecto de Grado/)).toBeInTheDocument()
     expect(screen.getByText(/En proceso/)).toBeInTheDocument()
-    expect(screen.getByText(/INSCRIPCION.*Intento 1/)).toBeInTheDocument()
+    expect(screen.getByText('INSCRIPCION')).toBeInTheDocument()
+    expect(screen.queryByText('Intento 1')).not.toBeInTheDocument()
     expect(screen.queryByText('Postulación 3')).not.toBeInTheDocument()
   })
 
-  it('muestra los datos humanos en el modal y conserva las acciones administrativas', async () => {
+  it('destaca los intentos posteriores al primero', async () => {
+    renderPage({ rows: [{ ...seguimiento, id: 8, numero_intento: 2 }] })
+    expect(await screen.findByText('Intento 2')).toBeInTheDocument()
+  })
+
+  it('presenta el error del listado y permite reintentar', async () => {
+    crudService.list.mockRejectedValueOnce({ message: 'No se pudo cargar.' }).mockResolvedValueOnce({ count: 0, results: [] })
+    const page = <AuthContext.Provider value={{ hasPermission: () => true }}><SeguimientoPage /></AuthContext.Provider>
+    const user = userEvent.setup()
+    render(<MemoryRouter>{page}</MemoryRouter>)
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cargar.')
+    await user.click(screen.getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() => expect(crudService.list).toHaveBeenCalledTimes(2))
+  })
+
+  it('mantiene la búsqueda existente y reinicia la página', async () => {
     const user = userEvent.setup()
     renderPage()
-    await user.click(await screen.findByRole('button', { name: 'Detalle y acciones' }))
+    await screen.findByText('PG-2026-003', { exact: false })
+    await user.type(screen.getByRole('textbox', { name: 'Buscar' }), 'INSCRIPCION')
+    await user.click(screen.getByRole('button', { name: 'Buscar' }))
+    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, { search: 'INSCRIPCION', page: 1, ordering: 'etapa__orden' }, expect.any(AbortSignal)))
+  })
 
-    const dialog = screen.getByRole('dialog', { name: 'Inscripción' })
+  it('usa Gestionar con acciones y abre el detalle completo', async () => {
+    renderPage()
+    const { dialog } = await openDetail()
     expect(within(dialog).getByText('PG-2026-003')).toBeInTheDocument()
     expect(within(dialog).getByText('Ana Maria Quispe Mamani')).toBeInTheDocument()
     expect(within(dialog).getByText('Proyecto de Grado')).toBeInTheDocument()
     expect(within(dialog).getByText('En proceso')).toBeInTheDocument()
-    expect(within(dialog).getByText(new Intl.DateTimeFormat('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).format(new Date(seguimiento.fecha_inicio)))).toBeInTheDocument()
-    expect(within(dialog).getByText('—')).toBeInTheDocument()
+    expect(within(dialog).getByText('Obligatoria')).toBeInTheDocument()
     expect(within(dialog).getByText('Revisar requisitos.')).toBeInTheDocument()
     for (const action of ['Aprobar', 'Observar', 'Rechazar']) expect(within(dialog).getByRole('button', { name: action })).toBeInTheDocument()
-    expect(within(dialog).queryByRole('button', { name: 'Iniciar' })).not.toBeInTheDocument()
-    expect(within(dialog).queryByRole('button', { name: 'Omitir' })).not.toBeInTheDocument()
+    for (const action of ['Iniciar', 'Omitir']) expect(within(dialog).queryByRole('button', { name: action })).not.toBeInTheDocument()
   })
 
-  it('oculta las acciones operativas sin permiso de gestión', async () => {
+  it('usa Ver detalle sin acciones y no promete una transición', async () => {
+    renderPage({ rows: [{ ...seguimiento, estado: 'APROBADA', acciones_permitidas: [] }] })
     const user = userEvent.setup()
-    renderPage(false)
-    await user.click(await screen.findByRole('button', { name: 'Detalle y acciones' }))
-
-    const dialog = screen.getByRole('dialog', { name: 'Inscripción' })
-    for (const action of ['Iniciar', 'Aprobar', 'Observar', 'Rechazar', 'Omitir']) expect(within(dialog).queryByRole('button', { name: action })).not.toBeInTheDocument()
-    expect(crudService.list).toHaveBeenCalledWith(endpoints.seguimiento, { search: '', page: 1, ordering: 'etapa__orden' }, expect.any(AbortSignal))
-  })
-
-  it('mantiene las acciones conectadas al endpoint actual', async () => {
-    const user = userEvent.setup()
-    renderPage()
-    await user.click(await screen.findByRole('button', { name: 'Detalle y acciones' }))
-    await user.click(within(screen.getByRole('dialog', { name: 'Inscripción' })).getByRole('button', { name: 'Aprobar' }))
-
-    await waitFor(() => expect(crudService.action).toHaveBeenCalledWith(endpoints.seguimiento, 7, 'aprobar', {}))
-  })
-
-  it('no muestra acciones ni transición para una etapa cerrada', async () => {
-    const user = userEvent.setup()
-    crudService.list.mockResolvedValue({ count: 1, next: null, previous: null, results: [{ ...seguimiento, estado: 'APROBADA', acciones_permitidas: [] }] })
-    render(<AuthContext.Provider value={{ hasPermission: () => true }}><SeguimientoPage /></AuthContext.Provider>)
-    await user.click(await screen.findByRole('button', { name: 'Detalle y acciones' }))
-
+    expect(await screen.findByRole('button', { name: 'Ver detalle' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Gestionar' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Ver detalle' }))
     const dialog = screen.getByRole('dialog', { name: 'Inscripción' })
     expect(within(dialog).getByText('No hay acciones disponibles para esta etapa.')).toBeInTheDocument()
     for (const action of ['Iniciar', 'Aprobar', 'Observar', 'Rechazar', 'Omitir']) expect(within(dialog).queryByRole('button', { name: action })).not.toBeInTheDocument()
+  })
+
+  it('abre el expediente de la postulación seleccionada', async () => {
+    const user = userEvent.setup()
+    renderPage({ withRoutes: true })
+    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    const link = screen.getByRole('link', { name: 'Abrir expediente' })
+    expect(link).toHaveAttribute('href', '/postulaciones/3')
+    await user.click(link)
+    expect(await screen.findByRole('heading', { name: 'Expediente correcto' })).toBeInTheDocument()
+  })
+
+  it('oculta las acciones operativas a un usuario de solo lectura', async () => {
+    renderPage({ canManage: false })
+    const { dialog } = await openDetail()
+    for (const action of ['Iniciar', 'Aprobar', 'Observar', 'Rechazar', 'Omitir']) expect(within(dialog).queryByRole('button', { name: action })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('link', { name: 'Abrir expediente' })).toBeInTheDocument()
+  })
+
+  it.each(['iniciar', 'aprobar', 'rechazar', 'omitir'])('confirma %s antes de ejecutar', async (action) => {
+    const item = { ...seguimiento, acciones_permitidas: [action] }
+    renderPage({ rows: [item] })
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    await user.click(screen.getByRole('button', { name: new RegExp(`^${action}$`, 'i') }))
+    expect(crudService.action).not.toHaveBeenCalled()
+    const confirmation = screen.getByRole('dialog', { name: `Confirmar ${action}` })
+    expect(within(confirmation).getByText('PG-2026-003', { exact: false })).toBeInTheDocument()
+    await user.click(within(confirmation).getByRole('button', { name: `Confirmar ${action}` }))
+    await waitFor(() => expect(crudService.action).toHaveBeenCalledWith(endpoints.seguimiento, 7, action, {}))
+  })
+
+  it('cancelar una confirmación vuelve al detalle sin ejecutar', async () => {
+    renderPage({ rows: [{ ...seguimiento, acciones_permitidas: ['aprobar'] }] })
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    await user.click(screen.getByRole('button', { name: 'Aprobar' }))
+    await user.click(within(screen.getByRole('dialog', { name: 'Confirmar aprobar' })).getByRole('button', { name: 'Cancelar' }))
+    expect(crudService.action).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog', { name: 'Inscripción' })).toBeInTheDocument()
+  })
+
+  it('observa mediante un formulario estructurado y envía una sola vez', async () => {
+    renderPage({ rows: [{ ...seguimiento, acciones_permitidas: ['observar'] }] })
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    await user.click(screen.getByRole('button', { name: 'Observar' }))
+    const dialog = screen.getByRole('dialog', { name: 'Registrar observación' })
+    const submit = within(dialog).getByRole('button', { name: 'Confirmar observación' })
+    expect(submit).toBeDisabled()
+    await user.type(within(dialog).getByLabelText('Observación'), '  Debe subsanar el documento.  ')
+    await user.click(submit)
+    await waitFor(() => expect(crudService.action).toHaveBeenCalledWith(endpoints.seguimiento, 7, 'observar', { observaciones: 'Debe subsanar el documento.' }))
+    expect(crudService.action).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancelar la observación no ejecuta el request', async () => {
+    renderPage({ rows: [{ ...seguimiento, acciones_permitidas: ['observar'] }] })
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    await user.click(screen.getByRole('button', { name: 'Observar' }))
+    await user.type(screen.getByLabelText('Observación'), 'No enviar')
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(crudService.action).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog', { name: 'Inscripción' })).toBeInTheDocument()
+  })
+
+  it('mantiene el diálogo y muestra el error backend de una acción', async () => {
+    crudService.list.mockResolvedValue({ count: 1, results: [{ ...seguimiento, acciones_permitidas: ['observar'] }] })
+    crudService.action.mockRejectedValue({ message: 'No se pudo registrar la observación.' })
+    const page = <AuthContext.Provider value={{ hasPermission: () => true }}><SeguimientoPage /></AuthContext.Provider>
+    const user = userEvent.setup()
+    render(<MemoryRouter>{page}</MemoryRouter>)
+    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    await user.click(screen.getByRole('button', { name: 'Observar' }))
+    await user.type(screen.getByLabelText('Observación'), 'Revisar')
+    await user.click(screen.getByRole('button', { name: 'Confirmar observación' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo registrar la observación.')
+    expect(screen.getByRole('dialog', { name: 'Registrar observación' })).toBeInTheDocument()
+  })
+
+  it('bloquea el doble envío mientras la acción está en progreso', async () => {
+    let resolveAction
+    crudService.list.mockResolvedValue({ count: 1, results: [{ ...seguimiento, acciones_permitidas: ['aprobar'] }] })
+    crudService.action.mockImplementation(() => new Promise((resolve) => { resolveAction = resolve }))
+    const page = <AuthContext.Provider value={{ hasPermission: () => true }}><SeguimientoPage /></AuthContext.Provider>
+    const user = userEvent.setup()
+    render(<MemoryRouter>{page}</MemoryRouter>)
+    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    await user.click(screen.getByRole('button', { name: 'Aprobar' }))
+    const confirm = screen.getByRole('button', { name: 'Confirmar aprobar' })
+    await user.click(confirm)
+    expect(screen.getByRole('button', { name: 'Procesando…' })).toBeDisabled()
+    expect(crudService.action).toHaveBeenCalledTimes(1)
+    resolveAction(seguimiento)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 })
