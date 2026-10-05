@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui/button'
-import { DataState, Modal, PageHeader, Pager, SearchBar } from '../../components/crud/CrudShell'
+import { DataState, PageHeader, Pager, SearchBar } from '../../components/crud/CrudShell'
 import { crudService, endpoints, listAll } from '../../services/crudService'
 import { postulacionesService } from '../../services/postulacionesService'
 import { useAuth } from '../../hooks/useAuth'
 import UploadDialog from '../../components/documentos/UploadDialog'
+import DocumentDetailDialog from '../../components/documentos/DocumentDetailDialog'
 
 const format = (value) => {
   if (!value) return '—'
   const date = new Date(value)
   return Number.isNaN(date.valueOf()) ? '—' : new Intl.DateTimeFormat('es-BO', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
-}
-
-function Info({ label, value }) {
-  return <div><dt className="font-semibold">{label}</dt><dd>{String(value ?? '—')}</dd></div>
 }
 
 function formatApplicationLabel(application) {
@@ -169,7 +166,7 @@ export default function DocumentosPage() {
     <DataState loading={loading} error={error} empty={!data.results?.length} onRetry={() => setRevision((value) => value + 1)}>
       <div className="overflow-x-auto rounded-xl border"><table className="w-full min-w-[750px] text-left text-sm"><thead className="bg-slate-100 dark:bg-slate-800"><tr><th className="p-3">Postulación</th><th className="p-3">Documento</th><th className="p-3">Estado</th><th className="p-3">Fecha</th><th className="p-3">Corrección</th><th className="p-3">Acciones</th></tr></thead><tbody>{data.results?.map((item) => <tr key={item.id} className="border-t align-top dark:border-slate-800"><td className="p-3"><p className="font-semibold">{applicationCode(item)}</p>{!isStudent && <p className="text-slate-600 dark:text-slate-300">{applicationStudent(item)}</p>}<p className="text-xs text-slate-500">{applicationModality(item)}</p></td><td className="p-3 font-medium">{typeName(item)}</td><td className="p-3">{item.estado_nombre || 'Estado no disponible'}</td><td className="p-3">{format(item.fecha_subida)}</td><td className="p-3">{item.requiere_correccion ? 'Requiere corrección' : 'No requerida'}</td><td className="p-3"><Button variant="secondary" onClick={() => setSelected(item)}>Detalle</Button></td></tr>)}</tbody></table><Pager data={data} page={page} onPage={setPage} /></div>
     </DataState>
-    {selected && <Modal title="Detalle del documento" onClose={() => setSelected(null)}><dl className="mt-4 grid gap-3 sm:grid-cols-2"><Info label="Postulación" value={applicationCode(selected)} />{!isStudent && <Info label="Estudiante" value={applicationStudent(selected)} />}<Info label="Modalidad" value={applicationModality(selected)} /><Info label="Tipo" value={typeName(selected)} /><Info label="Estado" value={selected.estado_nombre || 'Estado no disponible'} /><Info label="Subido" value={format(selected.fecha_subida)} /><Info label="Revisión" value={format(selected.fecha_revision)} /><Info label="Versiones" value={selected.versiones?.length || 0} /><Info label="Corrección" value={selected.requiere_correccion ? 'Requiere corrección' : 'No requerida'} /></dl>{typeof selected.observacion_general === 'string' && selected.observacion_general.trim() && <div className="mt-4 rounded-lg bg-amber-50 p-3"><p className="font-semibold">Observación</p><p className="mt-1">{selected.observacion_general}</p></div>}</Modal>}
+    {selected && <DocumentDetailDialog document={selected} onClose={() => setSelected(null)} />}
     {upload && <UploadDialog key={applicationId || 'sin-postulacion'} upload={upload} types={{ data: uploadableTypes, loading: applicableLoading, error: applicableError }} postulacion={applicationId} isHistorical={false} beforeFields={<>{(!isStudent || applications.length > 1) && <label className="text-sm">Postulación<select required value={applicationId} onChange={selectApplication} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione</option>{applications.map((application) => <option key={application.id} value={application.id}>{formatApplicationLabel(application)}</option>)}</select></label>}{isStudent && !loading && applications.length === 0 && <p className="text-sm text-slate-500">No existe una postulación disponible para subir documentos.</p>}{applicationId && !applicableLoading && !applicableError && applicableTypes.length > 0 && uploadableTypes.length === 0 && <p role="status" className="text-sm text-slate-600">No tienes documentos pendientes de carga o corrección.</p>}</>} onMultipleSubmit={submitMultipleUpload} onClose={closeUpload} />}
   </section>
 }

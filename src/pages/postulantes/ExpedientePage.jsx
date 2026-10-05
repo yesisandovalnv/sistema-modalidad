@@ -19,6 +19,7 @@ import ExcelenciaAcademica from './ExcelenciaAcademica'
 import Diplomado from './Diplomado'
 import TrabajoDirigido from './TrabajoDirigido'
 import UploadDialog from '../../components/documentos/UploadDialog'
+import DocumentDetailDialog, { DownloadVersionButton } from '../../components/documentos/DocumentDetailDialog'
 import { getActiveTribunalComposition } from './tribunalComposition'
 
 const EMPTY = 'No registrado'
@@ -98,12 +99,7 @@ export default function ExpedientePage() {
   const [documentsRevision, setDocumentsRevision] = useState(0)
   const documentsPage = String(documentsView.id) === String(id) ? documentsView.page : 1
   const [selectedDocument, setSelectedDocument] = useState(null)
-  const [versions, setVersions] = useState({ data: null, loading: false, error: '' })
-  const [versionsPage, setVersionsPage] = useState(1)
   const [versionsRevision, setVersionsRevision] = useState(0)
-  const [selectedVersion, setSelectedVersion] = useState(null)
-  const [observations, setObservations] = useState({ data: null, loading: false, error: '' })
-  const [observationsPage, setObservationsPage] = useState(1)
   const [observationsRevision, setObservationsRevision] = useState(0)
   const [documentTypes, setDocumentTypes] = useState({ data: [], loading: false, error: '' })
   const [upload, setUpload] = useState(null)
@@ -151,7 +147,6 @@ export default function ExpedientePage() {
     setUpload(null)
     setReview(null)
     setSelectedDocument(null)
-    setSelectedVersion(null)
     quorumController.current?.abort()
     quorumController.current = null
     defenseOperationController.current?.abort()
@@ -213,7 +208,7 @@ export default function ExpedientePage() {
     reviewController.current?.abort()
     reviewController.current = null
     setReview(null)
-  }, [selectedDocument?.id, selectedVersion?.id])
+  }, [selectedDocument?.id])
 
   const load = useCallback(async (signal) => {
     setData(null)
@@ -384,30 +379,6 @@ export default function ExpedientePage() {
       })
     return () => controller.abort()
   }, [id, defensesPage, defensesRevision])
-
-  useEffect(() => {
-    if (!selectedDocument) return undefined
-    const controller = new AbortController()
-    setVersions((current) => ({ data: current.data, loading: true, error: '' }))
-    postulacionesService.obtenerVersiones(selectedDocument.id, versionsPage, controller.signal)
-      .then((versionData) => setVersions({ data: versionData, loading: false, error: '' }))
-      .catch((requestError) => {
-        if (!requestError.canceled) setVersions({ data: null, loading: false, error: requestError.message })
-      })
-    return () => controller.abort()
-  }, [selectedDocument, versionsPage, versionsRevision])
-
-  useEffect(() => {
-    if (!selectedVersion) return undefined
-    const controller = new AbortController()
-    setObservations({ data: null, loading: true, error: '' })
-    postulacionesService.obtenerObservaciones(selectedVersion.id, observationsPage, controller.signal)
-      .then((observationData) => setObservations({ data: observationData, loading: false, error: '' }))
-      .catch((requestError) => {
-        if (!requestError.canceled) setObservations({ data: null, loading: false, error: requestError.message })
-      })
-    return () => controller.abort()
-  }, [selectedVersion, observationsPage, observationsRevision])
 
   useEffect(() => {
     const stage = data?.flujo?.etapas?.find((item) => item.codigo === 'REVISION_TRIBUNAL_PREVIA')
@@ -848,16 +819,12 @@ export default function ExpedientePage() {
   }
 
   const openUploadFromDetail = (document) => {
-    setSelectedVersion(null)
     setSelectedDocument(null)
     openUpload(document)
   }
 
   const openDocumentDetail = async (document) => {
     setSelectedDocument(document)
-    setVersionsPage(1)
-    setSelectedVersion(null)
-    setObservations({ data: null, loading: false, error: '' })
     if (isHistorical) return
     const controller = new AbortController()
     try {
@@ -915,9 +882,7 @@ export default function ExpedientePage() {
         loadQuorum(refreshedDefense)
       }
     } else if (document && origin !== 'TRIBUNAL_REVIEW_EVIDENCE') {
-      setSelectedVersion(null)
       setSelectedDocument(document)
-      setVersionsPage(1)
       setVersionsRevision((value) => value + 1)
     }
     if (origin === 'TRIBUNAL_REVIEW_EVIDENCE') {
@@ -1244,7 +1209,7 @@ export default function ExpedientePage() {
       setRevision((current) => current + 1)
       setDocumentsRevision((current) => current + 1)
       setVersionsRevision((current) => current + 1)
-      if (selectedVersion) setObservationsRevision((current) => current + 1)
+      setObservationsRevision((current) => current + 1)
     } catch (requestError) {
       if (!requestError.canceled) setReview((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
     }
@@ -1625,23 +1590,14 @@ export default function ExpedientePage() {
       {upload && <UploadDialog upload={upload} types={documentTypes} postulacion={detalle.id} isHistorical={isHistorical} onSubmit={submitUpload} onMultipleSubmit={submitMultipleUpload} onClose={closeUpload} />}
 
       {selectedDocument && (
-        <DocumentDetail
+        <DocumentDetailDialog
           document={selectedDocument}
-          versions={versions}
-          versionsPage={versionsPage}
-          onVersionsPage={(page) => { setVersionsPage(page); setSelectedVersion(null) }}
-          onVersionsRetry={() => setVersionsRevision((value) => value + 1)}
-          selectedVersion={selectedVersion}
-          observations={observations}
-          observationsPage={observationsPage}
-          onSelectVersion={(version) => { setSelectedVersion(version); setObservationsPage(1) }}
-          onObservationsPage={setObservationsPage}
-          onObservationsRetry={() => setObservationsRevision((value) => value + 1)}
-          onClose={() => { setSelectedDocument(null); setSelectedVersion(null) }}
-          canUpload={canUpload && (isHistorical || selectedDocument.capacidad_carga?.permitida === true)}
+          onClose={() => setSelectedDocument(null)}
+          canUpload={canUpload && (isHistorical || selectedDocument.capacidad_carga?.permitida === true) && (selectedDocument.tipo_documento_codigo !== 'OBSERVACIONES_DEFENSA_PERFIL' || canReview)}
           onUpload={() => openUploadFromDetail(selectedDocument)}
           canReview={canReview}
           onReview={openReview}
+          refreshKey={`${versionsRevision}:${observationsRevision}`}
         />
       )}
       {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} nextAction={flujo.orientacion_etapa_actual?.siguiente_accion} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} canManage={canManageDefenses} canEvaluate={canManageEvaluations} canManageDocuments={canReview} isProjectGrade={isProjectGrade} onParticipantsChanged={refreshSelectedDefense} onUploadProfileObservations={openProfileObservationUpload} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
@@ -3044,58 +3000,6 @@ function DocumentsCard({ documents, page, onPage, onRetry, onSelect, canUpload, 
   )
 }
 
-function DocumentDetail({ document, versions, versionsPage, onVersionsPage, onVersionsRetry, selectedVersion, observations, observationsPage, onSelectVersion, onObservationsPage, onObservationsRetry, onClose, canUpload, onUpload, canReview, onReview }) {
-  const rows = versions.data?.results || []
-  const canTransition = canReview && document.estado_codigo === 'ENV'
-  const isProfileObservations = document.tipo_documento_codigo === 'OBSERVACIONES_DEFENSA_PERFIL'
-  const canUploadVersion = canUpload && (!isProfileObservations || canReview)
-  return (
-    <Modal title="Detalle del documento" onClose={onClose}>
-      <div className="mt-4 min-w-0 space-y-5">
-        <dl className="grid gap-3 text-sm sm:grid-cols-2">
-          <Info label="Tipo documental" value={document.tipo_documento_nombre} />
-          <Info label="Estado" value={document.estado_nombre} />
-          <Info label="Fecha de carga" value={formatDocumentDate(document.fecha_subida)} />
-          <Info label="Fecha de revisión" value={document.fecha_revision ? formatDocumentDate(document.fecha_revision) : 'Pendiente'} />
-          <Info label="Requiere corrección" value={document.requiere_correccion ? 'Sí' : 'No'} />
-        </dl>
-        {canUploadVersion && <Button onClick={onUpload}>Cargar nueva versión</Button>}
-        {canTransition && <div className="flex flex-wrap gap-2">
-          {!document.tiene_observaciones_pendientes && <Button onClick={() => onReview('aprobar')}>Aprobar documento</Button>}
-          <Button variant="secondary" onClick={() => onReview('rechazar')}>Rechazar documento</Button>
-          <Button variant="secondary" onClick={() => onReview('observar')}>Registrar observación</Button>
-        </div>}
-        {document.observacion_general && <p className="break-words rounded-lg bg-amber-50 p-3 text-sm dark:bg-amber-950">{document.observacion_general}</p>}
-        <section aria-labelledby="versiones-title"><h3 id="versiones-title" className="text-lg font-bold">Versiones</h3>
-          {versions.loading && !versions.data && <div role="status" aria-label="Cargando versiones" className="mt-3 animate-pulse rounded-lg border p-3">
-            <p className="text-sm text-slate-500">Cargando versiones…</p>
-            <div className="mt-3 space-y-3" aria-hidden="true">
-              <div className="h-5 w-1/3 rounded bg-slate-200 dark:bg-slate-700" />
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div className="h-4 rounded bg-slate-200 dark:bg-slate-700" />
-                <div className="h-4 rounded bg-slate-200 dark:bg-slate-700" />
-                <div className="h-4 rounded bg-slate-200 dark:bg-slate-700" />
-                <div className="h-4 rounded bg-slate-200 dark:bg-slate-700" />
-              </div>
-              <div className="h-9 w-40 rounded bg-slate-200 dark:bg-slate-700" />
-            </div>
-          </div>}
-          {versions.error && <SectionError message={versions.error} label="Reintentar versiones" onRetry={onVersionsRetry} />}
-          {versions.data && !versions.error && rows.length === 0 && <p className="mt-3 text-sm text-slate-500">No se registraron versiones.</p>}
-          {versions.data && !versions.error && rows.length > 0 && <><ol className="mt-3 space-y-3">{rows.map((version) => (
-            <li key={version.id} className="min-w-0 rounded-lg border p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold">Versión {version.numero_version}</h4>{version.es_version_actual && <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">Versión actual</span>}</div>
-              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><Info label="Fecha" value={formatDocumentDate(version.fecha_subida)} /><Info label="Autor" value={version.subido_por_nombre || 'No registrado'} /><Info label="Archivo" value={version.nombre_original || 'No registrado'} /><Info label="Tamaño" value={formatBytes(version.tamano_bytes)} /></dl>
-              <div className="mt-3 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => onSelectVersion(version)}>Ver observaciones</Button><ViewVersionButton version={version} /><DownloadVersionButton version={version} /></div>
-            </li>
-          ))}</ol><Pagination count={versions.data.count} page={versionsPage} hasNext={Boolean(versions.data.next)} hasPrevious={Boolean(versions.data.previous)} onPage={onVersionsPage} /></>}
-        </section>
-        {selectedVersion && <ObservationsPanel version={selectedVersion} observations={observations} page={observationsPage} onPage={onObservationsPage} onRetry={onObservationsRetry} canReview={canReview} onCorrect={(observation) => onReview('corregir', observation)} />}
-      </div>
-    </Modal>
-  )
-}
-
 function ReviewDialog({ review, onSubmit, onClose }) {
   const titles = { aprobar: 'Aprobar documento', rechazar: 'Rechazar documento', observar: 'Registrar observación', corregir: 'Marcar observación corregida' }
   const fieldName = review.action === 'rechazar' ? 'motivo' : 'comentario'
@@ -3114,86 +3018,6 @@ function ReviewDialog({ review, onSubmit, onClose }) {
   </Modal>
 }
 
-function DownloadVersionButton({ version, label = 'Descargar' }) {
-  const [downloading, setDownloading] = useState(false)
-  const [error, setError] = useState('')
-
-  const download = async () => {
-    if (downloading) return
-    setDownloading(true)
-    setError('')
-    try {
-      const { blob, filename } = await postulacionesService.descargarVersion(version.id, version.nombre_original)
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
-    } catch (downloadError) {
-      if (!downloadError.canceled) setError(downloadError.message)
-    } finally {
-      setDownloading(false)
-    }
-  }
-
-  return <div><Button variant="outline" disabled={downloading} onClick={download}>{downloading ? 'Descargando…' : label}</Button>{error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}</div>
-}
-
-function ViewVersionButton({ version }) {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const view = async () => {
-    if (loading) return
-    setError('')
-    const previewWindow = window.open('about:blank', '_blank')
-    if (!previewWindow) {
-      setError('El navegador bloqueó la nueva pestaña. Permite ventanas emergentes e inténtalo nuevamente.')
-      return
-    }
-    previewWindow.opener = null
-    setLoading(true)
-
-    let objectUrl = ''
-    try {
-      const { blob } = await postulacionesService.descargarVersion(version.id, version.nombre_original)
-      if (previewWindow.closed) return
-
-      objectUrl = URL.createObjectURL(blob)
-      previewWindow.location.replace(objectUrl)
-      let cleanupTimer
-      cleanupTimer = window.setInterval(() => {
-        if (previewWindow.closed) {
-          window.clearInterval(cleanupTimer)
-          URL.revokeObjectURL(objectUrl)
-        }
-      }, 1000)
-    } catch (viewError) {
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-      if (!previewWindow.closed) previewWindow.close()
-      if (!viewError.canceled) setError(viewError.message || 'No se pudo abrir el archivo.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return <div><Button variant="secondary" disabled={loading} onClick={view}>{loading ? 'Abriendo…' : 'Ver'}</Button>{error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}</div>
-}
-
-
-function ObservationsPanel({ version, observations, page, onPage, onRetry, canReview, onCorrect }) {
-  const rows = observations.data?.results || []
-  return <section aria-labelledby="observaciones-title"><h3 id="observaciones-title" className="text-lg font-bold">Observaciones de la versión {version.numero_version}</h3>
-    {observations.loading && <p role="status" className="mt-3">Cargando observaciones…</p>}
-    {observations.error && <SectionError message={observations.error} label="Reintentar observaciones" onRetry={onRetry} />}
-    {!observations.loading && !observations.error && rows.length === 0 && <p className="mt-3 text-sm text-slate-500">Sin observaciones registradas.</p>}
-    {!observations.loading && !observations.error && rows.length > 0 && <><ul className="mt-3 space-y-3">{rows.map((observation) => <li key={observation.id} className="min-w-0 rounded-lg border p-3 text-sm"><p className="break-words">{observation.comentario || 'Sin comentario'}</p><dl className="mt-3 grid gap-2 sm:grid-cols-2"><Info label="Autor" value={observation.usuario_nombre || 'No registrado'} /><Info label="Fecha" value={formatDocumentDate(observation.fecha_observacion)} /><Info label="Estado" value={observation.corregida ? 'Corregida' : 'Pendiente'} /><Info label="Fecha de corrección" value={formatDocumentDate(observation.fecha_correccion)} /></dl>{canReview && !observation.corregida && <Button className="mt-3" variant="secondary" onClick={() => onCorrect(observation)}>Marcar observación corregida</Button>}</li>)}</ul><Pagination count={observations.data.count} page={page} hasNext={Boolean(observations.data.next)} hasPrevious={Boolean(observations.data.previous)} onPage={onPage} /></>}
-  </section>
-}
-
 function SectionError({ message, label, onRetry }) {
   return <div role="alert" className="mt-3 rounded-lg border border-red-200 p-3 text-sm"><p>{message}</p><Button className="mt-3" variant="secondary" onClick={onRetry}>{label}</Button></div>
 }
@@ -3202,13 +3026,6 @@ function formatDocumentDate(value) {
   if (!value) return 'No registrada'
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 'No registrada' : date.toLocaleString('es-BO')
-}
-
-function formatBytes(value) {
-  const bytes = Number(value)
-  if (!Number.isFinite(bytes) || bytes < 0) return 'No registrado'
-  if (bytes < 1024) return `${bytes} B`
-  return `${(bytes / 1024).toFixed(1)} KB`
 }
 
 function HistoryCard({ history, page, onPage, onRetry }) {

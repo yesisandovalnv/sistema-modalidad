@@ -371,7 +371,7 @@ describe('getActiveTribunalComposition', () => {
 
 describe('ExpedientePage US-008', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
     postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue({ soportada: true, configuracion_valida: true })
     postulacionesService.inicializarFlujo.mockResolvedValue({})
@@ -3858,6 +3858,7 @@ describe('ExpedientePage US-008', () => {
     const file = new File(['%PDF-1.4'], 'observaciones-v2.pdf', { type: 'application/pdf' })
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
     postulacionesService.obtenerDocumentos.mockResolvedValue({ count: 1, next: null, previous: null, results: [observationDocument] })
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [{ id: 99, codigo: 'OBSERVACIONES_DEFENSA_PERFIL', capacidad_carga: { permitida: true } }] })
     renderDefenseDocumentsAdminPage()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Ver detalle' }))

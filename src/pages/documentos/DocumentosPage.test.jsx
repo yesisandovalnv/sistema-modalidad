@@ -17,6 +17,9 @@ vi.mock('../../services/postulacionesService', () => ({
     obtenerDocumentosAplicables: vi.fn(),
     cargarDocumento: vi.fn(),
     obtenerDefensas: vi.fn(),
+    obtenerVersiones: vi.fn(),
+    obtenerObservaciones: vi.fn(),
+    descargarVersion: vi.fn(),
   },
 }))
 
@@ -76,11 +79,14 @@ function setup({
   postulacionesService.obtenerDocumentosAplicables.mockResolvedValue(applicableResponse)
   postulacionesService.cargarDocumento.mockResolvedValue({ id: 10 })
   postulacionesService.obtenerDefensas.mockResolvedValue({ results: [], next: null })
+  postulacionesService.obtenerVersiones.mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 201, numero_version: 1, es_version_actual: true, nombre_original: 'documento-final.pdf', tamano_bytes: 2048, subido_por_nombre: 'Andrea Molina Martines' }] })
+  postulacionesService.obtenerObservaciones.mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 301, comentario: 'Falta la firma del tutor.', usuario_nombre: 'Revisor', corregida: false }] })
+  postulacionesService.descargarVersion.mockResolvedValue({ blob: new Blob(['pdf']), filename: 'documento-final.pdf' })
   return render(<AuthContext.Provider value={pageAuth}><DocumentosPage /></AuthContext.Provider>)
 }
 
 describe('Subir documento', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => vi.resetAllMocks())
 
   it('conserva la presentación humanizada y las acciones de la página', async () => {
     setup({ availableApplications: [humanApplication], rows: [documentRow], pageAuth: auth })
@@ -104,9 +110,8 @@ describe('Subir documento', () => {
     await user.click(await screen.findByRole('button', { name: 'Detalle' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Detalle del documento' })
-    expect(within(dialog).getByText('PG-2026-011')).toBeInTheDocument()
-    expect(within(dialog).getByText('Andrea Molina Martines')).toBeInTheDocument()
-    expect(within(dialog).getByText('Proyecto de Grado')).toBeInTheDocument()
+    expect(within(dialog).getByText('Documento Final')).toBeInTheDocument()
+    expect(await within(dialog).findByText('documento-final.pdf')).toBeInTheDocument()
     expect(within(dialog).getByText('Falta la firma del tutor.')).toBeInTheDocument()
   })
 
@@ -138,15 +143,15 @@ describe('Subir documento', () => {
   it('limpia los documentos anteriores al cambiar de postulación', async () => {
     const user = userEvent.setup()
     setup({ availableApplications: [application, secondApplication], pageAuth: auth })
-    postulacionesService.obtenerDocumentosAplicables
-      .mockResolvedValueOnce({ documentos_aplicables: [applicableType] })
-      .mockResolvedValueOnce({ documentos_aplicables: [secondApplicableType]       })
+    postulacionesService.obtenerDocumentosAplicables.mockImplementation((selectedId) => Promise.resolve({
+      documentos_aplicables: String(selectedId) === '4' ? [secondApplicableType] : [applicableType],
+    }))
       await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
       const selector = screen.getByLabelText('Postulación')
       await user.selectOptions(selector, '2')
       expect(await screen.findByLabelText('Documento Final')).toBeInTheDocument()
 
-      await user.selectOptions(selector, '4')
+      await user.selectOptions(screen.getByLabelText('Postulación'), '4')
 
     expect(await screen.findByLabelText('Informe final')).toBeInTheDocument()
     expect(screen.queryByLabelText('Documento Final')).not.toBeInTheDocument()
@@ -284,22 +289,23 @@ describe('Subir documento', () => {
     expect(screen.queryByRole('button', { name: 'Subir documento' })).not.toBeInTheDocument()
   })
 
-  it('restaura el detalle del estudiante sin repetir su nombre ni hacer requests adicionales', async () => {
+  it('abre el detalle completo del estudiante sin acciones administrativas', async () => {
     const user = userEvent.setup()
     setup({ availableApplications: [humanApplication], rows: [documentRow] })
     await user.click(await screen.findByRole('button', { name: 'Detalle' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Detalle del documento' })
-    expect(within(dialog).getByText('PG-2026-011')).toBeInTheDocument()
-    expect(within(dialog).getByText('Proyecto de Grado')).toBeInTheDocument()
     expect(within(dialog).getByText('Aprobado')).toBeInTheDocument()
     expect(within(dialog).getByText('Documento Final')).toBeInTheDocument()
-    expect(within(dialog).getByText('No requerida')).toBeInTheDocument()
-    expect(within(dialog).getByText('Versiones')).toBeInTheDocument()
-    expect(within(dialog).queryByText('Andrea Molina Martines')).not.toBeInTheDocument()
+    expect(await within(dialog).findByText('Versión actual')).toBeInTheDocument()
+    expect(within(dialog).getByText('documento-final.pdf')).toBeInTheDocument()
+    expect(within(dialog).getByText('2.0 KB')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Ver' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Descargar' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: /Aprobar|Rechazar|Registrar observación|Marcar observación corregida/ })).not.toBeInTheDocument()
     expect(crudService.list).toHaveBeenCalledTimes(2)
     expect(listAll).toHaveBeenCalledTimes(1)
-    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+    expect(postulacionesService.obtenerVersiones).toHaveBeenCalledWith(101, 1, expect.any(AbortSignal))
   })
 
   it('no muestra el bloque de observacion cuando esta vacia', async () => {
