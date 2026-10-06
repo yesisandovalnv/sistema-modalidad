@@ -2,6 +2,7 @@ from rest_framework import serializers
 from apps.academico.models import Modalidad,EtapaModalidad
 from apps.postulantes.models import EstadoPostulacion, Postulacion
 from apps.usuarios.models import CustomUser
+from apps.reportes.resultados import EstadoDisponibilidad
 
 
 class ReportFilterSerializer(serializers.Serializer):
@@ -35,3 +36,16 @@ class ReportePostulacionSerializer(serializers.Serializer):
     titulo_trabajo=serializers.CharField(allow_null=True); tutor_activo=serializers.CharField(allow_null=True); etapa_actual=serializers.CharField(allow_null=True); estado_general=serializers.CharField(allow_null=True)
     porcentaje_etapas_aprobadas=serializers.DecimalField(max_digits=5,decimal_places=2); documentos_pendientes=serializers.IntegerField(); proxima_defensa=serializers.DateTimeField(allow_null=True)
     revision_final_aprobada=serializers.BooleanField(); cierre_documental_aprobado=serializers.BooleanField(); cierre_aplicable=serializers.BooleanField(); concluida=serializers.BooleanField(); fecha_creacion=serializers.DateTimeField(); fecha_actualizacion=serializers.DateTimeField()
+
+
+class ResultadoAcademicoReportSerializer(serializers.Serializer):
+    estado_disponibilidad = serializers.ChoiceField(choices=[item.value for item in EstadoDisponibilidad])
+    disponible = serializers.BooleanField()
+    definitivo = serializers.BooleanField()
+    nota_final = serializers.DecimalField(max_digits=7, decimal_places=2, allow_null=True)
+    escala = serializers.CharField(allow_null=True)
+    resultado = serializers.CharField(allow_null=True)
+    clasificacion = serializers.CharField(allow_null=True)
+    reconocimiento = serializers.CharField(allow_null=True)
+    fecha_conclusion = serializers.DateTimeField(allow_null=True)
+    limitacion = serializers.CharField(allow_null=True)
