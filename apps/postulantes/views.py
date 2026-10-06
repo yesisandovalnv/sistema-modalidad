@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q
+from django_filters import rest_framework as django_filters
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -678,19 +679,41 @@ class ObservacionViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
+class SeguimientoEtapaFilter(django_filters.FilterSet):
+    modalidad = django_filters.NumberFilter(field_name="postulacion__modalidad_id")
+    estado = django_filters.CharFilter(field_name="estado")
+    etapa = django_filters.NumberFilter(field_name="etapa_id")
+    periodo = django_filters.NumberFilter(field_name="postulacion__periodo_id")
+    gestion = django_filters.NumberFilter(field_name="postulacion__periodo__gestion")
+    semestre = django_filters.CharFilter(field_name="postulacion__periodo__semestre")
+
+    class Meta:
+        model = SeguimientoEtapa
+        fields = ("modalidad", "estado", "etapa", "periodo", "gestion", "semestre")
+
+
 class SeguimientoEtapaViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet para consultar seguimientos y ejecutar acciones del flujo."""
 
     serializer_class = SeguimientoEtapaSerializer
     permission_classes = [IsAuthenticated, IsWorkflowAdminOrReadOnlyOwner]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = SeguimientoEtapaFilter
     search_fields = [
         "postulacion__codigo",
         "postulacion__estudiante__username",
+        "postulacion__estudiante__nombres",
+        "postulacion__estudiante__apellido_paterno",
+        "postulacion__estudiante__apellido_materno",
+        "postulacion__estudiante__ru",
+        "postulacion__estudiante__ci",
+        "postulacion__modalidad__codigo",
+        "postulacion__modalidad__nombre",
         "etapa__codigo",
         "etapa__nombre",
     ]
-    ordering_fields = ["created_at", "fecha_inicio", "fecha_fin", "numero_intento", "etapa__orden"]
+    ordering_fields = ["created_at", "updated_at", "id", "fecha_inicio", "fecha_fin", "numero_intento", "etapa__orden"]
+    ordering = ["-updated_at", "-id"]
 
     def get_queryset(self):
         queryset = SeguimientoEtapa.objects.select_related(

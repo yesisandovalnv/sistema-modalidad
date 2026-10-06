@@ -4,12 +4,24 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthContext } from '../../context/AuthContext'
 import SeguimientoPage from './SeguimientoPage'
-import { crudService, endpoints } from '../../services/crudService'
+import { crudService, endpoints, listAll } from '../../services/crudService'
 
 vi.mock('../../services/crudService', () => ({
-  endpoints: { seguimiento: '/api/v1/seguimientos-etapa/' },
+  endpoints: {
+    seguimiento: '/api/v1/seguimientos-etapa/',
+    modalidades: '/api/v1/academico/modalidades/',
+    periodos: '/api/v1/academico/periodos/',
+  },
   crudService: { list: vi.fn(), action: vi.fn() },
+  listAll: vi.fn(),
 }))
+
+const modalidades = [
+  { id: 1, codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado' },
+  { id: 2, codigo: 'TRABAJO_DIRIGIDO', nombre: 'Trabajo Dirigido' },
+]
+const periodos = [{ id: 4, nombre: '2026-I', gestion: 2026, semestre: 'I' }]
+const etapas = [{ id: 10, codigo: 'INSCRIPCION', nombre: 'Inscripción' }]
 
 const seguimiento = {
   id: 7,
@@ -29,7 +41,11 @@ const seguimiento = {
 }
 
 function renderPage({ canManage = true, rows = [seguimiento], withRoutes = false } = {}) {
-  crudService.list.mockResolvedValue({ count: rows.length, next: null, previous: null, results: rows })
+  crudService.list.mockImplementation((path) => Promise.resolve(
+    path.endsWith('/capacidades/')
+      ? { etapas }
+      : { count: rows.length, next: null, previous: null, results: rows },
+  ))
   crudService.action.mockResolvedValue(seguimiento)
   const page = <AuthContext.Provider value={{ hasPermission: (permission) => canManage && permission === 'puede_gestionar_seguimiento' }}><SeguimientoPage /></AuthContext.Provider>
   return render(<MemoryRouter initialEntries={['/seguimiento']}>
@@ -44,14 +60,17 @@ async function openDetail(buttonName = 'Gestionar') {
 }
 
 describe('SeguimientoPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    listAll.mockImplementation((path) => Promise.resolve(path === endpoints.modalidades ? modalidades : periodos))
+  })
 
   it('carga el listado y muestra los datos humanos sin destacar el intento inicial', async () => {
     renderPage()
     expect(await screen.findByText('PG-2026-003', { exact: false })).toBeInTheDocument()
     expect(screen.getByText(/Ana Maria Quispe Mamani/)).toBeInTheDocument()
-    expect(screen.getByText(/Proyecto de Grado/)).toBeInTheDocument()
-    expect(screen.getByText(/En proceso/)).toBeInTheDocument()
+    expect(screen.getByText(/Proyecto de Grado/, { selector: 'p' })).toBeInTheDocument()
+    expect(screen.getByText(/En proceso/, { selector: 'p' })).toBeInTheDocument()
     expect(screen.getByText('INSCRIPCION')).toBeInTheDocument()
     expect(screen.queryByText('Intento 1')).not.toBeInTheDocument()
     expect(screen.queryByText('Postulación 3')).not.toBeInTheDocument()
@@ -78,7 +97,54 @@ describe('SeguimientoPage', () => {
     await screen.findByText('PG-2026-003', { exact: false })
     await user.type(screen.getByRole('textbox', { name: 'Buscar' }), 'INSCRIPCION')
     await user.click(screen.getByRole('button', { name: 'Buscar' }))
-    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, { search: 'INSCRIPCION', page: 1, ordering: 'etapa__orden' }, expect.any(AbortSignal)))
+    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, {
+      search: 'INSCRIPCION', page: 1, ordering: '-updated_at,-id', modalidad: '', estado: '', etapa: '', periodo: '',
+    }, expect.any(AbortSignal)))
+  })
+
+  it('renderiza filtros con catálogos canónicos y envía filtros combinados', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('option', { name: 'Trabajo Dirigido' })
+
+    await user.selectOptions(screen.getByLabelText('Modalidad'), '2')
+    await screen.findByRole('option', { name: 'Inscripción' })
+    await user.selectOptions(screen.getByLabelText('Estado'), 'APROBADA')
+    await user.selectOptions(screen.getByLabelText('Etapa'), '10')
+    await user.selectOptions(screen.getByLabelText('Periodo / gestión'), '4')
+
+    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, {
+      search: '', page: 1, ordering: '-updated_at,-id', modalidad: '2', estado: 'APROBADA', etapa: '10', periodo: '4',
+    }, expect.any(AbortSignal)))
+  })
+
+  it('combina búsqueda con filtros y limpiar filtros conserva la búsqueda', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByRole('option', { name: 'Trabajo Dirigido' })
+    await user.selectOptions(screen.getByLabelText('Estado'), 'OBSERVADA')
+    await user.type(screen.getByRole('textbox', { name: 'Buscar' }), 'Mendoza')
+    await user.click(screen.getByRole('button', { name: 'Buscar' }))
+    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, expect.objectContaining({
+      search: 'Mendoza', page: 1, estado: 'OBSERVADA',
+    }), expect.any(AbortSignal)))
+
+    await user.click(screen.getByRole('button', { name: 'Limpiar filtros' }))
+    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, expect.objectContaining({
+      search: 'Mendoza', page: 1, modalidad: '', estado: '', etapa: '', periodo: '',
+    }), expect.any(AbortSignal)))
+  })
+
+  it('al cambiar un filtro vuelve a la página 1 y la paginación conserva filtros', async () => {
+    crudService.list.mockResolvedValue({ count: 21, next: '/page/2', previous: null, results: [seguimiento] })
+    const user = userEvent.setup()
+    render(<MemoryRouter><AuthContext.Provider value={{ hasPermission: () => true }}><SeguimientoPage /></AuthContext.Provider></MemoryRouter>)
+    await screen.findByText('PG-2026-003', { exact: false })
+    await user.selectOptions(screen.getByLabelText('Estado'), 'PENDIENTE')
+    await user.click(screen.getByRole('button', { name: 'Siguiente' }))
+    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, expect.objectContaining({ page: 2, estado: 'PENDIENTE' }), expect.any(AbortSignal)))
+    await user.selectOptions(screen.getByLabelText('Estado'), 'APROBADA')
+    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, expect.objectContaining({ page: 1, estado: 'APROBADA' }), expect.any(AbortSignal)))
   })
 
   it('usa Gestionar con acciones y abre el detalle completo', async () => {

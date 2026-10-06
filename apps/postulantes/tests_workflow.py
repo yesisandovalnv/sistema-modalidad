@@ -685,6 +685,114 @@ class WorkflowApiTest(WorkflowBaseMixin, APITestCase):
         token = RefreshToken.for_user(user).access_token
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
+    def _seguimiento_filtrable(self):
+        periodo = Periodo.objects.create(
+            nombre="2025-I", gestion=2025, semestre="I",
+            fecha_inicio="2025-01-01", fecha_fin="2025-06-30",
+        )
+        etapa = EtapaModalidad.objects.create(
+            modalidad=self.otra_modalidad, codigo="INFORME_FINAL", nombre="Informe Final",
+            orden=1, origen_normativo="Reglamento de Trabajo Dirigido",
+        )
+        postulacion = self.other_postulacion
+        postulacion.codigo = "TD-FILTRO-001"
+        postulacion.modalidad = self.otra_modalidad
+        postulacion.periodo = periodo
+        postulacion.save(update_fields=["codigo", "modalidad", "periodo", "updated_at"])
+        seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=postulacion, etapa=etapa,
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA, numero_intento=1,
+        )
+        return seguimiento, periodo, etapa
+
+    def test_listado_filtra_modalidad_estado_etapa_y_periodo(self):
+        seguimiento, periodo, etapa = self._seguimiento_filtrable()
+        WorkflowService.inicializar_flujo(self.postulacion, self.admin)
+        self.authenticate(self.admin)
+
+        cases = {
+            "modalidad": self.otra_modalidad.id,
+            "estado": SeguimientoEtapa.EstadoChoices.APROBADA,
+            "etapa": etapa.id,
+            "periodo": periodo.id,
+            "gestion": periodo.gestion,
+            "semestre": periodo.semestre,
+        }
+        for parameter, value in cases.items():
+            with self.subTest(parameter=parameter):
+                response = self.client.get("/api/v1/seguimientos-etapa/", {parameter: value})
+                self.assertEqual(response.status_code, status.HTTP_200_OK)
+                self.assertEqual([item["id"] for item in response.data["results"]], [seguimiento.id])
+
+    def test_listado_combina_filtros_y_sin_filtros_conserva_compatibilidad(self):
+        seguimiento, periodo, etapa = self._seguimiento_filtrable()
+        otro = WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0]
+        self.authenticate(self.admin)
+
+        response = self.client.get("/api/v1/seguimientos-etapa/", {
+            "modalidad": self.otra_modalidad.id,
+            "estado": SeguimientoEtapa.EstadoChoices.APROBADA,
+            "etapa": etapa.id,
+            "periodo": periodo.id,
+        })
+        self.assertEqual([item["id"] for item in response.data["results"]], [seguimiento.id])
+        unfiltered = self.client.get("/api/v1/seguimientos-etapa/")
+        self.assertTrue({seguimiento.id, otro.id}.issubset({item["id"] for item in unfiltered.data["results"]}))
+
+    def test_busqueda_conserva_campos_actuales_y_agrega_datos_del_estudiante_y_modalidad(self):
+        seguimiento, _, _ = self._seguimiento_filtrable()
+        self.other_student.nombres = "Beatriz Elena"
+        self.other_student.apellido_paterno = "Mendoza"
+        self.other_student.apellido_materno = "Paz"
+        self.other_student.ru = "RU-BUSQUEDA-77"
+        self.other_student.ci = "CI-BUSQUEDA-88"
+        self.other_student.save(update_fields=["nombres", "apellido_paterno", "apellido_materno", "ru", "ci"])
+        self.authenticate(self.admin)
+
+        for term in ("TD-FILTRO-001", "otro_flujo", "INFORME_FINAL", "Informe Final",
+                     "Beatriz", "Mendoza", "Paz", "RU-BUSQUEDA-77", "CI-BUSQUEDA-88",
+                     "TRABAJO_DIRIGIDO", "Trabajo Dirigido"):
+            with self.subTest(term=term):
+                response = self.client.get("/api/v1/seguimientos-etapa/", {"search": term})
+                self.assertIn(seguimiento.id, [item["id"] for item in response.data["results"]])
+
+    def test_filtro_se_aplica_antes_de_paginar(self):
+        seguimiento, _, etapa = self._seguimiento_filtrable()
+        for index in range(21):
+            SeguimientoEtapa.objects.create(
+                postulacion=seguimiento.postulacion, etapa=etapa,
+                estado=SeguimientoEtapa.EstadoChoices.OMITIDA, numero_intento=index + 2,
+            )
+        self.authenticate(self.admin)
+
+        response = self.client.get("/api/v1/seguimientos-etapa/", {"estado": "OMITIDA", "page": 2})
+        self.assertEqual(response.data["count"], 21)
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertTrue(all(item["estado"] == "OMITIDA" for item in response.data["results"]))
+
+    def test_ordering_por_actualizacion_tiene_desempate_determinista(self):
+        seguimiento, _, etapa = self._seguimiento_filtrable()
+        segundo = SeguimientoEtapa.objects.create(
+            postulacion=seguimiento.postulacion, etapa=etapa,
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA, numero_intento=2,
+        )
+        instante = timezone.now()
+        SeguimientoEtapa.objects.filter(pk__in=[seguimiento.pk, segundo.pk]).update(updated_at=instante)
+        self.authenticate(self.admin)
+
+        response = self.client.get("/api/v1/seguimientos-etapa/", {
+            "etapa": etapa.id, "ordering": "-updated_at,-id",
+        })
+        self.assertEqual([item["id"] for item in response.data["results"]], [segundo.id, seguimiento.id])
+
+    def test_filtros_no_amplian_el_alcance_del_usuario(self):
+        seguimiento, _, _ = self._seguimiento_filtrable()
+        WorkflowService.inicializar_flujo(self.postulacion, self.admin)
+        self.authenticate(self.student)
+
+        response = self.client.get("/api/v1/seguimientos-etapa/", {"modalidad": self.otra_modalidad.id})
+        self.assertNotIn(seguimiento.id, [item["id"] for item in response.data["results"]])
+
     def test_serializer_expone_capacidades_reales_por_estado(self):
         seguimiento = WorkflowService.inicializar_flujo(self.postulacion, self.admin)[0]
         self.authenticate(self.admin)

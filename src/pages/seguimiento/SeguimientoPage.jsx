@@ -2,11 +2,16 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '../../components/ui/button'
 import { DataState, Modal, PageHeader, Pager, SearchBar } from '../../components/crud/CrudShell'
-import { crudService, endpoints } from '../../services/crudService'
+import { crudService, endpoints, listAll } from '../../services/crudService'
 import { useAuth } from '../../hooks/useAuth'
 import { formatCodeLabel } from '../../lib/utils'
 
 const actionLabels = { iniciar: 'Iniciar', aprobar: 'Aprobar', rechazar: 'Rechazar', omitir: 'Omitir' }
+const seguimientoStates = [
+  ['PENDIENTE', 'Pendiente'], ['EN_PROCESO', 'En proceso'], ['OBSERVADA', 'Observada'],
+  ['APROBADA', 'Aprobada'], ['RECHAZADA', 'Rechazada'], ['OMITIDA', 'Omitida'],
+]
+const emptyFilters = { modalidad: '', estado: '', etapa: '', periodo: '' }
 
 function Info({ label, value }) {
   return <div><dt className="font-semibold">{label}</dt><dd>{value || '—'}</dd></div>
@@ -40,18 +45,51 @@ export default function SeguimientoPage() {
   const [actionError, setActionError] = useState('')
   const [revision, setRevision] = useState(0)
   const [busy, setBusy] = useState(false)
+  const [filters, setFilters] = useState(emptyFilters)
+  const [modalidades, setModalidades] = useState([])
+  const [periodos, setPeriodos] = useState([])
+  const [etapas, setEtapas] = useState([])
+  const [catalogError, setCatalogError] = useState('')
 
   const load = useCallback(async (signal) => {
     setLoading(true)
     setError('')
     try {
-      setData(await crudService.list(endpoints.seguimiento, { search, page, ordering: 'etapa__orden' }, signal))
+      setData(await crudService.list(endpoints.seguimiento, { search, page, ordering: '-updated_at,-id', ...filters }, signal))
     } catch (requestError) {
       if (!requestError.canceled) setError(requestError.message)
     } finally {
       if (!signal?.aborted) setLoading(false)
     }
-  }, [search, page])
+  }, [search, page, filters])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    Promise.all([
+      listAll(endpoints.modalidades, { activo: true, ordering: 'nombre' }, controller.signal),
+      listAll(endpoints.periodos, { activo: true, ordering: '-gestion,-semestre' }, controller.signal),
+    ]).then(([modalidadesData, periodosData]) => {
+      setModalidades(modalidadesData)
+      setPeriodos(periodosData)
+    }).catch((requestError) => {
+      if (!requestError.canceled) setCatalogError('No se pudieron cargar los filtros disponibles.')
+    })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    if (!filters.modalidad) {
+      setEtapas([])
+      return undefined
+    }
+    const controller = new AbortController()
+    crudService.list(`${endpoints.modalidades}${filters.modalidad}/capacidades/`, {}, controller.signal)
+      .then((capabilities) => setEtapas((capabilities.etapas || []).filter((etapa) => etapa.id)))
+      .catch((requestError) => {
+        if (!requestError.canceled) setCatalogError('No se pudieron cargar las etapas de la modalidad.')
+      })
+    return () => controller.abort()
+  }, [filters.modalidad])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -110,10 +148,46 @@ export default function SeguimientoPage() {
   }
 
   const hasActions = (item) => item.acciones_permitidas?.length > 0
+  const changeFilter = (name, value) => {
+    setFilters((current) => ({ ...current, [name]: value, ...(name === 'modalidad' ? { etapa: '' } : {}) }))
+    setPage(1)
+  }
+  const clearFilters = () => {
+    setFilters(emptyFilters)
+    setPage(1)
+  }
 
   return <section className="mx-auto max-w-6xl space-y-5">
     <PageHeader title="Seguimiento" description="Consulta y gestiona las etapas de los procesos académicos." />
     <SearchBar value={query} onChange={setQuery} onSearch={() => { setSearch(query.trim()); setPage(1) }} />
+    <div className="grid gap-3 rounded-xl border bg-white p-4 sm:grid-cols-2 lg:grid-cols-5 dark:border-slate-800 dark:bg-slate-900">
+      <label className="text-sm font-medium">Modalidad
+        <select aria-label="Modalidad" value={filters.modalidad} onChange={(event) => changeFilter('modalidad', event.target.value)} className="mt-1 w-full rounded-lg border bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+          <option value="">Todas</option>
+          {modalidades.map((modalidad) => <option key={modalidad.id} value={modalidad.id}>{modalidad.nombre}</option>)}
+        </select>
+      </label>
+      <label className="text-sm font-medium">Estado
+        <select aria-label="Estado" value={filters.estado} onChange={(event) => changeFilter('estado', event.target.value)} className="mt-1 w-full rounded-lg border bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+          <option value="">Todos</option>
+          {seguimientoStates.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
+      <label className="text-sm font-medium">Etapa
+        <select aria-label="Etapa" value={filters.etapa} disabled={!filters.modalidad} onChange={(event) => changeFilter('etapa', event.target.value)} className="mt-1 w-full rounded-lg border bg-white px-3 py-2 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950">
+          <option value="">Todas</option>
+          {etapas.map((etapa) => <option key={etapa.id} value={etapa.id}>{etapa.nombre}</option>)}
+        </select>
+      </label>
+      <label className="text-sm font-medium">Periodo / gestión
+        <select aria-label="Periodo / gestión" value={filters.periodo} onChange={(event) => changeFilter('periodo', event.target.value)} className="mt-1 w-full rounded-lg border bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950">
+          <option value="">Todos</option>
+          {periodos.map((periodo) => <option key={periodo.id} value={periodo.id}>{periodo.nombre || `${periodo.gestion}-${periodo.semestre}`}</option>)}
+        </select>
+      </label>
+      <div className="flex items-end"><Button type="button" variant="outline" className="w-full" onClick={clearFilters}>Limpiar filtros</Button></div>
+    </div>
+    {catalogError && <p role="alert" className="text-sm text-red-600">{catalogError}</p>}
     <DataState loading={loading} error={error} empty={!data.results?.length} onRetry={() => setRevision((value) => value + 1)}>
       <div className="space-y-3">
         {data.results?.map((item) => <article key={item.id} className="rounded-xl border bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
