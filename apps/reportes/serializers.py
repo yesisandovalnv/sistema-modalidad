@@ -49,3 +49,32 @@ class ResultadoAcademicoReportSerializer(serializers.Serializer):
     reconocimiento = serializers.CharField(allow_null=True)
     fecha_conclusion = serializers.DateTimeField(allow_null=True)
     limitacion = serializers.CharField(allow_null=True)
+
+
+class ResultadoReportFilterSerializer(serializers.Serializer):
+    gestion = serializers.IntegerField(min_value=1900, max_value=2200, required=False)
+    semestre = serializers.ChoiceField(choices=("I", "II"), required=False)
+    modalidad = serializers.PrimaryKeyRelatedField(queryset=Modalidad.objects.all(), required=False)
+    estado_administrativo = serializers.PrimaryKeyRelatedField(queryset=EstadoPostulacion.objects.all(), required=False)
+    buscar = serializers.CharField(max_length=100, required=False)
+
+    def validate(self, attrs):
+        allowed = set(self.fields) | {"page", "page_size"}
+        unknown = set(self.initial_data) - allowed
+        if unknown:
+            raise serializers.ValidationError({key: "Filtro no soportado en R2." for key in sorted(unknown)})
+        return attrs
+
+    def normalized(self):
+        return {key: (value.pk if hasattr(value, "pk") else value) for key, value in self.validated_data.items()}
+
+
+class ReporteResultadoAcademicoSerializer(serializers.Serializer):
+    postulacion_id = serializers.IntegerField()
+    postulacion_codigo = serializers.CharField()
+    estudiante = serializers.DictField()
+    modalidad = serializers.DictField()
+    gestion = serializers.IntegerField()
+    semestre = serializers.ChoiceField(choices=("I", "II"))
+    estado_administrativo = serializers.DictField(allow_null=True)
+    resultado_academico = ResultadoAcademicoReportSerializer()

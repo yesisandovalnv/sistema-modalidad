@@ -35,6 +35,60 @@ class ScopeService:
         return qs.none()
 
 
+class ResultadosAcademicosService:
+    @staticmethod
+    def construir_queryset(filtros, usuario):
+        qs = ScopeService.postulaciones(usuario)
+        if filtros.get("gestion"):
+            qs = qs.filter(periodo__gestion=filtros["gestion"])
+        if filtros.get("semestre"):
+            qs = qs.filter(periodo__semestre=filtros["semestre"])
+        if filtros.get("modalidad"):
+            qs = qs.filter(modalidad_id=filtros["modalidad"])
+        if filtros.get("estado_administrativo"):
+            qs = qs.filter(estado_actual_id=filtros["estado_administrativo"])
+        if filtros.get("buscar"):
+            search = filtros["buscar"]
+            qs = qs.filter(
+                Q(codigo__icontains=search)
+                | Q(estudiante__nombres__icontains=search)
+                | Q(estudiante__apellido_paterno__icontains=search)
+                | Q(estudiante__apellido_materno__icontains=search)
+                | Q(estudiante__username__icontains=search)
+                | Q(estudiante__ru__icontains=search)
+            )
+        return qs.select_related(
+            "estudiante", "modalidad", "periodo", "estado_actual",
+        ).order_by("-periodo__fecha_inicio", "-pk").distinct()
+
+    @staticmethod
+    def row(postulacion, resultado):
+        return {
+            "postulacion_id": postulacion.pk,
+            "postulacion_codigo": postulacion.codigo,
+            "estudiante": {
+                "id": postulacion.estudiante_id,
+                "nombre": postulacion.estudiante.nombre_completo or postulacion.estudiante.username,
+                "ru": postulacion.estudiante.ru,
+            },
+            "modalidad": {
+                "id": postulacion.modalidad_id,
+                "codigo": postulacion.modalidad.codigo,
+                "nombre": postulacion.modalidad.nombre,
+            },
+            "gestion": postulacion.periodo.gestion,
+            "semestre": postulacion.periodo.semestre,
+            "estado_administrativo": (
+                {
+                    "codigo": postulacion.estado_actual.codigo,
+                    "nombre": postulacion.estado_actual.nombre,
+                }
+                if postulacion.estado_actual else None
+            ),
+            "resultado_academico": resultado.as_dict(),
+        }
+
+
 class ReportePostulacionesService:
     @classmethod
     def construir_queryset_postulaciones(cls,filtros,usuario):

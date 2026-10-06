@@ -104,10 +104,13 @@ class ResultadoAcademicoReportService:
         """
         items = list(postulaciones)
         excellence_ids = [p.pk for p in items if p.modalidad.codigo == "EXCELENCIA_ACADEMICA"]
-        excellence = {
-            item.postulacion_id: item
-            for item in ExcelenciaExpediente.objects.filter(postulacion_id__in=excellence_ids)
-        }
+        excellence = (
+            {
+                item.postulacion_id: item
+                for item in ExcelenciaExpediente.objects.filter(postulacion_id__in=excellence_ids)
+            }
+            if excellence_ids else {}
+        )
         return {
             postulacion.pk: cls._resolver(postulacion, excelencia=excellence.get(postulacion.pk))
             for postulacion in items

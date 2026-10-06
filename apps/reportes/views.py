@@ -12,8 +12,10 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from drf_spectacular.utils import extend_schema
 from apps.reportes.permissions import CanViewInstitutionalReports,CanExportReports
-from apps.reportes.serializers import ReportFilterSerializer,DashboardSerializer,ReportePostulacionSerializer
-from apps.reportes.services import DashboardService,ReportePostulacionesService
+from apps.reportes.serializers import (ReportFilterSerializer,DashboardSerializer,ReportePostulacionSerializer,
+    ResultadoReportFilterSerializer,ReporteResultadoAcademicoSerializer)
+from apps.reportes.services import DashboardService,ReportePostulacionesService,ResultadosAcademicosService
+from apps.reportes.resultados import ResultadoAcademicoReportService
 from apps.usuarios.models import AuditLog
 from core.pagination import StandardResultsSetPagination
 
@@ -35,6 +37,26 @@ class PostulacionesReportView(GenericAPIView):
     def get(self,request):
         f=filters(request); qs=ReportePostulacionesService.construir_queryset_postulaciones(f,request.user); raw=f.get("ordering","-fecha_creacion"); prefix="-" if raw.startswith("-") else ""; qs=qs.order_by(prefix+ORDER[raw.lstrip("-")])
         page=self.paginate_queryset(qs); rows=[ReportePostulacionesService.row(x) for x in page]; return self.get_paginated_response(rows)
+
+
+class ResultadosAcademicosReportView(GenericAPIView):
+    permission_classes=(CanViewInstitutionalReports,)
+    serializer_class=ReporteResultadoAcademicoSerializer
+    pagination_class=StandardResultsSetPagination
+
+    @extend_schema(
+        parameters=[ResultadoReportFilterSerializer],
+        responses=ReporteResultadoAcademicoSerializer(many=True),
+        description="Resultados académicos paginados, normalizados por modalidad y limitados al alcance autorizado.",
+    )
+    def get(self, request):
+        serializer = ResultadoReportFilterSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        queryset = ResultadosAcademicosService.construir_queryset(serializer.normalized(), request.user)
+        page = self.paginate_queryset(queryset)
+        resultados = ResultadoAcademicoReportService.resolver_lote(page)
+        rows = [ResultadosAcademicosService.row(item, resultados[item.pk]) for item in page]
+        return self.get_paginated_response(rows)
 
 
 def safe_csv(v):
