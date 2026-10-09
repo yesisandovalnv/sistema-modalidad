@@ -25,7 +25,7 @@ class ProyectoGradoEventoPolicy(BaseEventoPolicy):
     EVENT_STAGE = {"DEFENSA_PERFIL": "PERFIL_PROYECTO", "DEFENSA_PRIVADA": "DEFENSA_PRIVADA", "DEFENSA_PUBLICA": "DEFENSA_PUBLICA"}
     ASSIGNMENTS = {"DEFENSA_PERFIL": {"TRIBUNAL": 2}, "DEFENSA_PRIVADA": {"TRIBUNAL": 2, "DOCENTE_MODALIDAD": 1}, "DEFENSA_PUBLICA": {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1}}
     ASSIGNMENT_NAMES = {"TRIBUNAL": "Tribunales"}
-    MINIMUM_NOTICE_HOURS = {"DEFENSA_PUBLICA": 0}
+    MINIMUM_NOTICE_HOURS = {"DEFENSA_PUBLICA": 48}
     PUBLIC_ROLES = ("TRIBUNAL", "PRESIDENTE", "SECRETARIO")
     def get_tipos_evento(self): return tuple(self.EVENT_STAGE)
     def get_etapa_asociada(self, tipo_evento): return self.EVENT_STAGE.get(tipo_evento)
