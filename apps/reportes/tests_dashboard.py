@@ -1,7 +1,11 @@
 import csv
 from uuid import uuid4
 from io import BytesIO, StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from django.conf import settings
 from django.test import TestCase, override_settings
+from PIL import Image as PillowImage
 from openpyxl import load_workbook
 from rest_framework.test import APIClient
 from apps.academico.models import Modalidad,Periodo,EtapaModalidad
@@ -11,7 +15,7 @@ from apps.postulantes.models import (CondicionPostulacion, EntregaFisica,
     SeguimientoEtapa, AsignacionPostulacion)
 from apps.notificaciones.models import Notificacion
 from apps.usuarios.models import CustomUser,Role,AuditLog
-from apps.reportes.views import safe_csv
+from apps.reportes.views import INSTITUTIONAL_HEADERS, INSTITUTIONAL_IDENTITY, safe_csv, safe_spreadsheet_text
 
 
 class ReportBase(TestCase):
@@ -239,6 +243,8 @@ class ExportTests(ReportBase):
         for value in ("=1+1", "+SUM(A1)", "-2+3", "@cmd", "  =1+1", "\t=1+1", "\r+cmd", "\n-cmd"):
             with self.subTest(value=value): self.assertTrue(safe_csv(value).startswith("'"))
         self.assertEqual(safe_csv('texto, "seguro" ñ'), 'texto, "seguro" ñ')
+        self.assertEqual(safe_spreadsheet_text("=1+1"), "'=1+1")
+        self.assertEqual(safe_spreadsheet_text("Texto seguro"), "Texto seguro")
     def test_csv_y_auditoria(self):
         r=self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=csv"); self.assertEqual(r.status_code,200); self.assertTrue(r.content.startswith(b"\xef\xbb\xbf")); self.assertIn(b";", r.content.splitlines()[1]); self.assertEqual(AuditLog.objects.filter(accion="EXPORT_APPLICATION_REPORT_CSV").count(),1)
     def test_csv_incluye_tipo_de_registro_y_historico_no_aplica(self):
@@ -292,34 +298,198 @@ class ExportTests(ReportBase):
         self.assertEqual(r.status_code,200)
         self.assertEqual(r["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         sheet=load_workbook(BytesIO(r.content), data_only=False).active
-        headers = [cell.value for cell in sheet[7]]
-        self.assertIn("Tipo de registro", headers)
-        header_map = {header: index + 1 for index, header in enumerate(headers)}
-        target_row = next(row for row in sheet.iter_rows(min_row=8, values_only=False) if row[0].value == f"Postulación #{historico.pk}")
-        self.assertEqual(target_row[header_map["Etapa actual"] - 1].value, "No aplica")
-        self.assertEqual(target_row[header_map["Avance (%)"] - 1].value, "No aplica")
-        self.assertEqual(target_row[header_map["Tipo de registro"] - 1].value, "Histórico")
-        self.assertEqual(target_row[header_map["Documentos pendientes"] - 1].value, "No aplica")
-        self.assertEqual(target_row[header_map["Próxima defensa"] - 1].value, "No aplica")
-        self.assertEqual(target_row[header_map["Cierre"] - 1].value, "No aplica")
+        header_row = int(sheet.auto_filter.ref.split(":")[0][1:])
+        headers = [sheet.cell(header_row, column).value for column in range(1, 8)]
+        self.assertEqual(headers, INSTITUTIONAL_HEADERS)
+        target_row = next(row for row in sheet.iter_rows(min_row=header_row + 1, values_only=True) if row[5] == "No aplica")
+        self.assertEqual(target_row[5], "No aplica")
+        self.assertEqual(len(target_row), 7)
 
     def test_xlsx_profesional_filtrado_y_auditoria(self):
         r=self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx&gestion=2026"); self.assertEqual(r.status_code,200)
         self.assertEqual(r["Content-Type"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"); self.assertIn("reporte_postulaciones.xlsx", r["Content-Disposition"])
         sheet=load_workbook(BytesIO(r.content), data_only=False).active
-        self.assertEqual(sheet["A1"].value, "SISTEMA DE GRADUACIÓN"); self.assertEqual(sheet["A2"].value, "REPORTE DE POSTULACIONES")
-        headers = [sheet.cell(7, column).value for column in range(1, 14)]
-        self.assertEqual(headers, ["Postulación", "Postulante", "Modalidad", "Gestión", "Semestre", "Tutor", "Etapa actual", "Estado general", "Avance (%)", "Documentos pendientes", "Próxima defensa", "Cierre", "Tipo de registro"])
-        self.assertEqual(sheet.max_row, 9); self.assertEqual(sheet.freeze_panes, "A8"); self.assertTrue(sheet.auto_filter.ref)
-        header_map = {header: index + 1 for index, header in enumerate(headers)}
-        target_row = next(row for row in sheet.iter_rows(min_row=8, max_row=sheet.max_row, values_only=False) if row[0].value == f"Postulación #{self.p.pk}")
-        self.assertEqual(target_row[header_map["Avance (%)"] - 1].value, 1)
-        self.assertEqual(target_row[header_map["Avance (%)"] - 1].number_format, "0.00%")
-        self.assertEqual(sheet["M7"].value, "Tipo de registro")
-        self.assertTrue(sheet.auto_filter.ref.startswith("A7:M"))
+        self.assertEqual(sheet["A1"].value, INSTITUTIONAL_IDENTITY["university"])
+        self.assertEqual(sheet["A2"].value, INSTITUTIONAL_IDENTITY["university_name"])
+        self.assertEqual(sheet["A3"].value, INSTITUTIONAL_IDENTITY["location"])
+        self.assertEqual(sheet["A4"].value, INSTITUTIONAL_IDENTITY["report"])
+        self.assertEqual(sheet["A5"].value, f"FACULTAD: {INSTITUTIONAL_IDENTITY['faculty']}")
+        self.assertEqual(sheet["A6"].value, f"CARRERA: {INSTITUTIONAL_IDENTITY['career']}")
+        self.assertEqual(sheet["A5"].alignment.horizontal, "left")
+        self.assertEqual(sheet["A6"].alignment.horizontal, "left")
+        self.assertEqual(sheet["A1"].alignment.horizontal, "center")
+        self.assertEqual(sheet["A4"].alignment.horizontal, "center")
+        merged_ranges = {str(cell_range) for cell_range in sheet.merged_cells.ranges}
+        self.assertIn("A1:G1", merged_ranges)
+        self.assertIn("A4:G4", merged_ranges)
+        self.assertIn("A5:G5", merged_ranges)
+        self.assertIn("A6:G6", merged_ranges)
+        self.assertEqual(sheet["A8"].value, "FILTROS APLICADOS")
+        self.assertEqual(sheet["A9"].value, "Gestión:")
+        self.assertEqual(sheet["C9"].value, "2026")
+        self.assertEqual(sheet["D9"].value, "Semestre:")
+        self.assertEqual(sheet["F9"].value, "Todos")
+        self.assertEqual(sheet["A10"].value, "Modalidad:")
+        self.assertEqual(sheet["D10"].value, "Estado:")
+        self.assertEqual(sheet["A11"].value, "Fecha de generación:")
+        self.assertIsNone(sheet["E11"].value)
+        self.assertEqual(sheet["F11"].value, "Total de registros:")
+        self.assertEqual(sheet["G11"].value, 2)
+        self.assertFalse(sheet.sheet_view.showGridLines)
+        self.assertEqual(len(sheet._images), 1)
+        with PillowImage.open(Path(settings.BASE_DIR) / "uab" / "logo" / "Logo-ac.png") as source_logo:
+            self.assertAlmostEqual(
+                sheet._images[0].width / sheet._images[0].height,
+                source_logo.width / source_logo.height,
+            )
+        self.assertEqual(sheet._images[0].anchor._from.col, 0)
+        self.assertEqual(sheet._images[0].anchor._from.row, 0)
+        header_row = int(sheet.auto_filter.ref.split(":")[0][1:])
+        headers = [sheet.cell(header_row, column).value for column in range(1, 8)]
+        self.assertEqual(headers, INSTITUTIONAL_HEADERS)
+        self.assertEqual(header_row, 13)
+        rows = list(sheet.iter_rows(min_row=header_row + 1, values_only=True))
+        self.assertEqual([row[0] for row in rows], [1, 2])
+        self.assertEqual(sheet.freeze_panes, f"A{header_row + 1}")
+        self.assertEqual(sheet.auto_filter.ref, f"A{header_row}:G{sheet.max_row}")
+        self.assertEqual(
+            [sheet.column_dimensions[column].width for column in "ABCDEFG"],
+            [9, 30, 26, 12, 14, 27, 21],
+        )
+        self.assertEqual(
+            [sheet.cell(header_row, column).alignment.horizontal for column in range(1, 8)],
+            ["center"] * 7,
+        )
+        self.assertEqual(sheet.cell(header_row + 1, 1).alignment.horizontal, "center")
+        self.assertEqual(sheet.cell(header_row + 1, 2).alignment.horizontal, "left")
+        self.assertEqual(sheet.cell(header_row + 1, 4).alignment.horizontal, "center")
+        self.assertEqual(sheet.cell(header_row + 1, 5).alignment.horizontal, "center")
+        self.assertEqual(sheet.cell(header_row + 1, 6).alignment.horizontal, "left")
+        self.assertEqual(sheet.cell(header_row + 1, 7).alignment.horizontal, "left")
+        self.assertEqual(sheet.page_setup.orientation, "landscape")
+        self.assertEqual(sheet.page_setup.paperSize, 9)
+        self.assertEqual(sheet.page_setup.fitToWidth, 1)
+        self.assertEqual(sheet.page_setup.fitToHeight, 0)
+        self.assertEqual(sheet.sheet_properties.pageSetUpPr.fitToPage, True)
+        self.assertEqual(sheet.page_margins.left, 0.3)
+        self.assertEqual(sheet.page_margins.right, 0.3)
+        self.assertEqual(sheet.print_title_rows, f"${header_row}:${header_row}")
+        self.assertEqual(sheet.print_area, f"'Postulaciones'!$A$1:$G${sheet.max_row}")
+        self.assertTrue(sheet.auto_filter.ref.startswith(f"A{header_row}:G"))
+        self.assertNotIn("Usuario", [cell.value for row in sheet.iter_rows() for cell in row])
+        self.assertNotIn(INSTITUTIONAL_IDENTITY["system"], [cell.value for row in sheet.iter_rows() for cell in row])
         self.assertEqual(AuditLog.objects.filter(accion="EXPORT_APPLICATION_REPORT_XLSX").count(),1)
+
+    def test_xlsx_filtros_avanzados_expanden_layout_y_conservan_datos(self):
+        response = self.client.get(
+            "/api/v1/reportes/postulaciones/exportar/?formato=xlsx&buscar=Ana"
+        )
+        self.assertEqual(response.status_code, 200)
+        sheet = load_workbook(BytesIO(response.content), data_only=False).active
+        self.assertEqual(sheet["A11"].value, "Búsqueda:")
+        self.assertEqual(sheet["C11"].value, "Ana")
+        self.assertEqual(sheet["A12"].value, "Fecha de generación:")
+        self.assertIsNone(sheet["E12"].value)
+        self.assertEqual(sheet["F12"].value, "Total de registros:")
+        self.assertEqual(sheet["G12"].value, 1)
+        header_row = int(sheet.auto_filter.ref.split(":")[0][1:])
+        self.assertEqual(header_row, 14)
+        self.assertEqual(
+            [sheet.cell(header_row, column).value for column in range(1, 8)],
+            INSTITUTIONAL_HEADERS,
+        )
+        exported_rows = list(sheet.iter_rows(min_row=header_row + 1, values_only=True))
+        self.assertEqual(len(exported_rows), 1)
+        self.assertEqual(exported_rows[0][1], self.p.estudiante.nombre_completo)
+
+    def test_xlsx_sanitiza_celdas_textuales(self):
+        self.student.nombres = "=SUM(A1:A2)"
+        self.student.apellido_paterno = ""
+        self.student.save(update_fields=["nombres", "apellido_paterno"])
+        response = self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx")
+        sheet = load_workbook(BytesIO(response.content), data_only=False).active
+        header_row = int(sheet.auto_filter.ref.split(":")[0][1:])
+        names = [row[1] for row in sheet.iter_rows(min_row=header_row + 1, values_only=True)]
+        self.assertIn("'=SUM(A1:A2)", names)
+
+    def test_html_comparte_columnas_filtros_orden_total_y_auditoria(self):
+        response = self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=html&gestion=2026&semestre=II")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/html; charset=utf-8")
+        html = response.content.decode("utf-8")
+        for header in INSTITUTIONAL_HEADERS:
+            self.assertIn(f"<th>{header}</th>", html)
+        self.assertEqual(html.count("<th>"), 7)
+        self.assertIn("<strong>Gestión:</strong> 2026", html)
+        self.assertIn("<strong>Semestre:</strong> II", html)
+        self.assertIn("FILTROS APLICADOS", html)
+        self.assertIn("<strong>Total de registros:</strong> 2", html)
+        self.assertIn('<img class="institutional-logo" src="data:image/png;base64,', html)
+        for key in ("university", "university_name", "location", "report", "faculty", "career"):
+            self.assertIn(INSTITUTIONAL_IDENTITY[key], html)
+        self.assertIn(f"<p>FACULTAD: {INSTITUTIONAL_IDENTITY['faculty']}</p>", html)
+        self.assertIn(f"<p>CARRERA: {INSTITUTIONAL_IDENTITY['career']}</p>", html)
+        self.assertNotIn(INSTITUTIONAL_IDENTITY["system"], html)
+        self.assertNotIn("<strong>Búsqueda:</strong>", html)
+        self.assertNotIn("<strong>Tipo de registro:</strong>", html)
+        self.assertLess(html.index(self.p.estudiante.nombre_completo), html.index(self.p2.estudiante.username))
+        self.assertNotIn("Postulación #", html)
+        self.assertNotIn("window.print()", html)
+        self.assertIn("</style></head><body><header", html)
+        self.assertIn("@page { size: A4 landscape; margin: 10mm; }", html)
+        self.assertIn("-webkit-print-color-adjust: exact", html)
+        self.assertIn("print-color-adjust: exact", html)
+        self.assertIn("table-layout: fixed", html)
+        self.assertIn("thead { display: table-header-group; }", html)
+        self.assertIn("break-inside: avoid", html)
+        self.assertIn("page-break-inside: avoid", html)
+        self.assertEqual(AuditLog.objects.filter(accion="PRINT_APPLICATION_REPORT").count(), 1)
+
+    def test_html_muestra_filtro_avanzado_solo_si_se_aplica(self):
+        default_html = self.client.get(
+            "/api/v1/reportes/postulaciones/exportar/?formato=html"
+        ).content.decode("utf-8")
+        filtered_html = self.client.get(
+            "/api/v1/reportes/postulaciones/exportar/?formato=html&buscar=Ana"
+        ).content.decode("utf-8")
+
+        self.assertNotIn("<strong>Búsqueda:</strong>", default_html)
+        self.assertIn("<strong>Búsqueda:</strong> Ana", filtered_html)
+
+    def test_exports_sin_logo_se_mantienen_validos_y_registran_aviso(self):
+        with TemporaryDirectory() as temporary_directory:
+            with override_settings(BASE_DIR=Path(temporary_directory)):
+                with self.assertLogs("apps.reportes.views", level="WARNING") as captured:
+                    html_response = self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=html")
+                    xlsx_response = self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx")
+
+        self.assertEqual(html_response.status_code, 200)
+        self.assertNotIn('class="institutional-logo"', html_response.content.decode("utf-8"))
+        self.assertEqual(xlsx_response.status_code, 200)
+        sheet = load_workbook(BytesIO(xlsx_response.content), data_only=False).active
+        self.assertEqual(len(sheet._images), 0)
+        self.assertEqual(len(captured.records), 2)
+        header_row = int(sheet.auto_filter.ref.split(":")[0][1:])
+        self.assertEqual(
+            [sheet.cell(header_row, column).value for column in range(1, 8)],
+            INSTITUTIONAL_HEADERS,
+        )
+
+    def test_xlsx_y_html_comparten_el_mismo_universo_y_orden(self):
+        xlsx = self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx&gestion=2026")
+        html = self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=html&gestion=2026").content.decode("utf-8")
+        sheet = load_workbook(BytesIO(xlsx.content), data_only=False).active
+        header_row = int(sheet.auto_filter.ref.split(":")[0][1:])
+        names = [row[1] for row in sheet.iter_rows(min_row=header_row + 1, values_only=True)]
+        self.assertEqual(names, [self.p.estudiante.nombre_completo, self.p2.estudiante.username])
+        self.assertLess(html.index(names[0]), html.index(names[1]))
+
+    @override_settings(REPORT_EXPORT_MAX_ROWS=1)
+    def test_html_respeta_limite(self):
+        self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=html").status_code, 400)
 
     @override_settings(REPORT_EXPORT_MAX_ROWS=1)
     def test_xlsx_respeta_limite(self): self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=xlsx").status_code,400)
     def test_formato_no_soportado(self): self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=pdf").status_code,400)
     def test_estudiante_no_exporta(self): self.client.force_authenticate(self.student); self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/exportar/").status_code,403)
+    def test_estudiante_no_imprime(self): self.client.force_authenticate(self.student); self.assertEqual(self.client.get("/api/v1/reportes/postulaciones/exportar/?formato=html").status_code,403)

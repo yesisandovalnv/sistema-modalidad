@@ -57,14 +57,19 @@ class ResultadoAcademicoReportServiceTests(TestCase):
         })
         self.assertEqual(result.estado_disponibilidad, EstadoDisponibilidad.DEFINITIVO)
         self.assertEqual(result.nota_final, Decimal("72.35"))
+        self.assertEqual(result.escala, "0-100")
+        self.assertEqual(result.semantica_valor_numerico, "CALIFICACION_FINAL")
+        self.assertTrue(result.definitivo)
+        self.assertFalse(result.proceso_concluido)
         self.assertIsNone(result.reconocimiento)
 
-    def test_proyecto_felicitacion_solo_refleja_clasificacion_canonica(self):
+    def test_proyecto_felicitacion_no_se_convierte_en_reconocimiento(self):
         result = self.resolve_policy("PROYECTO_GRADO", {
             "nota_final": Decimal("92.00"), "resultado": "APROBACION_PLENA_CON_FELICITACION",
             "clasificacion": "APROBACION_PLENA_CON_FELICITACION",
         })
-        self.assertEqual(result.reconocimiento, "Aprobación plena con felicitación")
+        self.assertEqual(result.clasificacion, "APROBACION_PLENA_CON_FELICITACION")
+        self.assertIsNone(result.reconocimiento)
 
     def test_proyecto_incompleto_no_inventa_cero_ni_reprobacion(self):
         result = self.resolve_policy("PROYECTO_GRADO", {
@@ -81,6 +86,11 @@ class ResultadoAcademicoReportServiceTests(TestCase):
             "clasificacion": "APROBACION_PLENA", "limitacion_normativa": "Ambigüedad normativa vigente.",
         })
         self.assertEqual(result.limitacion, "Ambigüedad normativa vigente.")
+        self.assertEqual(result.escala, "0-100")
+        self.assertEqual(result.semantica_valor_numerico, "CALIFICACION_FINAL")
+        self.assertTrue(result.definitivo)
+        self.assertFalse(result.proceso_concluido)
+        self.assertIsNone(result.reconocimiento)
 
     def test_trabajo_dirigido_es_modalidad_explicita_y_no_inventa_reconocimiento(self):
         result = self.resolve_policy("TRABAJO_DIRIGIDO", {
@@ -89,6 +99,10 @@ class ResultadoAcademicoReportServiceTests(TestCase):
         })
         self.assertIsNone(result.reconocimiento)
         self.assertIn("Trabajo Dirigido", result.limitacion)
+        self.assertEqual(result.escala, "0-100")
+        self.assertEqual(result.semantica_valor_numerico, "CALIFICACION_FINAL")
+        self.assertTrue(result.definitivo)
+        self.assertFalse(result.proceso_concluido)
 
     @patch("apps.reportes.resultados.ExamenGradoService.calcular_resultado_final")
     def test_examen_definitivo_y_felicitacion_delegan_en_service(self, calculate):
@@ -97,19 +111,50 @@ class ResultadoAcademicoReportServiceTests(TestCase):
         result = ResultadoAcademicoReportService.resolver(post)
         calculate.assert_called_once_with(post)
         self.assertTrue(result.definitivo)
-        self.assertEqual(result.reconocimiento, "Aprobación plena con felicitación")
+        self.assertFalse(result.proceso_concluido)
+        self.assertEqual(result.escala, "0-100")
+        self.assertEqual(result.clasificacion, "APROBACION_PLENA_CON_FELICITACION")
+        self.assertIsNone(result.resultado)
+        self.assertIsNone(result.reconocimiento)
 
     @patch("apps.reportes.resultados.ExamenGradoService.calcular_resultado_final")
     def test_examen_incompleto(self, calculate):
         calculate.return_value = {"completo": False, "nota_final": None, "clasificacion": None, "areas": {"AREA_1": "70.00"}}
         result = ResultadoAcademicoReportService.resolver(self.postulacion("EXAMEN_GRADO"))
         self.assertEqual(result.estado_disponibilidad, EstadoDisponibilidad.INCOMPLETO)
+        self.assertFalse(result.definitivo)
+        self.assertIsNone(result.nota_final)
+        self.assertIsNone(result.semantica_valor_numerico)
+        self.assertIsNone(result.reconocimiento)
 
-    def test_diplomado_preserva_clasificacion_propia(self):
+    @patch("apps.reportes.resultados.ExamenGradoService.calcular_resultado_final")
+    def test_examen_incompleto_no_expone_como_final_una_nota_contradictoria(self, calculate):
+        calculate.return_value = {
+            "completo": False,
+            "nota_final": Decimal("70.00"),
+            "clasificacion": None,
+            "areas": {"AREA_1": "70.00"},
+        }
+
+        result = ResultadoAcademicoReportService.resolver(
+            self.postulacion("EXAMEN_GRADO"),
+        )
+
+        self.assertEqual(result.estado_disponibilidad, EstadoDisponibilidad.INCOMPLETO)
+        self.assertFalse(result.definitivo)
+        self.assertIsNone(result.nota_final)
+        self.assertIsNone(result.semantica_valor_numerico)
+
+    def test_diplomado_preserva_clasificacion_y_escala_propia(self):
         result = self.resolve_policy("GRADUACION_VIA_DIPLOMADO", {
             "nota_final": Decimal("95.00"), "clasificacion": "EXCELENTE",
         })
         self.assertEqual(result.clasificacion, "EXCELENTE")
+        self.assertIsNone(result.resultado)
+        self.assertEqual(result.escala, "1-100")
+        self.assertEqual(result.semantica_valor_numerico, "CALIFICACION_FINAL")
+        self.assertTrue(result.definitivo)
+        self.assertFalse(result.proceso_concluido)
         self.assertIsNone(result.reconocimiento)
 
     def test_excelencia_favorable_con_promedio(self):
@@ -120,7 +165,13 @@ class ResultadoAcademicoReportServiceTests(TestCase):
         )
         result = ResultadoAcademicoReportService.resolver(post)
         self.assertEqual(result.resultado, "FAVORABLE")
-        self.assertEqual(result.nota_final, Decimal("88.50"))
+        self.assertIsNone(result.nota_final)
+        self.assertEqual(result.promedio_academico, Decimal("88.50"))
+        self.assertEqual(result.escala, "0-100")
+        self.assertEqual(result.semantica_valor_numerico, "PROMEDIO_ACADEMICO")
+        self.assertEqual(result.criterio, ExcelenciaExpediente.Criterio.RENDIMIENTO_ACADEMICO)
+        self.assertTrue(result.definitivo)
+        self.assertFalse(result.proceso_concluido)
         self.assertIsNone(result.reconocimiento)
 
     def test_excelencia_desfavorable_sin_nota_es_semantica_no_numerica(self):
@@ -132,7 +183,28 @@ class ResultadoAcademicoReportServiceTests(TestCase):
         result = ResultadoAcademicoReportService.resolver(post)
         self.assertEqual(result.estado_disponibilidad, EstadoDisponibilidad.SIN_NOTA_NUMERICA)
         self.assertTrue(result.definitivo)
+        self.assertEqual(result.criterio, ExcelenciaExpediente.Criterio.RECONOCIMIENTO_CALIDAD)
+        self.assertIsNone(result.escala)
+        self.assertIsNone(result.semantica_valor_numerico)
         self.assertIsNone(result.nota_final)
+        self.assertIsNone(result.promedio_academico)
+        self.assertEqual(result.resultado, ExcelenciaExpediente.Resultado.DESFAVORABLE)
+
+    def test_excelencia_pendiente_preserva_criterio_sin_inventar_resultado(self):
+        post = self.postulacion("EXCELENCIA_ACADEMICA")
+        ExcelenciaExpediente.objects.create(
+            postulacion=post,
+            criterio=ExcelenciaExpediente.Criterio.RENDIMIENTO_ACADEMICO,
+            resultado=ExcelenciaExpediente.Resultado.PENDIENTE,
+        )
+
+        result = ResultadoAcademicoReportService.resolver(post)
+
+        self.assertEqual(result.estado_disponibilidad, EstadoDisponibilidad.SIN_RESULTADO)
+        self.assertEqual(result.criterio, ExcelenciaExpediente.Criterio.RENDIMIENTO_ACADEMICO)
+        self.assertIsNone(result.promedio_academico)
+        self.assertIsNone(result.nota_final)
+        self.assertFalse(result.definitivo)
 
     def test_sin_resultado_y_historico_sin_evidencia(self):
         empty = {"nota_final": None, "resultado": None, "clasificacion": None}
@@ -146,6 +218,18 @@ class ResultadoAcademicoReportServiceTests(TestCase):
         serializer = ResultadoAcademicoReportSerializer(data=result.as_dict())
         self.assertTrue(serializer.is_valid(), serializer.errors)
         self.assertIsNone(serializer.validated_data["fecha_conclusion"])
+        self.assertIsNone(serializer.validated_data["reconocimiento"])
+
+    def test_proceso_concluido_se_informa_separado_de_resultado_definitivo(self):
+        post = self.postulacion("PROYECTO_GRADO")
+        post.estado_actual.codigo = "CONCLUIDA"
+        policy = self.policy_result({
+            "nota_final": Decimal("72"), "resultado": "APROBADO", "clasificacion": "APROBADO",
+        })
+        with patch("apps.reportes.resultados.ModalidadPolicyRegistry.get", return_value=policy):
+            result = ResultadoAcademicoReportService.resolver(post)
+        self.assertTrue(result.definitivo)
+        self.assertTrue(result.proceso_concluido)
 
     def test_modalidad_no_soportada(self):
         result = ResultadoAcademicoReportService.resolver(self.postulacion("MODALIDAD_FUTURA"))

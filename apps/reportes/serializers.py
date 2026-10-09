@@ -2,7 +2,7 @@ from rest_framework import serializers
 from apps.academico.models import Modalidad,EtapaModalidad
 from apps.postulantes.models import EstadoPostulacion, Postulacion
 from apps.usuarios.models import CustomUser
-from apps.reportes.resultados import EstadoDisponibilidad
+from apps.reportes.resultados import EstadoDisponibilidad, SemanticaValorNumerico
 
 
 class ReportFilterSerializer(serializers.Serializer):
@@ -41,7 +41,9 @@ class ReportePostulacionSerializer(serializers.Serializer):
 class ResultadoAcademicoReportSerializer(serializers.Serializer):
     estado_disponibilidad = serializers.ChoiceField(choices=[item.value for item in EstadoDisponibilidad])
     disponible = serializers.BooleanField()
-    definitivo = serializers.BooleanField()
+    definitivo = serializers.BooleanField(
+        help_text="Indica que la fuente canónica dispone de un resultado académico final; no implica cierre del proceso.",
+    )
     nota_final = serializers.DecimalField(max_digits=7, decimal_places=2, allow_null=True)
     escala = serializers.CharField(allow_null=True)
     resultado = serializers.CharField(allow_null=True)
@@ -49,6 +51,18 @@ class ResultadoAcademicoReportSerializer(serializers.Serializer):
     reconocimiento = serializers.CharField(allow_null=True)
     fecha_conclusion = serializers.DateTimeField(allow_null=True)
     limitacion = serializers.CharField(allow_null=True)
+    semantica_valor_numerico = serializers.ChoiceField(
+        choices=[item.value for item in SemanticaValorNumerico],
+        allow_null=True,
+    )
+    promedio_academico = serializers.DecimalField(
+        max_digits=7, decimal_places=2, allow_null=True,
+    )
+    criterio = serializers.CharField(allow_null=True)
+    proceso_concluido = serializers.BooleanField(
+        allow_null=True,
+        help_text="Estado administrativo CONCLUIDA; no implica graduación ni titulación.",
+    )
 
 
 class ResultadoReportFilterSerializer(serializers.Serializer):

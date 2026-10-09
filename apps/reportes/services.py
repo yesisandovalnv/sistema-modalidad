@@ -130,6 +130,32 @@ class ReportePostulacionesService:
           "revision_final_aprobada":p.revision_final_aprobada,"cierre_documental_aprobado":p.cierre_documental_aprobado,"cierre_aplicable":cierre_aplicable,"concluida":getattr(p.estado_actual,"codigo",None)=="CONCLUIDA",
           "fecha_creacion":p.created_at,"fecha_actualizacion":p.updated_at}
 
+    @classmethod
+    def proyeccion_institucional(cls, queryset):
+        rows = []
+        for numero, postulacion in enumerate(queryset, start=1):
+            report = cls.row(postulacion)
+            tipo_registro = report.get("tipo_registro")
+            rows.append({
+                "numero": numero,
+                "postulante": report["postulante_nombre"] or "Sin postulante",
+                "modalidad": report["modalidad"]["nombre"] if report.get("modalidad") else "Sin modalidad",
+                "gestion": report["gestion"],
+                "semestre": "Primero" if report["semestre"] == "I" else "Segundo",
+                "etapa_actual": (
+                    "No aplica" if tipo_registro == Postulacion.TipoRegistroChoices.HISTORICO
+                    else cls.etiqueta_codigo(report["etapa_actual"], "Sin etapa actual")
+                ),
+                "estado": cls.etiqueta_codigo(report["estado_general"], "Sin estado"),
+            })
+        return rows
+
+    @staticmethod
+    def etiqueta_codigo(value, empty="Sin dato"):
+        if not value:
+            return empty
+        return str(value).replace("_", " ").capitalize()
+
 
 class DashboardService:
     @classmethod

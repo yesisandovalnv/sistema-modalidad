@@ -9,7 +9,11 @@ from rest_framework.test import APIClient
 from apps.academico.models import Modalidad, Periodo
 from apps.modalidades.models import ExcelenciaExpediente
 from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, Postulacion
-from apps.reportes.resultados import EstadoDisponibilidad, ResultadoAcademicoDTO
+from apps.reportes.resultados import (
+    EstadoDisponibilidad,
+    ResultadoAcademicoDTO,
+    SemanticaValorNumerico,
+)
 from apps.usuarios.models import CustomUser, Role
 
 
@@ -50,12 +54,22 @@ class ResultadosAcademicosApiTests(TestCase):
         )
 
     @staticmethod
-    def dto(*, estado=EstadoDisponibilidad.SIN_RESULTADO, nota=None, clasificacion=None, reconocimiento=None, resultado=None):
+    def dto(
+        *, estado=EstadoDisponibilidad.SIN_RESULTADO, nota=None,
+        clasificacion=None, reconocimiento=None, resultado=None,
+        escala=None, semantica_valor_numerico=None, promedio_academico=None,
+        criterio=None, proceso_concluido=False,
+    ):
         definitivo = estado in {EstadoDisponibilidad.DEFINITIVO, EstadoDisponibilidad.SIN_NOTA_NUMERICA}
         return ResultadoAcademicoDTO(
             estado_disponibilidad=estado, disponible=estado not in {EstadoDisponibilidad.SIN_RESULTADO, EstadoDisponibilidad.HISTORICO_SIN_EVIDENCIA},
             definitivo=definitivo, nota_final=nota, resultado=resultado,
             clasificacion=clasificacion, reconocimiento=reconocimiento,
+            escala=escala,
+            semantica_valor_numerico=semantica_valor_numerico,
+            promedio_academico=promedio_academico,
+            criterio=criterio,
+            proceso_concluido=proceso_concluido,
         )
 
     def fake_batch(self, items):
@@ -114,18 +128,40 @@ class ResultadosAcademicosApiTests(TestCase):
         p3 = self.create_post(exam, self.period_i, self.concluded, "Eva", "López", "RU-300")
         p4 = self.create_post(diploma, self.period_i, self.concluded, "Mario", "Soliz", "RU-400")
         values = {
-            self.p1.pk: self.dto(estado=EstadoDisponibilidad.DEFINITIVO, nota=Decimal("92"), resultado="APROBACION_PLENA_CON_FELICITACION", clasificacion="APROBACION_PLENA_CON_FELICITACION", reconocimiento="Aprobación plena con felicitación"),
-            self.p2.pk: self.dto(estado=EstadoDisponibilidad.SIN_NOTA_NUMERICA, resultado="FAVORABLE"),
+            self.p1.pk: self.dto(
+                estado=EstadoDisponibilidad.DEFINITIVO,
+                nota=Decimal("92"),
+                resultado="APROBACION_PLENA_CON_FELICITACION",
+                clasificacion="APROBACION_PLENA_CON_FELICITACION",
+                escala="0-100",
+                semantica_valor_numerico=SemanticaValorNumerico.CALIFICACION_FINAL,
+            ),
+            self.p2.pk: self.dto(
+                estado=EstadoDisponibilidad.SIN_NOTA_NUMERICA,
+                resultado="FAVORABLE",
+                criterio=ExcelenciaExpediente.Criterio.RECONOCIMIENTO_CALIDAD,
+                proceso_concluido=True,
+            ),
             p3.pk: self.dto(estado=EstadoDisponibilidad.INCOMPLETO),
-            p4.pk: self.dto(estado=EstadoDisponibilidad.DEFINITIVO, nota=Decimal("95"), clasificacion="EXCELENTE"),
+            p4.pk: self.dto(
+                estado=EstadoDisponibilidad.DEFINITIVO,
+                nota=Decimal("95"),
+                clasificacion="EXCELENTE",
+                escala="1-100",
+                semantica_valor_numerico=SemanticaValorNumerico.CALIFICACION_FINAL,
+                proceso_concluido=True,
+            ),
         }
         resolver.side_effect = lambda items: {item.pk: values[item.pk] for item in items}
         response = self.client.get(f"{self.endpoint}?page_size=10")
         rows = {row["postulacion_id"]: row["resultado_academico"] for row in response.data["results"]}
-        self.assertEqual(rows[self.p1.pk]["reconocimiento"], "Aprobación plena con felicitación")
+        self.assertIsNone(rows[self.p1.pk]["reconocimiento"])
+        self.assertEqual(rows[self.p1.pk]["semantica_valor_numerico"], "CALIFICACION_FINAL")
         self.assertEqual(rows[p4.pk]["clasificacion"], "EXCELENTE")
+        self.assertEqual(rows[p4.pk]["escala"], "1-100")
         self.assertIsNone(rows[p4.pk]["reconocimiento"])
         self.assertEqual(rows[self.p2.pk]["resultado"], "FAVORABLE")
+        self.assertEqual(rows[self.p2.pk]["criterio"], "RECONOCIMIENTO_CALIDAD")
         self.assertIsNone(rows[self.p2.pk]["nota_final"])
         self.assertEqual(rows[p3.pk]["estado_disponibilidad"], "INCOMPLETO")
 

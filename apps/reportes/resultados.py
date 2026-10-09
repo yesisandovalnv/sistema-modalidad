@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
@@ -18,6 +18,11 @@ class EstadoDisponibilidad(StrEnum):
     NO_SOPORTADO = "NO_SOPORTADO"
 
 
+class SemanticaValorNumerico(StrEnum):
+    CALIFICACION_FINAL = "CALIFICACION_FINAL"
+    PROMEDIO_ACADEMICO = "PROMEDIO_ACADEMICO"
+
+
 @dataclass(frozen=True, slots=True)
 class ResultadoAcademicoDTO:
     estado_disponibilidad: EstadoDisponibilidad
@@ -30,24 +35,28 @@ class ResultadoAcademicoDTO:
     reconocimiento: str | None = None
     fecha_conclusion: datetime | None = None
     limitacion: str | None = None
+    semantica_valor_numerico: SemanticaValorNumerico | None = None
+    promedio_academico: Decimal | None = None
+    criterio: str | None = None
+    proceso_concluido: bool | None = None
 
     def as_dict(self):
         return asdict(self)
 
 
-RECONOCIMIENTOS = {
-    "APROBACION_PLENA_CON_FELICITACION": "Aprobación plena con felicitación",
-}
 _NO_PRECARGADO = object()
 
 
-def _normalizar_resultado_numerico(data, *, limitacion_adicional=None):
+def _normalizar_resultado_numerico(
+    data, *, escala=None, limitacion_adicional=None,
+):
     data = data or {}
     nota = data.get("nota_final")
     clasificacion = data.get("clasificacion")
     resultado = data.get("resultado")
-    reconocimiento = RECONOCIMIENTOS.get(clasificacion)
     limitaciones = [item for item in (data.get("limitacion_normativa"), limitacion_adicional) if item]
+    completo = data.get("completo")
+    nota_final = nota if completo is not False else None
 
     has_partial_data = any(
         value is not None
@@ -55,7 +64,7 @@ def _normalizar_resultado_numerico(data, *, limitacion_adicional=None):
         if key not in {"limitacion_normativa", "completo", "areas"}
     ) or any(value is not None for value in (data.get("areas") or {}).values())
 
-    if nota is not None:
+    if nota_final is not None:
         estado = EstadoDisponibilidad.DEFINITIVO
         disponible = definitivo = True
     elif has_partial_data:
@@ -69,14 +78,17 @@ def _normalizar_resultado_numerico(data, *, limitacion_adicional=None):
         estado_disponibilidad=estado,
         disponible=disponible,
         definitivo=definitivo,
-        nota_final=nota,
-        # La escala queda vacía mientras el contrato canónico no la exponga.
-        escala=None,
+        nota_final=nota_final,
+        escala=escala,
         resultado=resultado,
         clasificacion=clasificacion,
-        reconocimiento=reconocimiento,
+        reconocimiento=None,
         fecha_conclusion=None,
         limitacion=" ".join(limitaciones) or None,
+        semantica_valor_numerico=(
+            SemanticaValorNumerico.CALIFICACION_FINAL
+            if nota_final is not None else None
+        ),
     )
 
 
@@ -124,9 +136,15 @@ class ResultadoAcademicoReportService:
             extra = None
             if codigo == "TRABAJO_DIRIGIDO" and data.get("clasificacion"):
                 extra = "La clasificación proviene de la policy vigente de Trabajo Dirigido; Reportes no la interpreta como reconocimiento institucional."
-            dto = _normalizar_resultado_numerico(data, limitacion_adicional=extra)
+            escala = "1-100" if codigo == "GRADUACION_VIA_DIPLOMADO" else "0-100"
+            dto = _normalizar_resultado_numerico(
+                data, escala=escala, limitacion_adicional=extra,
+            )
         elif codigo == "EXAMEN_GRADO":
-            dto = _normalizar_resultado_numerico(ExamenGradoService.calcular_resultado_final(postulacion))
+            dto = _normalizar_resultado_numerico(
+                ExamenGradoService.calcular_resultado_final(postulacion),
+                escala="0-100",
+            )
         elif codigo == "EXCELENCIA_ACADEMICA":
             dto = cls._resolver_excelencia(
                 ExcelenciaExpediente.objects.filter(postulacion=postulacion).first()
@@ -144,38 +162,55 @@ class ResultadoAcademicoReportService:
             postulacion.tipo_registro == Postulacion.TipoRegistroChoices.HISTORICO
             and dto.estado_disponibilidad == EstadoDisponibilidad.SIN_RESULTADO
         ):
-            return ResultadoAcademicoDTO(
+            dto = ResultadoAcademicoDTO(
                 estado_disponibilidad=EstadoDisponibilidad.HISTORICO_SIN_EVIDENCIA,
                 disponible=False,
                 definitivo=False,
                 limitacion="El expediente histórico no contiene evidencia suficiente para reconstruir un resultado académico.",
             )
-        return dto
+        estado = getattr(postulacion, "estado_actual", None)
+        proceso_concluido = (
+            None if estado is None else estado.codigo == "CONCLUIDA"
+        )
+        return replace(dto, proceso_concluido=proceso_concluido)
 
     @staticmethod
     def _resolver_excelencia(expediente):
-        if expediente is None or expediente.resultado == ExcelenciaExpediente.Resultado.PENDIENTE:
+        if expediente is None:
             return ResultadoAcademicoDTO(
                 estado_disponibilidad=EstadoDisponibilidad.SIN_RESULTADO,
                 disponible=False,
                 definitivo=False,
                 limitacion="Excelencia Académica todavía no tiene un resultado registrado.",
             )
+        if expediente.resultado == ExcelenciaExpediente.Resultado.PENDIENTE:
+            return ResultadoAcademicoDTO(
+                estado_disponibilidad=EstadoDisponibilidad.SIN_RESULTADO,
+                disponible=False,
+                definitivo=False,
+                criterio=expediente.criterio,
+                limitacion="Excelencia Académica todavía no tiene un resultado registrado.",
+            )
 
-        nota = expediente.promedio_general
-        estado = EstadoDisponibilidad.DEFINITIVO if nota is not None else EstadoDisponibilidad.SIN_NOTA_NUMERICA
+        promedio = expediente.promedio_general
+        estado = EstadoDisponibilidad.DEFINITIVO if promedio is not None else EstadoDisponibilidad.SIN_NOTA_NUMERICA
         return ResultadoAcademicoDTO(
             estado_disponibilidad=estado,
             disponible=True,
             definitivo=True,
-            nota_final=nota,
-            escala=None,
+            escala="0-100" if promedio is not None else None,
             resultado=expediente.resultado,
             clasificacion=None,
             reconocimiento=None,
             fecha_conclusion=None,
+            semantica_valor_numerico=(
+                SemanticaValorNumerico.PROMEDIO_ACADEMICO
+                if promedio is not None else None
+            ),
+            promedio_academico=promedio,
+            criterio=expediente.criterio,
             limitacion=(
                 "El criterio de Excelencia Académica no registra una nota numérica."
-                if nota is None else None
+                if promedio is None else None
             ),
         )
