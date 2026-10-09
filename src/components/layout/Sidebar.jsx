@@ -12,7 +12,8 @@ const links = [
   { to: '/modalidades', label: 'Modalidades', icon: FolderKanban, permission: 'puede_ver_modalidades' },
   { to: '/seguimiento', label: 'Seguimiento', icon: MonitorPlay, permission: 'puede_ver_seguimiento' },
   { to: '/usuarios', label: 'Usuarios', icon: Users, permission: 'puede_gestionar_usuarios' },
-  { to: '/reportes/postulaciones', label: 'Reportes', icon: FileText, permission: 'puede_ver_reportes' },
+  { to: '/reportes/postulaciones', label: 'Postulaciones', icon: FileText, permission: 'puede_ver_reportes', section: 'Reportes' },
+  { to: '/reportes/resultados', label: 'Resultados académicos', icon: GraduationCap, permission: 'puede_ver_reportes', section: 'Reportes' },
   { to: '/configuracion', label: 'Configuración', icon: Settings, permission: 'puede_ver_configuracion' },
 ]
 const studentMenuPaths = new Set(['/notificaciones', '/postulantes', '/documentos', '/modalidades'])
@@ -45,9 +46,9 @@ export function Sidebar({ open, collapsed = false, onMobileToggle }) {
       </div>
 
       <nav aria-label="Navegación principal" className="mt-7 flex-1 space-y-1">
-        {menuLinks.filter((link) => !link.permission || hasPermission(link.permission)).map(({ to, label, icon: Icon }) => (
+        {menuLinks.filter((link) => !link.permission || hasPermission(link.permission)).map(({ to, label, icon: Icon, section }, index, visibleLinks) => (<div key={to}>
+          {section && visibleLinks[index - 1]?.section !== section && <p className="sidebar-label mb-1 mt-4 px-3 text-xs font-semibold uppercase tracking-wide text-[var(--sidebar-text-secondary)]">{section}</p>}
           <NavLink
-            key={to}
             to={to}
             aria-label={collapsed ? label : undefined}
             title={collapsed ? label : undefined}
@@ -57,13 +58,13 @@ export function Sidebar({ open, collapsed = false, onMobileToggle }) {
             <span className="sidebar-label">{label}</span>
             {to === '/notificaciones' && unreadCount > 0 && <span role="status" aria-label={`${unreadCount} notificaciones no leídas`} className="sidebar-badge ml-auto min-w-8 rounded-full bg-rose-600 px-2 py-0.5 text-center text-xs font-bold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
           </NavLink>
-        ))}
+        </div>))}
       </nav>
 
-      <Button variant="ghost" className="sidebar-logout mt-3 w-full justify-start gap-3 hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text-active)]" onClick={logout} aria-label={collapsed ? 'Cerrar sesión' : undefined} title={collapsed ? 'Cerrar sesión' : undefined}>
+      {/* <Button variant="ghost" className="sidebar-logout mt-3 w-full justify-start gap-3 hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text-active)]" onClick={logout} aria-label={collapsed ? 'Cerrar sesión' : undefined} title={collapsed ? 'Cerrar sesión' : undefined}>
         <LogOut className="h-4 w-4" />
         <span className="sidebar-label">Cerrar sesión</span>
-      </Button>
+      </Button> */}
     </aside>
   )
 }

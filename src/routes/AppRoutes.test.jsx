@@ -15,6 +15,7 @@ vi.mock('../layouts/MainLayout', async () => {
 vi.mock('../pages/postulantes/ExpedientePage', () => ({ default: () => <h1>Expediente cargado</h1> }))
 vi.mock('../pages/postulantes/PostulantesPage', () => ({ default: () => <h1>Postulantes cargados</h1> }))
 vi.mock('../pages/dashboard/DashboardPage', () => ({ default: () => <h1>Dashboard cargado</h1> }))
+vi.mock('../pages/reports/ResultadosAcademicosPage', () => ({ default: () => <h1>Resultados académicos cargados</h1> }))
 vi.mock('../pages/configuracion/ConfiguracionPage', () => ({ default: () => <h1>Configuración cargada</h1> }))
 vi.mock('../pages/modalidades/ModalidadesPage', () => ({ default: () => <h1>Modalidades cargadas</h1> }))
 vi.mock('../pages/profile/ProfilePage', () => ({ default: () => <h1>Mi perfil cargado</h1> }))
@@ -105,6 +106,18 @@ describe('ruta de modalidades', () => {
 
   it('responde 403 sin puede_ver_modalidades', () => {
     renderRoute(() => false, '/modalidades')
+    expect(screen.getByRole('heading', { name: 'Acceso no autorizado' })).toBeInTheDocument()
+  })
+})
+
+describe('ruta de resultados académicos', () => {
+  it('utiliza la misma capacidad protegida de Reportes', () => {
+    renderRoute((permission) => permission === 'puede_ver_reportes', '/reportes/resultados')
+    expect(screen.getByRole('heading', { name: 'Resultados académicos cargados' })).toBeInTheDocument()
+  })
+
+  it('responde 403 sin la capacidad de Reportes', () => {
+    renderRoute(() => false, '/reportes/resultados')
     expect(screen.getByRole('heading', { name: 'Acceso no autorizado' })).toBeInTheDocument()
   })
 })

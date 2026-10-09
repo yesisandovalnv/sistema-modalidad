@@ -14,7 +14,7 @@ function renderStudentSidebarAt(path) {
 }
 
 describe('Sidebar', () => {
-  it('muestra inicio y reportes según capacidades', () => { renderSidebar(['puede_ver_dashboard', 'puede_ver_reportes']); expect(screen.getByRole('link', { name: 'Inicio' })).toHaveAttribute('href', '/dashboard'); expect(screen.getByText('Reportes')).toBeInTheDocument() })
+  it('muestra inicio y las dos consultas de reportes según capacidades', () => { renderSidebar(['puede_ver_dashboard', 'puede_ver_reportes']); expect(screen.getByRole('link', { name: 'Inicio' })).toHaveAttribute('href', '/dashboard'); expect(screen.getByText('Reportes')).toBeInTheDocument(); expect(screen.getByRole('link', { name: 'Postulaciones' })).toHaveAttribute('href', '/reportes/postulaciones'); expect(screen.getByRole('link', { name: 'Resultados académicos' })).toHaveAttribute('href', '/reportes/resultados') })
   it('oculta inicio y reportes sin depender del rol visible', () => { renderSidebar([]); expect(screen.queryByText('Inicio')).not.toBeInTheDocument(); expect(screen.queryByText('Reportes')).not.toBeInTheDocument() })
   it('muestra notificaciones, badge acotado y etiqueta accesible con permiso', () => { renderSidebar(['puede_ver_notificaciones']); expect(screen.getByRole('link', { name: /Notificaciones/ })).toBeInTheDocument(); expect(screen.getByText('99+')).toHaveAttribute('aria-label', '104 notificaciones no leídas') })
   it('muestra Modalidades con la capability de consulta', () => { renderSidebar(['puede_ver_modalidades']); expect(screen.getByRole('link', { name: 'Modalidades' })).toHaveAttribute('href', '/modalidades') })
@@ -52,7 +52,7 @@ describe('Sidebar', () => {
   })
   it('conserva la navegación administrativa actual', () => {
     renderSidebar(['puede_ver_dashboard', 'puede_ver_postulaciones', 'puede_ver_documentos', 'puede_ver_modalidades', 'puede_ver_notificaciones', 'puede_ver_seguimiento', 'puede_gestionar_usuarios', 'puede_ver_reportes', 'puede_ver_configuracion'])
-    for (const label of ['Inicio', 'Postulantes', 'Documentos', 'Modalidades', 'Seguimiento', 'Usuarios', 'Reportes', 'Configuración', 'Notificaciones']) expect(screen.getByText(label)).toBeInTheDocument()
+    for (const label of ['Inicio', 'Postulantes', 'Documentos', 'Modalidades', 'Seguimiento', 'Usuarios', 'Reportes', 'Resultados académicos', 'Configuración', 'Notificaciones']) expect(screen.getByText(label)).toBeInTheDocument()
     expect(screen.queryByText('Mi proceso')).not.toBeInTheDocument()
     expect(screen.queryByText('Mis documentos')).not.toBeInTheDocument()
   })
