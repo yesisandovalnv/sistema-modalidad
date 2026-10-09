@@ -1445,10 +1445,30 @@ class TestDocumentoSeguridad(DocumentoAPITestCase):
         self.assertEqual(self.client.delete(detail).status_code, 405)
 
     def test_versiones_y_observaciones_paginan_sin_perder_registros(self) -> None:
-        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file())
-        for index in range(1, 22):
-            self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(name=f"v{index + 1}.pdf"))
+        primera = self.upload_document(
+            self.student_user,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            self.create_pdf_file(),
+        )
+        self.assertEqual(primera.status_code, status.HTTP_201_CREATED)
         documento = DocumentoPostulacion.objects.get(postulacion=self.postulacion)
+        for index in range(1, 22):
+            self.authenticate_user(self.admin_user)
+            rechazada = self.client.post(
+                f"/api/v1/documentos/documentos/{documento.id}/rechazar/",
+                {"motivo": f"Corrección requerida para la versión {index + 1}"},
+                format="json",
+            )
+            self.assertEqual(rechazada.status_code, status.HTTP_200_OK)
+            correccion = self.upload_document(
+                self.student_user,
+                self.postulacion.id,
+                self.tipo_pdf.id,
+                self.create_pdf_file(name=f"v{index + 1}.pdf"),
+            )
+            self.assertEqual(correccion.status_code, status.HTTP_201_CREATED)
+
         versions = VersionDocumento.objects.filter(documento=documento).order_by("numero_version")
         self.assertEqual(versions.count(), 22)
         self.assertEqual(versions.filter(es_version_actual=True).count(), 1)
@@ -1640,7 +1660,20 @@ class TestDocumentoRevision(DocumentoAPITestCase):
     def test_versiones_devuelve_todas_las_versiones_ordenadas(self) -> None:
         """El endpoint de versiones debe devolver todas las versiones del documento ordenadas."""
         documento = self._create_documento_con_version()
-        self.upload_document(self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(name="documento_v2.pdf"))
+        self.authenticate_user(self.admin_user)
+        rechazo = self.client.post(
+            f"/api/v1/documentos/documentos/{documento.id}/rechazar/",
+            {"motivo": "Se requiere una corrección antes de consultar el historial."},
+            format="json",
+        )
+        self.assertEqual(rechazo.status_code, status.HTTP_200_OK)
+        correccion = self.upload_document(
+            self.student_user,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            self.create_pdf_file(name="documento_v2.pdf"),
+        )
+        self.assertEqual(correccion.status_code, status.HTTP_201_CREATED)
 
         self.authenticate_user(self.student_user)
         response = self.client.get(f"/api/v1/documentos/documentos/{documento.id}/versiones/", format="json")
@@ -1859,14 +1892,6 @@ class TestDocumentoRevision(DocumentoAPITestCase):
 
     def test_staff_y_superuser_pueden_revisar_pero_actor_asignado_no(self) -> None:
         documento = self._create_documento_con_version()
-        staff = User.objects.create_user(username="staff-revisor", is_staff=True, role=self.admin_role)
-        self.authenticate_user(staff)
-        aprobado = self.client.post(f"/api/v1/documentos/documentos/{documento.id}/aprobar/", {}, format="json")
-        self.assertEqual(aprobado.status_code, status.HTTP_200_OK)
-
-        self.upload_document(
-            self.student_user, self.postulacion.id, self.tipo_pdf.id, self.create_pdf_file(name="documento-v2.pdf"),
-        )
         actor = User.objects.create_user(username="actor-revisor", role=self.teacher_role)
         AsignacionPostulacion.objects.create(
             postulacion=self.postulacion,
@@ -1886,3 +1911,16 @@ class TestDocumentoRevision(DocumentoAPITestCase):
             f"/api/v1/documentos/documentos/{documento.id}/observar/", {"comentario": "Revisión autorizada"}, format="json",
         )
         self.assertEqual(observado.status_code, status.HTTP_201_CREATED)
+
+        correccion = self.upload_document(
+            self.student_user,
+            self.postulacion.id,
+            self.tipo_pdf.id,
+            self.create_pdf_file(name="documento-v2.pdf"),
+        )
+        self.assertEqual(correccion.status_code, status.HTTP_201_CREATED)
+
+        staff = User.objects.create_user(username="staff-revisor", is_staff=True, role=self.admin_role)
+        self.authenticate_user(staff)
+        aprobado = self.client.post(f"/api/v1/documentos/documentos/{documento.id}/aprobar/", {}, format="json")
+        self.assertEqual(aprobado.status_code, status.HTTP_200_OK)

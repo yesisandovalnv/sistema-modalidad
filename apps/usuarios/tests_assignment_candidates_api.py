@@ -55,6 +55,9 @@ class AssignmentCandidateApiTests(APITestCase):
             "rol_codigo": "DOCENTE",
             "rol_nombre": "Docente",
             "activo": True,
+            "elegible": True,
+            "motivo_bloqueo": None,
+            "asignaciones_vigentes": [],
         })
         forbidden = {"password", "email", "correo_personal", "correo_institucional", "telefono", "ci", "direccion", "permisos", "token"}
         self.assertTrue(forbidden.isdisjoint(response.data["results"][0]))
