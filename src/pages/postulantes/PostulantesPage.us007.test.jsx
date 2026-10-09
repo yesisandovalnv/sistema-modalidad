@@ -174,7 +174,7 @@ describe('PostulantesPage US-007', () => {
     setup({ canManage: true })
     await userEvent.click(await screen.findByRole('button', { name: 'Editar' }))
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
-    expect(await screen.findByText('Ya existe.')).toBeInTheDocument()
+    expect(await screen.findByText('El código ingresado ya se encuentra registrado en otra postulación. Por favor, ingrese un código diferente.')).toBeInTheDocument()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 

@@ -432,6 +432,9 @@ export default function PostulantesPage() {
                   )}
                   <Info label="Observaciones generales" value={detail.data.observaciones_generales || 'Sin observaciones generales.'} />
                 </dl>
+                <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                  Estos son datos técnicos básicos y no sustituyen actos administrativos o institucionales.
+                </p>
               </div>
             )}
           </DataState>
