@@ -100,6 +100,100 @@ class TrabajoDirigidoPolicy(ProyectoGradoPolicy):
     def get_cierre_policy(self):
         return None
 
+    def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
+        if seguimiento and seguimiento.etapa.codigo == "INSCRIPCION":
+            return self._orientar_inscripcion(postulacion)
+        return super().get_orientacion_etapa_actual(
+            postulacion=postulacion,
+            seguimiento=seguimiento,
+        )
+
+    def _evaluar_requisitos_inscripcion(self, postulacion):
+        from apps.documentos.models import TipoDocumento
+        from apps.postulantes.models import EntregaFisica
+
+        document_codes = self.get_documentos_requeridos("INSCRIPCION")
+        document_names = dict(
+            TipoDocumento.objects.filter(codigo__in=document_codes)
+            .values_list("codigo", "nombre")
+        )
+        requirements = []
+        for code in document_codes:
+            document = postulacion.documentos.filter(
+                tipo_documento__codigo=code,
+                activo=True,
+            ).select_related("estado").first()
+            current_version = document.versiones.filter(
+                activo=True,
+                es_version_actual=True,
+            ).first() if document else None
+            approved = bool(
+                document
+                and document.estado.codigo == "APR"
+                and not document.requiere_correccion
+                and current_version
+            )
+            if not document:
+                status_display = "No presentado"
+            elif document.requiere_correccion or document.estado.codigo in {"OBS", "REC"}:
+                status_display = "Requiere corrección"
+            elif document.estado.codigo != "APR":
+                status_display = "Pendiente de revisión administrativa"
+            elif not current_version:
+                status_display = "Sin versión vigente"
+            else:
+                status_display = "Aprobado"
+            requirements.append({
+                "tipo": "DOCUMENTO",
+                "codigo": code,
+                "nombre": document_names.get(code, code),
+                "cumplido": approved,
+                "presentado": bool(document and current_version),
+                "estado": "CUMPLIDO" if approved else "PENDIENTE",
+                "estado_display": status_display,
+                "destino": "#documentos",
+            })
+
+        delivery = postulacion.entregas_fisicas.filter(
+            codigo=EntregaFisica.Tipo.FOLDER_AMARILLO,
+            activo=True,
+        ).first()
+        delivery_complete = bool(
+            delivery and delivery.estado == EntregaFisica.Estado.COMPLETA
+        )
+        requirements.append({
+            "tipo": "ENTREGA_FISICA",
+            "codigo": EntregaFisica.Tipo.FOLDER_AMARILLO,
+            "nombre": "Fólder amarillo rotulado con nombre y modalidad",
+            "cumplido": delivery_complete,
+            "estado": "CUMPLIDO" if delivery_complete else "PENDIENTE",
+            "estado_display": "Recepción registrada" if delivery_complete else "Pendiente de recepción",
+            "destino": "#inscripcion-entregas",
+        })
+        return requirements
+
+    def _orientar_inscripcion(self, postulacion):
+        orientation = super()._orientar_inscripcion(postulacion)
+        completed = orientation["requisitos_cumplidos"]
+        total = orientation["requisitos_totales"]
+        message_by_action = {
+            "COMPLETAR_DOCUMENTOS": "Completa los documentos pendientes.",
+            "GESTIONAR_DOCUMENTOS": "Los documentos están pendientes de revisión administrativa.",
+            "GESTIONAR_ENTREGA_FISICA": "Falta registrar la recepción del fólder amarillo.",
+            "APROBAR_ETAPA": "Los requisitos están cumplidos. La etapa puede aprobarse.",
+        }
+        action_code = orientation["siguiente_accion"]["codigo"]
+        message = message_by_action.get(action_code)
+        if message:
+            orientation["mensaje"] = (
+                f"{completed}/{total} requisitos de Inscripción cumplidos. {message}"
+            )
+        if action_code == "APROBAR_ETAPA":
+            orientation["siguiente_accion"]["descripcion"] = (
+                "Los requisitos de Inscripción están aprobados y recibidos."
+            )
+        return orientation
+
     def validar_asignacion(self, *, queryset_contexto, tipo_participacion, seguimiento_etapa,
                            orden_cargo, postulacion, queryset_activas, usuario_asignado, **kwargs):
         allowed = {"TUTOR", "TRIBUNAL", "DOCENTE_MODALIDAD", "PRESIDENTE", "SECRETARIO", "SUPERVISOR_INSTITUCIONAL"}

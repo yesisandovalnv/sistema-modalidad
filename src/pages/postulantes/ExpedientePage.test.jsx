@@ -33,6 +33,7 @@ vi.mock('../../services/postulacionesService', () => ({
   humanizeRequirementCode,
   postulacionesService: {
     obtenerExpediente: vi.fn(), obtenerCapacidadesModalidad: vi.fn(), inicializarFlujo: vi.fn(), iniciarEtapa: vi.fn(), aprobarEtapa: vi.fn(), obtenerHistorial: vi.fn(), obtenerActores: vi.fn(), obtenerDocumentos: vi.fn(),
+    obtenerTrabajoDirigido: vi.fn(),
     obtenerVersiones: vi.fn(), descargarVersion: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), obtenerTiposDocumentosHistoricos: vi.fn(), cargarDocumento: vi.fn(), subirDocumentoHistorico: vi.fn(),
     aprobarDocumento: vi.fn(), rechazarDocumento: vi.fn(), observarDocumento: vi.fn(), marcarObservacionCorregida: vi.fn(),
     obtenerDefensas: vi.fn(), obtenerQuorumDefensa: vi.fn(), programarDefensa: vi.fn(), iniciarDefensa: vi.fn(),
@@ -380,6 +381,7 @@ describe('ExpedientePage US-008', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerTrabajoDirigido.mockResolvedValue({ institucion: null, informes: [] })
     postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue({ soportada: true, configuracion_valida: true })
     postulacionesService.inicializarFlujo.mockResolvedValue({})
     postulacionesService.iniciarEtapa.mockResolvedValue({ id: 21, codigo: 'INSCRIPCION', estado: 'EN_PROCESO' })
@@ -493,6 +495,49 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('heading', { name: 'Defensas' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Gestión de actores' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Historial' })).not.toBeInTheDocument()
+  })
+
+  it('muestra un título neutral mientras carga la modalidad', () => {
+    postulacionesService.obtenerExpediente.mockReturnValue(new Promise(() => {}))
+
+    renderPage()
+
+    expect(screen.getByRole('heading', { name: 'Expediente' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Expediente de Proyecto de Grado' })).not.toBeInTheDocument()
+  })
+
+  it('conserva el título neutral cuando falla la carga del expediente', async () => {
+    postulacionesService.obtenerExpediente.mockRejectedValue({
+      message: 'No se pudo cargar el expediente. Intenta nuevamente.',
+    })
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Expediente' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('No se pudo cargar el expediente.')
+    expect(screen.queryByRole('heading', { name: 'Expediente de Proyecto de Grado' })).not.toBeInTheDocument()
+  })
+
+  it('muestra la modalidad real al cargar correctamente el expediente', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: {
+        ...response.detalle,
+        modalidad_detalle: { id: 4, codigo: 'TRABAJO_DIRIGIDO', nombre: 'Trabajo Dirigido' },
+      },
+      flujo: {
+        ...response.flujo,
+        modalidad: { id: 4, codigo: 'TRABAJO_DIRIGIDO', nombre: 'Trabajo Dirigido' },
+        etapa_actual: { id: 31, codigo: 'INSCRIPCION', nombre: 'Inscripción', estado: 'PENDIENTE' },
+        etapas: [{ id: 31, codigo: 'INSCRIPCION', nombre: 'Inscripción', estado: 'PENDIENTE' }],
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'EXP-007' })).toBeInTheDocument()
+    expect(screen.getByText('Trabajo Dirigido')).toBeInTheDocument()
+    expect(screen.queryByText('Expediente de Proyecto de Grado')).not.toBeInTheDocument()
   })
 
   it('mantiene estable la vista estudiantil con orientación nula y flujo vacío', async () => {

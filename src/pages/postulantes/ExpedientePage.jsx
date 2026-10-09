@@ -399,9 +399,10 @@ export default function ExpedientePage() {
   }, [data, tribunalReportsRevision])
 
   if (loading || error || !data) {
+    const modalityName = data?.detalle?.modalidad_detalle?.nombre || data?.flujo?.modalidad?.nombre
     return (
       <section className="mx-auto max-w-5xl space-y-5">
-        <PageHeader title="Expediente de Proyecto de Grado" description="Estado actual de tu proceso académico." />
+        <PageHeader title={modalityName ? `Expediente de ${modalityName}` : 'Expediente'} description="Estado actual de tu proceso académico." />
         <DataState loading={loading} error={error} empty={!loading && !error && !data} onRetry={() => setRevision((value) => value + 1)} />
         <BackLink />
       </section>

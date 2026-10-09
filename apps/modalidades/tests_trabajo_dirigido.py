@@ -66,6 +66,34 @@ class TrabajoDirigidoTest(TestCase):
         self.assertTrue(policy.get_capabilities(self.post.modalidad).soportada)
         self.assertTrue(ModalidadConfigurationValidator.validate_modalidad(self.post.modalidad).valida)
 
+    def test_flujo_de_inscripcion_expone_orientacion_de_documentos_de_trabajo_dirigido(self):
+        client = APIClient()
+        client.force_authenticate(user=self.student)
+
+        response = client.get(f"/api/v1/postulaciones/{self.post.id}/flujo/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["modalidad"]["codigo"], "TRABAJO_DIRIGIDO")
+        orientation = response.data["orientacion_etapa_actual"]
+        requirements = orientation["requisitos"]
+        document_requirements = [
+            item for item in requirements if item["tipo"] == "DOCUMENTO"
+        ]
+        self.assertEqual(
+            {item["codigo"] for item in document_requirements},
+            set(TrabajoDirigidoPolicy.requisitos_policy.get_documentos_requeridos("INSCRIPCION")),
+        )
+        self.assertTrue(all(item["nombre"] for item in document_requirements))
+        self.assertTrue(all(item["estado_display"] == "No presentado" for item in document_requirements))
+        self.assertEqual(
+            [item["codigo"] for item in requirements if item["tipo"] == "ENTREGA_FISICA"],
+            ["FOLDER_AMARILLO"],
+        )
+        self.assertEqual(orientation["requisitos_cumplidos"], 0)
+        self.assertEqual(orientation["requisitos_totales"], len(requirements))
+        self.assertFalse(orientation["permite_aprobar_etapa"])
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+
     def test_etapas_normativas_y_reintentos(self):
         policy = ModalidadPolicyRegistry.get(self.post)
         self.assertEqual([item.codigo for item in policy.etapas], [
