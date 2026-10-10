@@ -23,6 +23,34 @@ import DocumentDetailDialog, { DownloadVersionButton } from '../../components/do
 import { getActiveTribunalComposition } from './tribunalComposition'
 
 const EMPTY = 'No registrado'
+const EXPEDIENTE_HASH_TABS = {
+  resumen: 'resumen',
+  documentos: 'documentos',
+  'inscripcion-entregas': 'documentos',
+  'informes-etapa': 'documentos',
+  'dictamen-tutor': 'documentos',
+  'dictamen-tribunal': 'documentos',
+  defensas: 'defensas',
+  actores: 'actores',
+  etapas: 'etapas',
+  'decisiones-academicas': 'etapas',
+  historial: 'historial',
+  'condiciones-tecnicas': 'resultado-cierre',
+  'resultado-y-cierre': 'resultado-cierre',
+  modalidad: 'modalidad',
+  'trabajo-dirigido': 'modalidad',
+  examen: 'modalidad',
+  excelencia: 'modalidad',
+  diplomado: 'modalidad',
+}
+const EXPEDIENTE_PRIMARY_TABS = [
+  { id: 'resumen', label: 'Resumen', hash: 'resumen' },
+  { id: 'documentos', label: 'Documentos', hash: 'documentos' },
+  { id: 'defensas', label: 'Defensas', hash: 'defensas' },
+  { id: 'actores', label: 'Actores', hash: 'actores' },
+  { id: 'etapas', label: 'Etapas', hash: 'etapas' },
+  { id: 'historial', label: 'Historial', hash: 'historial' },
+]
 const ORIENTATION_TO_DEFENSE_ACTION = {
   INICIAR_DEFENSA: 'iniciar',
   FINALIZAR_DEFENSA: 'finalizar',
@@ -30,6 +58,12 @@ const ORIENTATION_TO_DEFENSE_ACTION = {
   CONSOLIDAR_RESULTADO: 'consolidar_resultado',
 }
 const DEFENSE_WARNING = 'Los datos de defensa, quórum y evaluación mostrados por el sistema son registros técnicos y no sustituyen convocatoria formal, acta firmada, legalización ni resultado académico institucional.'
+
+function expedienteTabFromHash(hash) {
+  if (!hash || hash === '#') return 'resumen'
+  const id = decodeURIComponent(hash.slice(1))
+  return EXPEDIENTE_HASH_TABS[id] || 'resumen'
+}
 const CONTRACT_WARNINGS = [
   'La aprobación y originalidad del tema no están certificadas automáticamente por el sistema.',
   'La nota privada es el aporte consensuado del Tribunal sobre 30 puntos; no se calcula automáticamente desde las observaciones.',
@@ -68,6 +102,8 @@ export default function ExpedientePage() {
   const [revision, setRevision] = useState(0)
   const [closureRevision, setClosureRevision] = useState(0)
   const pendingSectionRestore = useRef(null)
+  const pendingHashNavigation = useRef(null)
+  const [activeTab, setActiveTab] = useState(() => expedienteTabFromHash(window.location.hash))
   const [history, setHistory] = useState({ data: null, loading: true, error: '' })
   const [historyRevision, setHistoryRevision] = useState(0)
   const [historyView, setHistoryView] = useState({ id: null, page: 1 })
@@ -236,12 +272,41 @@ export default function ExpedientePage() {
     return () => controller.abort()
   }, [load, revision])
   useLayoutEffect(() => {
-    if (loading || !data || !pendingSectionRestore.current) return
-    const section = document.getElementById(pendingSectionRestore.current)
-    if (!section) return
+    if (loading || !data) return
+    const pendingNavigation = pendingSectionRestore.current
+      ? { sectionId: pendingSectionRestore.current }
+      : pendingHashNavigation.current
+    if (!pendingNavigation) return
+    const pendingId = typeof pendingNavigation === 'string' ? pendingNavigation : pendingNavigation.sectionId
+    const section = document.getElementById(pendingId)
+    const sectionPanel = section?.closest('[data-expediente-panel]')?.dataset.expedientePanel
+      || EXPEDIENTE_HASH_TABS[pendingId]
+    if (sectionPanel && activeTab !== sectionPanel) {
+      setActiveTab(sectionPanel)
+      return
+    }
     pendingSectionRestore.current = null
-    section.scrollIntoView({ block: 'start' })
-  }, [data, loading])
+    pendingHashNavigation.current = null
+    if (section && !section.closest('[data-expediente-panel][hidden]') && typeof section.scrollIntoView === 'function') {
+      section.scrollIntoView({
+        ...(pendingNavigation.behavior ? { behavior: pendingNavigation.behavior } : {}),
+        block: 'start',
+      })
+    }
+  }, [activeTab, data, loading])
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash
+      pendingHashNavigation.current = hash ? { sectionId: hash.slice(1) } : null
+      setActiveTab(expedienteTabFromHash(hash))
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    window.addEventListener('popstate', handleHashChange)
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange)
+      window.removeEventListener('popstate', handleHashChange)
+    }
+  }, [])
   useEffect(() => {
     if (data?.detalle?.modalidad_detalle?.codigo !== 'EXAMEN_GRADO') {
       setExamen(null)
@@ -610,12 +675,35 @@ export default function ExpedientePage() {
     }
   }
 
-  const scrollToDocuments = () => {
-    const documentsSection = document.getElementById('documentos')
-    if (!documentsSection) return
-    documentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}#documentos`)
+  const navigateToSection = (sectionId, { history = 'push', behavior = 'smooth' } = {}) => {
+    const section = document.getElementById(sectionId)
+    const panel = section?.closest('[data-expediente-panel]')?.dataset.expedientePanel
+      || EXPEDIENTE_HASH_TABS[sectionId]
+    if (panel) setActiveTab(panel)
+
+    if (history !== 'none') {
+      const url = `${window.location.pathname}${window.location.search}#${sectionId}`
+      if (history === 'replace') window.history.replaceState(window.history.state, '', url)
+      else if (window.location.hash !== `#${sectionId}`) window.history.pushState(window.history.state, '', url)
+    }
+
+    pendingHashNavigation.current = { sectionId, behavior }
+    if (section && panel === activeTab && !section.closest('[data-expediente-panel][hidden]') && typeof section.scrollIntoView === 'function') {
+      pendingHashNavigation.current = null
+      section.scrollIntoView({ behavior, block: 'start' })
+    }
   }
+
+  const handleSectionClick = (event) => {
+    const link = event.target.closest?.('a[href^="#"]')
+    if (!link) return
+    const sectionId = link.getAttribute('href').slice(1)
+    if (!document.getElementById(sectionId)) return
+    event.preventDefault()
+    navigateToSection(sectionId)
+  }
+
+  const scrollToDocuments = () => navigateToSection('documentos', { history: 'replace' })
 
   const closeAssignment = () => {
     assignmentController.current?.abort()
@@ -1412,9 +1500,19 @@ export default function ExpedientePage() {
         </div>
       </div>
     </details>
+  const modalityCode = detalle.modalidad_detalle?.codigo
+  const hasModalityTab = !isHistorical && (
+    (modalityCode === 'TRABAJO_DIRIGIDO' && Boolean(trabajoDirigido))
+    || (modalityCode === 'EXAMEN_GRADO' && Boolean(examen))
+    || (modalityCode === 'EXCELENCIA_ACADEMICA' && Boolean(excelencia))
+    || (modalityCode === 'GRADUACION_VIA_DIPLOMADO' && Boolean(diplomado))
+  )
+  const hasOutcomeTab = !isHistorical && Boolean(
+    stageUi.academicResult || stageUi.closure || futureSections,
+  )
 
   return (
-    <section className="mx-auto max-w-6xl space-y-5">
+    <section className="mx-auto max-w-6xl space-y-5" onClick={handleSectionClick}>
       <BackLink />
 
       <Card className="overflow-hidden border-slate-300 dark:border-slate-700">
@@ -1491,107 +1589,119 @@ export default function ExpedientePage() {
         )}
       </Card>
 
-      {!isHistorical && <ExpedienteNav />}
-      {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} pendingCurrentRequirements={pendingCurrentRequirements} onApproveStage={approveCurrentStage} canApproveStage={canManageApplications && orientationApprovalAvailable} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} workflowProgress={safeProgress} pendingTechnicalClosure={pendingTechnicalClosure} resultado={resultado} concluded={isConcluded} defenses={defenses.data?.results || []} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageAssignments={canManageAssignments} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} hideRequirements={isProjectInscription} onCompleteAuthorities={() => setTeamAssignment({ mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '', results: {} })} onManageActors={openActorManagement} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
+      {!isHistorical && <ExpedienteNav activeTab={activeTab} hasModalityTab={hasModalityTab} hasOutcomeTab={hasOutcomeTab} onActivate={(sectionId) => navigateToSection(sectionId)} />}
+      <div id="panel-resumen" role="tabpanel" aria-labelledby="expediente-tab-resumen" data-expediente-panel="resumen" hidden={!isHistorical && activeTab !== 'resumen'}>
+        {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} pendingCurrentRequirements={pendingCurrentRequirements} onApproveStage={approveCurrentStage} canApproveStage={canManageApplications && orientationApprovalAvailable} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} workflowProgress={safeProgress} pendingTechnicalClosure={pendingTechnicalClosure} resultado={resultado} concluded={isConcluded} defenses={defenses.data?.results || []} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageAssignments={canManageAssignments} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} hideRequirements={isProjectInscription} onCompleteAuthorities={() => setTeamAssignment({ mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '', results: {} })} onManageActors={openActorManagement} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
+      </div>
 
-      {!isHistorical && isProjectInscription && <InscriptionDocumentsSection
-        requirements={inscriptionDocumentRequirements}
-        completed={currentRequirements.filter((item) => item.cumplido === true).length}
-        total={currentRequirements.length}
-      />}
+      <div id="panel-documentos" role="tabpanel" aria-labelledby="expediente-tab-documentos" data-expediente-panel="documentos" hidden={!isHistorical && activeTab !== 'documentos'}>
+        {!isHistorical && isProjectInscription && <InscriptionDocumentsSection
+          requirements={inscriptionDocumentRequirements}
+          completed={currentRequirements.filter((item) => item.cumplido === true).length}
+          total={currentRequirements.length}
+        />}
+        {!isHistorical && currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA' && reviewSection}
+        {!isHistorical && physicalRequirements.length > 0 && <div id="inscripcion-entregas" className="scroll-mt-24"><ClosureRequirements postulacion={detalle.id} canManage={canManageApplications} showConditions={false} requiredDeliveries={physicalRequirements} title="Recepción física" description="" titleId="inscripcion-entregas-title" createLabel="Registrar recepción" onChanged={() => { setRevision((value) => value + 1); setStageApproval({ submitting: false, error: '', fields: {} }) }} /></div>}
+        <div id="documentos" className="scroll-mt-24"><DocumentsCard
+          documents={documents}
+          page={documentsPage}
+          onPage={(page) => setDocumentsView({ id, page })}
+          onRetry={() => setDocumentsRevision((value) => value + 1)}
+          canUpload={canUpload}
+          onUpload={() => openUpload()}
+          onSelect={openDocumentDetail}
+        /></div>
+        {!isHistorical && (flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo)).map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
+      </div>
 
-      {!isHistorical && currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA' && reviewSection}
+      <div id="panel-defensas" role="tabpanel" aria-labelledby="expediente-tab-defensas" data-expediente-panel="defensas" hidden={!isHistorical && activeTab !== 'defensas'}>
+        {!isHistorical && <div id="defensas" className="scroll-mt-24"><DefensesCard
+          defenses={defenses}
+          page={defensesPage}
+          onPage={(page) => { closeDefense(); setDefensesView({ id, page }) }}
+          onRetry={() => setDefensesRevision((value) => value + 1)}
+          onSelect={openDefense}
+          canManage={canManageDefenses}
+          canProgram={canProgramDefense}
+          programmingContext={defenseProgrammingContext}
+          onProgram={() => openDefenseOperation('programar', null, defenseProgrammingContext)}
+        /></div>}
+        {!isHistorical && stageUi.corrections && correctionSection}
+      </div>
 
-      {!isHistorical && physicalRequirements.length > 0 && <div id="inscripcion-entregas" className="scroll-mt-24"><ClosureRequirements postulacion={detalle.id} canManage={canManageApplications} showConditions={false} requiredDeliveries={physicalRequirements} title="Recepción física" description="" titleId="inscripcion-entregas-title" createLabel="Registrar recepción" onChanged={() => { setRevision((value) => value + 1); setStageApproval({ submitting: false, error: '', fields: {} }) }} /></div>}
+      <div id="panel-actores" role="tabpanel" aria-labelledby="expediente-tab-actores" data-expediente-panel="actores" hidden={!isHistorical && activeTab !== 'actores'}>
+        {!isHistorical && <div id="actores" className="scroll-mt-24"><ActorsCard
+          active={activeActors}
+          historical={historicalActors}
+          activePage={activeActorsPage}
+          historicalPage={historicalActorsPage}
+          onActivePage={(page) => setActorsView((current) => ({ id, activePage: page, historicalPage: String(current.id) === String(id) ? current.historicalPage : 1 }))}
+          onHistoricalPage={(page) => setActorsView((current) => ({ id, activePage: String(current.id) === String(id) ? current.activePage : 1, historicalPage: page }))}
+          onRetryActive={() => setActiveActorsRevision((value) => value + 1)}
+          onRetryHistorical={() => setHistoricalActorsRevision((value) => value + 1)}
+          canManage={canManageAssignments}
+          management={flujo.gestion_actores}
+          onManage={openActorManagement}
+        /></div>}
+      </div>
 
-      <div id="documentos" className="scroll-mt-24"><DocumentsCard
-        documents={documents}
-        page={documentsPage}
-        onPage={(page) => setDocumentsView({ id, page })}
-        onRetry={() => setDocumentsRevision((value) => value + 1)}
-        canUpload={canUpload}
-        onUpload={() => openUpload()}
-        onSelect={openDocumentDetail}
-      /></div>
-
-      {!isHistorical && <div id="defensas" className="scroll-mt-24"><DefensesCard
-        defenses={defenses}
-        page={defensesPage}
-        onPage={(page) => { closeDefense(); setDefensesView({ id, page }) }}
-        onRetry={() => setDefensesRevision((value) => value + 1)}
-        onSelect={openDefense}
-        canManage={canManageDefenses}
-        canProgram={canProgramDefense}
-        programmingContext={defenseProgrammingContext}
-        onProgram={() => openDefenseOperation('programar', null, defenseProgrammingContext)}
-      /></div>}
-
-      {!isHistorical && <div id="decisiones-academicas" className="scroll-mt-24"><AcademicDecisionsCard
-        management={flujo.gestion_decisiones_academicas}
-        onAction={(decision) => setAcademicDecision({ decision, submitting: false, fields: {}, error: '' })}
-      /></div>}
-      {!isHistorical && <div id="actores" className="scroll-mt-24"><ActorsCard
-        active={activeActors}
-        historical={historicalActors}
-        activePage={activeActorsPage}
-        historicalPage={historicalActorsPage}
-        onActivePage={(page) => setActorsView((current) => ({ id, activePage: page, historicalPage: String(current.id) === String(id) ? current.historicalPage : 1 }))}
-        onHistoricalPage={(page) => setActorsView((current) => ({ id, activePage: String(current.id) === String(id) ? current.activePage : 1, historicalPage: page }))}
-        onRetryActive={() => setActiveActorsRevision((value) => value + 1)}
-        onRetryHistorical={() => setHistoricalActorsRevision((value) => value + 1)}
-        canManage={canManageAssignments}
-        management={flujo.gestion_actores}
-        onManage={openActorManagement}
-      /></div>}
-      {!isHistorical && <Card id="etapas" className="scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
-        <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
-        {(flujo.etapas || []).length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500">El flujo académico todavía no fue inicializado.</p>
-        ) : (
-          <ol className="mt-5">
-            {flujo.etapas.map((stage) => (
-              <li key={stage.id} className="relative flex gap-4 pb-5 last:pb-0">
-                <span aria-hidden="true" className="absolute bottom-0 left-[0.7rem] top-6 w-px bg-slate-200 last:hidden dark:bg-slate-700" />
-                <StageMarker state={stage.estado} />
-                <div className="min-w-0 flex-1 rounded-lg border border-slate-200 px-4 py-3 text-sm dark:border-slate-700">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <strong>{stage.nombre || stage.codigo}</strong>
-                    <StatusBadge value={stage.estado_display || stage.estado} compact positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)} />
+      <div id="panel-etapas" role="tabpanel" aria-labelledby="expediente-tab-etapas" data-expediente-panel="etapas" hidden={!isHistorical && activeTab !== 'etapas'}>
+        {!isHistorical && <div id="decisiones-academicas" className="scroll-mt-24"><AcademicDecisionsCard
+          management={flujo.gestion_decisiones_academicas}
+          onAction={(decision) => setAcademicDecision({ decision, submitting: false, fields: {}, error: '' })}
+        /></div>}
+        {!isHistorical && <Card id="etapas" className="scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
+          <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
+          {(flujo.etapas || []).length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">El flujo académico todavía no fue inicializado.</p>
+          ) : (
+            <ol className="mt-5">
+              {flujo.etapas.map((stage) => (
+                <li key={stage.id} className="relative flex gap-4 pb-5 last:pb-0">
+                  <span aria-hidden="true" className="absolute bottom-0 left-[0.7rem] top-6 w-px bg-slate-200 last:hidden dark:bg-slate-700" />
+                  <StageMarker state={stage.estado} />
+                  <div className="min-w-0 flex-1 rounded-lg border border-slate-200 px-4 py-3 text-sm dark:border-slate-700">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <strong>{stage.nombre || stage.codigo}</strong>
+                      <StatusBadge value={stage.estado_display || stage.estado} compact positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)} />
+                    </div>
+                    <p className="mt-1 text-slate-500">Intento {stage.numero_intento ?? 1}</p>
                   </div>
-                  <p className="mt-1 text-slate-500">Intento {stage.numero_intento ?? 1}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-      </Card>}
+                </li>
+              ))}
+            </ol>
+          )}
+        </Card>}
+      </div>
 
-      <div id="historial" className="scroll-mt-24"><HistoryCard
-        history={history}
-        page={historyPage}
-        onPage={(page) => setHistoryView({ id, page })}
-        onRetry={() => setHistoryRevision((value) => value + 1)}
-      /></div>
+      <div id="panel-historial" role="tabpanel" aria-labelledby="expediente-tab-historial" data-expediente-panel="historial" hidden={!isHistorical && activeTab !== 'historial'}>
+        <div id="historial" className="scroll-mt-24"><HistoryCard
+          history={history}
+          page={historyPage}
+          onPage={(page) => setHistoryView({ id, page })}
+          onRetry={() => setHistoryRevision((value) => value + 1)}
+        /></div>
+      </div>
 
-      {!isHistorical && detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' && <ExamenGradoAreas postulacion={detalle.id} examen={examen} etapaCodigo={currentStage?.codigo} canManage={canManageEvaluations} onChanged={() => { setExamenRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
-      {!isHistorical && detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' && <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
-      {!isHistorical && detalle.modalidad_detalle?.codigo === 'GRADUACION_VIA_DIPLOMADO' && <Diplomado postulacion={detalle.id} diplomado={diplomado} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setDiplomadoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
-      {!isHistorical && detalle.modalidad_detalle?.codigo === 'TRABAJO_DIRIGIDO' && <TrabajoDirigido postulacion={detalle.id} trabajo={trabajoDirigido} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setTrabajoDirigidoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+      {hasModalityTab && <div id="modalidad" role="tabpanel" aria-labelledby="expediente-tab-modalidad" data-expediente-panel="modalidad" hidden={activeTab !== 'modalidad'}>
+        {modalityCode === 'EXAMEN_GRADO' && <ExamenGradoAreas postulacion={detalle.id} examen={examen} etapaCodigo={currentStage?.codigo} canManage={canManageEvaluations} onChanged={() => { setExamenRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+        {modalityCode === 'EXCELENCIA_ACADEMICA' && <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+        {modalityCode === 'GRADUACION_VIA_DIPLOMADO' && <Diplomado postulacion={detalle.id} diplomado={diplomado} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setDiplomadoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+        {modalityCode === 'TRABAJO_DIRIGIDO' && <TrabajoDirigido postulacion={detalle.id} trabajo={trabajoDirigido} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setTrabajoDirigidoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+      </div>}
 
-      {!isHistorical && (flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo)).map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
-      {!isHistorical && stageUi.corrections && correctionSection}
-      {!isHistorical && stageUi.academicResult && academicResultSection}
-
-      {!isHistorical && false && <details role="note" aria-label="Límites normativos" className="overflow-hidden rounded-xl border border-amber-300 bg-amber-50 p-5 dark:bg-amber-950">
-        <summary className="cursor-pointer list-none font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">Información y límites normativos ({(cierreSoportado ? CONTRACT_WARNINGS : TESIS_WARNINGS).length + (cierreSoportado ? (cierre.data?.advertencias_normativas || []).length : 0)}) <span className="ml-2 text-sm font-normal">Ver detalles</span></summary>
-        <ul className="mt-4 list-disc space-y-2 pl-5 text-sm">
-          {(cierreSoportado ? CONTRACT_WARNINGS : TESIS_WARNINGS).map((warning) => <li key={warning}>{warning}</li>)}
-          {cierreSoportado && (cierre.data?.advertencias_normativas || []).map((warning) => <li key={`backend-${warning}`}>{warning}</li>)}
-        </ul>
-      </details>}
-
-      {!isHistorical && stageUi.closure && closureSection}
-      {!isHistorical && futureSections}
+      {hasOutcomeTab && <div id="resultado-y-cierre" role="tabpanel" aria-labelledby="expediente-tab-resultado-cierre" data-expediente-panel="resultado-cierre" hidden={activeTab !== 'resultado-cierre'}>
+        {!isHistorical && stageUi.academicResult && academicResultSection}
+        {!isHistorical && false && <details role="note" aria-label="Límites normativos" className="overflow-hidden rounded-xl border border-amber-300 bg-amber-50 p-5 dark:bg-amber-950">
+          <summary className="cursor-pointer list-none font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">Información y límites normativos ({(cierreSoportado ? CONTRACT_WARNINGS : TESIS_WARNINGS).length + (cierreSoportado ? (cierre.data?.advertencias_normativas || []).length : 0)}) <span className="ml-2 text-sm font-normal">Ver detalles</span></summary>
+          <ul className="mt-4 list-disc space-y-2 pl-5 text-sm">
+            {(cierreSoportado ? CONTRACT_WARNINGS : TESIS_WARNINGS).map((warning) => <li key={warning}>{warning}</li>)}
+            {cierreSoportado && (cierre.data?.advertencias_normativas || []).map((warning) => <li key={`backend-${warning}`}>{warning}</li>)}
+          </ul>
+        </details>}
+        {!isHistorical && stageUi.closure && closureSection}
+        {!isHistorical && futureSections}
+      </div>}
 
       {upload && <UploadDialog upload={upload} types={documentTypes} postulacion={detalle.id} isHistorical={isHistorical} onSubmit={submitUpload} onMultipleSubmit={submitMultipleUpload} onClose={closeUpload} />}
 
@@ -1697,10 +1807,40 @@ function StudentClosureSummary({ cierre, supported }) {
   </Card>
 }
 
-function ExpedienteNav() {
-  const items = [['resumen', 'Resumen'], ['documentos', 'Documentos'], ['defensas', 'Defensas'], ['actores', 'Actores'], ['etapas', 'Etapas'], ['historial', 'Historial']]
+function ExpedienteNav({ activeTab, hasModalityTab, hasOutcomeTab, onActivate }) {
+  const items = [
+    ...EXPEDIENTE_PRIMARY_TABS,
+    ...(hasModalityTab ? [{ id: 'modalidad', label: 'Modalidad', hash: 'modalidad' }] : []),
+    ...(hasOutcomeTab ? [{ id: 'resultado-cierre', label: 'Resultado y cierre', hash: 'resultado-y-cierre' }] : []),
+  ]
+  const handleKeyDown = (event, index) => {
+    let nextIndex = index
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % items.length
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + items.length) % items.length
+    else if (event.key === 'Home') nextIndex = 0
+    else if (event.key === 'End') nextIndex = items.length - 1
+    else return
+    event.preventDefault()
+    const nextTab = items[nextIndex]
+    onActivate(nextTab.hash)
+    document.getElementById(`expediente-tab-${nextTab.id}`)?.focus()
+  }
+
   return <nav aria-label="Secciones del expediente" className="sticky top-2 z-10 overflow-x-auto rounded-xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
-    <ul className="flex min-w-max gap-1">{items.map(([target, label]) => <li key={target}><a href={`#${target}`} className="block rounded-lg px-4 py-2 text-sm font-medium hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 dark:hover:bg-slate-800">{label}</a></li>)}</ul>
+    <ul className="flex min-w-max gap-1" role="tablist" aria-label="Pestañas del expediente">
+      {items.map((item, index) => <li key={item.id}>
+        <a
+          id={`expediente-tab-${item.id}`}
+          href={`#${item.hash}`}
+          role="tab"
+          aria-controls={item.id === 'modalidad' ? 'modalidad' : item.id === 'resultado-cierre' ? 'resultado-y-cierre' : `panel-${item.id}`}
+          aria-selected={activeTab === item.id}
+          tabIndex={activeTab === item.id ? 0 : -1}
+          className={`block rounded-lg px-4 py-2 text-sm font-medium hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 dark:hover:bg-slate-800${activeTab === item.id ? " relative after:absolute after:bottom-1 after:left-4 after:right-4 after:h-0.5 after:bg-blue-600 after:content-['']" : ''}`}
+          onKeyDown={(event) => handleKeyDown(event, index)}
+        >{item.label}</a>
+      </li>)}
+    </ul>
   </nav>
 }
 

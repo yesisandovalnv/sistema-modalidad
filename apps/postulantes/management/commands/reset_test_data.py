@@ -17,12 +17,14 @@ from apps.notificaciones.models import Notificacion
 from apps.postulantes.models import (
     AsignacionPostulacion,
     CondicionPostulacion,
+    DecisionAcademicaEtapa,
     DictamenRevisionDocumento,
     EntregaFisica,
     EventoDefensa,
     EvaluacionDefensa,
     InformeRevisionTribunalPrevia,
     ParticipanteEvento,
+    ParticipacionDecisionAcademica,
     Postulacion,
     SeguimientoEtapa,
 )
@@ -68,7 +70,7 @@ class Command(BaseCommand):
         self._print_counts("before reset", before)
 
         with transaction.atomic():
-            postulacion_ids = list(Postulacion.objects.values_list("pk", flat=True))
+            postulacion_ids = list(Postulacion.all_objects.values_list("pk", flat=True))
             deleted_count = self._delete_transactional_data(postulacion_ids)
 
         after = self._collect_counts()
@@ -89,38 +91,45 @@ class Command(BaseCommand):
         Notificacion.objects.filter(postulacion__in=postulacion_ids).delete()
         CondicionPostulacion.objects.filter(postulacion__in=postulacion_ids).delete()
         EntregaFisica.objects.filter(postulacion__in=postulacion_ids).delete()
-        ExamenArea.objects.filter(postulacion__in=postulacion_ids).delete()
-        DiplomadoModulo.objects.filter(postulacion__in=postulacion_ids).delete()
-        DiplomadoDefensa.objects.filter(postulacion__in=postulacion_ids).delete()
-        ExcelenciaExpediente.objects.filter(postulacion__in=postulacion_ids).delete()
-        TrabajoDirigidoExpediente.objects.filter(postulacion__in=postulacion_ids).delete()
+        ExamenArea.all_objects.filter(postulacion__in=postulacion_ids).delete()
+        DiplomadoModulo.all_objects.filter(postulacion__in=postulacion_ids).delete()
+        DiplomadoDefensa.all_objects.filter(postulacion__in=postulacion_ids).delete()
+        ExcelenciaExpediente.all_objects.filter(postulacion__in=postulacion_ids).delete()
+        TrabajoDirigidoExpediente.all_objects.filter(postulacion__in=postulacion_ids).delete()
 
-        ConfirmacionCorreccionDocumento.objects.filter(postulacion__in=postulacion_ids).delete()
-        DictamenRevisionDocumento.objects.filter(seguimiento_etapa__postulacion__in=postulacion_ids).delete()
-        InformeRevisionTribunalPrevia.objects.filter(seguimiento_etapa__postulacion__in=postulacion_ids).delete()
+        ConfirmacionCorreccionDocumento.all_objects.filter(postulacion__in=postulacion_ids).delete()
+        DictamenRevisionDocumento.all_objects.filter(seguimiento_etapa__postulacion__in=postulacion_ids).delete()
+        InformeRevisionTribunalPrevia.all_objects.filter(seguimiento_etapa__postulacion__in=postulacion_ids).delete()
 
-        ObservacionDocumento.objects.filter(version_documento__documento__postulacion__in=postulacion_ids).delete()
-        VersionDocumento.objects.filter(documento__postulacion__in=postulacion_ids).delete()
-        DocumentoPostulacion.objects.filter(postulacion__in=postulacion_ids).delete()
+        ObservacionDocumento.all_objects.filter(version_documento__documento__postulacion__in=postulacion_ids).delete()
+        VersionDocumento.all_objects.filter(documento__postulacion__in=postulacion_ids).delete()
+        DocumentoPostulacion.all_objects.filter(postulacion__in=postulacion_ids).delete()
 
-        ParticipanteEvento.objects.filter(evento__postulacion__in=postulacion_ids).delete()
         EvaluacionDefensa.objects.filter(evento__postulacion__in=postulacion_ids).delete()
+        ParticipanteEvento.objects.filter(evento__postulacion__in=postulacion_ids).delete()
         EventoDefensa.objects.filter(postulacion__in=postulacion_ids).delete()
 
-        AsignacionPostulacion.objects.filter(postulacion__in=postulacion_ids).delete()
-        SeguimientoEtapa.objects.filter(postulacion__in=postulacion_ids).delete()
+        ParticipacionDecisionAcademica.all_objects.filter(
+            decision__seguimiento_etapa__postulacion__in=postulacion_ids,
+        ).delete()
+        DecisionAcademicaEtapa.all_objects.filter(
+            seguimiento_etapa__postulacion__in=postulacion_ids,
+        ).delete()
 
-        deleted_count, _ = Postulacion.objects.filter(pk__in=postulacion_ids).delete()
+        AsignacionPostulacion.all_objects.filter(postulacion__in=postulacion_ids).delete()
+        SeguimientoEtapa.all_objects.filter(postulacion__in=postulacion_ids).delete()
+
+        deleted_count, _ = Postulacion.all_objects.filter(pk__in=postulacion_ids).delete()
         return deleted_count
 
     def _collect_counts(self):
         return {
-            "postulaciones": Postulacion.objects.count(),
-            "seguimientos_etapa": SeguimientoEtapa.objects.count(),
-            "asignaciones": AsignacionPostulacion.objects.count(),
+            "postulaciones": Postulacion.all_objects.count(),
+            "seguimientos_etapa": SeguimientoEtapa.all_objects.count(),
+            "asignaciones": AsignacionPostulacion.all_objects.count(),
             "eventos_defensa": EventoDefensa.objects.count(),
-            "documentos_postulacion": DocumentoPostulacion.objects.count(),
-            "versiones_documentos": VersionDocumento.objects.count(),
+            "documentos_postulacion": DocumentoPostulacion.all_objects.count(),
+            "versiones_documentos": VersionDocumento.all_objects.count(),
             "notificaciones": Notificacion.objects.count(),
             "modalidades": {
                 "total": Modalidad.objects.count(),

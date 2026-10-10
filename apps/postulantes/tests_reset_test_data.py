@@ -4,15 +4,33 @@ from pathlib import Path
 from unittest import mock
 
 from django.conf import settings
+from django.contrib.auth.models import Group, Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import CommandError, call_command
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.academico.models import Modalidad, ModalidadRequisito, Periodo, Requisito
-from apps.documentos.models import DocumentoPostulacion, TipoDocumento, VersionDocumento
+from apps.documentos.models import (
+    ConfirmacionCorreccionDocumento,
+    DocumentoPostulacion,
+    ObservacionDocumento,
+    TipoDocumento,
+    VersionDocumento,
+)
 from apps.notificaciones.models import Notificacion
-from apps.postulantes.models import AsignacionPostulacion, EventoDefensa, ParticipanteEvento, Postulacion, SeguimientoEtapa
+from apps.postulantes.models import (
+    AsignacionPostulacion,
+    DecisionAcademicaEtapa,
+    DictamenRevisionDocumento,
+    EvaluacionDefensa,
+    EventoDefensa,
+    InformeRevisionTribunalPrevia,
+    ParticipacionDecisionAcademica,
+    ParticipanteEvento,
+    Postulacion,
+    SeguimientoEtapa,
+)
 from apps.usuarios.models import CustomUser
 
 
@@ -156,7 +174,7 @@ class ResetTestDataCommandTests(TestCase):
         self.test_file = media_dir / "version_prueba.pdf"
         self.test_file.write_bytes(b"archivo temporal de la prueba")
 
-        VersionDocumento.objects.create(
+        self.version = VersionDocumento.objects.create(
             documento=documento,
             subido_por=self.docente,
             numero_version=1,
@@ -272,3 +290,142 @@ class ResetTestDataCommandTests(TestCase):
         with mock.patch.dict(os.environ, {"DJANGO_ENV": "production"}, clear=False):
             with self.assertRaises(CommandError):
                 call_command("reset_test_data", confirm=True, stdout=StringIO(), stderr=StringIO())
+
+    def test_17_elimina_dependencias_protegidas_y_archivadas(self):
+        self.postulacion.activo = False
+        self.postulacion.save(update_fields=["activo"])
+
+        decision = DecisionAcademicaEtapa.objects.create(
+            seguimiento_etapa=self.seguimiento,
+            codigo="COMITE_PERFIL",
+            resultado="APROBADO",
+            registrado_por=self.docente,
+        )
+        participacion = ParticipacionDecisionAcademica.objects.create(
+            decision=decision,
+            asignacion=self.asignacion,
+            rol="TUTOR",
+            orden=1,
+        )
+        decision.activo = False
+        decision.save(update_fields=["activo"])
+        participacion.activo = False
+        participacion.save(update_fields=["activo"])
+        self.asignacion.activo = False
+        self.asignacion.save(update_fields=["activo"])
+
+        participante = ParticipanteEvento.objects.get(
+            evento=self.evento,
+            asignacion=self.asignacion_tribunal_1,
+        )
+        # Proyecto de Grado requires consensus; this fixture targets the PROTECT FK only.
+        EvaluacionDefensa.objects.bulk_create(
+            [
+                EvaluacionDefensa(
+                    evento=self.evento,
+                    evaluador=participante,
+                    tipo_evaluacion=EvaluacionDefensa.Tipo.PERFIL,
+                    modalidad_registro=EvaluacionDefensa.ModalidadRegistro.INDIVIDUAL,
+                    resultado_cualitativo=EvaluacionDefensa.Resultado.SUFICIENTE,
+                )
+            ]
+        )
+
+        version_corregida = VersionDocumento.objects.create(
+            documento=self.version.documento,
+            subido_por=self.docente,
+            numero_version=2,
+            archivo="test_reset_data/version_corregida.pdf",
+            nombre_original="version_corregida.pdf",
+            tamano_bytes=1,
+            hash_sha256="b" * 64,
+        )
+        confirmacion = ConfirmacionCorreccionDocumento.objects.create(
+            postulacion=self.postulacion,
+            version_observada=self.version,
+            version_corregida=version_corregida,
+            confirmado_por=self.docente,
+            asignacion_confirmante=self.asignacion,
+        )
+        confirmacion.activo = False
+        confirmacion.save(update_fields=["activo"])
+
+        dictamen = DictamenRevisionDocumento.objects.create(
+            seguimiento_etapa=self.seguimiento,
+            version_documento_revisada=self.version,
+            evidencia_version=self.version,
+            tipo_revision=DictamenRevisionDocumento.TipoRevision.TUTOR,
+            resultado=DictamenRevisionDocumento.Resultado.SUFICIENTE,
+            asignacion_emisora=self.asignacion,
+        )
+        dictamen.activo = False
+        dictamen.save(update_fields=["activo"])
+
+        observacion = ObservacionDocumento.objects.create(
+            version_documento=self.version,
+            usuario=self.docente,
+            comentario="Observación de prueba",
+        )
+        observacion.activo = False
+        observacion.save(update_fields=["activo"])
+        documento = self.version.documento
+        documento.activo = False
+        documento.save(update_fields=["activo"])
+        self.version.activo = False
+        self.version.save(update_fields=["activo"])
+        version_corregida.activo = False
+        version_corregida.save(update_fields=["activo"])
+
+        # The reset test needs the protected references, not modality-policy validation.
+        InformeRevisionTribunalPrevia.all_objects.bulk_create(
+            [
+                InformeRevisionTribunalPrevia(
+                    seguimiento_etapa=self.seguimiento,
+                    version_documento_revisada=self.version,
+                    evidencia_version=self.version,
+                    resultado=InformeRevisionTribunalPrevia.Resultado.SUFICIENTE,
+                    registrado_por=self.docente,
+                    activo=False,
+                )
+            ]
+        )
+
+        self._run_reset(confirm=True)
+
+        self.assertEqual(Postulacion.all_objects.count(), 0)
+        self.assertEqual(AsignacionPostulacion.all_objects.count(), 0)
+        self.assertEqual(DecisionAcademicaEtapa.all_objects.count(), 0)
+        self.assertEqual(ParticipacionDecisionAcademica.all_objects.count(), 0)
+        self.assertEqual(EvaluacionDefensa.objects.count(), 0)
+        self.assertEqual(DocumentoPostulacion.all_objects.count(), 0)
+        self.assertEqual(VersionDocumento.all_objects.count(), 0)
+        self.assertEqual(ObservacionDocumento.all_objects.count(), 0)
+        self.assertEqual(ConfirmacionCorreccionDocumento.all_objects.count(), 0)
+        self.assertEqual(DictamenRevisionDocumento.all_objects.count(), 0)
+        self.assertEqual(InformeRevisionTribunalPrevia.all_objects.count(), 0)
+
+    def test_18_segunda_ejecucion_es_idempotente(self):
+        self._run_reset(confirm=True)
+        self._run_reset(confirm=True)
+
+        self.assertEqual(Postulacion.all_objects.count(), 0)
+        self.assertEqual(SeguimientoEtapa.all_objects.count(), 0)
+        self.assertEqual(AsignacionPostulacion.all_objects.count(), 0)
+
+    def test_19_conserva_grupos_y_permisos_de_usuarios(self):
+        group = Group.objects.create(name="reset-test-preserved-group")
+        permission = Permission.objects.first()
+        if permission is None:
+            self.fail("La base de testing debe contener al menos un permiso.")
+        group.permissions.add(permission)
+        self.student.groups.add(group)
+        self.student.user_permissions.add(permission)
+        permissions_before = Permission.objects.count()
+
+        self._run_reset(confirm=True)
+
+        self.assertTrue(Group.objects.filter(pk=group.pk).exists())
+        self.assertTrue(Permission.objects.filter(pk=permission.pk).exists())
+        self.assertTrue(self.student.groups.filter(pk=group.pk).exists())
+        self.assertTrue(self.student.user_permissions.filter(pk=permission.pk).exists())
+        self.assertEqual(Permission.objects.count(), permissions_before)

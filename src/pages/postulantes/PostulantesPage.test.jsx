@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import { AuthContext } from '../../context/AuthContext'
@@ -356,5 +356,61 @@ describe('Nueva postulación', () => {
     const link = await screen.findByRole('link', { name: 'Abrir expediente' })
     expect(link).toHaveAttribute('href', '/postulaciones/41')
     expect(screen.getByRole('button', { name: 'Detalle' })).toBeInTheDocument()
+  })
+
+  it.each([
+    { statusCode: 'REGISTRADA', statusName: 'Registrada', modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
+    { statusCode: 'EN_PROCESO', statusName: 'En proceso', modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
+    { statusCode: 'EN_REVISION', statusName: 'En revisión', modalityCode: 'TESIS_GRADO', modalityName: 'Tesis de Grado' },
+    { statusCode: 'OBSERVADA', statusName: 'Observada', modalityCode: 'GRADUACION_VIA_DIPLOMADO', modalityName: 'Graduación Vía Diplomado' },
+    { statusCode: 'SUBSANADA', statusName: 'Subsanada', modalityCode: 'EXCELENCIA_ACADEMICA', modalityName: 'Excelencia Académica' },
+    { statusCode: 'APROBADA', statusName: 'Aprobada', modalityCode: 'EXAMEN_GRADO', modalityName: 'Examen de Grado' },
+    { statusCode: 'RECHAZADA', statusName: 'Rechazada', modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
+    { statusCode: 'CONCLUIDA', statusName: 'Concluida', modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
+    { statusCode: null, statusName: 'Sin estado', modalityCode: 'TESIS_GRADO', modalityName: 'Tesis de Grado' },
+  ])('presenta $statusCode una sola vez en $modalityCode', async ({ statusCode, statusName, modalityCode, modalityName }) => {
+    setup({
+      rows: [{
+        id: 42,
+        codigo: 'POST-042',
+        estudiante: 17,
+        modalidad: 3,
+        periodo: 8,
+        estado_actual_detalle: statusCode ? { codigo: statusCode, nombre: statusName } : null,
+        estudiante_detalle: student,
+        modalidad_detalle: { id: 3, codigo: modalityCode, nombre: modalityName },
+        periodo_detalle: period,
+        tipo_registro: 'SEGUIMIENTO',
+      }],
+    })
+
+    const link = await screen.findByRole('link', { name: 'Abrir expediente' })
+    const card = link.closest('article')
+    const actions = link.parentElement
+    const actionColumn = actions.parentElement
+    const cardLayout = card.firstElementChild
+    const statusBadge = within(actionColumn).getByText(statusName)
+    const detailButton = within(card).getByRole('button', { name: 'Detalle' })
+    const editButton = within(card).getByRole('button', { name: 'Editar' })
+
+    expect(link).toHaveAttribute('href', '/postulaciones/42')
+    expect(actions).toHaveClass('flex', 'flex-wrap', 'justify-end')
+    expect(actionColumn).toHaveClass('flex-col', 'items-end', 'gap-2')
+    expect(within(actionColumn).getAllByText(statusName)).toHaveLength(1)
+    expect(statusBadge).toHaveClass('rounded-full', 'text-xs', 'font-semibold', 'dark:bg-sky-950/50', 'dark:text-sky-300')
+    expect(statusBadge.parentElement).toBe(actionColumn)
+    expect(cardLayout).toHaveClass('flex-col', 'sm:flex-row')
+    expect(cardLayout).toHaveClass('sm:justify-between')
+    expect(within(card).getByText('POST-042')).toBeInTheDocument()
+    expect(within(card).getByText('Proceso con seguimiento')).toBeInTheDocument()
+    expect(within(card).getByText(modalityName)).toBeInTheDocument()
+    expect(detailButton).toBeInTheDocument()
+    expect(editButton).toBeInTheDocument()
+
+    for (const action of [link, detailButton, editButton]) {
+      expect(action).toHaveClass('font-semibold', 'min-h-9', 'focus-visible:ring-2')
+      expect(action).not.toHaveClass('border', 'bg-white')
+      expect(action.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+    }
   })
 })

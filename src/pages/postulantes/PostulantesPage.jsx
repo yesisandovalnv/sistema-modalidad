@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Eye, FolderOpen, Pencil } from 'lucide-react'
 import { Button } from '../../components/ui/button'
 import { DataState, Field, Modal, PageHeader, Pager, SearchBar } from '../../components/crud/CrudShell'
 import { crudService, endpoints, listAll } from '../../services/crudService'
@@ -11,6 +12,7 @@ import { postulacionesService } from '../../services/postulacionesService'
 
 const emptyForm = { codigo: '', estudiante: '', modalidad: '', periodo: '', observaciones_generales: '', tipo_registro: 'SEGUIMIENTO' }
 const duplicateCodeMessage = 'El código ingresado ya se encuentra registrado en otra postulación. Por favor, ingrese un código diferente.'
+const cardActionClass = 'inline-flex min-h-9 items-center gap-1.5 rounded px-1.5 text-sm font-semibold text-sky-700 transition-colors hover:text-sky-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:text-sky-300 dark:hover:text-sky-200 dark:focus-visible:ring-offset-slate-900'
 
 const humanizeTipoRegistro = (value) => {
   if (value === 'HISTORICO') return 'Registro histórico'
@@ -376,28 +378,37 @@ export default function PostulantesPage() {
       >
         <div className="space-y-3">
           {data.results?.map((item) => (
-            <article key={item.id} className="rounded-xl border bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-                <div>
+            <article key={item.id} className="rounded-xl border bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <h2 className="text-lg font-bold">{item.codigo}</h2>
-                  <dl className="mt-2 grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
+                  <dl className="mt-1 grid gap-x-8 gap-y-0.5 text-sm sm:grid-cols-2">
                     <Info label="Estudiante" value={studentLabel(item)} />
                     <Info label="Modalidad" value={modalityLabel(item)} />
                     <Info label="Periodo" value={periodLabel(item)} />
                     <Info label="Tipo de registro" value={tipoRegistroLabel(item)} />
-                    <Info label="Estado" value={stateLabel(item)} />
                   </dl>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Link className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-slate-800" to={`/postulaciones/${item.id}`}>
-                    Abrir expediente
-                  </Link>
-                  <Button variant="secondary" onClick={() => setDetail({ id: item.id, codigo: item.codigo, data: null, loading: true, error: '' })}>Detalle</Button>
-                  {canManage && (
-                    <>
-                      <Button onClick={() => open(item)}>Editar</Button>
-                    </>
-                  )}
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+                    <Link className={cardActionClass} to={`/postulaciones/${item.id}`}>
+                      <FolderOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      Abrir expediente
+                    </Link>
+                    <button className={cardActionClass} type="button" onClick={() => setDetail({ id: item.id, codigo: item.codigo, data: null, loading: true, error: '' })}>
+                      <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      Detalle
+                    </button>
+                    {canManage && (
+                      <button className={cardActionClass} type="button" onClick={() => open(item)}>
+                        <Pencil className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        Editar
+                      </button>
+                    )}
+                  </div>
+                  <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
+                    {stateLabel(item)}
+                  </span>
                 </div>
               </div>
             </article>
