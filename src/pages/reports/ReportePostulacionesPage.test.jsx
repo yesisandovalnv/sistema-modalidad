@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { vi } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import ReportePostulacionesPage from './ReportePostulacionesPage'
 import { reportesService } from '../../services/reportesService'
 
@@ -8,6 +8,10 @@ const filterPayload = { modalidad: '3', gestion: '2026', semestre: 'I', tipo_reg
 vi.mock('../../services/reportesService', () => ({ reportesService: { obtenerPostulaciones: vi.fn(), exportarPostulacionesXLSX: vi.fn(), imprimirPostulaciones: vi.fn() } }))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({ hasPermission: () => authState.canExport }) }))
 vi.mock('../../components/reports/ReportFilters', () => ({ ReportFilters: ({ onApply }) => <button type="button" onClick={() => onApply(filterPayload)}>Aplicar filtros de prueba</button> }))
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 const rows = [{
   postulacion_id: 1, postulante_nombre: 'Ana Pérez', modalidad: { nombre: 'Proyecto de grado' }, gestion: 2026, semestre: 'I',

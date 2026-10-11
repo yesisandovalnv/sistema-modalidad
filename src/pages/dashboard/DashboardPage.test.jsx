@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthContext } from '../../context/AuthContext'
@@ -206,7 +206,6 @@ describe('DashboardPage', () => {
   })
 
   it('actualiza las visualizaciones al aplicar y limpiar los filtros existentes', async () => {
-    const user = userEvent.setup()
     reportesService.obtenerDashboard
       .mockResolvedValueOnce(makeDashboard())
       .mockResolvedValueOnce(makeDashboard({
@@ -218,8 +217,8 @@ describe('DashboardPage', () => {
     renderDashboard()
     await screen.findByRole('img', { name: /total 7$/ })
 
-    await user.selectOptions(await screen.findByLabelText('Modalidad'), '2')
-    await user.click(screen.getByRole('button', { name: 'Aplicar filtros' }))
+    fireEvent.change(await screen.findByLabelText('Modalidad'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar filtros' }))
     await screen.findByRole('img', { name: /total 2$/ })
     await waitFor(() => {
       expect(reportesService.obtenerDashboard).toHaveBeenLastCalledWith(
@@ -228,7 +227,7 @@ describe('DashboardPage', () => {
       )
     })
 
-    await user.click(screen.getByRole('button', { name: 'Limpiar filtros' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }))
     await screen.findByRole('img', { name: /total 7$/ })
     await waitFor(() => {
       expect(reportesService.obtenerDashboard).toHaveBeenLastCalledWith(

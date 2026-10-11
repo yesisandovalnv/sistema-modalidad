@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -84,19 +84,17 @@ describe('SeguimientoPage', () => {
   it('presenta el error del listado y permite reintentar', async () => {
     crudService.list.mockRejectedValueOnce({ message: 'No se pudo cargar.' }).mockResolvedValueOnce({ count: 0, results: [] })
     const page = <AuthContext.Provider value={{ hasPermission: () => true }}><SeguimientoPage /></AuthContext.Provider>
-    const user = userEvent.setup()
     render(<MemoryRouter>{page}</MemoryRouter>)
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cargar.')
-    await user.click(screen.getByRole('button', { name: 'Reintentar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
     await waitFor(() => expect(crudService.list).toHaveBeenCalledTimes(2))
   })
 
   it('mantiene la búsqueda existente y reinicia la página', async () => {
-    const user = userEvent.setup()
     renderPage()
     await screen.findByText('PG-2026-003', { exact: false })
-    await user.type(screen.getByRole('textbox', { name: 'Buscar' }), 'INSCRIPCION')
-    await user.click(screen.getByRole('button', { name: 'Buscar' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Buscar' }), { target: { value: 'INSCRIPCION' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar' }))
     await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, {
       search: 'INSCRIPCION', page: 1, ordering: '-updated_at,-id', modalidad: '', estado: '', etapa: '', periodo: '',
     }, expect.any(AbortSignal)))
@@ -172,12 +170,11 @@ describe('SeguimientoPage', () => {
   })
 
   it('abre el expediente de la postulación seleccionada', async () => {
-    const user = userEvent.setup()
     renderPage({ withRoutes: true })
-    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar' }))
     const link = screen.getByRole('link', { name: 'Abrir expediente' })
     expect(link).toHaveAttribute('href', '/postulaciones/3')
-    await user.click(link)
+    fireEvent.click(link)
     expect(await screen.findByRole('heading', { name: 'Expediente correcto' })).toBeInTheDocument()
   })
 
@@ -203,35 +200,32 @@ describe('SeguimientoPage', () => {
 
   it('cancelar una confirmación vuelve al detalle sin ejecutar', async () => {
     renderPage({ rows: [{ ...seguimiento, acciones_permitidas: ['aprobar'] }] })
-    const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
-    await user.click(screen.getByRole('button', { name: 'Aprobar' }))
-    await user.click(within(screen.getByRole('dialog', { name: 'Confirmar aprobar' })).getByRole('button', { name: 'Cancelar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Aprobar' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Confirmar aprobar' })).getByRole('button', { name: 'Cancelar' }))
     expect(crudService.action).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog', { name: 'Inscripción' })).toBeInTheDocument()
   })
 
   it('observa mediante un formulario estructurado y envía una sola vez', async () => {
     renderPage({ rows: [{ ...seguimiento, acciones_permitidas: ['observar'] }] })
-    const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
-    await user.click(screen.getByRole('button', { name: 'Observar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Observar' }))
     const dialog = screen.getByRole('dialog', { name: 'Registrar observación' })
     const submit = within(dialog).getByRole('button', { name: 'Confirmar observación' })
     expect(submit).toBeDisabled()
-    await user.type(within(dialog).getByLabelText('Observación'), '  Debe subsanar el documento.  ')
-    await user.click(submit)
+    fireEvent.change(within(dialog).getByLabelText('Observación'), { target: { value: '  Debe subsanar el documento.  ' } })
+    fireEvent.click(submit)
     await waitFor(() => expect(crudService.action).toHaveBeenCalledWith(endpoints.seguimiento, 7, 'observar', { observaciones: 'Debe subsanar el documento.' }))
     expect(crudService.action).toHaveBeenCalledTimes(1)
   })
 
   it('cancelar la observación no ejecuta el request', async () => {
     renderPage({ rows: [{ ...seguimiento, acciones_permitidas: ['observar'] }] })
-    const user = userEvent.setup()
-    await user.click(await screen.findByRole('button', { name: 'Gestionar' }))
-    await user.click(screen.getByRole('button', { name: 'Observar' }))
-    await user.type(screen.getByLabelText('Observación'), 'No enviar')
-    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Observar' }))
+    fireEvent.change(screen.getByLabelText('Observación'), { target: { value: 'No enviar' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
     expect(crudService.action).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog', { name: 'Inscripción' })).toBeInTheDocument()
   })

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import { AuthContext } from '../../context/AuthContext'
@@ -117,12 +117,13 @@ describe('Nueva postulación', () => {
 
   it('envía IDs reales y evita doble envío', async () => {
     let resolveRequest; crudService.create.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve }))
-    setup(); await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    await userEvent.type(screen.getByRole('dialog').querySelector('input[required]'), 'POST-2026')
-    await userEvent.selectOptions(screen.getByLabelText('Estudiante'), '17')
-    await userEvent.selectOptions(screen.getByLabelText('Modalidad'), '3')
-    await userEvent.selectOptions(screen.getByLabelText(/Semestre/), '8')
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    setup()
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    fireEvent.change(screen.getByRole('dialog').querySelector('input[required]'), { target: { value: 'POST-2026' } })
+    fireEvent.change(screen.getByLabelText('Estudiante'), { target: { value: '17' } })
+    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText(/Semestre/), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     expect(screen.getByRole('button', { name: /Guardando/ })).toBeDisabled()
     expect(crudService.create).toHaveBeenCalledTimes(1)
     expect(crudService.create).toHaveBeenCalledWith('/postulaciones/', expect.objectContaining({ estudiante:17, modalidad:3, periodo:8 }))
@@ -175,7 +176,6 @@ describe('Nueva postulación', () => {
   })
 
   it('consulta los tipos históricos de la postulación y muestra nombres del backend', async () => {
-    const user = userEvent.setup()
     const historical = { id: 55, codigo: 'HIST-2022', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO', estudiante_detalle: { nombre_completo: 'Luis Fernando Menacho Melgar' }, modalidad_detalle: { nombre: 'Proyecto de Grado' }, periodo_detalle: { gestion: 2022, semestre: 'I' } }
     crudService.create.mockResolvedValue(historical)
     postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([
@@ -183,14 +183,14 @@ describe('Nueva postulación', () => {
       { id: 12, codigo: 'CERTIFICADO', nombre: 'Certificado' },
     ])
     setup()
-    await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    await user.selectOptions(screen.getByLabelText('Tipo de registro'), 'HISTORICO')
-    await user.type(screen.getByRole('dialog').querySelector('input[required]'), 'HIST-2022')
-    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
-    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
-    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
-    await user.click(screen.getByRole('button', { name: 'Guardar' }))
-    await user.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    fireEvent.change(screen.getByLabelText('Tipo de registro'), { target: { value: 'HISTORICO' } })
+    fireEvent.change(screen.getByRole('dialog').querySelector('input[required]'), { target: { value: 'HIST-2022' } })
+    fireEvent.change(screen.getByLabelText('Estudiante'), { target: { value: '17' } })
+    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText(/Semestre/), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
 
     await waitFor(() => expect(postulacionesService.obtenerTiposDocumentosHistoricos).toHaveBeenCalledWith(55, expect.any(AbortSignal)))
     expect(screen.getByRole('option', { name: 'Acta de defensa' })).toBeInTheDocument()
@@ -198,18 +198,17 @@ describe('Nueva postulación', () => {
   })
 
   it('muestra un mensaje humano cuando no hay tipos históricos y bloquea la subida', async () => {
-    const user = userEvent.setup()
     crudService.create.mockResolvedValue({ id: 55, codigo: 'HIST-2022', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO' })
     postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([])
     setup()
-    await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    await user.selectOptions(screen.getByLabelText('Tipo de registro'), 'HISTORICO')
-    await user.type(screen.getByRole('dialog').querySelector('input[required]'), 'HIST-2022')
-    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
-    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
-    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
-    await user.click(screen.getByRole('button', { name: 'Guardar' }))
-    await user.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    fireEvent.change(screen.getByLabelText('Tipo de registro'), { target: { value: 'HISTORICO' } })
+    fireEvent.change(screen.getByRole('dialog').querySelector('input[required]'), { target: { value: 'HIST-2022' } })
+    fireEvent.change(screen.getByLabelText('Estudiante'), { target: { value: '17' } })
+    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText(/Semestre/), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
 
     expect(await screen.findByText('No existen tipos de documentos configurados para esta modalidad.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Subir documento' })).toBeDisabled()
@@ -281,7 +280,6 @@ describe('Nueva postulación', () => {
   })
 
   it('limpia la búsqueda, vuelve a la primera página y muestra la nueva postulación tras crear', async () => {
-    const user = userEvent.setup()
     const created = { id: 41, codigo: 'POST-2026-001', estudiante: 17, modalidad: 3, periodo: 8 }
     const existing = { id: 40, codigo: 'POST-EXISTENTE', estudiante: 17, modalidad: 3, periodo: 8 }
     let creationCompleted = false
@@ -299,21 +297,21 @@ describe('Nueva postulación', () => {
     })
 
     const search = await screen.findByRole('textbox', { name: 'Buscar' })
-    await user.type(search, '20260001')
-    await user.click(screen.getByRole('button', { name: 'Buscar' }))
-    await user.click(await screen.findByRole('button', { name: 'Siguiente' }))
+    fireEvent.change(search, { target: { value: '20260001' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Buscar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Siguiente' }))
     await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(
       '/postulaciones/',
       { search: '20260001', page: 2, ordering: '-created_at' },
       expect.any(AbortSignal),
     ))
 
-    await user.click(screen.getByRole('button', { name: /Nueva postulaci/ }))
-    await user.type(screen.getByRole('dialog').querySelector('input[required]'), created.codigo)
-    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
-    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
-    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
-    await user.click(screen.getByRole('button', { name: 'Guardar' }))
+    fireEvent.click(screen.getByRole('button', { name: /Nueva postulaci/ }))
+    fireEvent.change(screen.getByRole('dialog').querySelector('input[required]'), { target: { value: created.codigo } })
+    fireEvent.change(screen.getByLabelText('Estudiante'), { target: { value: '17' } })
+    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText(/Semestre/), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
     await waitFor(() => expect(search).toHaveValue(''))
     await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(
@@ -339,12 +337,12 @@ describe('Nueva postulación', () => {
       fields: { codigo: ['Ya existe una postulación con este código.'] },
     })
     setup()
-    await userEvent.click(await screen.findByRole('button', { name: 'Nueva postulación' }))
-    await userEvent.type(screen.getByRole('dialog').querySelector('input[required]'), 'POST-2026')
-    await userEvent.selectOptions(screen.getByLabelText('Estudiante'), '17')
-    await userEvent.selectOptions(screen.getByLabelText('Modalidad'), '3')
-    await userEvent.selectOptions(screen.getByLabelText('Gestión / Semestre'), '8')
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Nueva postulación' }))
+    fireEvent.change(screen.getByRole('dialog').querySelector('input[required]'), { target: { value: 'POST-2026' } })
+    fireEvent.change(screen.getByLabelText('Estudiante'), { target: { value: '17' } })
+    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Gestión / Semestre'), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
     expect(await screen.findByText('El código ingresado ya se encuentra registrado en otra postulación. Por favor, ingrese un código diferente.')).toBeInTheDocument()
     expect(screen.queryByText(/status_code/)).not.toBeInTheDocument()
