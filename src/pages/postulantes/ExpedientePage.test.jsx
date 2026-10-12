@@ -316,7 +316,7 @@ function profileContracts({ assignedTribunals = [], proposalApproved = false, tu
     nombre: 'Tutor',
     orden_cargo: null,
     obligatoriedad: true,
-    habilitada: proposalApproved,
+    habilitada: true,
     estado_ocupacion: tutorAssigned ? 'ASIGNADA' : 'VACANTE',
     ambito: 'POSTULACION',
     seguimiento_etapa: null,
@@ -329,10 +329,10 @@ function profileContracts({ assignedTribunals = [], proposalApproved = false, tu
       ambito: 'POSTULACION',
       seguimiento_etapa: null,
     } : null,
-    acciones_permitidas: proposalApproved ? [tutorAssigned ? 'REEMPLAZAR' : 'ASIGNAR'] : [],
+    acciones_permitidas: [tutorAssigned ? 'REEMPLAZAR' : 'ASIGNAR'],
     restriccion_identidad: null,
-    bloqueo: proposalApproved ? null : { codigo: 'PROPUESTA_NO_APROBADA', mensaje: 'El Tutor se designa después de aprobar la propuesta.' },
-    precondicion: { codigo: 'PROPUESTA_APROBADA', requerido: true, estado: proposalApproved ? 'CUMPLIDA' : 'PENDIENTE', enforcement: 'ACTIVO' },
+    bloqueo: null,
+    precondicion: null,
   })
   const decision = {
     codigo: 'PROPUESTA_APROBADA',
@@ -2823,7 +2823,13 @@ describe('ExpedientePage US-008', () => {
   })
 
   it('bloquea posiciones del contrato sin acción ASIGNAR aunque haya candidatos', async () => {
-    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: profileContracts().flow })
+    const contracts = profileContracts()
+    contracts.flow.gestion_actores.posiciones = contracts.flow.gestion_actores.posiciones.map((position) => (
+      position.tipo_participacion === 'TUTOR'
+        ? { ...position, habilitada: false, acciones_permitidas: [], bloqueo: { codigo: 'PRECONDICION', mensaje: 'Posición bloqueada por la policy.' } }
+        : position
+    ))
+    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: contracts.flow })
     postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 1, next: null, previous: null, results: [
       { id: 44, username: 'docente', nombre_completo: 'Docente Vigente', codigo: 'DOC-044', rol_codigo: 'DOCENTE', rol_nombre: 'Docente', activo: true },
     ]})
@@ -2833,7 +2839,7 @@ describe('ExpedientePage US-008', () => {
     await userEvent.click(within(actors).getByRole('button', { name: 'Gestionar actores' }))
     const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Proyecto' })
     const tutorPosition = within(dialog).getByRole('heading', { name: 'Tutor *' }).closest('section')
-    expect(within(tutorPosition).getByText('El Tutor se designa después de aprobar la propuesta.')).toBeInTheDocument()
+    expect(within(tutorPosition).getByText('Posición bloqueada por la policy.')).toBeInTheDocument()
     expect(within(tutorPosition).queryByRole('combobox')).not.toBeInTheDocument()
     expect(postulacionesService.obtenerCandidatosElegibles.mock.calls.some(([, filters]) => (
       filters.posicion === 'TUTOR_PROYECTO_1'
@@ -3433,9 +3439,12 @@ describe('ExpedientePage US-008', () => {
     expect(within(dialog).queryByText('Información institucional')).not.toBeInTheDocument()
   })
 
-  it('consume las posiciones del contrato, mantiene Tutor bloqueado y no lo envía', async () => {
+  it('permite seleccionar y guardar Tutor junto con los Tribunales antes de aprobar la propuesta', async () => {
     const contracts = profileContracts()
     postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: contracts.flow })
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 1, next: null, previous: null, results: [
+      { id: 44, username: 'tutora', nombre_completo: 'Tutora Anticipada', rol_nombre: 'Docente' },
+    ] })
     renderAssignmentManagerPage()
 
     const actors = (await screen.findByRole('heading', { name: 'Gestión de actores' })).closest('section')
@@ -3444,13 +3453,18 @@ describe('ExpedientePage US-008', () => {
     const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Proyecto' })
     for (const order of [1, 2, 3]) expect(within(dialog).getByRole('heading', { name: `Tribunal ${order} *` })).toBeInTheDocument()
     const tutorPosition = within(dialog).getByRole('heading', { name: 'Tutor *' }).closest('section')
-    expect(within(tutorPosition).getByText('El Tutor se designa después de aprobar la propuesta.')).toBeInTheDocument()
-    expect(within(tutorPosition).queryByRole('combobox')).not.toBeInTheDocument()
+    const tutorSelector = within(tutorPosition).getByLabelText('Seleccionar candidato para Tutor')
+    await within(tutorSelector).findByRole('option', { name: /Tutora Anticipada/ })
+    await userEvent.selectOptions(tutorSelector, '44')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar asignaciones' }))
+
+    await waitFor(() => expect(postulacionesService.asignarActor).toHaveBeenCalledWith(7, {
+      usuario: 44, tipo_participacion: 'TUTOR', observaciones: '',
+    }, expect.any(AbortSignal)))
     expect(screen.queryByRole('button', { name: 'Conformar equipo' })).not.toBeInTheDocument()
     expect(within(actors).getAllByRole('button', { name: 'Gestionar actores' })).toHaveLength(1)
     expect(screen.getByText('Completar composición formal')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Registrar decisión' })).not.toBeInTheDocument()
-    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
   })
 
   it('asigna una posición individual dentro del modal genérico con orden y contexto del backend', async () => {

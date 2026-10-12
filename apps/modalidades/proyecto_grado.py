@@ -420,22 +420,11 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
     def get_configuracion_actores(self, postulacion=None, seguimiento=None):
         """Fuente canónica del contrato formal de actores para Proyecto de Grado.
 
-        El Tribunal de Perfil se define por composición formal (3 posiciones). En el régimen
-        PG_HITOS_V1, la precondición del Tutor refleja exclusivamente una decisión académica
-        activa del seguimiento de Perfil; los expedientes legacy preservan su comportamiento.
+        El Tribunal de Perfil se define por composición formal (3 posiciones). El Tutor se
+        designa en el ámbito de la postulación, independientemente de la decisión académica
+        sobre la propuesta.
         """
         regimen_workflow = getattr(postulacion, "regimen_workflow", None)
-        precondicion_tutor = None
-        if regimen_workflow == "PG_HITOS_V1":
-            perfil_aprobado = self._propuesta_aprobada(postulacion, seguimiento)
-            precondicion_tutor = {
-                "codigo": self.PROPUESTA_APROBADA,
-                "nombre": "Propuesta aprobada",
-                "requerido": True,
-                "estado": "CUMPLIDA" if perfil_aprobado else "PENDIENTE",
-                "enforcement": "ACTIVO",
-                "mensaje": "El Tutor se designa después de aprobar la propuesta.",
-            }
         restriccion_identidad_tribunal = (
             {"grupo": "TRIBUNAL_PERFIL", "unica_persona": True}
             if self.codigo == "PROYECTO_GRADO" else None
@@ -490,11 +479,7 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
                     "ocupacion_actor": ocupacion_actor,
                     "obligatoriedad": True,
                     "habilitada": True,
-                    "precondicion": precondicion_tutor,
-                    "bloqueo_precondicion_pendiente": {
-                        "codigo": "PROPUESTA_NO_APROBADA",
-                        "mensaje": "El Tutor se designa después de aprobar la propuesta.",
-                    },
+                    "precondicion": None,
                     "posiciones": [{"clave": "TUTOR_PROYECTO_1", "orden_cargo": None, "nombre": "Tutor"}],
                 },
                 *([{
@@ -972,15 +957,6 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
             queryset_activas=queryset_activas, usuario_asignado=usuario_asignado,
             tipo_participacion=tipo_participacion, seguimiento_etapa=seguimiento_etapa,
         )
-        if (
-            tipo_participacion == "TUTOR"
-            and postulacion.regimen_workflow == "PG_HITOS_V1"
-            and not self._propuesta_aprobada(postulacion)
-        ):
-            raise ValidationError(
-                "No se puede asignar Tutor antes de registrar PROPUESTA_APROBADA.",
-                code="propuesta_no_aprobada",
-            )
         if tipo_participacion == "TRIBUNAL" and seguimiento_etapa and seguimiento_etapa.etapa.codigo == "PERFIL_PROYECTO":
             if queryset_contexto.count() >= 3: raise ValidationError("Proyecto de Grado admite como m\u00e1ximo tres miembros activos de tribunal en el perfil.")
             if orden_cargo is not None and queryset_contexto.filter(orden_cargo=orden_cargo).exists(): raise ValidationError("Ya existe un miembro activo del tribunal con ese orden de cargo.")

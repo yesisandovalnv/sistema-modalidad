@@ -719,13 +719,19 @@ class ProyectoGradoHitosAssignmentTests(AssignmentBaseMixin, TestCase):
             participantes=participants,
         )
 
-    def test_tutor_se_bloquea_hasta_decision_valida_y_se_habilita_despues(self):
-        with self.assertRaisesMessage(ValidationError, "PROPUESTA_APROBADA"):
-            AsignacionService.asignar_actor(
-                self.postulacion, self.docente_4, "TUTOR", self.admin,
-            )
+    def test_tutor_se_designa_antes_de_aprobar_propuesta_y_permanece_en_postulacion(self):
+        tutor = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_4, "TUTOR", self.admin,
+        )
+        self.assertIsNone(tutor.seguimiento_etapa_id)
+        self.assertTrue(tutor.activo)
 
         assignments = self._tribunales_perfil()
+        with self.assertRaisesMessage(ValidationError, "mínimo de participantes"):
+            self._registrar_propuesta([
+                {"asignacion": tutor, "rol": "TUTOR", "orden": 1},
+            ])
+
         decision = self._registrar_propuesta(self._participantes(assignments))
         self.assertEqual(decision.resultado, "APROBADA")
         actor_config = ProyectoGradoPolicy().get_configuracion_actores(
@@ -743,16 +749,19 @@ class ProyectoGradoHitosAssignmentTests(AssignmentBaseMixin, TestCase):
             True,
             tutor_group["posiciones"][0],
         )
-        self.assertEqual(tutor_payload["precondicion"]["estado"], "CUMPLIDA")
-        self.assertEqual(tutor_payload["precondicion"]["enforcement"], "ACTIVO")
+        self.assertIsNone(tutor_payload["precondicion"])
         self.assertTrue(tutor_payload["habilitada"])
         self.assertIsNone(tutor_payload["bloqueo"])
         self.assertEqual(tutor_payload["acciones_permitidas"], ["ASIGNAR"])
 
-        tutor = AsignacionService.asignar_actor(
-            self.postulacion, self.docente_4, "TUTOR", self.admin,
+        orientacion = ProyectoGradoPolicy().get_orientacion_etapa_actual(
+            postulacion=self.postulacion,
+            seguimiento=self.seguimiento_perfil,
         )
-        self.assertEqual(tutor.tipo_participacion, "TUTOR")
+        self.assertFalse(
+            orientacion
+            and orientacion.get("siguiente_accion", {}).get("titulo") == "Asignar Tutor"
+        )
 
     def test_decision_requiere_tres_tribunales_y_ordenes_formales(self):
         assignments = self._tribunales_perfil()

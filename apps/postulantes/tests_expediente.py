@@ -271,7 +271,7 @@ class ExpedienteAccessContractTests(TestCase):
         self.assertIsNone(tutor["bloqueo"])
         self.assertEqual(tribunal_positions[0]["acciones_permitidas"], ["REEMPLAZAR", "FINALIZAR"])
 
-    def test_flow_proyecta_tutor_hitos_pendiente_como_bloqueado(self):
+    def test_flow_proyecta_tutor_hitos_disponible_antes_de_aprobar_propuesta(self):
         self.postulacion.regimen_workflow = Postulacion.RegimenWorkflowChoices.PG_HITOS_V1
         self.postulacion.save(update_fields=["regimen_workflow", "updated_at"])
         AsignacionPostulacion.objects.filter(
@@ -286,14 +286,11 @@ class ExpedienteAccessContractTests(TestCase):
             if item["tipo_participacion"] == "TUTOR"
         )
 
-        self.assertEqual(tutor["precondicion"]["codigo"], "PROPUESTA_APROBADA")
-        self.assertTrue(tutor["precondicion"]["requerido"])
-        self.assertEqual(tutor["precondicion"]["estado"], "PENDIENTE")
-        self.assertEqual(tutor["precondicion"]["enforcement"], "ACTIVO")
-        self.assertFalse(tutor["habilitada"])
-        self.assertEqual(tutor["bloqueo"]["codigo"], "PROPUESTA_NO_APROBADA")
+        self.assertIsNone(tutor["precondicion"])
+        self.assertTrue(tutor["habilitada"])
+        self.assertIsNone(tutor["bloqueo"])
         self.assertEqual(tutor["estado_ocupacion"], "VACANTE")
-        self.assertEqual(tutor["acciones_permitidas"], [])
+        self.assertEqual(tutor["acciones_permitidas"], ["ASIGNAR"])
 
     def test_flow_omits_writing_actions_for_regular_user(self):
         data = self.client_for(self.owner).get(self.urls()[1]).data
