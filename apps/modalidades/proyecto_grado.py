@@ -692,9 +692,124 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
             and version_actual
         )
 
+    def _orientar_revision_final_post_publica(self, postulacion, seguimiento):
+        from apps.documentos.models import DocumentoPostulacion
+        from apps.postulantes.cierre import ProyectoGradoCierrePolicy
+
+        evaluacion = ProyectoGradoCierrePolicy.evaluar_revision_final(postulacion)
+        hoja = DocumentoPostulacion.objects.filter(
+            postulacion=postulacion,
+            tipo_documento__codigo="HOJA_APROBACION",
+            activo=True,
+        ).select_related("estado").first()
+        hoja_aprobada = "HOJA_APROBACION" in evaluacion["detalle"]["documentos_aprobados"]
+
+        if hoja_aprobada:
+            estado_hoja = "CUMPLIDO"
+            estado_hoja_display = "Aprobada"
+        elif not hoja:
+            estado_hoja = "PENDIENTE"
+            estado_hoja_display = "Pendiente de carga"
+        elif hoja.requiere_correccion or hoja.estado.codigo in {"OBS", "REC"}:
+            estado_hoja = "OBSERVADO"
+            estado_hoja_display = "Observada; requiere corrección"
+        else:
+            estado_hoja = "PENDIENTE_REVISION"
+            estado_hoja_display = "Cargada; pendiente de aprobación"
+
+        requisitos = [{
+            "tipo": "DOCUMENTO",
+            "codigo": "HOJA_APROBACION",
+            "nombre": "Hoja de Aprobación",
+            "cumplido": hoja_aprobada,
+            "estado": estado_hoja,
+            "estado_display": estado_hoja_display,
+            "destino": None if hoja_aprobada else "#documentos",
+        }]
+        nombres_faltantes = {
+            "DEFENSA_PUBLICA_APROBADA": "Defensa Pública aprobada",
+            "EVENTO_DEFENSA_PUBLICA_FINALIZADO": "Defensa Pública finalizada",
+            "EVALUACION_PUBLICA_CONSOLIDADA_VALIDA": "Evaluación pública consolidada válida",
+            "RESULTADO_FINAL_COMPLETO": "Resultado final completo",
+            "RESULTADO_FINAL_APROBATORIO": "Resultado final aprobatorio",
+            "CORRECCIONES_DOCUMENTALES_PENDIENTES": "Correcciones documentales resueltas",
+            "DOCUMENTO:DOCUMENTO_FINAL": "Documento Final aprobado y vigente",
+        }
+        for codigo in evaluacion["faltantes"]:
+            if codigo == "DOCUMENTO:HOJA_APROBACION":
+                continue
+            requisitos.append({
+                "tipo": "DOCUMENTO" if codigo.startswith("DOCUMENTO:") or codigo == "CORRECCIONES_DOCUMENTALES_PENDIENTES" else "ACADEMICO",
+                "codigo": codigo,
+                "nombre": nombres_faltantes.get(codigo, codigo.replace("_", " ").title()),
+                "cumplido": False,
+                "estado": "PENDIENTE",
+                "estado_display": "Pendiente",
+                "destino": "#documentos" if codigo.startswith("DOCUMENTO:") or codigo == "CORRECCIONES_DOCUMENTALES_PENDIENTES" else "#defensas",
+            })
+
+        if evaluacion["cumple"]:
+            mensaje = "La Hoja de Aprobación y los demás requisitos de la revisión final están cumplidos. La etapa está lista para aprobación administrativa."
+            accion = {
+                "codigo": "APROBAR_ETAPA",
+                "titulo": "Aprobar Revisión Final Post Pública",
+                "descripcion": "Todos los requisitos académicos y documentales fueron validados.",
+                "estado": "DISPONIBLE",
+                "estado_display": "Disponible",
+                "destino": "#resumen",
+                "accion_label": "Aprobar etapa",
+            }
+        elif not hoja:
+            mensaje = "Carga la Hoja de Aprobación correspondiente a la Defensa Pública para continuar."
+            accion = {
+                "codigo": "CARGAR_HOJA_APROBACION",
+                "titulo": "Cargar Hoja de Aprobación",
+                "descripcion": "La Hoja de Aprobación debe ser cargada por el personal administrativo.",
+                "estado": "PENDIENTE", "estado_display": "Pendiente",
+                "destino": "#documentos", "accion_label": "Ir a documentos",
+            }
+        elif hoja.requiere_correccion or hoja.estado.codigo in {"OBS", "REC"}:
+            mensaje = "La Hoja de Aprobación está observada y requiere una nueva versión antes de aprobar la etapa."
+            accion = {
+                "codigo": "CORREGIR_HOJA_APROBACION",
+                "titulo": "Corregir Hoja de Aprobación",
+                "descripcion": "Revisa las observaciones y carga una nueva versión desde Documentos.",
+                "estado": "PENDIENTE", "estado_display": "Observada",
+                "destino": "#documentos", "accion_label": "Ir a documentos",
+            }
+        elif not hoja_aprobada:
+            mensaje = "La Hoja de Aprobación fue cargada y está pendiente de revisión administrativa."
+            accion = {
+                "codigo": "GESTIONAR_HOJA_APROBACION",
+                "titulo": "Revisar Hoja de Aprobación",
+                "descripcion": "Revisa el documento cargado y apruébalo o registra las observaciones correspondientes.",
+                "estado": "PENDIENTE", "estado_display": "Pendiente de revisión",
+                "destino": "#documentos", "accion_label": "Ir a documentos",
+            }
+        else:
+            mensaje = "La Hoja de Aprobación está aprobada, pero aún existen otros requisitos pendientes para completar la revisión final."
+            accion = {
+                "codigo": "RESOLVER_REQUISITOS_REVISION_FINAL",
+                "titulo": "Completar requisitos de la revisión final",
+                "descripcion": "Revisa los requisitos pendientes indicados antes de aprobar la etapa.",
+                "estado": "PENDIENTE", "estado_display": "Pendiente",
+                "destino": requisitos[1]["destino"] if len(requisitos) > 1 else "#resumen",
+                "accion_label": "Ir a gestionar",
+            }
+
+        return {
+            "operacion": "ORIENTAR_ETAPA",
+            "mensaje": mensaje,
+            "requisitos": requisitos,
+            "siguiente_accion": accion,
+            "conflictos_identidad": [],
+        }
+
     def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
         if not seguimiento:
             return None
+        if seguimiento.etapa.codigo == "REVISION_FINAL_POST_PUBLICA":
+            return self._orientar_revision_final_post_publica(postulacion, seguimiento)
         if seguimiento.etapa.codigo == "PERFIL_PROYECTO" and postulacion.regimen_workflow == "PG_HITOS_V1":
             tribunales = postulacion.asignaciones.filter(
                 activo=True,

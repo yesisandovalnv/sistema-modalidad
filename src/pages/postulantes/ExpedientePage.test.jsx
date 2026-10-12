@@ -1884,6 +1884,36 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.aprobarEtapa).not.toHaveBeenCalled()
   })
 
+  it('orienta preventivamente sobre la Hoja de Aprobación y navega a Documentos', async () => {
+    const reviewStage = { id: 120, codigo: 'REVISION_FINAL_POST_PUBLICA', nombre: 'Revisión Final Post Pública', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: {
+        ...response.flujo,
+        etapa_actual: reviewStage,
+        etapas: [reviewStage],
+        orientacion_etapa_actual: {
+          mensaje: 'Carga la Hoja de Aprobación correspondiente a la Defensa Pública para continuar.',
+          requisitos: [{ tipo: 'DOCUMENTO', codigo: 'HOJA_APROBACION', nombre: 'Hoja de Aprobación', cumplido: false, estado: 'PENDIENTE', estado_display: 'Pendiente de carga', destino: '#documentos' }],
+          siguiente_accion: { codigo: 'CARGAR_HOJA_APROBACION', titulo: 'Cargar Hoja de Aprobación', descripcion: 'La Hoja de Aprobación debe ser cargada por el personal administrativo.', estado: 'PENDIENTE', estado_display: 'Pendiente', destino: '#documentos', accion_label: 'Ir a documentos' },
+        },
+      },
+    })
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+    renderApplicationManagerPage()
+
+    const orientation = (await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })).parentElement
+    expect(within(orientation).getByText('Carga la Hoja de Aprobación correspondiente a la Defensa Pública para continuar.')).toBeInTheDocument()
+    expect(within(orientation).getByText('Pendiente de carga')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Aprobar Revisión Final Post Pública' })).not.toBeInTheDocument()
+
+    await userEvent.click(within(orientation).getByRole('link', { name: 'Ir a documentos' }))
+
+    expect(screen.getByRole('tab', { name: 'Documentos' })).toHaveAttribute('aria-selected', 'true')
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
+  })
+
   it('muestra el faltante humano al fallar la aprobación de la etapa actual', async () => {
     const reviewStage = { id: 120, codigo: 'REVISION_FINAL_POST_PUBLICA', nombre: 'Revisión Final Post Pública', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
     postulacionesService.obtenerExpediente.mockResolvedValue({

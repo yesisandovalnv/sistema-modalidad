@@ -6,6 +6,7 @@ from rest_framework.test import APITestCase
 
 from apps.academico.models import EtapaModalidad,Modalidad,Periodo
 from apps.documentos.models import DocumentoPostulacion,EstadoDocumento,TipoDocumento,VersionDocumento
+from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
 from apps.postulantes.cierre import CierrePostulacionService,ProyectoGradoCierrePolicy
 from apps.postulantes.models import (AsignacionPostulacion,CondicionPostulacion,EntregaFisica,
     EstadoPostulacion,EvaluacionDefensa,EventoDefensa,HistorialEstado,Postulacion,SeguimientoEtapa)
@@ -50,6 +51,68 @@ class Base:
             if code!="FOLDER_AMARILLO": EntregaFisica.objects.update_or_create(postulacion=self.post,codigo=code,defaults={"nombre":label,"estado":"COMPLETA","cantidad_recibida":1,"fecha_entrega":"2026-06-01T10:00:00Z","recibido_por":self.admin})
 
 class PolicyServiceTests(Base,TestCase):
+    def _orientacion_revision_final(self):
+        return ProyectoGradoPolicy().get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.stages["REVISION_FINAL_POST_PUBLICA"],
+        )
+
+    def test_orientacion_revision_final_indica_hoja_pendiente_y_navega_a_documentos(self):
+        self.documents["HOJA_APROBACION"].delete()
+
+        orientacion = self._orientacion_revision_final()
+
+        self.assertIn("Carga la Hoja de Aprobación", orientacion["mensaje"])
+        self.assertEqual(orientacion["requisitos"][0]["estado_display"], "Pendiente de carga")
+        self.assertEqual(orientacion["requisitos"][0]["destino"], "#documentos")
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "CARGAR_HOJA_APROBACION")
+        self.assertEqual(orientacion["siguiente_accion"]["destino"], "#documentos")
+
+    def test_orientacion_revision_final_indica_hoja_cargada_pendiente_de_revision(self):
+        hoja = self.documents["HOJA_APROBACION"]
+        hoja.estado = self.sent_document
+        hoja.save(update_fields=["estado"])
+
+        orientacion = self._orientacion_revision_final()
+
+        self.assertIn("pendiente de revisión administrativa", orientacion["mensaje"])
+        self.assertEqual(orientacion["requisitos"][0]["estado_display"], "Cargada; pendiente de aprobación")
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "GESTIONAR_HOJA_APROBACION")
+        self.assertNotEqual(orientacion["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+
+    def test_orientacion_revision_final_indica_hoja_observada(self):
+        observado = EstadoDocumento.objects.create(codigo="OBS", nombre="Observado cierre")
+        hoja = self.documents["HOJA_APROBACION"]
+        hoja.estado = observado
+        hoja.requiere_correccion = True
+        hoja.save(update_fields=["estado", "requiere_correccion"])
+
+        orientacion = self._orientacion_revision_final()
+
+        self.assertIn("está observada", orientacion["mensaje"])
+        self.assertEqual(orientacion["requisitos"][0]["estado"], "OBSERVADO")
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "CORREGIR_HOJA_APROBACION")
+        self.assertEqual(orientacion["siguiente_accion"]["destino"], "#documentos")
+
+    def test_orientacion_revision_final_ofrece_aprobar_solo_si_evaluacion_real_cumple(self):
+        orientacion = self._orientacion_revision_final()
+
+        self.assertTrue(ProyectoGradoCierrePolicy.evaluar_revision_final(self.post)["cumple"])
+        self.assertEqual(orientacion["requisitos"][0]["estado_display"], "Aprobada")
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+
+    def test_orientacion_revision_final_muestra_otros_bloqueos_sin_ofrecer_aprobacion(self):
+        self.stages["DEFENSA_PUBLICA"].estado = "PENDIENTE"
+        self.stages["DEFENSA_PUBLICA"].save(update_fields=["estado"])
+
+        orientacion = self._orientacion_revision_final()
+
+        self.assertIn("otros requisitos pendientes", orientacion["mensaje"])
+        requisito = next(item for item in orientacion["requisitos"] if item["codigo"] == "DEFENSA_PUBLICA_APROBADA")
+        self.assertEqual(requisito["nombre"], "Defensa Pública aprobada")
+        self.assertEqual(requisito["destino"], "#defensas")
+        self.assertNotEqual(orientacion["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+
     def test_revision_exige_defensa_evento_y_evaluacion(self):
         self.assertTrue(ProyectoGradoCierrePolicy.evaluar_revision_final(self.post)["cumple"])
         self.stages["DEFENSA_PUBLICA"].estado="PENDIENTE"; self.stages["DEFENSA_PUBLICA"].save()
