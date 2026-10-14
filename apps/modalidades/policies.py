@@ -170,6 +170,9 @@ class BaseModalidadPolicy(ABC):
     def get_decisiones_academicas_permitidas(self, codigo_etapa: str) -> tuple[DecisionAcademicaDefinition, ...]:
         """Declara las decisiones académicas habilitadas para una etapa; cerrado por defecto."""
         return ()
+    def get_publicacion_memorandum_designacion(self, codigo_etapa: str) -> dict | None:
+        """Declara la ubicación contextual de la publicación; no habilitada por defecto."""
+        return None
     def get_condiciones_requeridas(self, fase=None): return tuple(self.requisitos_policy.get_condiciones_requeridas(fase)) if self.requisitos_policy else ()
     def get_entregas_requeridas(self, fase=None): return tuple(self.requisitos_policy.get_entregas_requeridas(fase)) if self.requisitos_policy else ()
     def get_documentos_requeridos(self, fase=None): return tuple(self.requisitos_policy.get_documentos_requeridos(fase)) if self.requisitos_policy else ()
@@ -207,6 +210,107 @@ class BaseModalidadPolicy(ABC):
         """
         return {}
     def get_orientacion_etapa_actual(self, *, postulacion, seguimiento): return None
+    def get_orientacion_documental_prioritaria(self, *, postulacion, seguimiento):
+        """Proyecta estado UX desde el contrato documental sin crear gates de workflow."""
+        if not seguimiento:
+            return None
+        codigos = tuple(
+            codigo for codigo in self.get_documentos_aplicables_en_etapa(seguimiento.etapa.codigo)
+            if ActorCargaDocumento.ESTUDIANTE in (
+                self.get_actores_carga_documento(seguimiento.etapa.codigo, codigo)
+                or ActorCargaDocumento.TODOS
+            )
+        )
+        if not codigos:
+            return None
+
+        from apps.documentos.models import DocumentoPostulacion, TipoDocumento
+        from apps.documentos.services import DocumentoService
+
+        tipos = {
+            tipo.codigo: tipo
+            for tipo in TipoDocumento.objects.filter(codigo__in=codigos, activo=True)
+        }
+        documentos = {
+            documento.tipo_documento.codigo: documento
+            for documento in DocumentoPostulacion.all_objects.filter(
+                postulacion=postulacion,
+                tipo_documento__codigo__in=codigos,
+                activo=True,
+            ).select_related("estado", "tipo_documento")
+        }
+        documento_service = DocumentoService()
+        requisitos = []
+        hay_faltantes = hay_correcciones = hay_revision = False
+        for codigo in codigos:
+            tipo = tipos.get(codigo)
+            if not tipo:
+                continue
+            documento = documentos.get(codigo)
+            tiene_version = bool(
+                documento and documento.versiones.filter(activo=True, es_version_actual=True).exists()
+            )
+            capacidad = documento_service.obtener_capacidad_carga(
+                postulacion=postulacion,
+                tipo_documento=tipo,
+                usuario=postulacion.estudiante,
+                documento=documento,
+                policy=self,
+            )
+            codigo_capacidad = capacidad["codigo"]
+            corregible = bool(capacidad["permitida"] and codigo_capacidad in {
+                "RECHAZADO", "CORRECCION_REQUERIDA", "CORRECCION_POST_APROBACION",
+            })
+            aprobado = bool(codigo_capacidad == "DOCUMENTO_APROBADO" and tiene_version)
+            if codigo_capacidad == "SIN_DOCUMENTO":
+                estado, estado_display = "NO_PRESENTADO", "No presentado"
+                hay_faltantes = True
+            elif corregible:
+                estado, estado_display = "REQUIERE_CORRECCION", "Requiere corrección o reenvío"
+                hay_correcciones = True
+            elif aprobado:
+                estado, estado_display = "APROBADO", "Aprobado"
+            else:
+                estado, estado_display = "PENDIENTE_REVISION", "Pendiente de revisión"
+                hay_revision = True
+            requisitos.append({
+                "tipo": "DOCUMENTO", "codigo": codigo, "nombre": tipo.nombre,
+                "cumplido": aprobado, "estado": estado, "estado_display": estado_display,
+                "destino": "#documentos" if not aprobado else None,
+            })
+
+        if not requisitos or all(item["cumplido"] for item in requisitos):
+            return None
+        if hay_correcciones:
+            mensaje = "Hay documentos observados o rechazados que requieren una nueva presentación."
+            titulo = "Corregir o reenviar documentos"
+            descripcion = "Carga una nueva versión de los documentos indicados para continuar."
+            codigo_accion = "COMPLETAR_DOCUMENTOS"
+            etiqueta = "Corregir documentos"
+        elif hay_faltantes:
+            mensaje = "Completa los documentos requeridos de esta etapa antes de continuar con el siguiente paso académico."
+            titulo = "Cargar documentos"
+            descripcion = "Carga los documentos no presentados para que puedan ser revisados."
+            codigo_accion = "COMPLETAR_DOCUMENTOS"
+            etiqueta = "Cargar documentos"
+        else:
+            mensaje = "Los documentos fueron enviados y están pendientes de revisión administrativa."
+            titulo = "Documentos pendientes de revisión"
+            descripcion = "No necesitas volver a cargarlos mientras se completa la revisión."
+            codigo_accion = "ESPERAR_REVISION_DOCUMENTOS"
+            etiqueta = "Ver documentos"
+        return {
+            "operacion": "ORIENTAR_ETAPA",
+            "mensaje": mensaje,
+            "requisitos": requisitos,
+            "siguiente_accion": {
+                "codigo": codigo_accion, "titulo": titulo, "descripcion": descripcion,
+                "estado": "PENDIENTE", "estado_display": "Pendiente",
+                "destino": "#documentos", "accion_label": etiqueta,
+                "actores_carga_permitidos": [ActorCargaDocumento.ESTUDIANTE],
+            },
+            "conflictos_identidad": [],
+        }
     def get_cierre_policy(self): return None
     def get_revision_tribunal_previa_policy(self): return None
     def validar_dictamen_revision(self, **kwargs):

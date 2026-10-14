@@ -332,6 +332,9 @@ class ProyectoGradoRequisitosPolicy(BaseRequisitosPolicy):
     DELIVERIES = ("CD_RESPALDO", "EJEMPLARES_IMPRESOS", "TIMBRE_UNIVERSITARIO")
     DOCUMENTS = ("DOCUMENTO_FINAL", "ACTA_DEFENSA", "HOJA_APROBACION", "INFORME_FINAL_TUTOR")
     ACTORES_CARGA_POR_ETAPA = {
+        "PERFIL_PROYECTO": {
+            "MEMORANDUM_DESIGNACION_PROYECTO": (ActorCargaDocumento.ADMINISTRACION,),
+        },
         "REVISION_TRIBUNAL_PREVIA": {
             "INFORME_REVISION_TRIBUNAL_PREVIA": (ActorCargaDocumento.ADMINISTRACION,),
         },
@@ -355,6 +358,12 @@ class ProyectoGradoRequisitosPolicy(BaseRequisitosPolicy):
             return ("DOCUMENTO_FINAL",)
         if fase == "REVISION_TRIBUNAL_PREVIA":
             return ("INFORME_REVISION_TRIBUNAL_PREVIA",)
+        if fase == "PERFIL_PROYECTO":
+            return (
+                "CARTA_SOLICITUD_TRIBUNAL_PROYECTO",
+                "PERFIL_ACADEMICO_PROYECTO",
+                "MEMORANDUM_DESIGNACION_PROYECTO",
+            )
         # Para compatibilidad, si no se especifica fase retorna todos los documentos requeridos
         # Otras etapas: no permiten carga de documentos
         return self.DOCUMENTS if fase is None else ()
@@ -387,6 +396,16 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
                 validar_composicion_asignaciones=True,
             ),
         )
+
+    def get_publicacion_memorandum_designacion(self, codigo_etapa):
+        if codigo_etapa != "PERFIL_PROYECTO":
+            return None
+        return {
+            "tipo_documento": "MEMORANDUM_DESIGNACION_PROYECTO",
+            "decision_academica": self.PROPUESTA_APROBADA,
+            "titulo": "Memorándum oficial de designación",
+            "publicacion_independiente": True,
+        }
 
     @staticmethod
     def _seguimiento_perfil_activo(postulacion):
@@ -796,6 +815,12 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
         if seguimiento.etapa.codigo == "REVISION_FINAL_POST_PUBLICA":
             return self._orientar_revision_final_post_publica(postulacion, seguimiento)
         if seguimiento.etapa.codigo == "PERFIL_PROYECTO" and postulacion.regimen_workflow == "PG_HITOS_V1":
+            orientacion_documental = self.get_orientacion_documental_prioritaria(
+                postulacion=postulacion,
+                seguimiento=seguimiento,
+            )
+            if orientacion_documental is not None:
+                return orientacion_documental
             tribunales = postulacion.asignaciones.filter(
                 activo=True,
                 tipo_participacion="TRIBUNAL",

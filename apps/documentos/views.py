@@ -88,8 +88,24 @@ class DocumentoPostulacionViewSet(viewsets.ModelViewSet):
             return queryset.none()
         if is_staff_user(user):
             return queryset
+        from apps.postulantes.memorandums import MemorandumDesignacionService
+        from apps.postulantes.models import PublicacionMemorandumDesignacion
+        publicaciones = PublicacionMemorandumDesignacion.objects.filter(
+            Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user),
+            activo=True,
+        ).distinct().select_related(
+            "postulacion", "seguimiento_etapa", "version_documento",
+        ).prefetch_related("asignaciones")
+        documentos_publicados = [
+            item.version_documento.documento_id for item in publicaciones
+            if MemorandumDesignacionService.es_vigente(item)
+        ]
         return queryset.filter(
-            Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user)
+            Q(pk__in=documentos_publicados)
+            | (
+                (Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user))
+                & ~Q(tipo_documento__codigo="MEMORANDUM_DESIGNACION_PROYECTO")
+            )
         ).distinct()
 
     def create(self, request, *args, **kwargs):
@@ -145,6 +161,20 @@ class DocumentoPostulacionViewSet(viewsets.ModelViewSet):
     def versiones(self, request, pk=None):
         documento = self.get_object()
         versiones = documento.versiones.order_by("-numero_version").select_related("subido_por")
+        if (
+            not is_staff_user(request.user)
+            and documento.tipo_documento.codigo == "MEMORANDUM_DESIGNACION_PROYECTO"
+        ):
+            from apps.postulantes.memorandums import MemorandumDesignacionService
+            publicaciones = documento.postulacion.publicaciones_memorandum_designacion.filter(
+                version_documento__documento=documento,
+                activo=True,
+            ).select_related("postulacion", "seguimiento_etapa", "version_documento").prefetch_related("asignaciones")
+            versiones_publicadas = [
+                item.version_documento_id for item in publicaciones
+                if MemorandumDesignacionService.es_vigente(item)
+            ]
+            versiones = versiones.filter(pk__in=versiones_publicadas)
         serializer = self.get_serializer(versiones, many=True)
         return Response(serializer.data)
 
@@ -248,9 +278,27 @@ class VersionDocumentoViewSet(viewsets.ReadOnlyModelViewSet):
             return queryset.none()
         if is_staff_user(user):
             return queryset
+        from apps.postulantes.memorandums import MemorandumDesignacionService
+        from apps.postulantes.models import PublicacionMemorandumDesignacion
+        publicaciones = PublicacionMemorandumDesignacion.objects.filter(
+            Q(postulacion__estudiante=user) | Q(postulacion__asignaciones__usuario=user),
+            activo=True,
+        ).distinct().select_related(
+            "postulacion", "seguimiento_etapa", "version_documento",
+        ).prefetch_related("asignaciones")
+        versiones_publicadas = [
+            item.version_documento_id for item in publicaciones
+            if MemorandumDesignacionService.es_vigente(item)
+        ]
         return queryset.filter(
-            Q(documento__postulacion__estudiante=user)
-            | Q(documento__postulacion__asignaciones__usuario=user)
+            Q(pk__in=versiones_publicadas)
+            | (
+                (
+                    Q(documento__postulacion__estudiante=user)
+                    | Q(documento__postulacion__asignaciones__usuario=user)
+                )
+                & ~Q(documento__tipo_documento__codigo="MEMORANDUM_DESIGNACION_PROYECTO")
+            )
         ).distinct()
 
     @action(detail=True, methods=["get"], url_path="descargar")

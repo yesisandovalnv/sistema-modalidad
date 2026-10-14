@@ -24,6 +24,7 @@ from apps.postulantes.models import (
     InformeRevisionTribunalPrevia,
     Observacion,
     Postulacion,
+    PublicacionMemorandumDesignacion,
 )
 from apps.postulantes.permissions import (IsAssignmentAdminOrRelatedReadOnly,
     IsStaffOrReadOnly, IsWorkflowAdminOrReadOnlyOwner,
@@ -46,6 +47,8 @@ from apps.postulantes.serializers import (
     ObservacionSerializer,
     OmitirSeguimientoEtapaSerializer,
     PostulacionSerializer,
+    PublicacionMemorandumDesignacionSerializer,
+    PublicarMemorandumDesignacionSerializer,
     RegistrarInformeRevisionTribunalSerializer,
     RechazarSeguimientoEtapaSerializer,
     ReemplazarActorSerializer,
@@ -56,6 +59,7 @@ from apps.postulantes.decisiones_academicas import DecisionAcademicaEtapaService
 from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
 from apps.postulantes.dictamenes_revision import DictamenRevisionDocumentoService
 from apps.postulantes.workflow import WorkflowService
+from apps.postulantes.memorandums import MemorandumDesignacionService
 from apps.documentos.models import DocumentoPostulacion, TipoDocumento
 from apps.documentos.serializers import TipoDocumentoHistoricoSerializer, SubirDocumentoHistoricoSerializer, VersionDocumentoSerializer
 from apps.documentos.services import DocumentoService
@@ -263,6 +267,47 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         )
         serializer = FlujoPostulacionSerializer(postulacion, context=self.get_serializer_context())
         return Response(serializer.data)
+
+    @extend_schema(
+        request=PublicarMemorandumDesignacionSerializer,
+        responses={200: PublicacionMemorandumDesignacionSerializer(many=True), 201: PublicacionMemorandumDesignacionSerializer},
+    )
+    @action(detail=True, methods=["get", "post"], url_path="memorandums-designacion")
+    def memorandums_designacion(self, request, pk=None):
+        postulacion = self.get_object()
+        queryset = PublicacionMemorandumDesignacion.all_objects.filter(
+            postulacion=postulacion,
+        ).select_related(
+            "seguimiento_etapa__etapa", "version_documento", "publicado_por",
+        ).prefetch_related("asignaciones__usuario")
+        if request.method == "GET":
+            publicaciones = list(queryset)
+            if not is_staff_user(request.user):
+                publicaciones = [
+                    item for item in publicaciones
+                    if MemorandumDesignacionService.es_vigente(item)
+                ]
+            return Response(PublicacionMemorandumDesignacionSerializer(
+                publicaciones, many=True, context=self.get_serializer_context(),
+            ).data)
+        if not is_staff_user(request.user):
+            raise PermissionDenied("Solo un usuario administrativo puede publicar memorándums.")
+        serializer = PublicarMemorandumDesignacionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            publicacion = MemorandumDesignacionService.publicar(
+                postulacion=postulacion,
+                seguimiento=serializer.validated_data["seguimiento_etapa"],
+                archivo=serializer.validated_data["archivo"],
+                usuario=request.user,
+                request=request,
+            )
+        except DjangoValidationError as exc:
+            raise _assignment_validation_error(exc) from exc
+        publicacion = queryset.get(pk=publicacion.pk)
+        return Response(PublicacionMemorandumDesignacionSerializer(
+            publicacion, context=self.get_serializer_context(),
+        ).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"], url_path="documentos-aplicables")
     def documentos_aplicables(self, request, pk=None):

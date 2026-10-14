@@ -11,6 +11,7 @@ from apps.postulantes.models import (
     Observacion,
     ParticipacionDecisionAcademica,
     Postulacion,
+    PublicacionMemorandumDesignacion,
     SeguimientoEtapa,
 )
 from apps.documentos.models import VersionDocumento
@@ -384,6 +385,51 @@ class DecisionAcademicaEtapaSerializer(serializers.ModelSerializer):
         return obj.registrado_por.nombre_completo or obj.registrado_por.username
 
 
+class PublicacionMemorandumDesignacionSerializer(serializers.ModelSerializer):
+    version = serializers.SerializerMethodField()
+    composicion = serializers.SerializerMethodField()
+    vigente = serializers.SerializerMethodField()
+    publicado_por_nombre = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PublicacionMemorandumDesignacion
+        fields = (
+            "id", "postulacion", "seguimiento_etapa", "fecha_publicacion", "activo",
+            "vigente", "publicado_por", "publicado_por_nombre", "version", "composicion",
+        )
+        read_only_fields = fields
+
+    def get_version(self, obj):
+        version = obj.version_documento
+        return {
+            "id": version.pk,
+            "numero_version": version.numero_version,
+            "nombre_original": version.nombre_original,
+            "fecha_subida": version.fecha_subida,
+        }
+
+    def get_composicion(self, obj):
+        return [{
+            "asignacion": item.pk,
+            "tipo_participacion": item.tipo_participacion,
+            "orden_cargo": item.orden_cargo,
+            "usuario": item.usuario_id,
+            "usuario_nombre": item.usuario.nombre_completo or item.usuario.username,
+        } for item in obj.asignaciones.all().order_by("tipo_participacion", "orden_cargo", "pk")]
+
+    def get_vigente(self, obj):
+        from apps.postulantes.memorandums import MemorandumDesignacionService
+        return MemorandumDesignacionService.es_vigente(obj)
+
+    def get_publicado_por_nombre(self, obj):
+        return obj.publicado_por.nombre_completo or obj.publicado_por.username
+
+
+class PublicarMemorandumDesignacionSerializer(serializers.Serializer):
+    seguimiento_etapa = serializers.PrimaryKeyRelatedField(queryset=SeguimientoEtapa.objects.all())
+    archivo = serializers.FileField()
+
+
 class FlujoPostulacionSerializer(serializers.ModelSerializer):
     """Serializer agregado para exponer el flujo de una postulación."""
 
@@ -689,6 +735,7 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
             return {"contexto": None, "decisiones": []}
         policy = ModalidadPolicyRegistry.get(obj.modalidad)
         definitions = policy.get_decisiones_academicas_permitidas(actual.etapa.codigo)
+        memorandum_config = policy.get_publicacion_memorandum_designacion(actual.etapa.codigo)
         request = self.context.get("request")
         is_admin = bool(request and is_staff_user(request.user))
         decisiones = []
@@ -727,7 +774,7 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
                 "codigo": "COMPOSICION_PARTICIPANTES_INCOMPLETA",
                 "mensaje": "Falta completar la composición formal requerida para registrar la decisión.",
             }
-            decisiones.append({
+            decision_data = {
                 "codigo": definition.codigo,
                 "nombre": definition.nombre or definition.codigo.replace("_", " ").title(),
                 "estado": "CUMPLIDA" if cumplida else "PENDIENTE",
@@ -747,10 +794,17 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
                 "bloqueo": bloqueo,
                 "decision_actual": DecisionAcademicaEtapaSerializer(decision, context=self.context).data if decision else None,
                 "reemplazable": bool(decision and is_admin),
-            })
+            }
+            if memorandum_config and memorandum_config.get("decision_academica") == definition.codigo:
+                decision_data["memorandum_designacion"] = memorandum_config
+            decisiones.append(decision_data)
+        memorandum_contextual = None
+        if memorandum_config and not any(item.get("memorandum_designacion") for item in decisiones):
+            memorandum_contextual = memorandum_config
         return {
             "contexto": {"seguimiento_etapa": actual.pk, "codigo_etapa": actual.etapa.codigo},
             "decisiones": decisiones,
+            "memorandum_designacion_contextual": memorandum_contextual,
         }
 
     def _proyectar_posicion(self, obj, grupo, tipo, ambito, orden, asignacion, is_admin, configuracion_posicion):

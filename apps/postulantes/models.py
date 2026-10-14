@@ -663,6 +663,39 @@ class ParticipacionDecisionAcademica(BaseModel):
         return super().save(*args, **kwargs)
 
 
+class PublicacionMemorandumDesignacion(BaseModel):
+    """Publicación auditable de un memorándum para una composición oficial concreta."""
+
+    postulacion = models.ForeignKey(
+        Postulacion, models.PROTECT, related_name="publicaciones_memorandum_designacion",
+    )
+    seguimiento_etapa = models.ForeignKey(
+        SeguimientoEtapa, models.PROTECT, related_name="publicaciones_memorandum_designacion",
+    )
+    version_documento = models.OneToOneField(
+        "documentos.VersionDocumento", models.PROTECT, related_name="publicacion_designacion",
+    )
+    asignaciones = models.ManyToManyField(
+        AsignacionPostulacion, related_name="publicaciones_memorandum_designacion",
+    )
+    publicado_por = models.ForeignKey(
+        CustomUser, models.PROTECT, related_name="memorandums_designacion_publicados",
+    )
+    fecha_publicacion = models.DateTimeField(default=timezone.now)
+
+    objects = ActiveManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        ordering = ["-fecha_publicacion", "-pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["postulacion"], condition=models.Q(activo=True),
+                name="unique_memorandum_designacion_activo",
+            ),
+        ]
+
+
 class CondicionPostulacion(BaseModel):
     """Verificación administrativa no representable como archivo digital."""
 

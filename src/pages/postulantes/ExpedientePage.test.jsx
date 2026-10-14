@@ -44,7 +44,7 @@ vi.mock('../../services/postulacionesService', () => ({
     obtenerEntregas: vi.fn(), crearEntregaFisica: vi.fn(), registrarEntrega: vi.fn(), registrarEntregas: vi.fn(),
     obtenerCierre: vi.fn(), aprobarRevisionFinal: vi.fn(), aprobarCierreDocumental: vi.fn(),
     concluirPostulacion: vi.fn(), reabrirCierre: vi.fn(),
-    obtenerCandidatosAsignacion: vi.fn(), obtenerCandidatosElegibles: vi.fn(), obtenerTribunalesActivos: vi.fn(), asignarActor: vi.fn(), reemplazarActor: vi.fn(), finalizarAsignacion: vi.fn(), registrarDecisionAcademica: vi.fn(),
+    obtenerCandidatosAsignacion: vi.fn(), obtenerCandidatosElegibles: vi.fn(), obtenerTribunalesActivos: vi.fn(), asignarActor: vi.fn(), reemplazarActor: vi.fn(), finalizarAsignacion: vi.fn(), registrarDecisionAcademica: vi.fn(), obtenerMemorandumsDesignacion: vi.fn(), publicarMemorandumDesignacion: vi.fn(),
     obtenerInformesRevisionTribunal: vi.fn(), registrarInformeRevisionTribunal: vi.fn(), actualizarEvidenciaInformeRevisionTribunal: vi.fn(),
     obtenerDictamenesRevision: vi.fn(),
     obtenerDocumentosAplicables: vi.fn(),
@@ -259,6 +259,12 @@ function renderApplicationManagerPage(hash = null) {
   return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 }
 
+function renderApplicationUploadManagerPage(hash = null) {
+  if (hash) selectInitialTab(hash)
+  const auth = { user: { id: 9 }, hasPermission: (name) => ['puede_gestionar_postulaciones', 'puede_cargar_documentos'].includes(name) }
+  return render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+}
+
 function renderAssignmentManagerPage(hash = 'actores') {
   selectInitialTab(hash)
   const auth = { user: { id: 9 }, hasPermission: (name) => name === 'puede_gestionar_asignaciones' }
@@ -351,6 +357,12 @@ function profileContracts({ assignedTribunals = [], proposalApproved = false, tu
     bloqueo: complete ? null : { codigo: 'COMPOSICION_PARTICIPANTES_INCOMPLETA', mensaje: 'Falta completar la composición formal requerida para registrar la decisión.' },
     decision_actual: proposalApproved ? { id: 71, resultado: 'APROBADA', participantes: participants } : null,
     reemplazable: proposalApproved && canRegister,
+    memorandum_designacion: {
+      tipo_documento: 'MEMORANDUM_DESIGNACION_PROYECTO',
+      decision_academica: 'PROPUESTA_APROBADA',
+      titulo: 'Memorándum oficial de designación',
+      publicacion_independiente: true,
+    },
   }
   const orientationAction = proposalApproved
     ? { codigo: tutorAssigned ? 'CONTINUAR' : 'GESTIONAR_ACTORES', titulo: tutorAssigned ? 'Continuar' : 'Gestionar Tutor', descripcion: 'Gestiona las posiciones pendientes.', destino: '#actores', accion_label: 'Gestionar actores', estado: 'PENDIENTE' }
@@ -419,6 +431,8 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.asignarActor.mockResolvedValue({ id: 90 })
     postulacionesService.reemplazarActor.mockResolvedValue({ id: 91 })
     postulacionesService.registrarDecisionAcademica.mockResolvedValue({ id: 7 })
+    postulacionesService.obtenerMemorandumsDesignacion.mockResolvedValue([])
+    postulacionesService.publicarMemorandumDesignacion.mockResolvedValue({ id: 8, vigente: true })
     postulacionesService.finalizarAsignacion.mockResolvedValue({ id: 7, activo: false })
     postulacionesService.obtenerInformesRevisionTribunal.mockResolvedValue([])
     postulacionesService.actualizarEvidenciaInformeRevisionTribunal.mockResolvedValue({ id: 771, resultado: 'SUFICIENTE', evidencia_version: 603, activo: true })
@@ -1477,8 +1491,62 @@ describe('ExpedientePage US-008', () => {
     expect(within(dialog).getByRole('heading', { name: 'Tutor *' })).toBeInTheDocument()
     expect(within(dialog).getAllByText(/ASIGNADA/)).toHaveLength(4)
     expect(within(dialog).getByText('María Tutora')).toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Archivo PDF')).not.toBeInTheDocument()
     expect(within(actors).queryByText('Recomendado')).not.toBeInTheDocument()
   })
+
+  it('publica el memorándum desde la decisión académica sin registrar la decisión y evita el doble envío', async () => {
+    const contracts = profileContracts({
+      assignedTribunals: [
+        { id: 51, name: 'Tribunal Uno', order: 1 },
+        { id: 52, name: 'Tribunal Dos', order: 2 },
+        { id: 53, name: 'Tribunal Tres', order: 3 },
+      ],
+      tutorAssigned: true,
+    })
+    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: contracts.flow })
+    let resolvePublication
+    postulacionesService.publicarMemorandumDesignacion.mockImplementation(() => new Promise((resolve) => { resolvePublication = resolve }))
+    renderAssignmentManagerPage('etapas')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Registrar decisión' }))
+    const dialog = screen.getByRole('dialog', { name: 'Aprobación de propuesta' })
+    const file = new File(['%PDF-1.4'], 'memorandum.pdf', { type: 'application/pdf' })
+    const fileInput = within(dialog).getByLabelText('Archivo PDF')
+    expect(fileInput).toHaveAttribute('accept', '.pdf,application/pdf')
+    expect(fileInput).toHaveClass('mt-1', 'block', 'w-full', 'rounded-lg', 'border', 'p-2', 'text-sm')
+    await userEvent.upload(fileInput, file)
+    expect(fileInput.files).toHaveLength(1)
+    expect(fileInput.files[0]).toBe(file)
+    const publish = within(dialog).getByRole('button', { name: 'Publicar memorándum' })
+    fireEvent.click(publish)
+    fireEvent.click(publish)
+
+    await waitFor(() => expect(postulacionesService.publicarMemorandumDesignacion).toHaveBeenCalledWith(7, 22, file))
+    expect(postulacionesService.publicarMemorandumDesignacion).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.registrarDecisionAcademica).not.toHaveBeenCalled()
+    expect(publish).toBeDisabled()
+    await act(async () => resolvePublication({ id: 8, vigente: true }))
+    expect(await within(dialog).findByText('Memorándum publicado correctamente.')).toBeInTheDocument()
+    await waitFor(() => expect(postulacionesService.obtenerMemorandumsDesignacion).toHaveBeenCalledTimes(2))
+  }, 15000)
+
+  it('conserva una ruta contextual cuando el contrato declara memorándum sin decisión equivalente', async () => {
+    const contracts = profileContracts()
+    const memorandum = contracts.flow.gestion_decisiones_academicas.decisiones[0].memorandum_designacion
+    contracts.flow.gestion_decisiones_academicas = {
+      ...contracts.flow.gestion_decisiones_academicas,
+      decisiones: [],
+      memorandum_designacion_contextual: memorandum,
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: contracts.flow })
+    renderAssignmentManagerPage('etapas')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Gestionar memorándum' }))
+    const dialog = screen.getByRole('dialog', { name: 'Memorándum oficial de designación' })
+    expect(within(dialog).getByLabelText('Archivo PDF')).toBeInTheDocument()
+    expect(within(dialog).getByText(/independiente del registro de la decisión académica/)).toBeInTheDocument()
+  }, 15000)
 
   it('preserva una siguiente acción posterior declarada por el backend', async () => {
     const profileStage = { id: 11, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
@@ -1749,8 +1817,97 @@ describe('ExpedientePage US-008', () => {
 
     const requirements = (await screen.findByRole('heading', { name: 'Requisitos de Inscripción' })).closest('section')
     expect(within(requirements).getByText('4 de 4 cumplidos')).toBeInTheDocument()
+    const headerButton = screen.getByRole('button', { name: 'Aprobar etapa' })
+    expect(headerButton.parentElement).toHaveClass('flex', 'flex-wrap', 'items-end', 'justify-between')
+    expect(headerButton).toHaveClass('shrink-0', 'px-3', 'py-1.5')
+    expect(screen.queryByRole('button', { name: 'Aprobar Inscripción' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('tab', { name: 'Resumen' }))
     expect(await screen.findByRole('button', { name: 'Aprobar Inscripción' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Aprobar etapa' })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['la acción no está disponible', true, false],
+    ['el usuario no tiene permisos', false, true],
+  ])('oculta Aprobar etapa en el encabezado cuando %s', async (_case, hasPermission, actionAvailable) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(inscriptionStageResponse(actionAvailable))
+    if (hasPermission) renderApplicationManagerPage('documentos')
+    else renderOwnerPage('documentos')
+
+    await screen.findByText('EXP-007')
+    expect(screen.queryByRole('button', { name: 'Aprobar etapa' })).not.toBeInTheDocument()
+  })
+
+  it('aprueba desde el encabezado con una sola solicitud y actualiza el expediente', async () => {
+    const approval = deferred()
+    const approvedResponse = inscriptionStageResponse(true)
+    approvedResponse.flujo.etapa_actual = { ...approvedResponse.flujo.etapa_actual, estado: 'APROBADA', acciones_permitidas: [] }
+    approvedResponse.flujo.etapas = [approvedResponse.flujo.etapa_actual]
+    approvedResponse.flujo.orientacion_etapa_actual = { mensaje: 'Etapa aprobada.', requisitos: [], siguiente_accion: null }
+    postulacionesService.obtenerExpediente
+      .mockResolvedValueOnce(inscriptionStageResponse(true))
+      .mockResolvedValueOnce(approvedResponse)
+    postulacionesService.aprobarEtapa.mockReturnValue(approval.promise)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderApplicationManagerPage('etapas')
+
+    const button = await screen.findByRole('button', { name: 'Aprobar etapa' })
+    expect(screen.getByRole('tab', { name: 'Etapas' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(button)
+    fireEvent.click(button)
+
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.aprobarEtapa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.aprobarEtapa).toHaveBeenCalledWith(31, expect.any(AbortSignal))
+    expect(screen.getByRole('button', { name: 'Procesando…' })).toBeDisabled()
+
+    await act(async () => approval.resolve({ id: 31, codigo: 'INSCRIPCION', estado: 'APROBADA' }))
+    await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Resumen' })).toHaveAttribute('aria-selected', 'true'))
+    expect(window.location.hash).toBe('#resumen')
+    expect(screen.getAllByText('Inscripción').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Aprobar etapa' })).not.toBeInTheDocument()
+    confirm.mockRestore()
+  })
+
+  it('navega de Documentos a Resumen después de cargar la nueva orientación', async () => {
+    const approvedResponse = inscriptionStageResponse(true)
+    approvedResponse.flujo.etapa_actual = { id: 32, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', acciones_permitidas: [] }
+    approvedResponse.flujo.etapas = [approvedResponse.flujo.etapa_actual]
+    approvedResponse.flujo.orientacion_etapa_actual = { mensaje: 'Gestiona el perfil de la nueva etapa.', requisitos: [], siguiente_accion: null }
+    postulacionesService.obtenerExpediente
+      .mockResolvedValueOnce(inscriptionStageResponse(true))
+      .mockResolvedValueOnce(approvedResponse)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderApplicationManagerPage('documentos')
+
+    expect(await screen.findByRole('tab', { name: 'Documentos' })).toHaveAttribute('aria-selected', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Aprobar etapa' }))
+
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Resumen' })).toHaveAttribute('aria-selected', 'true'))
+    expect(screen.getByText('Gestiona el perfil de la nueva etapa.')).toBeInTheDocument()
+    expect(screen.getAllByText('Perfil de Proyecto').length).toBeGreaterThan(0)
+    expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2)
+    expect(postulacionesService.aprobarEtapa).toHaveBeenCalledTimes(1)
+    confirm.mockRestore()
+  })
+
+  it.each([
+    ['la confirmación se cancela', false, null],
+    ['la aprobación falla', true, { message: 'No se pudo aprobar la etapa.' }],
+  ])('mantiene la pestaña actual cuando %s', async (_case, confirmed, approvalError) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(inscriptionStageResponse(true))
+    if (approvalError) postulacionesService.aprobarEtapa.mockRejectedValue(approvalError)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(confirmed)
+    renderApplicationManagerPage('documentos')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Aprobar etapa' }))
+    if (confirmed) await waitFor(() => expect(postulacionesService.aprobarEtapa).toHaveBeenCalledTimes(1))
+
+    expect(screen.getByRole('tab', { name: 'Documentos' })).toHaveAttribute('aria-selected', 'true')
+    expect(window.location.hash).toBe('#documentos')
+    expect(postulacionesService.aprobarEtapa).toHaveBeenCalledTimes(confirmed ? 1 : 0)
+    confirm.mockRestore()
   })
 
   it('no muestra aprobar Documento Final si la orientación indica cargarlo', async () => {
@@ -2047,6 +2204,54 @@ describe('ExpedientePage US-008', () => {
     const summary = (await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })).parentElement
     expect(within(summary).getByText('Gestionar documentos')).toBeInTheDocument()
     expect(within(summary).getByRole('region', { name: 'Siguiente acción' })).toHaveAttribute('data-personal-action', 'true')
+  })
+
+  it.each([
+    ['el estudiante', renderOwnerPage],
+    ['un gestor de postulaciones con permiso de carga', renderApplicationUploadManagerPage],
+  ])('navega desde la orientación documental de Perfil para %s sin abrir la carga', async (_case, renderAuthorizedPage) => {
+    const profileStage = { id: 11, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+    const documentOrientation = {
+      mensaje: 'Completa los documentos requeridos.',
+      requisitos: [
+        { tipo: 'DOCUMENTO', codigo: 'CARTA_SOLICITUD_TRIBUNAL_PROYECTO', nombre: 'Carta de solicitud de Tribunal', cumplido: false, estado_display: 'No presentado', destino: '#documentos' },
+        { tipo: 'DOCUMENTO', codigo: 'PERFIL_ACADEMICO_PROYECTO', nombre: 'Perfil académico', cumplido: false, estado_display: 'No presentado', destino: '#documentos' },
+      ],
+      siguiente_accion: { codigo: 'COMPLETAR_DOCUMENTOS', titulo: 'Cargar documentos', descripcion: 'Carga los documentos no presentados.', estado: 'PENDIENTE', destino: '#documentos', accion_label: 'Cargar documentos' },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: { ...response.flujo, etapa_actual: profileStage, etapas: [profileStage], orientacion_etapa_actual: documentOrientation } })
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
+      { id: 61, codigo: 'CARTA_SOLICITUD_TRIBUNAL_PROYECTO', nombre: 'Carta de solicitud de Tribunal', capacidad_carga: { permitida: true } },
+      { id: 62, codigo: 'PERFIL_ACADEMICO_PROYECTO', nombre: 'Perfil académico', capacidad_carga: { permitida: true } },
+    ] })
+    renderAuthorizedPage('resumen')
+
+    const orientationLink = await screen.findByRole('link', { name: 'Gestionar documentos' })
+    expect(orientationLink).toHaveAttribute('href', '#documentos')
+    await userEvent.click(orientationLink)
+
+    expect(screen.getByRole('tab', { name: 'Documentos' })).toHaveAttribute('aria-selected', 'true')
+    expect(window.location.hash).toBe('#documentos')
+    expect(screen.getByRole('button', { name: 'Cargar documento' })).toBeVisible()
+    expect(screen.queryByRole('dialog', { name: 'Cargar documentos' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cargar documento' }))
+    expect(await screen.findByRole('dialog', { name: 'Cargar documentos' })).toBeInTheDocument()
+  })
+
+  it('no muestra acción de carga documental a un usuario sin permiso', async () => {
+    const profileStage = { id: 11, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+    const documentOrientation = {
+      mensaje: 'Completa los documentos requeridos.',
+      requisitos: [{ tipo: 'DOCUMENTO', codigo: 'PERFIL_ACADEMICO_PROYECTO', nombre: 'Perfil académico', cumplido: false, estado_display: 'No presentado', destino: '#documentos' }],
+      siguiente_accion: { codigo: 'COMPLETAR_DOCUMENTOS', titulo: 'Cargar documentos', descripcion: 'Carga el documento no presentado.', estado: 'PENDIENTE', destino: '#documentos', accion_label: 'Cargar documentos' },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: { ...response.flujo, etapa_actual: profileStage, etapas: [profileStage], orientacion_etapa_actual: documentOrientation } })
+    renderReviewerPage()
+
+    await screen.findByText('Completa los documentos requeridos.')
+    expect(screen.queryByRole('button', { name: 'Gestionar documentos' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Gestionar documentos' })).not.toBeInTheDocument()
   })
 
   const projectStageResponse = (codigo, orientation = futureProfileOrientation) => {
@@ -4486,6 +4691,32 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByLabelText('Matrícula Vigente')).not.toBeInTheDocument()
   })
 
+  it('carga juntos la carta de Tribunal y el Perfil académico en PERFIL_PROYECTO', async () => {
+    const contracts = profileContracts()
+    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: contracts.flow })
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
+      { id: 61, codigo: 'CARTA_SOLICITUD_TRIBUNAL_PROYECTO', nombre: 'Carta de solicitud de asignación de Tribunal', capacidad_carga: { permitida: true } },
+      { id: 62, codigo: 'PERFIL_ACADEMICO_PROYECTO', nombre: 'Perfil académico del Proyecto de Grado', capacidad_carga: { permitida: true } },
+      { id: 63, codigo: 'MEMORANDUM_DESIGNACION_PROYECTO', nombre: 'Memorándum oficial', capacidad_carga: { permitida: true } },
+    ] })
+    renderOwnerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Cargar documentos' })
+    const carta = new File(['%PDF-1.4'], 'carta.pdf', { type: 'application/pdf' })
+    const perfil = new File(['perfil'], 'perfil.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+    await userEvent.upload(within(dialog).getByLabelText('Carta de solicitud de asignación de Tribunal'), carta)
+    await userEvent.upload(within(dialog).getByLabelText('Perfil académico del Proyecto de Grado'), perfil)
+    expect(within(dialog).queryByLabelText('Memorándum oficial')).not.toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cargar 2 documentos' }))
+
+    await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledTimes(2))
+    expect(postulacionesService.cargarDocumento).toHaveBeenNthCalledWith(1,
+      { postulacionId: 7, tipoDocumentoId: 61, archivo: carta, eventoDefensaId: undefined }, expect.any(AbortSignal))
+    expect(postulacionesService.cargarDocumento).toHaveBeenNthCalledWith(2,
+      { postulacionId: 7, tipoDocumentoId: 62, archivo: perfil, eventoDefensaId: undefined }, expect.any(AbortSignal))
+  })
+
   it('carga un documento inicial con postulación contextual y tipo por nombre', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
     renderOwnerPage()
@@ -5152,6 +5383,25 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('button', { name: 'Registrar informe del tribunal' })).not.toBeInTheDocument()
   })
 
+  it('mantiene pendiente la consulta de informes antes de mostrar el estado vacío', async () => {
+    let resolveReports
+    postulacionesService.obtenerExpediente.mockResolvedValue(tribunalResponse)
+    postulacionesService.obtenerDocumentos.mockResolvedValue(tribunalDocuments)
+    postulacionesService.obtenerInformesRevisionTribunal.mockReturnValue(new Promise((resolve) => { resolveReports = resolve }))
+
+    renderWorkflowManagerPage()
+
+    expect(await screen.findByText('Cargando informes del tribunal…')).toBeInTheDocument()
+    expect(screen.queryByText('No existen informes registrados para esta etapa.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Registrar informe del tribunal' })).not.toBeInTheDocument()
+    await waitFor(() => expect(postulacionesService.obtenerInformesRevisionTribunal).toHaveBeenCalledWith(4, expect.any(AbortSignal)))
+
+    await act(async () => resolveReports([]))
+
+    expect(await screen.findByText('No existen informes registrados para esta etapa.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Registrar informe del tribunal' })).toBeInTheDocument()
+  })
+
   it('registra SUFICIENTE y refresca informes y flujo para mostrar la aprobación', async () => {
     const user = userEvent.setup()
     const pendingStage = { ...tribunalStage, acciones_permitidas: [] }
@@ -5199,7 +5449,7 @@ describe('ExpedientePage US-008', () => {
     render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
     await screen.findByText('El informe del tribunal está pendiente.')
     expect(screen.queryByRole('button', { name: 'Aprobar Revisión de Tribunal Previa' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Registrar informe del tribunal' }))
+    await user.click(await screen.findByRole('button', { name: 'Registrar informe del tribunal' }))
     const dialog = screen.getByRole('dialog', { name: 'Registrar informe del tribunal' })
     expect(within(dialog).getByText('Documento Final — Versión 1')).toBeInTheDocument()
     await user.selectOptions(within(dialog).getByLabelText('Resultado'), 'SUFICIENTE')
@@ -5370,6 +5620,7 @@ describe('ExpedientePage US-008', () => {
     const approveButton = await screen.findByRole('button', { name: 'Aprobar Revisión de Tribunal Previa' })
     const orientationLabel = screen.getByText('Orientación del expediente')
     const orientationCard = orientationLabel.parentElement
+    expect(screen.getByRole('tab', { name: 'Resumen' })).toHaveAttribute('aria-selected', 'true')
     expect(within(orientationCard).getByText('Los requisitos de esta etapa están cumplidos. Está lista para aprobación administrativa.')).toBeInTheDocument()
     expect(within(orientationCard).getByRole('button', { name: 'Aprobar Revisión de Tribunal Previa' })).toBe(approveButton)
     expect(screen.getAllByRole('button', { name: 'Aprobar Revisión de Tribunal Previa' })).toHaveLength(1)
@@ -5377,6 +5628,8 @@ describe('ExpedientePage US-008', () => {
     await waitFor(() => expect(postulacionesService.aprobarEtapa).toHaveBeenCalledWith(approvableStage.id, expect.any(AbortSignal)))
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(await screen.findByText('Los actores están listos para programar la defensa privada.')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Resumen' })).toHaveAttribute('aria-selected', 'true')
+    expect(window.location.hash).toBe('#resumen')
     expect(screen.queryByRole('button', { name: 'Aprobar Revisión de Tribunal Previa' })).not.toBeInTheDocument()
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2)
     confirm.mockRestore()
@@ -5538,7 +5791,7 @@ describe('ExpedientePage US-008', () => {
     const reportsCard = container.querySelector('#informes-etapa')
     expect(reportsCard).not.toBeNull()
       await act(async () => {
-        fireEvent.click(within(reportsCard).getByRole('button', { name: 'Registrar informe del tribunal' }))
+        fireEvent.click(await within(reportsCard).findByRole('button', { name: 'Registrar informe del tribunal' }))
         await Promise.resolve()
       })
       let dialog = container.querySelector('[role="dialog"][aria-label="Registrar informe del tribunal"]')

@@ -93,6 +93,13 @@ function getStageUiVisibility(modalityCode, stageCode) {
   return PROJECT_STAGE_UI[stageCode] || { review: true, academicResult: true, closure: true, corrections: true }
 }
 
+function getMemorandumPublicationContract(data) {
+  const management = data?.flujo?.gestion_decisiones_academicas
+  return management?.decisiones?.find((decision) => decision.memorandum_designacion)?.memorandum_designacion
+    || management?.memorandum_designacion_contextual
+    || null
+}
+
 export default function ExpedientePage() {
   const { id } = useParams()
   const auth = useContext(AuthContext)
@@ -120,10 +127,13 @@ export default function ExpedientePage() {
   const assignmentController = useRef(null)
   const assignmentSubmitting = useRef(false)
   const [actorManagement, setActorManagement] = useState(null)
+  const [memorandums, setMemorandums] = useState({ data: [], loading: true, error: '' })
+  const [memorandumRevision, setMemorandumRevision] = useState(0)
   const actorManagementController = useRef(null)
   const actorManagementSubmitting = useRef(false)
   const actorManagementOpener = useRef(null)
   const [academicDecision, setAcademicDecision] = useState(null)
+  const [memorandumContext, setMemorandumContext] = useState(null)
   const academicDecisionController = useRef(null)
   const [teamAssignment, setTeamAssignment] = useState(null)
   const teamAssignmentController = useRef(null)
@@ -161,7 +171,7 @@ export default function ExpedientePage() {
   const [stageApproval, setStageApproval] = useState({ submitting: false, error: '', fields: {} })
   const stageApprovalController = useRef(null)
   const stageApprovalSubmitting = useRef(false)
-  const [tribunalReports, setTribunalReports] = useState({ data: null, loading: false, error: '' })
+  const [tribunalReports, setTribunalReports] = useState({ data: null, loading: true, error: '' })
   const [tribunalReportsRevision, setTribunalReportsRevision] = useState(0)
   const [tribunalReportDialog, setTribunalReportDialog] = useState(null)
   const tribunalReportController = useRef(null)
@@ -221,7 +231,7 @@ export default function ExpedientePage() {
     tribunalAssignmentController.current?.abort()
     tribunalAssignmentController.current = null
     tribunalAssignmentSubmitting.current = false
-    setTribunalReports({ data: null, loading: false, error: '' })
+    setTribunalReports({ data: null, loading: true, error: '' })
   }, [id])
 
   useEffect(() => () => {
@@ -271,6 +281,18 @@ export default function ExpedientePage() {
     load(controller.signal)
     return () => controller.abort()
   }, [load, revision])
+  useEffect(() => {
+    if (!getMemorandumPublicationContract(data)) {
+      setMemorandums({ data: [], loading: false, error: '' })
+      return undefined
+    }
+    const controller = new AbortController()
+    setMemorandums((current) => ({ ...current, loading: true, error: '' }))
+    postulacionesService.obtenerMemorandumsDesignacion(id, controller.signal)
+      .then((rows) => { if (!controller.signal.aborted) setMemorandums({ data: rows || [], loading: false, error: '' }) })
+      .catch((requestError) => { if (!requestError.canceled && !controller.signal.aborted) setMemorandums({ data: [], loading: false, error: requestError.message }) })
+    return () => controller.abort()
+  }, [data?.flujo?.gestion_decisiones_academicas, id, memorandumRevision])
   useLayoutEffect(() => {
     if (loading || !data) return
     const pendingNavigation = pendingSectionRestore.current
@@ -446,6 +468,7 @@ export default function ExpedientePage() {
   }, [id, defensesPage, defensesRevision])
 
   useEffect(() => {
+    if (!data) return undefined
     const stage = data?.flujo?.etapas?.find((item) => item.codigo === 'REVISION_TRIBUNAL_PREVIA')
     if (!stage) {
       setTribunalReports({ data: null, loading: false, error: '' })
@@ -562,6 +585,7 @@ export default function ExpedientePage() {
   const orientationApprovalAvailable = orientationApprovalDeclared
     && actionOrientation.siguiente_accion.estado === 'DISPONIBLE'
     && stageApprovalAllowed
+  const canApproveStage = canManageApplications && orientationApprovalAvailable
   const activeCurrentDefense = hasActiveCurrentDefense({
     defenses: defenses.data?.results || [],
     orientation: actionOrientation,
@@ -661,6 +685,8 @@ export default function ExpedientePage() {
       if (!controller.signal.aborted) {
         stageApprovalSubmitting.current = false
         setStageApproval({ submitting: false, error: '', fields: {} })
+        pendingSectionRestore.current = 'resumen'
+        window.history.replaceState(window.history.state, '', '#resumen')
         setRevision((value) => value + 1)
       }
     } catch (requestError) {
@@ -904,7 +930,7 @@ export default function ExpedientePage() {
       const response = await postulacionesService.obtenerDocumentosAplicables(id, controller.signal)
       const rows = (response.documentos_aplicables || []).filter(
         (type) => type.capacidad_carga?.permitida === true
-          && (type.codigo || type.tipo_documento_codigo) !== 'OBSERVACIONES_DEFENSA_PERFIL',
+          && !['OBSERVACIONES_DEFENSA_PERFIL', 'MEMORANDUM_DESIGNACION_PROYECTO'].includes(type.codigo || type.tipo_documento_codigo),
       )
       setDocumentTypes({ data: rows, loading: false, error: '' })
     } catch (requestError) {
@@ -1534,7 +1560,14 @@ export default function ExpedientePage() {
           <>
             <h2 className="sr-only">Estado actual de tu proceso académico</h2>
             <dl className="mt-6 grid gap-4 border-t border-slate-200 pt-5 dark:border-slate-800">
-              <Info label="Etapa actual" value={currentStage?.nombre || 'Sin etapa pendiente'} />
+              <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+                <Info label="Etapa actual" value={currentStage?.nombre || 'Sin etapa pendiente'} />
+                {canApproveStage && (
+                  <Button type="button" className="shrink-0 px-3 py-1.5" disabled={stageApproval.submitting} onClick={approveCurrentStage}>
+                    {stageApproval.submitting ? 'Procesando…' : 'Aprobar etapa'}
+                  </Button>
+                )}
+              </div>
             </dl>
 
             <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-800">
@@ -1591,7 +1624,7 @@ export default function ExpedientePage() {
 
       {!isHistorical && <ExpedienteNav activeTab={activeTab} hasModalityTab={hasModalityTab} hasOutcomeTab={hasOutcomeTab} onActivate={(sectionId) => navigateToSection(sectionId)} />}
       <div id="panel-resumen" role="tabpanel" aria-labelledby="expediente-tab-resumen" data-expediente-panel="resumen" hidden={!isHistorical && activeTab !== 'resumen'}>
-        {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} pendingCurrentRequirements={pendingCurrentRequirements} onApproveStage={approveCurrentStage} canApproveStage={canManageApplications && orientationApprovalAvailable} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} workflowProgress={safeProgress} pendingTechnicalClosure={pendingTechnicalClosure} resultado={resultado} concluded={isConcluded} defenses={defenses.data?.results || []} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageAssignments={canManageAssignments} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} hideRequirements={isProjectInscription} onCompleteAuthorities={() => setTeamAssignment({ mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '', results: {} })} onManageActors={openActorManagement} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
+        {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} pendingCurrentRequirements={pendingCurrentRequirements} onApproveStage={approveCurrentStage} canApproveStage={canApproveStage} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} workflowProgress={safeProgress} pendingTechnicalClosure={pendingTechnicalClosure} resultado={resultado} concluded={isConcluded} defenses={defenses.data?.results || []} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageAssignments={canManageAssignments} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} hideRequirements={isProjectInscription} onCompleteAuthorities={() => setTeamAssignment({ mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '', results: {} })} onManageActors={openActorManagement} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
       </div>
 
       <div id="panel-documentos" role="tabpanel" aria-labelledby="expediente-tab-documentos" data-expediente-panel="documentos" hidden={!isHistorical && activeTab !== 'documentos'}>
@@ -1641,6 +1674,7 @@ export default function ExpedientePage() {
           onRetryHistorical={() => setHistoricalActorsRevision((value) => value + 1)}
           canManage={canManageAssignments}
           management={flujo.gestion_actores}
+          memorandums={memorandums}
           onManage={openActorManagement}
         /></div>}
       </div>
@@ -1649,6 +1683,7 @@ export default function ExpedientePage() {
         {!isHistorical && <div id="decisiones-academicas" className="scroll-mt-24"><AcademicDecisionsCard
           management={flujo.gestion_decisiones_academicas}
           onAction={(decision) => setAcademicDecision({ decision, submitting: false, fields: {}, error: '' })}
+          onMemorandumAction={(contract) => setMemorandumContext(contract)}
         /></div>}
         {!isHistorical && <Card id="etapas" className="scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
           <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
@@ -1720,7 +1755,8 @@ export default function ExpedientePage() {
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
       {assignment && (assignment.context !== 'TESIS_DEFENSA_PUBLICA' || publicDefenseMissingRoles.length > 0) && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} activeTribunals={activeTribunals} onRetryActiveTribunals={() => setActiveTribunalsRevision((value) => value + 1)} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} allowedTypes={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? publicDefenseMissingRoles : detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO'] : detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO', 'DIRECTOR_INSTITUTO_INVESTIGACION'] : detalle.modalidad_detalle?.codigo === 'GRADUACION_VIA_DIPLOMADO' ? ['VICERRECTOR_POSGRADO', 'DECANO_FACULTAD', 'DIRECTOR_CARRERA', 'TRIBUNAL'] : detalle.modalidad_detalle?.codigo === 'TRABAJO_DIRIGIDO' ? ['TUTOR', 'TRIBUNAL', 'DOCENTE_MODALIDAD', 'PRESIDENTE', 'SECRETARIO', 'SUPERVISOR_INSTITUCIONAL'] : undefined} initialStageId={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? currentStage?.id : undefined} fixedAssignment={assignment.fixedAssignment} replacementPosition={assignment.replacementPosition} onSubmit={submitAssignment} onClose={closeAssignment} />}
-      {academicDecision && <AcademicDecisionDialog state={academicDecision} onSubmit={submitAcademicDecision} onClose={() => setAcademicDecision(null)} />}
+      {academicDecision && <AcademicDecisionDialog state={academicDecision} postulacion={detalle.id} seguimientoEtapa={flujo.gestion_decisiones_academicas?.contexto?.seguimiento_etapa} memorandums={memorandums} onMemorandumPublished={() => setMemorandumRevision((value) => value + 1)} onSubmit={submitAcademicDecision} onClose={() => setAcademicDecision(null)} />}
+      {memorandumContext && <Modal title={memorandumContext.titulo || 'Memorándum oficial de designación'} onClose={() => setMemorandumContext(null)}><div className="mt-4 grid gap-4"><MemorandumPublicationSection postulacion={detalle.id} seguimientoEtapa={flujo.gestion_decisiones_academicas?.contexto?.seguimiento_etapa} contract={memorandumContext} memorandums={memorandums} onPublished={() => setMemorandumRevision((value) => value + 1)} /><Button type="button" variant="secondary" onClick={() => setMemorandumContext(null)}>Cerrar</Button></div></Modal>}
       {actorManagement && <ActorManagementDialog state={actorManagement} postulacion={detalle.id} management={flujo.gestion_actores} stageName={currentStage?.nombre || currentStage?.codigo} onSubmit={submitActorManagement} onFinalize={(position, observaciones) => submitActorManagement([{ action: 'FINALIZAR', position, payload: { observaciones } }])} onClose={closeActorManagement} />}
       {teamAssignment?.mode === 'PUBLIC_AUTHORITIES'
         ? <PublicAuthoritiesDialog assignment={teamAssignment} postulacion={detalle.id} stage={currentStage} orientation={flujo.orientacion_etapa_actual} onSubmit={submitTeamAssignment} onClose={closeTeamAssignment} />
@@ -1977,6 +2013,8 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
         : `La aprobación de ${currentStage?.nombre || 'esta etapa'} está pendiente del personal responsable.`
     : effectiveOrientation?.mensaje || stageMessage
   const visibleOrientationAction = approvalMissingLabels ? null : nextAction
+  const isDocumentUploadAction = visibleOrientationAction?.codigo === 'COMPLETAR_DOCUMENTOS'
+  const canNavigateToDocumentUpload = isDocumentUploadAction && canUpload
   return <Card className="overflow-hidden border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950">
     <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800 dark:text-sky-200">Orientación del expediente</p>
     <h2 className="mt-2 text-xl font-bold">{administrativeActionPending ? 'Gestión administrativa pendiente' : 'Qué debes hacer ahora'}</h2>
@@ -2009,7 +2047,8 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
         <Button type="button" className="mt-3" disabled={stageApproval.submitting} onClick={onApproveStage}>{stageApproval.submitting ? 'Procesando…' : nextAction.accion_label || nextAction.titulo || `Aprobar ${currentStage?.nombre || formatCode(currentStage?.codigo) || 'etapa'}`}</Button>
         {pendingCurrentRequirements > 0 && <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Hay {pendingCurrentRequirements} {pendingCurrentRequirements === 1 ? 'requisito pendiente' : 'requisitos pendientes'}. El backend realizará la validación definitiva al aprobar.</p>}
       </> : null
-        : nextAction.destino && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'GESTIONAR_ACTORES' ? (event) => { event.preventDefault(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.accion_label || 'Ir a gestionar'}</a>}
+        : canNavigateToDocumentUpload ? <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#documentos" onClick={(event) => { event.preventDefault(); onGoToDocuments() }}>Gestionar documentos</a>
+          : nextAction.destino && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'GESTIONAR_ACTORES' ? (event) => { event.preventDefault(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.accion_label || 'Ir a gestionar'}</a>}
       {nextAction.codigo === 'APROBAR_ETAPA' && stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
     </section>}
     {!hideRequirements && requirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">
@@ -2230,9 +2269,10 @@ function formatReportResult(value) {
   return value || 'No registrado'
 }
 
-function AcademicDecisionsCard({ management, onAction }) {
+function AcademicDecisionsCard({ management, onAction, onMemorandumAction }) {
   const decisions = management?.decisiones || []
-  if (decisions.length === 0) return null
+  const contextualMemorandum = management?.memorandum_designacion_contextual
+  if (decisions.length === 0 && !contextualMemorandum) return null
   return <Card className="overflow-hidden" aria-labelledby="academic-decisions-title">
     <h2 id="academic-decisions-title" className="text-xl font-bold">Decisiones académicas</h2>
     <div className="mt-4 grid gap-3">{decisions.map((decision) => <section key={decision.codigo} className="rounded-lg border p-4">
@@ -2240,11 +2280,13 @@ function AcademicDecisionsCard({ management, onAction }) {
       {decision.bloqueo && <p role="status" className="mt-3 text-sm text-amber-700 dark:text-amber-300">{decision.bloqueo.mensaje}</p>}
       {decision.acciones_permitidas?.includes('REGISTRAR') && <Button className="mt-3" onClick={() => onAction(decision)}>Registrar decisión</Button>}
       {decision.acciones_permitidas?.includes('REEMPLAZAR') && <Button className="mt-3" variant="secondary" onClick={() => onAction(decision)}>Reemplazar decisión</Button>}
-    </section>)}</div>
+    </section>)}
+    {contextualMemorandum && <section className="rounded-lg border p-4"><h3 className="font-semibold">{contextualMemorandum.titulo || 'Memorándum oficial de designación'}</h3><p className="mt-1 text-sm text-slate-500">Publicación documental disponible para la etapa actual.</p><Button className="mt-3" onClick={() => onMemorandumAction(contextualMemorandum)}>Gestionar memorándum</Button></section>}
+    </div>
   </Card>
 }
 
-function AcademicDecisionDialog({ state, onSubmit, onClose }) {
+function AcademicDecisionDialog({ state, postulacion, seguimientoEtapa, memorandums, onMemorandumPublished, onSubmit, onClose }) {
   const { decision } = state
   const [result, setResult] = useState(decision.resultados_permitidos?.[0] || '')
   const submit = (event) => {
@@ -2258,19 +2300,55 @@ function AcademicDecisionDialog({ state, onSubmit, onClose }) {
     if (decision.acciones_permitidas.includes('REEMPLAZAR')) payload.reemplaza_decision = decision.decision_actual.id
     onSubmit(payload)
   }
-  return <Modal title={decision.nombre} onClose={onClose}><form className="mt-4 grid gap-4" onSubmit={submit}>
+  return <Modal title={decision.nombre} onClose={onClose}><div className="mt-4 grid gap-4"><form className="grid gap-4" onSubmit={submit}>
     <label className="text-sm">Resultado<select value={result} onChange={(event) => setResult(event.target.value)} disabled={state.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">{decision.resultados_permitidos.map((value) => <option key={value} value={value}>{formatCode(value)}</option>)}</select></label>
     <section><h3 className="text-sm font-semibold">Participantes</h3><ul className="mt-2 space-y-1 text-sm">{decision.participantes_disponibles.map((participant) => <li key={participant.asignacion}>{participant.usuario_nombre} — {formatCode(participant.rol)}{participant.orden ? ` ${participant.orden}` : ''}</li>)}</ul></section>
     <label className="text-sm">Observaciones (opcional)<textarea name="observaciones" disabled={state.submitting} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>
     {state.error && <p role="alert" className="text-red-600">{state.error}</p>}
     <div className="flex gap-3"><Button type="submit" disabled={state.submitting || !result}>{state.submitting ? 'Registrando…' : decision.acciones_permitidas.includes('REEMPLAZAR') ? 'Reemplazar decisión' : 'Registrar decisión'}</Button><Button type="button" variant="secondary" disabled={state.submitting} onClick={onClose}>Cancelar</Button></div>
-  </form></Modal>
+  </form>
+    {decision.memorandum_designacion && <MemorandumPublicationSection postulacion={postulacion} seguimientoEtapa={seguimientoEtapa} contract={decision.memorandum_designacion} memorandums={memorandums} disabled={state.submitting} onPublished={onMemorandumPublished} />}
+  </div></Modal>
 }
 
-function ActorsCard({ active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical, canManage, management, onManage }) {
+function MemorandumPublicationSection({ postulacion, seguimientoEtapa, contract, memorandums, disabled, onPublished }) {
+  const [file, setFile] = useState(null)
+  const [publication, setPublication] = useState({ submitting: false, error: '', success: '' })
+  const submittingRef = useRef(false)
+  const current = (memorandums?.data || []).find((item) => item.vigente)
+  const publish = async () => {
+    if (!file || submittingRef.current) return
+    submittingRef.current = true
+    setPublication({ submitting: true, error: '', success: '' })
+    try {
+      await postulacionesService.publicarMemorandumDesignacion(postulacion, seguimientoEtapa, file)
+      setFile(null)
+      setPublication({ submitting: false, error: '', success: 'Memorándum publicado correctamente.' })
+      onPublished()
+    } catch (requestError) {
+      setPublication({ submitting: false, error: requestError.message, success: '' })
+    } finally {
+      submittingRef.current = false
+    }
+  }
+  return <section className="rounded-lg border border-slate-200 p-4 dark:border-slate-700" aria-labelledby="memorandum-designacion-title">
+    <h3 id="memorandum-designacion-title" className="font-semibold">{contract.titulo || 'Memorándum oficial de designación'}</h3>
+    <p className="mt-1 text-sm text-slate-500">La publicación del PDF es independiente del registro de la decisión académica.</p>
+    {memorandums?.loading && <p role="status" className="mt-2 text-sm">Consultando memorándum…</p>}
+    {memorandums?.error && <p role="alert" className="mt-2 text-sm text-red-600">{memorandums.error}</p>}
+    {current && <div className="mt-3 text-sm"><p>Vigente desde {formatDocumentDate(current.fecha_publicacion)}</p><DownloadVersionButton version={current.version} /></div>}
+    <label className="mt-3 block text-sm">Archivo PDF<input type="file" accept=".pdf,application/pdf" disabled={disabled || publication.submitting} onChange={(event) => setFile(event.target.files?.[0] || null)} className="mt-1 block w-full rounded-lg border p-2 text-sm" /></label>
+    {publication.error && <p role="alert" className="mt-2 text-sm text-red-600">{publication.error}</p>}
+    {publication.success && <p role="status" className="mt-2 text-sm text-emerald-700 dark:text-emerald-300">{publication.success}</p>}
+    <Button type="button" className="mt-3" disabled={!file || disabled || publication.submitting} onClick={publish}>{publication.submitting ? 'Publicando…' : current ? 'Publicar nueva versión' : 'Publicar memorándum'}</Button>
+  </section>
+}
+
+function ActorsCard({ active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical, canManage, management, memorandums, onManage }) {
   const positions = management?.posiciones || []
   const occupiedCount = positions.filter((position) => position.estado_ocupacion === 'ASIGNADA').length
   const activeCount = active.data?.count || 0
+  const currentMemorandum = (memorandums?.data || []).find((item) => item.vigente)
   return (
     <Card className="overflow-hidden" aria-labelledby="actores-title">
       <h2 id="actores-title" className="text-xl font-bold">Gestión de actores</h2>
@@ -2278,6 +2356,12 @@ function ActorsCard({ active, historical, activePage, historicalPage, onActivePa
         ? `${occupiedCount} de ${positions.length} posiciones ocupadas`
         : `${activeCount} actores vigentes`}</p>
       {canManage && <Button className="mt-3" onClick={onManage}>Gestionar actores</Button>}
+      {(memorandums?.loading || memorandums?.error || currentMemorandum) && <section className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-700" aria-labelledby="memorandum-vigente-title">
+        <h3 id="memorandum-vigente-title" className="font-semibold">Memorándum oficial de designación</h3>
+        {memorandums.loading && <p role="status" className="mt-2 text-sm">Consultando memorándum…</p>}
+        {memorandums.error && <p role="alert" className="mt-2 text-sm text-red-600">{memorandums.error}</p>}
+        {currentMemorandum && <div className="mt-2 text-sm"><p>Publicado el {formatDocumentDate(currentMemorandum.fecha_publicacion)}</p><DownloadVersionButton version={currentMemorandum.version} /></div>}
+      </section>}
       {false && <details className="mt-4 overflow-hidden rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950">
         <summary className="cursor-pointer px-4 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">Información institucional</summary>
         <aside aria-label="Advertencias sobre las asignaciones" className="border-t border-amber-300 p-4 text-sm">
@@ -2362,7 +2446,6 @@ function ActorManagementDialog({ state, postulacion, management, stageName, onSu
   }
 
   const modalTitle = stageName ? `Gestionar actores — ${stageName}` : 'Gestionar actores'
-
   return <Modal title={modalTitle} onClose={state.submitting ? () => {} : onClose}>
     <form className="mt-4 grid gap-4" onSubmit={saveAssignments} noValidate>
       {management?.contexto?.codigo_etapa && <p className="text-sm text-slate-500">Etapa: {management.contexto.codigo_etapa}</p>}

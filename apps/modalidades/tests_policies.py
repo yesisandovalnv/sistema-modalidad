@@ -7,7 +7,7 @@ from rest_framework.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.academico.models import EtapaModalidad, Modalidad
-from apps.documentos.models import EstadoDocumento, TipoDocumento
+from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
 from apps.documentos.services import DocumentoService
 from apps.modalidades.policies import (ActorCargaDocumento, BaseModalidadPolicy,
     EtapaDefinition, DecisionAcademicaDefinition, ModalidadNoSoportadaError,
@@ -173,7 +173,7 @@ class ProyectoGradoRequisitosTests(TestCase):
     def test_etapa_no_configurada_es_fail_closed(self):
         """Verificar que etapas sin documentos configurados devuelven tupla vacía (fail-closed)."""
         # PERFIL_PROYECTO, DEFENSA_PRIVADA, DEFENSA_PUBLICA, etc.
-        etapas_sin_docs = ["PERFIL_PROYECTO", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"]
+        etapas_sin_docs = ["DEFENSA_PRIVADA", "DEFENSA_PUBLICA"]
         for etapa in etapas_sin_docs:
             with self.subTest(etapa=etapa):
                 resultado = self.requisitos_policy.get_documentos_requeridos(etapa)
@@ -183,6 +183,10 @@ class ProyectoGradoRequisitosTests(TestCase):
         self.assertEqual(
             self.policy.get_documentos_aplicables_en_etapa("INSCRIPCION"),
             ("CARTA_SOLICITUD_PROYECTO", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ"),
+        )
+        self.assertEqual(
+            self.policy.get_documentos_aplicables_en_etapa("PERFIL_PROYECTO"),
+            ("CARTA_SOLICITUD_TRIBUNAL_PROYECTO", "PERFIL_ACADEMICO_PROYECTO", "MEMORANDUM_DESIGNACION_PROYECTO"),
         )
         self.assertEqual(self.policy.get_condiciones_requeridas("INSCRIPCION"), ())
         self.assertEqual(self.policy.get_entregas_requeridas("INSCRIPCION"), ("FOLDER_AMARILLO",))
@@ -209,6 +213,111 @@ class ProyectoGradoRequisitosTests(TestCase):
     def test_revision_final_post_publica_ofrece_exactamente_hoja_aprobacion(self):
         resultado = self.policy.get_documentos_aplicables_en_etapa("REVISION_FINAL_POST_PUBLICA")
         self.assertEqual(resultado, ("HOJA_APROBACION",))
+
+
+class ProyectoGradoOrientacionDocumentalPerfilTests(TestCase):
+    def setUp(self):
+        self.policy = ProyectoGradoPolicy()
+        self.student = CustomUser.objects.create_user(username="orientacion-doc-pg", password="x")
+        modalidad = Modalidad.objects.create(codigo="PROYECTO_GRADO", nombre="Proyecto orientación documental")
+        periodo = Periodo.objects.create(
+            nombre="2026-ORIENTACION", gestion=2026, semestre="I",
+            fecha_inicio="2026-01-01", fecha_fin="2026-12-31",
+        )
+        estado = EstadoPostulacion.objects.create(codigo="EN_PROCESO", nombre="En proceso orientación")
+        self.postulacion = Postulacion.objects.create(
+            codigo="POST-ORIENTACION-PG", estudiante=self.student, modalidad=modalidad,
+            periodo=periodo, estado_actual=estado, regimen_workflow="PG_HITOS_V1",
+        )
+        etapa = EtapaModalidad.objects.create(
+            modalidad=modalidad, codigo="PERFIL_PROYECTO", nombre="Perfil de Proyecto",
+            orden=2, obligatoria=True, origen_normativo="Normativa",
+        )
+        self.seguimiento = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion, etapa=etapa, estado="EN_PROCESO",
+        )
+        self.enviado = EstadoDocumento.objects.create(codigo="ENV", nombre="Enviado")
+        self.aprobado = EstadoDocumento.objects.create(codigo="APR", nombre="Aprobado")
+        self.observado = EstadoDocumento.objects.create(codigo="OBS", nombre="Observado")
+        self.carta = TipoDocumento.objects.create(
+            codigo="CARTA_SOLICITUD_TRIBUNAL_PROYECTO", nombre="Carta de solicitud de Tribunal",
+        )
+        self.perfil = TipoDocumento.objects.create(
+            codigo="PERFIL_ACADEMICO_PROYECTO", nombre="Perfil académico",
+        )
+        TipoDocumento.objects.create(
+            codigo="MEMORANDUM_DESIGNACION_PROYECTO", nombre="Memorándum de designación",
+        )
+
+    def _documento(self, tipo, estado, *, requiere_correccion=False):
+        documento = DocumentoPostulacion.objects.create(
+            postulacion=self.postulacion, tipo_documento=tipo, estado=estado,
+            requiere_correccion=requiere_correccion,
+        )
+        VersionDocumento.objects.create(
+            documento=documento, subido_por=self.student, numero_version=1,
+            archivo=SimpleUploadedFile(f"{tipo.codigo}.pdf", b"%PDF-1.4"),
+            nombre_original=f"{tipo.codigo}.pdf", tamano_bytes=8,
+            hash_sha256="a" * 64, es_version_actual=True,
+        )
+        return documento
+
+    def _orientacion(self):
+        return self.policy.get_orientacion_etapa_actual(
+            postulacion=self.postulacion, seguimiento=self.seguimiento,
+        )
+
+    def test_sin_documentos_prioriza_carga_y_excluye_documento_administrativo(self):
+        orientacion = self._orientacion()
+
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        self.assertEqual([item["codigo"] for item in orientacion["requisitos"]], [
+            "CARTA_SOLICITUD_TRIBUNAL_PROYECTO", "PERFIL_ACADEMICO_PROYECTO",
+        ])
+        self.assertTrue(all(item["estado"] == "NO_PRESENTADO" for item in orientacion["requisitos"]))
+
+    def test_carga_parcial_conserva_progreso_y_orienta_al_faltante(self):
+        self._documento(self.carta, self.aprobado)
+
+        orientacion = self._orientacion()
+
+        self.assertEqual([item["cumplido"] for item in orientacion["requisitos"]], [True, False])
+        self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Cargar documentos")
+
+    def test_documentos_enviados_orientan_a_esperar_revision(self):
+        self._documento(self.carta, self.enviado)
+        self._documento(self.perfil, self.enviado)
+
+        orientacion = self._orientacion()
+
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "ESPERAR_REVISION_DOCUMENTOS")
+        self.assertTrue(all(item["estado"] == "PENDIENTE_REVISION" for item in orientacion["requisitos"]))
+
+    def test_documento_observado_orienta_a_correccion_o_reenvio(self):
+        self._documento(self.carta, self.observado, requiere_correccion=True)
+        self._documento(self.perfil, self.aprobado)
+
+        orientacion = self._orientacion()
+
+        self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Corregir o reenviar documentos")
+        self.assertEqual(orientacion["requisitos"][0]["estado"], "REQUIERE_CORRECCION")
+
+    def test_documentos_aprobados_dejan_continuar_orientacion_academica(self):
+        self._documento(self.carta, self.aprobado)
+        self._documento(self.perfil, self.aprobado)
+
+        orientacion = self._orientacion()
+
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "GESTIONAR_ACTORES")
+        self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Completar Tribunal de Perfil")
+
+    def test_modalidad_sin_documentos_aplicables_no_inventa_orientacion(self):
+        class SinDocumentosPolicy(BaseModalidadPolicy):
+            pass
+
+        self.assertIsNone(SinDocumentosPolicy().get_orientacion_documental_prioritaria(
+            postulacion=self.postulacion, seguimiento=self.seguimiento,
+        ))
 
 
 class ActorConfigurationContractTests(TestCase):
@@ -266,6 +375,14 @@ class ActorConfigurationContractTests(TestCase):
         self.assertEqual(decision.regimen_workflow_requerido, "PG_HITOS_V1")
         self.assertTrue(decision.validar_composicion_asignaciones)
         self.assertEqual(ProyectoGradoPolicy().get_decisiones_academicas_permitidas("DEFENSA_PERFIL"), ())
+
+    def test_proyecto_ubica_memorandum_en_decision_de_perfil_y_otras_etapas_permanecen_cerradas(self):
+        config = ProyectoGradoPolicy().get_publicacion_memorandum_designacion("PERFIL_PROYECTO")
+
+        self.assertEqual(config["tipo_documento"], "MEMORANDUM_DESIGNACION_PROYECTO")
+        self.assertEqual(config["decision_academica"], "PROPUESTA_APROBADA")
+        self.assertTrue(config["publicacion_independiente"])
+        self.assertIsNone(ProyectoGradoPolicy().get_publicacion_memorandum_designacion("DEFENSA_PERFIL"))
 
 
 class ProyectoGradoDocumentosAplicablesTests(TestCase):

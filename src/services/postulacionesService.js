@@ -437,6 +437,23 @@ export const postulacionesService = {
       throw normalizeAssignmentManagement(error, 'la decisión académica')
     }
   },
+  async obtenerMemorandumsDesignacion(postulacion, signal) {
+    try {
+      return (await apiClient.get(`/api/v1/postulaciones/${postulacion}/memorandums-designacion/`, { signal })).data
+    } catch (error) {
+      throw normalizeAssignmentManagement(error, 'los memorándums de designación')
+    }
+  },
+  async publicarMemorandumDesignacion(postulacion, seguimientoEtapa, archivo, signal) {
+    const body = new FormData()
+    body.append('seguimiento_etapa', String(seguimientoEtapa))
+    body.append('archivo', archivo)
+    try {
+      return (await apiClient.post(`/api/v1/postulaciones/${postulacion}/memorandums-designacion/`, body, { signal })).data
+    } catch (error) {
+      throw normalizeAssignmentManagement(error, 'el memorándum de designación')
+    }
+  },
   async finalizarAsignacion(asignacionId, payload, signal) {
     try {
       return (await apiClient.post(`/api/v1/asignaciones/${asignacionId}/finalizar/`, payload, { signal })).data

@@ -145,6 +145,10 @@ class Fase35FlowContractTests(TestCase):
         decision = data["gestion_decisiones_academicas"]["decisiones"][0]
         self.assertTrue(decision["habilitada"])
         self.assertEqual(decision["acciones_permitidas"], ["REGISTRAR"])
+        self.assertEqual(decision["memorandum_designacion"]["tipo_documento"], "MEMORANDUM_DESIGNACION_PROYECTO")
+        self.assertEqual(decision["memorandum_designacion"]["decision_academica"], "PROPUESTA_APROBADA")
+        self.assertTrue(decision["memorandum_designacion"]["publicacion_independiente"])
+        self.assertIsNone(data["gestion_decisiones_academicas"]["memorandum_designacion_contextual"])
         self.assertEqual([item["asignacion"] for item in decision["participantes_disponibles"]], [item.pk for item in assignments])
         self.assertEqual([item["orden"] for item in decision["participantes_disponibles"]], [1, 2, 3])
         self.assertEqual(data["orientacion_etapa_actual"]["siguiente_accion"]["codigo"], "REGISTRAR_DECISION")
