@@ -518,6 +518,19 @@ export default function ExpedientePage() {
   const canManageAssignments = auth?.hasPermission?.('puede_gestionar_asignaciones') === true
   const canManageTribunalReports = auth?.hasPermission?.('puede_gestionar_seguimiento') === true
   const isProjectGrade = detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO'
+  const isExamGrade = detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO'
+  const isAcademicExcellence = detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA'
+  const examResult = isExamGrade ? examen?.resultado_final : null
+  const effectiveResult = isExamGrade
+    ? {
+        data: examResult
+          ? examResult.completo === true
+            ? examResult
+            : { ...examResult, nota_final: null, clasificacion: null }
+          : null,
+        error: '',
+      }
+    : resultado
   const tribunalReviewStage = (flujo.etapas || []).find((stage) => stage.codigo === 'REVISION_TRIBUNAL_PREVIA')
   const documentRows = documents.data?.results || []
   const finalDocument = documentRows.find((document) => document.tipo_documento_nombre === 'Documento Final' || document.tipo_documento_codigo === 'DOCUMENTO_FINAL')
@@ -547,6 +560,15 @@ export default function ExpedientePage() {
   const closureDetailsOpen = closureIsRelevant
     || (isProjectGrade && currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA')
   const completedStages = stages.filter((stage) => ['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)).length
+  const academicExcellenceResult = isAcademicExcellence
+    && stages.some((stage) => stage.codigo === 'CONCLUSION_ACADEMICA' && stage.estado === 'APROBADA')
+    && ['FAVORABLE', 'DESFAVORABLE'].includes(excelencia?.resultado?.estado)
+    ? {
+        criterio: excelencia.criterio,
+        estado: excelencia.resultado.estado,
+        promedioGeneral: excelencia.resultado.promedio_general,
+      }
+    : null
   const pendingTechnicalClosure = Boolean(
     data.capacidades?.cierre_soportado === true
     && stages.length > 0
@@ -607,6 +629,19 @@ export default function ExpedientePage() {
   const isConcluded = detalle.estado_actual_detalle?.codigo === 'CONCLUIDA'
     || cierre.data?.concluida === true
     || cierre.data?.estado_general === 'CONCLUIDA'
+  const canStartCurrentStage = canManageApplications
+    && currentStage?.id
+    && currentStage.estado === 'PENDIENTE'
+    && !isConcluded
+    && (!isAcademicExcellence || currentStage.acciones_permitidas?.includes('iniciar'))
+  const examConclusionPending = Boolean(
+    isExamGrade
+    && examResult?.completo === true
+    && !isConcluded
+    && currentStage == null
+    && stages.length > 0
+    && completedStages === stages.length
+  )
   const isStudentView = auth?.roleCode === 'ESTUDIANTE'
 
   if (isStudentView) {
@@ -648,7 +683,7 @@ export default function ExpedientePage() {
   }
 
   const startCurrentStage = async () => {
-    if (stageInitializationSubmitting.current || !currentStage?.id || currentStage.estado !== 'PENDIENTE') return
+    if (stageInitializationSubmitting.current || !canStartCurrentStage) return
     stageInitializationSubmitting.current = true
     stageInitializationController.current?.abort()
     const controller = new AbortController()
@@ -1468,23 +1503,25 @@ export default function ExpedientePage() {
   const academicResultSection = <>
     <Card className="overflow-hidden" aria-labelledby="resultado-academico-title">
       <h2 id="resultado-academico-title" className="text-xl font-bold">Resultado académico técnico</h2>
-      {resultado.error ? <PartialState message={resultado.error} onRetry={() => setRevision((value) => value + 1)} /> : (
+      {effectiveResult.error ? <PartialState message={effectiveResult.error} onRetry={() => setRevision((value) => value + 1)} /> : (
         <dl className="mt-5 grid gap-3 sm:grid-cols-3">
-          {detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' ? <>
-            <Score label="Nota de Defensa Privada" value={resultado.data?.nota_privada} scale={resultado.data?.semantica_privada === 'LEGACY_PONDERADA' ? '30' : resultado.data?.semantica_privada === 'BRUTA_100' ? '100' : null} detail={resultado.data?.semantica_privada === 'LEGACY_PONDERADA' ? 'Registro con escala anterior' : resultado.data?.semantica_privada === 'BRUTA_100' ? 'Calificación' : null} decimalComma />
-            <Score label="Aporte de Defensa Privada" value={resultado.data?.aporte_privada} scale={resultado.data?.aporte_privada != null ? '30' : null} detail={resultado.data?.aporte_privada != null ? 'Ponderación 30%' : null} decimalComma />
-            <Score label="Nota de Defensa Pública" value={resultado.data?.nota_publica} scale={resultado.data?.semantica_publica === 'LEGACY_PONDERADA' ? '70' : resultado.data?.semantica_publica === 'BRUTA_100' ? '100' : null} detail={resultado.data?.semantica_publica === 'LEGACY_PONDERADA' ? 'Registro con escala anterior' : resultado.data?.semantica_publica === 'BRUTA_100' ? 'Calificación' : null} decimalComma />
-            <Score label="Aporte de Defensa Pública" value={resultado.data?.aporte_publica} scale={resultado.data?.aporte_publica != null ? '70' : null} detail={resultado.data?.aporte_publica != null ? 'Ponderación 70%' : null} decimalComma />
+          {isProjectGrade ? <>
+            <Score label="Nota de Defensa Privada" value={effectiveResult.data?.nota_privada} scale={effectiveResult.data?.semantica_privada === 'LEGACY_PONDERADA' ? '30' : effectiveResult.data?.semantica_privada === 'BRUTA_100' ? '100' : null} detail={effectiveResult.data?.semantica_privada === 'LEGACY_PONDERADA' ? 'Registro con escala anterior' : effectiveResult.data?.semantica_privada === 'BRUTA_100' ? 'Calificación' : null} decimalComma />
+            <Score label="Aporte de Defensa Privada" value={effectiveResult.data?.aporte_privada} scale={effectiveResult.data?.aporte_privada != null ? '30' : null} detail={effectiveResult.data?.aporte_privada != null ? 'Ponderación 30%' : null} decimalComma />
+            <Score label="Nota de Defensa Pública" value={effectiveResult.data?.nota_publica} scale={effectiveResult.data?.semantica_publica === 'LEGACY_PONDERADA' ? '70' : effectiveResult.data?.semantica_publica === 'BRUTA_100' ? '100' : null} detail={effectiveResult.data?.semantica_publica === 'LEGACY_PONDERADA' ? 'Registro con escala anterior' : effectiveResult.data?.semantica_publica === 'BRUTA_100' ? 'Calificación' : null} decimalComma />
+            <Score label="Aporte de Defensa Pública" value={effectiveResult.data?.aporte_publica} scale={effectiveResult.data?.aporte_publica != null ? '70' : null} detail={effectiveResult.data?.aporte_publica != null ? 'Ponderación 70%' : null} decimalComma />
+          </> : isExamGrade ? <>
+            <Score label="Calificación final" value={effectiveResult.data?.nota_final} scale="100" fallback="Pendiente" decimalComma />
           </> : <>
-            <Score label="Privada" value={resultado.data?.nota_privada} scale="30" />
-            <Score label="Pública" value={resultado.data?.nota_publica} scale={detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' ? '100' : '70'} />
-            {detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' && <Score label="Aporte pública" value={resultado.data?.aporte_publica} scale="70" />}
+            <Score label="Privada" value={effectiveResult.data?.nota_privada} scale="30" />
+            <Score label="Pública" value={effectiveResult.data?.nota_publica} scale={detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' ? '100' : '70'} />
+            {detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' && <Score label="Aporte pública" value={effectiveResult.data?.aporte_publica} scale="70" />}
           </>}
-          <Score label={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' ? 'Nota Final' : 'Final'} value={resultado.data?.nota_final} scale="100" fallback="Pendiente" decimalComma={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO'} />
+          {!isExamGrade && <Score label={isProjectGrade ? 'Nota Final' : 'Final'} value={effectiveResult.data?.nota_final} scale="100" fallback="Pendiente" decimalComma={isProjectGrade} />}
         </dl>
       )}
-      {resultado.data?.clasificacion && <p className="mt-5 rounded-lg bg-slate-100 px-4 py-3 text-center font-bold tracking-wide dark:bg-slate-800">{formatAcademicClassification(resultado.data.clasificacion)}</p>}
-      {resultado.data?.limitacion_normativa && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{resultado.data.limitacion_normativa}</p>}
+      {effectiveResult.data?.clasificacion && <p className="mt-5 rounded-lg bg-slate-100 px-4 py-3 text-center font-bold tracking-wide dark:bg-slate-800">{formatAcademicClassification(effectiveResult.data.clasificacion)}</p>}
+      {effectiveResult.data?.limitacion_normativa && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{effectiveResult.data.limitacion_normativa}</p>}
     </Card>
     <AcademicConclusion postulacion={detalle.id} modalidadCodigo={detalle.modalidad_detalle?.codigo} resultado={resultado} canManage={canManageClosure} onChanged={() => { setRevision((value) => value + 1); setHistoryRevision((value) => value + 1) }} />
   </>
@@ -1500,7 +1537,7 @@ export default function ExpedientePage() {
         key={detalle.id}
         postulacion={detalle.id}
         initialClosure={cierre}
-        resultado={resultado}
+        resultado={effectiveResult}
         stages={flujo.etapas}
         canManage={canManageClosure}
         refreshToken={closureRevision}
@@ -1593,7 +1630,7 @@ export default function ExpedientePage() {
                 </div>
               )}
               {flowInitialization.error && <p role="alert" className="mt-3 text-sm text-red-600">{flowInitialization.error}</p>}
-              {canManageApplications && currentStage?.id && currentStage.estado === 'PENDIENTE' && !isConcluded && (
+              {canStartCurrentStage && (
                 <div className="mt-5">
                   <Button disabled={stageInitialization.submitting} onClick={startCurrentStage}>
                     {stageInitialization.submitting ? 'Iniciando…' : `Iniciar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
@@ -1624,7 +1661,7 @@ export default function ExpedientePage() {
 
       {!isHistorical && <ExpedienteNav activeTab={activeTab} hasModalityTab={hasModalityTab} hasOutcomeTab={hasOutcomeTab} onActivate={(sectionId) => navigateToSection(sectionId)} />}
       <div id="panel-resumen" role="tabpanel" aria-labelledby="expediente-tab-resumen" data-expediente-panel="resumen" hidden={!isHistorical && activeTab !== 'resumen'}>
-        {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} pendingCurrentRequirements={pendingCurrentRequirements} onApproveStage={approveCurrentStage} canApproveStage={canApproveStage} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} workflowProgress={safeProgress} pendingTechnicalClosure={pendingTechnicalClosure} resultado={resultado} concluded={isConcluded} defenses={defenses.data?.results || []} isProjectGrade={isProjectGrade} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageAssignments={canManageAssignments} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} hideRequirements={isProjectInscription} onCompleteAuthorities={() => setTeamAssignment({ mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '', results: {} })} onManageActors={openActorManagement} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
+        {!isHistorical && <div id="resumen" className="scroll-mt-24"><OperationalSummary cierre={cierre.data} cierreSoportado={cierreSoportado} currentStage={currentStage} orientation={thesisConclusionOrientation || flujo.orientacion_etapa_actual} stageApproval={stageApproval} pendingCurrentRequirements={pendingCurrentRequirements} onApproveStage={approveCurrentStage} canApproveStage={canApproveStage} onGoToDocuments={scrollToDocuments} completedStages={completedStages} totalStages={stages.length} workflowProgress={safeProgress} pendingTechnicalClosure={pendingTechnicalClosure} examConclusionPending={examConclusionPending} academicExcellenceResult={academicExcellenceResult} resultado={effectiveResult} concluded={isConcluded} defenses={defenses.data?.results || []} isProjectGrade={isProjectGrade} isExamGrade={isExamGrade} isAcademicExcellence={isAcademicExcellence} isThesisPublicStage={isThesisPublicStage} publicDefenseMissingRoles={publicDefenseMissingRoles} canUpload={canUpload} canManageApplications={canManageApplications} canManageAssignments={canManageAssignments} canManageDefenses={canManageDefenses} canManageEvaluations={canManageEvaluations} hideRequirements={isProjectInscription} onCompleteAuthorities={() => setTeamAssignment({ mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '', results: {} })} onManageActors={openActorManagement} onManageMissingActors={() => { assignmentSubmitting.current = false; setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' }) }} /></div>}
       </div>
 
       <div id="panel-documentos" role="tabpanel" aria-labelledby="expediente-tab-documentos" data-expediente-panel="documentos" hidden={!isHistorical && activeTab !== 'documentos'}>
@@ -1719,7 +1756,7 @@ export default function ExpedientePage() {
       </div>
 
       {hasModalityTab && <div id="modalidad" role="tabpanel" aria-labelledby="expediente-tab-modalidad" data-expediente-panel="modalidad" hidden={activeTab !== 'modalidad'}>
-        {modalityCode === 'EXAMEN_GRADO' && <ExamenGradoAreas postulacion={detalle.id} examen={examen} etapaCodigo={currentStage?.codigo} canManage={canManageEvaluations} onChanged={() => { setExamenRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+        {modalityCode === 'EXAMEN_GRADO' && <ExamenGradoAreas postulacion={detalle.id} examen={examen} etapaCodigo={currentStage?.codigo} postulacionConcluida={isConcluded} canManage={canManageEvaluations} onChanged={() => { setExamenRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
         {modalityCode === 'EXCELENCIA_ACADEMICA' && <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
         {modalityCode === 'GRADUACION_VIA_DIPLOMADO' && <Diplomado postulacion={detalle.id} diplomado={diplomado} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setDiplomadoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
         {modalityCode === 'TRABAJO_DIRIGIDO' && <TrabajoDirigido postulacion={detalle.id} trabajo={trabajoDirigido} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setTrabajoDirigidoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
@@ -1905,11 +1942,41 @@ function clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, cur
   }
 }
 
-function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, resultado, concluded, defenses = [], isProjectGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, onCompleteAuthorities, onManageActors, onManageMissingActors }) {
+function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, examConclusionPending = false, academicExcellenceResult = null, resultado, concluded, defenses = [], isProjectGrade = false, isExamGrade = false, isAcademicExcellence = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, onCompleteAuthorities, onManageActors, onManageMissingActors }) {
+  if (isAcademicExcellence && academicExcellenceResult) {
+    const favorable = academicExcellenceResult.estado === 'FAVORABLE'
+    const showAverage = academicExcellenceResult.criterio === 'RENDIMIENTO_ACADEMICO'
+      && academicExcellenceResult.promedioGeneral !== null
+      && academicExcellenceResult.promedioGeneral !== undefined
+      && academicExcellenceResult.promedioGeneral !== ''
+    return <Card className="overflow-hidden border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-800 dark:text-emerald-200">Orientación del expediente</p>
+      <h2 className="mt-2 text-xl font-bold">Resultado académico final</h2>
+      <dl className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div><dt className="text-xs uppercase text-slate-500">Conclusión académica</dt><dd className="font-semibold">Aprobada</dd></div>
+        <div><dt className="text-xs uppercase text-slate-500">Resultado académico</dt><dd className="font-semibold"><StatusBadge value={favorable ? 'Favorable' : 'Desfavorable'} positive={favorable} /></dd></div>
+        {showAverage && <div><dt className="text-xs uppercase text-slate-500">Promedio académico</dt><dd className="font-semibold">{academicExcellenceResult.promedioGeneral}</dd></div>}
+      </dl>
+      <p className="mt-4 text-sm">La conclusión académica está registrada independientemente del estado administrativo general de la postulación.</p>
+    </Card>
+  }
   if (concluded) return <Card className="overflow-hidden border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
     <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-800 dark:text-emerald-200">✓ Expediente concluido</p>
     <p className="mt-3 font-medium">{cierreSoportado ? 'Todas las etapas académicas y el cierre documental se encuentran completados.' : 'Todas las etapas académicas se encuentran completadas.'}</p>
-    <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Nota final: {resultado?.data?.nota_final ?? 'No registrada'}</strong>{resultado?.data?.clasificacion && <StatusBadge value={formatCode(resultado.data.clasificacion)} positive />}</div>
+    <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Nota final: {isExamGrade && resultado?.data?.nota_final != null ? String(resultado.data.nota_final).replace('.', ',') : resultado?.data?.nota_final ?? 'No registrada'}{isExamGrade && resultado?.data?.nota_final != null ? '/100' : ''}</strong>{resultado?.data?.clasificacion && <StatusBadge value={formatAcademicClassification(resultado.data.clasificacion)} positive />}</div>
+  </Card>
+  if (examConclusionPending) return <Card className="overflow-hidden border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950">
+    <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800 dark:text-sky-200">Orientación del expediente</p>
+    <h2 className="mt-2 text-xl font-bold">Conclusión de la postulación pendiente</h2>
+    <section className="mt-4 rounded-xl border border-sky-200 bg-white/70 p-4 dark:border-sky-800 dark:bg-slate-900/60" aria-labelledby="exam-conclusion-guidance-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h3 id="exam-conclusion-guidance-title" className="text-lg font-bold">Flujo académico completado</h3><p className="mt-1 text-sm text-slate-500">{completedStages} de {totalStages} etapas completadas · {workflowProgress}% de etapas</p></div>
+        <StatusBadge value="Aprobada" positive />
+      </div>
+    </section>
+    <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Calificación final: {String(resultado.data.nota_final).replace('.', ',')}/100</strong>{resultado.data.clasificacion && <StatusBadge value={formatAcademicClassification(resultado.data.clasificacion)} positive />}</div>
+    <p className="mt-4 text-sm">El flujo académico terminó, pero la postulación continúa En proceso. Falta ejecutar la conclusión de la postulación con la operación administrativa existente.</p>
+    <a className="mt-4 inline-block font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#examen">Ir a concluir académicamente</a>
   </Card>
   if (pendingTechnicalClosure) return <Card className="overflow-hidden border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950">
     <p className="text-xs font-bold uppercase tracking-[0.16em] text-sky-800 dark:text-sky-200">Cierre técnico del expediente</p>
@@ -1931,6 +1998,7 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
       : 'No existe una etapa actual disponible.'
   const operationIsCurrent = ['EN_PROCESO', 'OBSERVADA'].includes(currentStage?.estado)
     || orientation?.operacion === 'ORIENTAR_CONCLUSION_ACADEMICA'
+    || (isAcademicExcellence && orientation?.operacion === 'CONFIGURAR_EXCELENCIA')
     || currentStage?.estado == null
   const effectiveOrientation = operationIsCurrent
     ? clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, currentStage)
@@ -2024,6 +2092,7 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
         {currentStage?.estado && <StatusBadge value={currentStage.estado_display || formatStatus(currentStage.estado)} positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(currentStage.estado)} />}
       </div>
     </section>
+    {isExamGrade && resultado?.data?.nota_final != null && <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Calificación final: {String(resultado.data.nota_final).replace('.', ',')}/100</strong>{resultado.data.clasificacion && <StatusBadge value={formatAcademicClassification(resultado.data.clasificacion)} positive />}</div>}
     <p className="mt-4 text-sm">{orientationMessage}</p>
     {approvalMissingLabels ? <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="missing-document-action-title">
       <h3 id="missing-document-action-title" className="text-lg font-bold">Siguiente acción</h3>
@@ -2528,6 +2597,14 @@ function restrictionsShareIdentityGroup(first, second) {
     && first.restriccion_identidad.grupo === second.restriccion_identidad.grupo
 }
 
+function findSelectedDraft(position, candidateId, positions, drafts) {
+  if (!candidateId) return null
+  return positions.find((otherPosition) => (
+    otherPosition.clave !== position.clave
+    && String(drafts[otherPosition.clave]?.candidateId || '') === String(candidateId)
+  )) || null
+}
+
 function findConflictingDraft(position, candidateId, positions, drafts) {
   if (!candidateId || !hasUniqueIdentityRestriction(position)) return null
   return positions.find((otherPosition) => (
@@ -2601,6 +2678,7 @@ function EligibleActorCandidates({ postulacion, position, positions, drafts, can
         <select aria-label={`${action === 'REEMPLAZAR' ? 'Seleccionar reemplazo para' : 'Seleccionar candidato para'} ${position.nombre}`} value={selected?.candidateId || ''} disabled={disabled || visibleRows.length === 0} onChange={(event) => onSelect(visibleRows.find((candidate) => String(candidate.id) === event.target.value) || null)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
           <option value="">Seleccione una persona</option>
           {visibleRows.map((candidate) => {
+            const selectedDraft = findSelectedDraft(position, candidate.id, positions, drafts)
             const conflict = findConflictingDraft(position, candidate.id, positions, drafts)
             const label = candidate.nombre_completo || candidate.username || candidate.label
             const role = candidate.rol_nombre || candidate.rol_codigo
@@ -2610,7 +2688,7 @@ function EligibleActorCandidates({ postulacion, position, positions, drafts, can
               : []
             const disabled = candidate.elegible === false || Boolean(conflict)
             return <option key={candidate.id} value={candidate.id} disabled={disabled}>
-              {label}{role ? ` — ${role}` : ''}{identifier ? ` · ${identifier}` : ''}{activeAssignmentLabels.length > 0 ? ` · Asignación vigente: ${activeAssignmentLabels.join(', ')}` : ''}{conflict ? ` — Seleccionado como ${conflict.nombre}` : ''}
+              {label}{role ? ` — ${role}` : ''}{identifier ? ` · ${identifier}` : ''}{activeAssignmentLabels.length > 0 ? ` · Asignación vigente: ${activeAssignmentLabels.join(', ')}` : ''}{selectedDraft ? ` — Seleccionado como ${selectedDraft.nombre}` : ''}
             </option>
           })}
         </select>

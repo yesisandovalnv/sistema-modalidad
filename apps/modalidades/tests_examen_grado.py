@@ -10,10 +10,11 @@ from rest_framework.test import APIClient
 from apps.academico.models import Modalidad, Periodo
 from apps.modalidades.examen_grado import ExamenGradoPolicy
 from apps.modalidades.examen_grado_service import ExamenGradoService
-from apps.modalidades.models import ExamenEvaluacion
+from apps.modalidades.models import ExamenArea, ExamenEvaluacion
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
 from apps.modalidades.policies import ModalidadPolicyRegistry
 from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import CustomUser, Role
 
@@ -74,6 +75,28 @@ class ExamenGradoContenidosTest(TestCase):
         capabilities = self.policy.get_capabilities(self.post.modalidad)
         self.assertTrue(capabilities.soportada and capabilities.workflow_configurado)
 
+    def test_declara_y_resuelve_las_cinco_posiciones_de_actores(self):
+        configuration = self.policy.get_configuracion_actores(self.post)
+        groups = configuration["grupos"]
+        self.assertEqual([group["tipo_participacion"] for group in groups], ["TRIBUNAL", "PRESIDENTE", "SECRETARIO"])
+        self.assertEqual(groups[0]["ordenes_permitidos"], [1, 2, 3])
+        self.assertTrue(all(group["ambito"] == "POSTULACION" for group in groups))
+        composition = self.policy.resolver_composicion_activa(self.post)
+        self.assertTrue(composition["completa"])
+        self.assertTrue(composition["evaluable"])
+        self.assertEqual(len(composition["tribunales"]), 3)
+
+    def test_composicion_incompleta_orienta_a_gestion_de_actores(self):
+        AsignacionPostulacion.objects.filter(
+            postulacion=self.post, tipo_participacion="SECRETARIO",
+        ).update(activo=False)
+        self._approve_stage("INSCRIPCION")
+        preparation = self.follow["PREPARACION_EXAMEN"]
+        orientation = self.policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=preparation)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "GESTIONAR_ACTORES")
+        self.assertEqual(orientation["siguiente_accion"]["destino"], "#actores")
+        self.assertIn("Secretario", [item["nombre"] for item in orientation["requisitos"]])
+
     def test_overview_api_expone_areas_y_reglas(self):
         client = APIClient()
         client.force_authenticate(self.admin)
@@ -82,6 +105,20 @@ class ExamenGradoContenidosTest(TestCase):
         self.assertEqual(response.data["variante"], "EXAMEN_CONTENIDOS")
         self.assertEqual([area["codigo"] for area in response.data["areas"]], ["AREA_1", "AREA_2", "AREA_3", "AREA_4"])
         self.assertEqual(response.data["reglas"]["nota_minima"], 61)
+        self.assertTrue(response.data["composicion"]["completa"])
+        self.assertTrue(response.data["composicion"]["evaluable"])
+
+    def test_motor_rechaza_posicion_duplicada_e_identidad_repetida(self):
+        candidate = CustomUser.objects.create_user(
+            f"duplicate-position-{self._testMethodName}", password="x", role=self.teacher_role,
+            ci=f"DP{self._testMethodName[:8]}", ru=f"DPR{self._testMethodName[:8]}",
+        )
+        with self.assertRaisesMessage(ValidationError, "Ya existe un tribunal activo en esa posición"):
+            AsignacionService.asignar_actor(self.post, candidate, "TRIBUNAL", self.admin, orden_cargo=1)
+
+        self.post.asignaciones.filter(tipo_participacion="PRESIDENTE").update(activo=False)
+        with self.assertRaisesMessage(ValidationError, "otra asignación vigente"):
+            AsignacionService.asignar_actor(self.post, self.tribunal_users[0], "PRESIDENTE", self.admin)
 
     def test_bloquea_avance_secuencial_de_areas(self):
         self._approve_stage("INSCRIPCION")
@@ -137,6 +174,61 @@ class ExamenGradoContenidosTest(TestCase):
         self.assertIsNone(result["nota_final"])
         self.assertEqual(result["areas"]["AREA_1"], "62.00")
 
+    def test_promedio_aprobado_conserva_resultados_individuales_y_serializacion(self):
+        self._approve_stage("INSCRIPCION")
+        self._approve_stage("PREPARACION_EXAMEN")
+        self._start_area("AREA_1")
+
+        self._evaluate_area("AREA_1", (50, 70, 70))
+
+        area = self.post.examen_areas.get(codigo="AREA_1")
+        evaluations = list(area.evaluaciones.filter(intento=1).order_by("evaluador_id"))
+        self.assertEqual(area.estado, ExamenArea.Estado.APROBADA)
+        self.assertEqual(
+            sorted((item.nota, item.resultado) for item in evaluations),
+            [
+                (Decimal("50.00"), ExamenEvaluacion.Resultado.INSUFICIENTE),
+                (Decimal("70.00"), ExamenEvaluacion.Resultado.APROBADA),
+                (Decimal("70.00"), ExamenEvaluacion.Resultado.APROBADA),
+            ],
+        )
+        for evaluation in evaluations:
+            evaluation.full_clean()
+
+        result = ExamenGradoService.calcular_resultado_final(self.post)
+        self.assertEqual(result["areas"]["AREA_1"], "63.33")
+        serialized = ExamenGradoService.overview(self.post)["areas"][0]["evaluaciones"]
+        self.assertEqual(
+            sorted((Decimal(item["nota"]), item["resultado"]) for item in serialized),
+            [
+                (Decimal("50.00"), ExamenEvaluacion.Resultado.INSUFICIENTE),
+                (Decimal("70.00"), ExamenEvaluacion.Resultado.APROBADA),
+                (Decimal("70.00"), ExamenEvaluacion.Resultado.APROBADA),
+            ],
+        )
+
+    def test_promedio_insuficiente_conserva_resultados_individuales(self):
+        self._approve_stage("INSCRIPCION")
+        self._approve_stage("PREPARACION_EXAMEN")
+        self._start_area("AREA_1")
+
+        self._evaluate_area("AREA_1", (100, 40, 40))
+
+        area = self.post.examen_areas.get(codigo="AREA_1")
+        evaluations = list(area.evaluaciones.filter(intento=1))
+        self.assertEqual(area.estado, ExamenArea.Estado.POSTERGADA)
+        self.assertEqual(area.intento_actual, 2)
+        self.assertEqual(
+            sorted((item.nota, item.resultado) for item in evaluations),
+            [
+                (Decimal("40.00"), ExamenEvaluacion.Resultado.INSUFICIENTE),
+                (Decimal("40.00"), ExamenEvaluacion.Resultado.INSUFICIENTE),
+                (Decimal("100.00"), ExamenEvaluacion.Resultado.APROBADA),
+            ],
+        )
+        for evaluation in evaluations:
+            evaluation.full_clean()
+
     def test_consenso_persiste_una_unica_nota_del_area(self):
         self._approve_stage("INSCRIPCION")
         self._approve_stage("PREPARACION_EXAMEN")
@@ -147,6 +239,54 @@ class ExamenGradoContenidosTest(TestCase):
         self.assertEqual(self.post.examen_areas.get(codigo="AREA_1").estado, "APROBADA")
         self.assertEqual(self.post.examen_areas.get(codigo="AREA_1").evaluaciones.count(), 1)
         self.assertEqual(ExamenGradoService.calcular_resultado_final(self.post)["areas"]["AREA_1"], "75.00")
+
+    def test_reemplazo_antes_de_calificar_mantiene_composicion_evaluable(self):
+        self._approve_stage("INSCRIPCION")
+        self._approve_stage("PREPARACION_EXAMEN")
+        self._start_area("AREA_1")
+        assignment = self.post.asignaciones.get(tipo_participacion="TRIBUNAL", orden_cargo=1, activo=True)
+        replacement = CustomUser.objects.create_user(
+            f"replacement-before-{self._testMethodName}", password="x", role=self.teacher_role,
+            ci=f"RB{self._testMethodName[:8]}", ru=f"RBR{self._testMethodName[:8]}",
+        )
+        AsignacionService.reemplazar_actor(assignment, replacement, self.admin, "Cambio previo")
+        composition = self.policy.resolver_composicion_activa(self.post, self.post.examen_areas.get(codigo="AREA_1"))
+        self.assertTrue(composition["evaluable"])
+        ExamenGradoService.registrar_evaluacion(self.post, "AREA_1", 61, self.admin, evaluador_id=replacement.pk)
+
+    def test_reemplazo_despues_de_nota_bloquea_mezcla_y_conserva_historial(self):
+        self._approve_stage("INSCRIPCION")
+        self._approve_stage("PREPARACION_EXAMEN")
+        self._start_area("AREA_1")
+        original = self.post.asignaciones.get(tipo_participacion="TRIBUNAL", orden_cargo=1, activo=True)
+        ExamenGradoService.registrar_evaluacion(self.post, "AREA_1", 70, self.admin, evaluador_id=original.usuario_id)
+        replacement = CustomUser.objects.create_user(
+            f"replacement-after-{self._testMethodName}", password="x", role=self.teacher_role,
+            ci=f"RA{self._testMethodName[:8]}", ru=f"RAR{self._testMethodName[:8]}",
+        )
+        AsignacionService.reemplazar_actor(original, replacement, self.admin, "Cambio posterior")
+        with self.assertRaisesMessage(ValidationError, "ya no pertenecen al tribunal activo"):
+            ExamenGradoService.registrar_evaluacion(self.post, "AREA_1", 71, self.admin, evaluador_id=replacement.pk)
+        evaluation = self.post.examen_areas.get(codigo="AREA_1").evaluaciones.get()
+        self.assertEqual(evaluation.evaluador_id, original.usuario_id)
+        self.assertEqual(evaluation.nota, Decimal("70.00"))
+
+    def test_finalizacion_directa_deja_bloqueada_la_evaluacion(self):
+        self._approve_stage("INSCRIPCION")
+        self._approve_stage("PREPARACION_EXAMEN")
+        self._start_area("AREA_1")
+        assignment = self.post.asignaciones.get(tipo_participacion="TRIBUNAL", orden_cargo=1, activo=True)
+        AsignacionService.finalizar_asignacion(assignment, self.admin, "Finalización directa")
+        with self.assertRaisesMessage(ValidationError, "composición del Examen no permite evaluar"):
+            ExamenGradoService.registrar_evaluacion(self.post, "AREA_1", 70, self.admin, evaluador_id=assignment.usuario_id)
+
+    def test_no_permite_mezclar_registro_individual_y_consenso(self):
+        self._approve_stage("INSCRIPCION")
+        self._approve_stage("PREPARACION_EXAMEN")
+        self._start_area("AREA_1")
+        ExamenGradoService.registrar_evaluacion(self.post, "AREA_1", 70, self.admin, evaluador_id=self.tribunal_users[0].pk)
+        with self.assertRaisesMessage(ValidationError, "No se pueden mezclar"):
+            self._evaluate_consensus("AREA_1", 70)
 
     def test_conclusion_exige_documentos_y_concluye_con_acta_y_hoja(self):
         self._approve_stage("INSCRIPCION")

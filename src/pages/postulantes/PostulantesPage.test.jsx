@@ -357,16 +357,18 @@ describe('Nueva postulación', () => {
   })
 
   it.each([
-    { statusCode: 'REGISTRADA', statusName: 'Registrada', modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
-    { statusCode: 'EN_PROCESO', statusName: 'En proceso', modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
-    { statusCode: 'EN_REVISION', statusName: 'En revisión', modalityCode: 'TESIS_GRADO', modalityName: 'Tesis de Grado' },
-    { statusCode: 'OBSERVADA', statusName: 'Observada', modalityCode: 'GRADUACION_VIA_DIPLOMADO', modalityName: 'Graduación Vía Diplomado' },
-    { statusCode: 'SUBSANADA', statusName: 'Subsanada', modalityCode: 'EXCELENCIA_ACADEMICA', modalityName: 'Excelencia Académica' },
-    { statusCode: 'APROBADA', statusName: 'Aprobada', modalityCode: 'EXAMEN_GRADO', modalityName: 'Examen de Grado' },
-    { statusCode: 'RECHAZADA', statusName: 'Rechazada', modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
-    { statusCode: 'CONCLUIDA', statusName: 'Concluida', modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
-    { statusCode: null, statusName: 'Sin estado', modalityCode: 'TESIS_GRADO', modalityName: 'Tesis de Grado' },
-  ])('presenta $statusCode una sola vez en $modalityCode', async ({ statusCode, statusName, modalityCode, modalityName }) => {
+    { statusCode: 'REGISTRADA', statusName: 'Registrada', colorClasses: ['bg-amber-50', 'text-amber-700', 'dark:bg-amber-950/50', 'dark:text-amber-300'], modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
+    { statusCode: 'PENDIENTE', statusName: 'Pendiente', colorClasses: ['bg-amber-50', 'text-amber-700', 'dark:bg-amber-950/50', 'dark:text-amber-300'], modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
+    { statusCode: 'EN_PROCESO', statusName: 'En proceso', colorClasses: ['bg-sky-50', 'text-sky-700', 'dark:bg-sky-950/50', 'dark:text-sky-300'], modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
+    { statusCode: 'EN_REVISION', statusName: 'En revisión', colorClasses: ['bg-sky-50', 'text-sky-700', 'dark:bg-sky-950/50', 'dark:text-sky-300'], modalityCode: 'TESIS_GRADO', modalityName: 'Tesis de Grado' },
+    { statusCode: 'OBSERVADA', statusName: 'Observada', colorClasses: ['bg-amber-50', 'text-amber-700', 'dark:bg-amber-950/50', 'dark:text-amber-300'], modalityCode: 'GRADUACION_VIA_DIPLOMADO', modalityName: 'Graduación Vía Diplomado' },
+    { statusCode: 'SUBSANADA', statusName: 'Subsanada', colorClasses: ['bg-sky-50', 'text-sky-700', 'dark:bg-sky-950/50', 'dark:text-sky-300'], modalityCode: 'EXCELENCIA_ACADEMICA', modalityName: 'Excelencia Académica' },
+    { statusCode: 'APROBADA', statusName: 'Aprobada', colorClasses: ['bg-emerald-50', 'text-emerald-700', 'dark:bg-emerald-950/50', 'dark:text-emerald-300'], modalityCode: 'EXAMEN_GRADO', modalityName: 'Examen de Grado' },
+    { statusCode: 'RECHAZADA', statusName: 'Rechazada', colorClasses: ['bg-red-50', 'text-red-700', 'dark:bg-red-950/50', 'dark:text-red-300'], modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
+    { statusCode: 'CONCLUIDA', statusName: 'Concluida', colorClasses: ['bg-emerald-50', 'text-emerald-700', 'dark:bg-emerald-950/50', 'dark:text-emerald-300'], modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
+    { statusCode: 'CANCELADA', statusName: 'Cancelada', colorClasses: ['bg-slate-100', 'text-slate-700', 'dark:bg-slate-800', 'dark:text-slate-300'], modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
+    { statusCode: null, statusName: 'Sin estado', colorClasses: ['bg-slate-100', 'text-slate-700', 'dark:bg-slate-800', 'dark:text-slate-300'], modalityCode: 'TESIS_GRADO', modalityName: 'Tesis de Grado' },
+  ])('presenta $statusCode una sola vez en $modalityCode', async ({ statusCode, statusName, colorClasses, modalityCode, modalityName }) => {
     setup({
       rows: [{
         id: 42,
@@ -385,20 +387,20 @@ describe('Nueva postulación', () => {
     const link = await screen.findByRole('link', { name: 'Abrir expediente' })
     const card = link.closest('article')
     const actions = link.parentElement
-    const actionColumn = actions.parentElement
     const cardLayout = card.firstElementChild
-    const statusBadge = within(actionColumn).getByText(statusName)
+    const statusBadge = within(card).getByText(statusName)
+    const statusCell = statusBadge.parentElement
     const detailButton = within(card).getByRole('button', { name: 'Detalle' })
     const editButton = within(card).getByRole('button', { name: 'Editar' })
 
     expect(link).toHaveAttribute('href', '/postulaciones/42')
     expect(actions).toHaveClass('flex', 'flex-wrap', 'justify-end')
-    expect(actionColumn).toHaveClass('flex-col', 'items-end', 'gap-2')
-    expect(within(actionColumn).getAllByText(statusName)).toHaveLength(1)
-    expect(statusBadge).toHaveClass('rounded-full', 'text-xs', 'font-semibold', 'dark:bg-sky-950/50', 'dark:text-sky-300')
-    expect(statusBadge.parentElement).toBe(actionColumn)
-    expect(cardLayout).toHaveClass('flex-col', 'sm:flex-row')
-    expect(cardLayout).toHaveClass('sm:justify-between')
+    expect(within(card).getAllByText(statusName)).toHaveLength(1)
+    expect(statusBadge).toHaveClass('rounded-full', 'text-xs', 'font-semibold', ...colorClasses)
+    expect(statusCell).toHaveClass('flex', 'self-end', 'justify-end')
+    expect(cardLayout).toHaveClass('grid', 'sm:grid-cols-[minmax(0,1fr)_auto]', 'sm:items-start', 'sm:gap-y-0')
+    expect(actions).toBe(cardLayout.children[1])
+    expect(statusCell).toBe(cardLayout.children[3])
     expect(within(card).getByText('POST-042')).toBeInTheDocument()
     expect(within(card).getByText('Proceso con seguimiento')).toBeInTheDocument()
     expect(within(card).getByText(modalityName)).toBeInTheDocument()

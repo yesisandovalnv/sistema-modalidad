@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.academico.models import EtapaModalidad
 from apps.modalidades.examen_grado import AREA_DATA, ExamenGradoPolicy
 from apps.modalidades.models import ExamenArea, ExamenEvaluacion
-from apps.postulantes.models import AsignacionPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.models import Postulacion, SeguimientoEtapa
 from apps.postulantes.workflow import WorkflowService
 
 
@@ -34,19 +34,22 @@ class ExamenGradoService:
     def overview(cls, postulacion):
         areas = cls.ensure_areas(postulacion)
         result = cls.calcular_resultado_final(postulacion)
+        policy = ExamenGradoPolicy()
+        current_code = postulacion.seguimientos_etapa.filter(
+            activo=True, estado__in=("PENDIENTE", "EN_PROCESO", "OBSERVADA"),
+        ).order_by("etapa__orden", "numero_intento").values_list("etapa__codigo", flat=True).first()
+        current_area = next((area for area in areas if area.codigo == current_code), None)
+        composition = policy.resolver_composicion_activa(postulacion, area=current_area)
         return {
             "modalidad": "EXAMEN_GRADO",
             "variante": "EXAMEN_CONTENIDOS",
-            "etapa_actual": postulacion.seguimientos_etapa.filter(
-                activo=True, estado__in=("PENDIENTE", "EN_PROCESO", "OBSERVADA"),
-            ).order_by("etapa__orden", "numero_intento").values_list("etapa__codigo", flat=True).first(),
+            "etapa_actual": current_code,
             "areas": [cls._serialize_area(area) for area in areas],
             "tribunales": [
                 {"id": assignment.usuario_id, "nombre": str(assignment.usuario)}
-                for assignment in AsignacionPostulacion.objects.filter(
-                    postulacion=postulacion, activo=True, tipo_participacion="TRIBUNAL",
-                ).select_related("usuario")
+                for assignment in composition["tribunales"]
             ],
+            "composicion": cls._serialize_composition(composition),
             "resultado_final": result,
             "reglas": {"nota_minima": 61, "escala": [0, 100], "reintento_dias": 15, "ponderaciones": {code: str(weight) for code, _name, weight in AREA_DATA}},
         }
@@ -71,16 +74,16 @@ class ExamenGradoService:
         )
         if stage.estado != SeguimientoEtapa.EstadoChoices.EN_PROCESO:
             raise ValidationError("El área debe estar en proceso para registrar su evaluación.")
-        tribunales = list(postulacion.asignaciones.filter(activo=True, tipo_participacion="TRIBUNAL").values_list("usuario_id", flat=True))
-        roles = postulacion.asignaciones.filter(activo=True).values_list("tipo_participacion", flat=True)
-        role_counts = {role: sum(1 for value in roles if value == role) for role in ("TRIBUNAL", "PRESIDENTE", "SECRETARIO")}
-        if len(set(tribunales)) < 3 or role_counts["PRESIDENTE"] < 1 or role_counts["SECRETARIO"] < 1:
-            raise ValidationError("El Examen requiere tres tribunales, Presidente y Secretario antes de evaluar un área.")
+        composition = ExamenGradoPolicy().resolver_composicion_activa(postulacion, area=area)
+        if not composition["evaluable"]:
+            detail = composition["inconsistencias"][0] if composition["inconsistencias"] else "Faltan actores requeridos."
+            raise ValidationError(f"La composición del Examen no permite evaluar: {detail}")
+        current_evaluations = ExamenEvaluacion.objects.filter(area=area, intento=area.intento_actual)
+        if current_evaluations.exclude(modalidad_registro=modalidad_registro).exists():
+            raise ValidationError({"modalidad_registro": "No se pueden mezclar evaluaciones individuales y por consenso en el mismo intento."})
         evaluator = None
         if modalidad_registro == ExamenEvaluacion.ModalidadRegistro.INDIVIDUAL:
-            evaluator = AsignacionPostulacion.objects.filter(
-                postulacion=postulacion, activo=True, tipo_participacion="TRIBUNAL", usuario_id=evaluador_id,
-            ).first()
+            evaluator = next((item for item in composition["tribunales"] if item.usuario_id == evaluador_id), None)
             if evaluator is None:
                 raise ValidationError({"evaluador": "La evaluación individual requiere un tribunal activo del mismo Examen."})
             if ExamenEvaluacion.objects.filter(area=area, intento=area.intento_actual, evaluador_id=evaluator.usuario_id).exists():
@@ -113,7 +116,6 @@ class ExamenGradoService:
             return evaluation
         average = sum((item.nota for item in evaluations), Decimal("0")) / Decimal("3")
         result = ExamenEvaluacion.Resultado.APROBADA if average >= 61 else ExamenEvaluacion.Resultado.INSUFICIENTE
-        ExamenEvaluacion.objects.filter(area=area, intento=area.intento_actual).update(resultado=result)
         if result == ExamenEvaluacion.Resultado.APROBADA:
             area.estado = ExamenArea.Estado.APROBADA
             area.reintento_hasta = None
@@ -130,7 +132,6 @@ class ExamenGradoService:
             area.estado = ExamenArea.Estado.REPROBADA
             area.save(update_fields=["estado", "updated_at"])
             WorkflowService.rechazar_etapa(stage, usuario, "Segunda nota menor a 61: el postulante debe optar por otra modalidad de graduación.")
-        evaluation.refresh_from_db()
         return evaluation
 
     @classmethod
@@ -154,7 +155,7 @@ class ExamenGradoService:
         areas = ExamenArea.objects.filter(postulacion=postulacion, estado=ExamenArea.Estado.APROBADA)
         values = {}
         for area in areas:
-            evaluations = list(area.evaluaciones.filter(intento=area.intento_actual, modalidad_registro=ExamenEvaluacion.ModalidadRegistro.INDIVIDUAL, resultado=ExamenEvaluacion.Resultado.APROBADA))
+            evaluations = list(area.evaluaciones.filter(intento=area.intento_actual, modalidad_registro=ExamenEvaluacion.ModalidadRegistro.INDIVIDUAL))
             consensus = area.evaluaciones.filter(intento=area.intento_actual, modalidad_registro=ExamenEvaluacion.ModalidadRegistro.CONSENSO).first()
             values[area.codigo] = consensus.nota if consensus else (sum((item.nota for item in evaluations), Decimal("0")) / Decimal("3") if len(evaluations) == 3 else None)
         complete = all(values.get(code) is not None for code, _name, _weight in AREA_DATA)
@@ -171,3 +172,14 @@ class ExamenGradoService:
     @staticmethod
     def _serialize_area(area):
         return {"id": area.id, "codigo": area.codigo, "nombre": area.nombre, "orden": area.orden, "ponderacion": str(area.ponderacion), "estado": area.estado, "intento_actual": area.intento_actual, "reintento_hasta": area.reintento_hasta, "evaluaciones": [{"id": item.id, "intento": item.intento, "nota": str(item.nota), "resultado": item.resultado, "modalidad_registro": item.modalidad_registro, "fecha_evaluacion": item.fecha_evaluacion, "evaluador": item.evaluador_id, "observaciones": item.observaciones} for item in area.evaluaciones.all()]}
+
+    @staticmethod
+    def _serialize_composition(composition):
+        return {
+            "completa": composition["completa"],
+            "evaluable": composition["evaluable"],
+            "faltantes": composition["faltantes"],
+            "inconsistencias": composition["inconsistencias"],
+            "presidente": ({"id": composition["presidente"].usuario_id, "nombre": str(composition["presidente"].usuario)} if composition["presidente"] else None),
+            "secretario": ({"id": composition["secretario"].usuario_id, "nombre": str(composition["secretario"].usuario)} if composition["secretario"] else None),
+        }

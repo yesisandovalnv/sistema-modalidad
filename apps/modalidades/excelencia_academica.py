@@ -81,6 +81,101 @@ class ExcelenciaAcademicaPolicy(BaseModalidadPolicy):
             "DIRECTOR_INSTITUTO_INVESTIGACION": 1,
         }
 
+    def get_configuracion_actores(self, postulacion=None, seguimiento=None):
+        """Declara la composición institucional de Excelencia Académica."""
+        identidad_tribunal = {
+            "grupo": "TRIBUNAL_EXCELENCIA",
+            "unica_persona": True,
+        }
+        ocupacion_tribunal = {
+            "aplica": True,
+            "ambito": "POSTULACION",
+            "motivo": "YA_TIENE_ASIGNACION_VIGENTE_COMO_TRIBUNAL_EXCELENCIA",
+            "relevantes": ["TRIBUNAL"],
+        }
+        comun = {
+            "ambito": "POSTULACION",
+            "restriccion_identidad": None,
+            "ocupacion_actor": None,
+            "obligatoriedad": True,
+            "habilitada": True,
+            "precondicion": None,
+        }
+        return {
+            "regimen_workflow": getattr(postulacion, "regimen_workflow", None),
+            "grupos": [
+                {
+                    **comun,
+                    "restriccion_identidad": identidad_tribunal,
+                    "ocupacion_actor": ocupacion_tribunal,
+                    "clave": "TRIBUNAL_EXCELENCIA",
+                    "tipo_participacion": "TRIBUNAL",
+                    "nombre": "Tribunal docente",
+                    "minimo": 2,
+                    "maximo": 2,
+                    "ordenado": True,
+                    "ordenes_permitidos": [1, 2],
+                    "posiciones": [
+                        {
+                            "clave": "TRIBUNAL_EXCELENCIA_1",
+                            "orden_cargo": 1,
+                            "nombre": "Tribunal docente 1",
+                        },
+                        {
+                            "clave": "TRIBUNAL_EXCELENCIA_2",
+                            "orden_cargo": 2,
+                            "nombre": "Tribunal docente 2",
+                        },
+                    ],
+                },
+                {
+                    **comun,
+                    "clave": "PRESIDENTE_EXCELENCIA",
+                    "tipo_participacion": "PRESIDENTE",
+                    "nombre": "Presidente",
+                    "minimo": 1,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "posiciones": [{
+                        "clave": "PRESIDENTE_EXCELENCIA_1",
+                        "orden_cargo": None,
+                        "nombre": "Presidente",
+                    }],
+                },
+                {
+                    **comun,
+                    "clave": "SECRETARIO_EXCELENCIA",
+                    "tipo_participacion": "SECRETARIO",
+                    "nombre": "Secretario",
+                    "minimo": 1,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "posiciones": [{
+                        "clave": "SECRETARIO_EXCELENCIA_1",
+                        "orden_cargo": None,
+                        "nombre": "Secretario",
+                    }],
+                },
+                {
+                    **comun,
+                    "clave": "DIRECTOR_INSTITUTO_INVESTIGACION_EXCELENCIA",
+                    "tipo_participacion": "DIRECTOR_INSTITUTO_INVESTIGACION",
+                    "nombre": "Director del Instituto de Investigación",
+                    "minimo": 1,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "posiciones": [{
+                        "clave": "DIRECTOR_INSTITUTO_INVESTIGACION_EXCELENCIA_1",
+                        "orden_cargo": None,
+                        "nombre": "Director del Instituto de Investigación",
+                    }],
+                },
+            ],
+        }
+
     def get_cierre_policy(self):
         return None
 
@@ -115,6 +210,14 @@ class ExcelenciaAcademicaPolicy(BaseModalidadPolicy):
             "CONCLUSION_ACADEMICA": ("CONCLUIR_ACADEMICAMENTE", "Concluir académicamente", "Todas las condiciones normativas y el acta están completas."),
         }
         code, title, description = actions[stage]
+        missing_actors = stage == "EVALUACION_TRIBUNAL" and any(
+            item.get("tipo") == "ACTOR" and item.get("cumplido") is False
+            for item in requirements
+        )
+        if missing_actors:
+            code = "GESTIONAR_ACTORES"
+            title = "Gestionar actores"
+            description = "Completa los actores obligatorios antes de registrar la evaluación del tribunal."
         return {
             "operacion": "ORIENTAR_ETAPA",
             "mensaje": f"Sigue las condiciones normativas de Excelencia Académica mediante {expediente.criterio}.",
@@ -123,7 +226,7 @@ class ExcelenciaAcademicaPolicy(BaseModalidadPolicy):
                 "codigo": code, "titulo": title, "descripcion": description,
                 "estado": "PENDIENTE" if missing else "DISPONIBLE",
                 "estado_display": "Pendiente" if missing else "Disponible",
-                "destino": "#excelencia" if stage in {"EVALUACION_TRIBUNAL", "CONCLUSION_ACADEMICA"} else "#documentos",
+                "destino": "#actores" if missing_actors else "#excelencia" if stage in {"EVALUACION_TRIBUNAL", "CONCLUSION_ACADEMICA"} else "#documentos",
                 "accion_label": title,
             },
             "conflictos_identidad": [],

@@ -33,7 +33,7 @@ vi.mock('../../services/postulacionesService', () => ({
   humanizeRequirementCode,
   postulacionesService: {
     obtenerExpediente: vi.fn(), obtenerCapacidadesModalidad: vi.fn(), inicializarFlujo: vi.fn(), iniciarEtapa: vi.fn(), aprobarEtapa: vi.fn(), obtenerHistorial: vi.fn(), obtenerActores: vi.fn(), obtenerDocumentos: vi.fn(),
-    obtenerExamenGrado: vi.fn(), obtenerExcelenciaAcademica: vi.fn(), obtenerDiplomado: vi.fn(), obtenerTrabajoDirigido: vi.fn(),
+    obtenerExamenGrado: vi.fn(), concluirExamenGrado: vi.fn(), obtenerExcelenciaAcademica: vi.fn(), obtenerDiplomado: vi.fn(), obtenerTrabajoDirigido: vi.fn(),
     obtenerVersiones: vi.fn(), descargarVersion: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), obtenerTiposDocumentosHistoricos: vi.fn(), cargarDocumento: vi.fn(), subirDocumentoHistorico: vi.fn(),
     aprobarDocumento: vi.fn(), rechazarDocumento: vi.fn(), observarDocumento: vi.fn(), marcarObservacionCorregida: vi.fn(),
     obtenerDefensas: vi.fn(), obtenerQuorumDefensa: vi.fn(), programarDefensa: vi.fn(), iniciarDefensa: vi.fn(),
@@ -1396,6 +1396,64 @@ describe('ExpedientePage US-008', () => {
     confirm.mockRestore()
   })
 
+  it('orienta a configurar Excelencia y bloquea el inicio cuando el backend no lo permite', async () => {
+    const inscription = { id: 290, codigo: 'INSCRIPCION', nombre: 'Inscripción', estado: 'PENDIENTE', numero_intento: 1, activo: true, acciones_permitidas: [] }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, codigo: 'EA-2026-02', modalidad_detalle: { id: 6, codigo: 'EXCELENCIA_ACADEMICA', nombre: 'Excelencia Académica' }, estado_actual_detalle: { id: 1, codigo: 'REGISTRADA', nombre: 'Registrada' } },
+      flujo: {
+        ...response.flujo,
+        modalidad: { id: 6, codigo: 'EXCELENCIA_ACADEMICA', nombre: 'Excelencia Académica' },
+        etapa_actual: inscription,
+        etapas: [inscription],
+        porcentaje_avance: 0,
+        etapas_completadas: 0,
+        etapas_totales: 5,
+        orientacion_etapa_actual: {
+          operacion: 'CONFIGURAR_EXCELENCIA',
+          mensaje: 'Selecciona el criterio normativo antes de iniciar el flujo.',
+          requisitos: [],
+          siguiente_accion: { codigo: 'CONFIGURAR_CRITERIO', titulo: 'Seleccionar criterio', descripcion: 'El criterio seleccionado queda inmutable al iniciar el flujo.', estado: 'PENDIENTE', estado_display: 'Pendiente', destino: '#excelencia', accion_label: 'Seleccionar criterio' },
+          conflictos_identidad: [],
+        },
+      },
+    })
+    postulacionesService.obtenerExcelenciaAcademica.mockResolvedValue({ criterio: null, criterios: [], documentos_requeridos: [] })
+
+    renderApplicationManagerPage()
+
+    const summary = (await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })).parentElement
+    expect(within(summary).getByText('Selecciona el criterio normativo antes de iniciar el flujo.')).toBeInTheDocument()
+    const configureLink = within(summary).getByRole('link', { name: 'Seleccionar criterio' })
+    expect(configureLink).toHaveAttribute('href', '#excelencia')
+    expect(screen.queryByRole('button', { name: 'Iniciar Inscripción' })).not.toBeInTheDocument()
+    expect(postulacionesService.iniciarEtapa).not.toHaveBeenCalled()
+
+    await userEvent.click(configureLink)
+    expect(window.location.hash).toBe('#excelencia')
+  })
+
+  it('permite iniciar Inscripción de Excelencia solo cuando el backend autoriza iniciar y refresca el expediente', async () => {
+    const pending = { id: 290, codigo: 'INSCRIPCION', nombre: 'Inscripción', estado: 'PENDIENTE', numero_intento: 1, activo: true, acciones_permitidas: ['iniciar'] }
+    const inProgress = { ...pending, estado: 'EN_PROCESO', estado_display: 'En proceso', acciones_permitidas: [] }
+    const excellenceResponse = (stage) => ({
+      ...response,
+      detalle: { ...response.detalle, codigo: 'EA-2026-02', modalidad_detalle: { id: 6, codigo: 'EXCELENCIA_ACADEMICA', nombre: 'Excelencia Académica' } },
+      flujo: { ...response.flujo, modalidad: { id: 6, codigo: 'EXCELENCIA_ACADEMICA', nombre: 'Excelencia Académica' }, etapa_actual: stage, etapas: [stage], orientacion_etapa_actual: null },
+    })
+    postulacionesService.obtenerExpediente.mockResolvedValueOnce(excellenceResponse(pending)).mockResolvedValueOnce(excellenceResponse(inProgress))
+    postulacionesService.obtenerExcelenciaAcademica.mockResolvedValue({ criterio: 'RENDIMIENTO_ACADEMICO', criterios: [], documentos_requeridos: [] })
+    postulacionesService.iniciarEtapa.mockResolvedValue(inProgress)
+
+    renderApplicationManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Iniciar Inscripción' }))
+
+    expect(postulacionesService.iniciarEtapa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.iniciarEtapa).toHaveBeenCalledWith(290, expect.any(AbortSignal))
+    await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Iniciar InscripciÃ³n' })).not.toBeInTheDocument())
+  })
+
   const futureProfileOrientation = {
     mensaje: 'Verifica estas precondiciones antes de intentar programar la defensa.',
     requisitos: [{ tipo: 'ACTOR', codigo: 'TRIBUNAL', nombre: 'Tribunales', actual: 0, minimo: 2, cumplido: false, estado_display: '0/2 pendiente', destino: '#actores' }],
@@ -2568,6 +2626,173 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByRole('link', { name: 'Ir a actores' })).toHaveAttribute('href', '#actores')
   })
 
+  it('presenta el resultado específico de Examen en Resumen y Resultado y cierre aunque falle el resultado genérico', async () => {
+    const completedStages = Array.from({ length: 8 }, (_, index) => ({
+      id: 500 + index,
+      codigo: index === 7 ? 'CONCLUSION_ACADEMICA' : `ETAPA_${index + 1}`,
+      nombre: index === 7 ? 'Conclusión académica' : `Etapa ${index + 1}`,
+      estado: 'APROBADA',
+      activo: true,
+    }))
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: {
+        ...response.detalle,
+        codigo: 'EG-2026-02',
+        modalidad_detalle: { id: 5, codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado' },
+        estado_actual_detalle: { id: 4, codigo: 'EN_PROCESO', nombre: 'En proceso' },
+      },
+      flujo: {
+        ...response.flujo,
+        modalidad: { id: 5, codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado' },
+        etapa_actual: null,
+        porcentaje_avance: 100,
+        etapas: completedStages,
+        orientacion_etapa_actual: null,
+      },
+      resultado: { data: null, error: 'Resultado final todavía no disponible' },
+      cierre: { data: null, error: 'Estado de cierre técnico todavía no disponible' },
+    })
+    postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue({ soportada: true, configuracion_valida: true, cierre_soportado: false })
+    postulacionesService.obtenerExamenGrado.mockResolvedValue({
+      areas: [], tribunales: [],
+      resultado_final: { completo: true, nota_final: '94.25', clasificacion: 'APROBACION_PLENA_CON_FELICITACION' },
+    })
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Conclusión de la postulación pendiente' })).toBeInTheDocument()
+    expect(screen.getByText('Calificación final: 94,25/100')).toBeInTheDocument()
+    expect(screen.getByText(/el flujo académico terminó, pero la postulación continúa En proceso/i)).toBeInTheDocument()
+    expect(screen.queryByText('No existe una etapa actual disponible.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Resultado final todavía no disponible')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Resultado y cierre' }))
+    const result = screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement
+    expect(within(result).getByText('94,25')).toBeInTheDocument()
+    expect(within(result).getByText('/ 100')).toBeInTheDocument()
+    expect(within(result).getByText('APROBACIÓN PLENA CON FELICITACIÓN')).toBeInTheDocument()
+  })
+
+  const academicExcellenceResponse = ({ conclusionState = 'APROBADA' } = {}) => {
+    const stages = ['INSCRIPCION', 'REVISION_REQUISITOS', 'EVALUACION_TRIBUNAL', 'REGISTRO_ACTA', 'CONCLUSION_ACADEMICA'].map((codigo, index) => ({
+      id: 700 + index,
+      codigo,
+      nombre: codigo === 'CONCLUSION_ACADEMICA' ? 'Conclusión académica' : `Etapa ${index + 1}`,
+      estado: codigo === 'CONCLUSION_ACADEMICA' ? conclusionState : 'APROBADA',
+      activo: true,
+    }))
+    return {
+      ...response,
+      detalle: {
+        ...response.detalle,
+        codigo: 'EA-2026-02',
+        modalidad_detalle: { id: 6, codigo: 'EXCELENCIA_ACADEMICA', nombre: 'Excelencia Académica' },
+        estado_actual_detalle: { id: 4, codigo: 'EN_PROCESO', nombre: 'En proceso' },
+      },
+      flujo: {
+        ...response.flujo,
+        modalidad: { id: 6, codigo: 'EXCELENCIA_ACADEMICA', nombre: 'Excelencia Académica' },
+        etapa_actual: stages.at(-1),
+        porcentaje_avance: conclusionState === 'APROBADA' ? 100 : 80,
+        etapas: stages,
+        orientacion_etapa_actual: null,
+      },
+      cierre: { data: null, error: 'Estado de cierre técnico todavía no disponible' },
+    }
+  }
+
+  it('presenta el cierre académico de Rendimiento con su promedio aunque el estado administrativo siga En proceso', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(academicExcellenceResponse())
+    postulacionesService.obtenerExcelenciaAcademica.mockResolvedValue({
+      criterio: 'RENDIMIENTO_ACADEMICO',
+      resultado: { estado: 'FAVORABLE', promedio_general: '90.00' },
+      criterios: [], documentos_requeridos: [],
+    })
+
+    renderApplicationManagerPage()
+
+    await waitFor(() => expect(postulacionesService.obtenerExcelenciaAcademica).toHaveBeenCalled())
+    const summary = (await screen.findByRole('heading', { name: 'Resultado académico final' })).parentElement
+    expect(within(summary).getByText('Conclusión académica')).toBeInTheDocument()
+    expect(within(summary).getByText('Aprobada')).toBeInTheDocument()
+    expect(within(summary).getByText('Resultado académico')).toBeInTheDocument()
+    expect(within(summary).getByText(/Favorable/)).toBeInTheDocument()
+    expect(within(summary).getByText('Promedio académico')).toBeInTheDocument()
+    expect(within(summary).getByText('90.00')).toBeInTheDocument()
+    expect(within(summary).getByText(/independientemente del estado administrativo general/i)).toBeInTheDocument()
+    expect(screen.queryByText('No existe una etapa actual disponible.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Nota final/)).not.toBeInTheDocument()
+  })
+
+  it('presenta el cierre de Reconocimiento a la calidad sin una calificación numérica', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(academicExcellenceResponse())
+    postulacionesService.obtenerExcelenciaAcademica.mockResolvedValue({
+      criterio: 'RECONOCIMIENTO_CALIDAD',
+      resultado: { estado: 'FAVORABLE', promedio_general: null },
+      criterios: [], documentos_requeridos: [],
+    })
+
+    renderApplicationManagerPage()
+
+    await waitFor(() => expect(postulacionesService.obtenerExcelenciaAcademica).toHaveBeenCalled())
+    const summary = (await screen.findByRole('heading', { name: 'Resultado académico final' })).parentElement
+    expect(within(summary).getByText(/Favorable/)).toBeInTheDocument()
+    expect(within(summary).queryByText('Promedio académico')).not.toBeInTheDocument()
+    expect(within(summary).queryByText(/Nota final/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['la conclusión está pendiente', { conclusionState: 'PENDIENTE' }, { criterio: 'RENDIMIENTO_ACADEMICO', resultado: { estado: 'FAVORABLE', promedio_general: '90.00' } }],
+    ['el resultado está pendiente', {}, { criterio: 'RENDIMIENTO_ACADEMICO', resultado: { estado: 'PENDIENTE', promedio_general: null } }],
+    ['el resultado está incompleto', {}, { criterio: 'RENDIMIENTO_ACADEMICO', resultado: null }],
+  ])('no presenta un cierre académico exitoso cuando %s', async (_case, flowOptions, excellence) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(academicExcellenceResponse(flowOptions))
+    postulacionesService.obtenerExcelenciaAcademica.mockResolvedValue({ ...excellence, criterios: [], documentos_requeridos: [] })
+
+    renderApplicationManagerPage()
+
+    await waitFor(() => expect(postulacionesService.obtenerExcelenciaAcademica).toHaveBeenCalled())
+    expect(screen.queryByRole('heading', { name: 'Resultado académico final' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Promedio académico')).not.toBeInTheDocument()
+  })
+
+  it('presenta el resultado Desfavorable sin identificarlo como favorable', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(academicExcellenceResponse())
+    postulacionesService.obtenerExcelenciaAcademica.mockResolvedValue({
+      criterio: 'RECONOCIMIENTO_CALIDAD',
+      resultado: { estado: 'DESFAVORABLE', promedio_general: null },
+      criterios: [], documentos_requeridos: [],
+    })
+
+    renderApplicationManagerPage()
+
+    await waitFor(() => expect(postulacionesService.obtenerExcelenciaAcademica).toHaveBeenCalled())
+    expect(await screen.findByRole('heading', { name: 'Resultado académico final' })).toBeInTheDocument()
+    expect(screen.getByText('Desfavorable')).toBeInTheDocument()
+    expect(screen.queryByText('Favorable')).not.toBeInTheDocument()
+  })
+
+  it('no presenta una calificación definitiva de Examen cuando el resultado específico está incompleto', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 5, codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado' } },
+      flujo: { ...response.flujo, modalidad: { id: 5, codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado' } },
+      resultado: { data: { nota_final: '99.00', clasificacion: 'APROBACION_PLENA' }, error: '' },
+    })
+    postulacionesService.obtenerExamenGrado.mockResolvedValue({
+      areas: [], tribunales: [],
+      resultado_final: { completo: false, nota_final: null, clasificacion: null, areas: { AREA_1: '85.00', AREA_2: null } },
+    })
+
+    renderPage('resultado-y-cierre')
+
+    const result = (await screen.findByRole('heading', { name: 'Resultado académico técnico' })).parentElement
+    expect(within(result).getByText('Pendiente')).toBeInTheDocument()
+    expect(within(result).queryByText('99.00')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Conclusión de la postulación pendiente' })).not.toBeInTheDocument()
+  })
+
   it('distingue nota bruta, aportes, ponderaciones y clasificación de Proyecto nuevo', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue({
       ...response,
@@ -2867,11 +3092,17 @@ describe('ExpedientePage US-008', () => {
     await userEvent.selectOptions(first, '40')
     expect(within(second).getByRole('option', { name: /Willian Vargas.*Seleccionado como Tribunal 1/ })).toBeDisabled()
     await userEvent.selectOptions(first, '41')
-    expect(within(second).getByRole('option', { name: /Willian Vargas/ })).toBeEnabled()
+    const releasedWillian = within(second).getByRole('option', { name: /Willian Vargas/ })
+    expect(releasedWillian).toBeEnabled()
+    expect(releasedWillian).not.toHaveAccessibleName(/Seleccionado como/)
     expect(within(second).getByRole('option', { name: /Carlos Rojas.*Seleccionado como Tribunal 1/ })).toBeDisabled()
     await userEvent.selectOptions(first, '')
-    expect(within(second).getByRole('option', { name: /Willian Vargas/ })).toBeEnabled()
-    expect(within(second).getByRole('option', { name: /Carlos Rojas/ })).toBeEnabled()
+    const clearedWillian = within(second).getByRole('option', { name: /Willian Vargas/ })
+    const clearedCarlos = within(second).getByRole('option', { name: /Carlos Rojas/ })
+    expect(clearedWillian).toBeEnabled()
+    expect(clearedCarlos).toBeEnabled()
+    expect(clearedWillian).not.toHaveAccessibleName(/Seleccionado como/)
+    expect(clearedCarlos).not.toHaveAccessibleName(/Seleccionado como/)
   })
 
   it('no crea exclusividad entre posiciones sin restricción o de otro grupo', async () => {
@@ -2891,10 +3122,11 @@ describe('ExpedientePage US-008', () => {
     const second = within(dialog).getByLabelText('Seleccionar candidato para Tribunal 2')
     const third = within(dialog).getByLabelText('Seleccionar candidato para Tribunal 3')
     await Promise.all([first, second, third].map((selector) => within(selector).findByRole('option', { name: /Willian Vargas/ })))
+    expect(within(second).getByRole('option', { name: /Willian Vargas/ })).not.toHaveAccessibleName(/Seleccionado como/)
 
     await userEvent.selectOptions(first, '40')
-    expect(within(second).getByRole('option', { name: /Willian Vargas/ })).toBeEnabled()
-    expect(within(third).getByRole('option', { name: /Willian Vargas/ })).toBeEnabled()
+    expect(within(second).getByRole('option', { name: /Willian Vargas.*Seleccionado como Tribunal 1/ })).toBeEnabled()
+    expect(within(third).getByRole('option', { name: /Willian Vargas.*Seleccionado como Tribunal 1/ })).toBeEnabled()
   })
 
   it('mantiene bloqueos en búsquedas y páginas posteriores', async () => {

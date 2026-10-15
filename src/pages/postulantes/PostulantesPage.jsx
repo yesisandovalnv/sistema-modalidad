@@ -13,6 +13,28 @@ import { postulacionesService } from '../../services/postulacionesService'
 const emptyForm = { codigo: '', estudiante: '', modalidad: '', periodo: '', observaciones_generales: '', tipo_registro: 'SEGUIMIENTO' }
 const duplicateCodeMessage = 'El código ingresado ya se encuentra registrado en otra postulación. Por favor, ingrese un código diferente.'
 const cardActionClass = 'inline-flex min-h-9 items-center gap-1.5 rounded px-1.5 text-sm font-semibold text-sky-700 transition-colors hover:text-sky-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:text-sky-300 dark:hover:text-sky-200 dark:focus-visible:ring-offset-slate-900'
+const statusBadgeBaseClass = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold'
+const statusBadgeVariants = {
+  blue: 'bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300',
+  green: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+  amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+  red: 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300',
+  gray: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+}
+const statusBadgeTone = {
+  REGISTRADA: 'amber',
+  PENDIENTE: 'amber',
+  EN_PROCESO: 'blue',
+  EN_REVISION: 'blue',
+  OBSERVADA: 'amber',
+  SUBSANADA: 'blue',
+  APROBADA: 'green',
+  CONCLUIDA: 'green',
+  RECHAZADA: 'red',
+  CANCELADA: 'gray',
+}
+
+const statusBadgeClass = (code) => `${statusBadgeBaseClass} ${statusBadgeVariants[statusBadgeTone[code] || 'gray']}`
 
 const humanizeTipoRegistro = (value) => {
   if (value === 'HISTORICO') return 'Registro histórico'
@@ -379,34 +401,32 @@ export default function PostulantesPage() {
         <div className="space-y-3">
           {data.results?.map((item) => (
             <article key={item.id} className="rounded-xl border bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <h2 className="text-lg font-bold">{item.codigo}</h2>
-                  <dl className="mt-1 grid gap-x-8 gap-y-0.5 text-sm sm:grid-cols-2">
-                    <Info label="Estudiante" value={studentLabel(item)} />
-                    <Info label="Modalidad" value={modalityLabel(item)} />
-                    <Info label="Periodo" value={periodLabel(item)} />
-                    <Info label="Tipo de registro" value={tipoRegistroLabel(item)} />
-                  </dl>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-                    <Link className={cardActionClass} to={`/postulaciones/${item.id}`}>
-                      <FolderOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
-                      Abrir expediente
-                    </Link>
-                    <button className={cardActionClass} type="button" onClick={() => setDetail({ id: item.id, codigo: item.codigo, data: null, loading: true, error: '' })}>
-                      <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
-                      Detalle
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-y-0">
+                <h2 className="min-w-0 text-lg font-bold">{item.codigo}</h2>
+                <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+                  <Link className={cardActionClass} to={`/postulaciones/${item.id}`}>
+                    <FolderOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    Abrir expediente
+                  </Link>
+                  <button className={cardActionClass} type="button" onClick={() => setDetail({ id: item.id, codigo: item.codigo, data: null, loading: true, error: '' })}>
+                    <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    Detalle
+                  </button>
+                  {canManage && (
+                    <button className={cardActionClass} type="button" onClick={() => open(item)}>
+                      <Pencil className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      Editar
                     </button>
-                    {canManage && (
-                      <button className={cardActionClass} type="button" onClick={() => open(item)}>
-                        <Pencil className="h-4 w-4 shrink-0" aria-hidden="true" />
-                        Editar
-                      </button>
-                    )}
-                  </div>
-                  <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
+                  )}
+                </div>
+                <dl className="grid min-w-0 gap-x-8 gap-y-0.5 text-sm sm:grid-cols-2">
+                  <Info label="Estudiante" value={studentLabel(item)} />
+                  <Info label="Modalidad" value={modalityLabel(item)} />
+                  <Info label="Periodo" value={periodLabel(item)} />
+                  <Info label="Tipo de registro" value={tipoRegistroLabel(item)} />
+                </dl>
+                <div className="flex self-end justify-end">
+                  <span className={statusBadgeClass(item.estado_actual_detalle?.codigo)}>
                     {stateLabel(item)}
                   </span>
                 </div>
