@@ -1,7 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../crud/CrudShell'
 import { Button } from '../ui/button'
 import { postulacionesService } from '../../services/postulacionesService'
+
+const UPLOAD_REQUIRED_CODES = new Set([
+  'SIN_DOCUMENTO',
+  'RECHAZADO',
+  'CORRECCION_REQUERIDA',
+  'CORRECCION_POST_APROBACION',
+])
+const REVIEW_CODES = new Set(['ESPERANDO_REVISION', 'PENDIENTE_REVISION'])
+
+function needsUpload(type) {
+  const capacity = type.capacidad_carga
+  if (!capacity) return true
+  if (capacity.permitida !== true) return false
+  if (UPLOAD_REQUIRED_CODES.has(capacity.codigo)) return true
+  if (REVIEW_CODES.has(capacity.codigo) || capacity.codigo === 'DOCUMENTO_APROBADO') return false
+  return true
+}
+
+function getInformationalStatus(type) {
+  const code = type.capacidad_carga?.codigo
+  if (REVIEW_CODES.has(code)) return 'Pendiente de revisión'
+  if (code === 'DOCUMENTO_APROBADO') return 'Aprobado'
+  return type.capacidad_carga?.mensaje || 'Carga no disponible'
+}
 
 function formatDefenseDate(value) {
   if (!value) return 'No registrada'
@@ -18,18 +42,32 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
   const [historicalSelections, setHistoricalSelections] = useState([])
   const [historicalStatus, setHistoricalStatus] = useState({ submitting: false, summary: '', items: [] })
   const uploading = Boolean(upload.submitting || historicalStatus.submitting)
+  const uploadTypes = useMemo(
+    () => (multiple && !fixedType ? types.data.filter(needsUpload) : []),
+    [fixedType, multiple, types.data],
+  )
+  const informationalTypes = useMemo(
+    () => (multiple && !fixedType ? types.data.filter((type) => !needsUpload(type)) : []),
+    [fixedType, multiple, types.data],
+  )
+  const documentsInReview = informationalTypes.filter((type) => REVIEW_CODES.has(type.capacidad_carga?.codigo))
+  const approvedDocuments = informationalTypes.filter((type) => type.capacidad_carga?.codigo === 'DOCUMENTO_APROBADO')
+  const unavailableDocuments = informationalTypes.filter((type) => (
+    !REVIEW_CODES.has(type.capacidad_carga?.codigo)
+    && type.capacidad_carga?.codigo !== 'DOCUMENTO_APROBADO'
+  ))
   const closeSafely = () => {
     if (!uploading) onClose()
   }
   const selectedType = fixedType || types.data.find((type) => String(type.id) === String(selectedTypeId))
   const isDefenseRecord = selectedType?.codigo === 'ACTA_DEFENSA' || selectedType?.tipo_documento_codigo === 'ACTA_DEFENSA'
-  const hasDefenseRecord = multiple && types.data.some((type) => (type.codigo || type.tipo_documento_codigo) === 'ACTA_DEFENSA')
+  const hasDefenseRecord = multiple && uploadTypes.some((type) => (type.codigo || type.tipo_documento_codigo) === 'ACTA_DEFENSA')
 
   useEffect(() => {
-    if (!fixedType && multiple && types.data.length > 0) {
+    if (!fixedType && multiple) {
       setHistoricalSelections((current) => {
         const currentMap = new Map((current || []).map((entry) => [entry.typeId, entry]))
-        return types.data.map((type) => {
+        return uploadTypes.map((type) => {
           const currentEntry = currentMap.get(type.id)
           return {
             typeId: type.id,
@@ -42,7 +80,7 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
         })
       })
     }
-  }, [fixedType, multiple, types.data])
+  }, [fixedType, multiple, types.data, uploadTypes])
 
   useEffect(() => {
     setSelectedEventId('')
@@ -171,12 +209,12 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
             <p className="text-xs text-slate-500">Adjunta los documentos disponibles del expediente. No es obligatorio cargar todos en una sola operación.</p>
           </div>
         )}
-        {historicalSelections.length === 0 ? (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
-            <span>0 documentos seleccionados</span>
-            <Button type="submit" disabled className="min-w-[180px]">Cargar 0 documentos</Button>
-          </div>
-        ) : historicalSelections.map((entry) => (
+        {!isHistorical && historicalSelections.length === 0 && informationalTypes.length > 0 && (
+          <p role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+            No hay documentos pendientes de carga o corrección permitida.
+          </p>
+        )}
+        {historicalSelections.map((entry) => (
           <div key={entry.typeId} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <label htmlFor={`historical-file-${entry.typeId}`} className="min-w-0 flex-1 text-sm font-medium text-slate-800 dark:text-slate-100">
@@ -201,11 +239,29 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
             {entry.error && <p className="mt-2 text-xs text-red-600">{entry.error}</p>}
           </div>
         ))}
+        {documentsInReview.length > 0 && <section aria-label="Documentos pendientes de revisión" className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950">
+          <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">Pendientes de revisión</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900 dark:text-amber-100">
+            {documentsInReview.map((type) => <li key={type.id}>{type.nombre} — No necesitas volver a cargarlo mientras se completa la revisión.</li>)}
+          </ul>
+        </section>}
+        {approvedDocuments.length > 0 && <details className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950">
+          <summary className="cursor-pointer font-semibold text-emerald-900 dark:text-emerald-100">Aprobados ({approvedDocuments.length})</summary>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-emerald-900 dark:text-emerald-100">
+            {approvedDocuments.map((type) => <li key={type.id}>{type.nombre}</li>)}
+          </ul>
+        </details>}
+        {unavailableDocuments.length > 0 && <section aria-label="Documentos no disponibles para carga" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+          <h3 className="font-semibold">No disponibles para carga</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {unavailableDocuments.map((type) => <li key={type.id}>{type.nombre} — {getInformationalStatus(type)}</li>)}
+          </ul>
+        </section>}
         {upload.trackIndividualStatus && upload.stageProgress && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
           <p className="font-semibold">{upload.stageProgress.completed} de {upload.stageProgress.total} requisitos de Inscripción cumplidos</p>
           <progress className="mt-2 h-3 w-full" max={upload.stageProgress.total || 1} value={upload.stageProgress.completed} aria-label="Avance de requisitos de Inscripción" />
         </div>}
-        {historicalSelections.length > 0 && (
+        {(historicalSelections.length > 0 || (isHistorical && types.data.length > 0)) && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
             <span>{selectedHistoryCount} documento{selectedHistoryCount === 1 ? '' : 's'} seleccionado{selectedHistoryCount === 1 ? '' : 's'}</span>
             <Button type="submit" disabled={historicalStatus.submitting || selectedHistoryCount === 0 || (historicalSelections.some((item) => item.file && item.typeCode === 'ACTA_DEFENSA') && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))} className="min-w-[180px]">

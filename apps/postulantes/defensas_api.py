@@ -54,6 +54,18 @@ class EvaluacionDefensaSerializer(serializers.ModelSerializer):
     tipo_display = serializers.CharField(source="get_tipo_evaluacion_display", read_only=True)
     modalidad_registro_display = serializers.CharField(source="get_modalidad_registro_display", read_only=True)
     resultado_consolidado = serializers.BooleanField(source="es_resultado_final_evento", read_only=True)
+    reintento = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_reintento(self, obj):
+        """Extension opcional compatible para comunicar la decision de reintento."""
+        return getattr(obj, "_reintento", None)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("reintento") is None:
+            data.pop("reintento", None)
+        return data
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_evaluador_nombre(self, obj):
@@ -66,7 +78,7 @@ class EvaluacionDefensaSerializer(serializers.ModelSerializer):
             "id", "evento", "evaluador", "evaluador_nombre", "tipo_evaluacion", "tipo_display",
             "modalidad_registro", "modalidad_registro_display", "resultado_cualitativo",
             "nota_numerica", "ponderacion", "aporte_ponderado", "semantica_nota", "es_resultado_final_evento",
-            "resultado_consolidado", "observaciones", "activo",
+            "resultado_consolidado", "reintento", "observaciones", "activo",
         )
         read_only_fields = fields
 

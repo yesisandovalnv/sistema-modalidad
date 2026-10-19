@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
@@ -9,11 +10,20 @@ from rest_framework.test import APIClient
 
 from apps.academico.models import Modalidad, Periodo
 from apps.modalidades.models import TrabajoDirigidoExpediente
-from apps.modalidades.policies import ModalidadPolicyRegistry
+from apps.modalidades.policies import BaseModalidadPolicy, ModalidadPolicyRegistry
+from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
 from apps.modalidades.trabajo_dirigido import TrabajoDirigidoPolicy
 from apps.modalidades.trabajo_dirigido_service import TrabajoDirigidoService
 from apps.modalidades.validators import ModalidadConfigurationValidator
-from apps.postulantes.models import EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.asignaciones import AsignacionService
+from apps.postulantes.decisiones_academicas import DecisionAcademicaEtapaService
+from apps.postulantes.models import (
+    AsignacionPostulacion,
+    DecisionAcademicaEtapa,
+    EstadoPostulacion,
+    Postulacion,
+    SeguimientoEtapa,
+)
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import CustomUser, Role
 
@@ -24,6 +34,7 @@ class TrabajoDirigidoTest(TestCase):
         call_command("seed_initial_data", verbosity=0)
         admin_role = Role.objects.create(codigo="ADMINISTRADOR", nombre="Trabajo Dirigido admin")
         student_role = Role.objects.create(codigo="ESTUDIANTE", nombre="Estudiante")
+        teacher_role = Role.objects.create(codigo="DOCENTE", nombre="Docente")
         cls.admin = CustomUser.objects.create_user(
             "td-admin", password="x", role=admin_role, is_staff=True, ci="TD-1", ru="TD-R1",
         )
@@ -33,6 +44,13 @@ class TrabajoDirigidoTest(TestCase):
         cls.other = CustomUser.objects.create_user(
             "td-other", password="x", role=student_role, ci="TD-3", ru="TD-R3",
         )
+        cls.teachers = [
+            CustomUser.objects.create_user(
+                f"td-teacher-{index}", password="x", role=teacher_role,
+                ci=f"TD-D{index}", ru=f"TD-DR{index}",
+            )
+            for index in range(1, 5)
+        ]
         cls.post = Postulacion.objects.create(
             codigo="TD-TEST-001", estudiante=cls.student,
             modalidad=Modalidad.objects.get(codigo="TRABAJO_DIRIGIDO"),
@@ -57,9 +75,197 @@ class TrabajoDirigidoTest(TestCase):
         data.update(overrides)
         return data
 
+    def assign_tribunals(self, amount=3):
+        profile = self.follow["PERFIL_TRABAJO_DIRIGIDO"]
+        return [
+            AsignacionService.asignar_actor(
+                self.post, teacher, "TRIBUNAL", self.admin,
+                orden_cargo=index, seguimiento_etapa=profile,
+            )
+            for index, teacher in enumerate(self.teachers[:amount], start=1)
+        ]
+
+    def approve_proposal(self, assignments=None):
+        assignments = assignments or self.assign_tribunals()
+        return DecisionAcademicaEtapaService.registrar(
+            seguimiento=self.follow["PERFIL_TRABAJO_DIRIGIDO"],
+            codigo=TrabajoDirigidoPolicy.PROPUESTA_APROBADA,
+            resultado=TrabajoDirigidoPolicy.RESULTADO_PROPUESTA_APROBADA,
+            registrado_por=self.admin,
+            participantes=[
+                {"asignacion": assignment, "rol": "TRIBUNAL", "orden": assignment.orden_cargo}
+                for assignment in assignments
+            ],
+        )
+
     def test_registry_identifica_modalidad_y_mantiene_aislamiento(self):
         self.assertIsInstance(ModalidadPolicyRegistry.get(self.post), TrabajoDirigidoPolicy)
         self.assertNotIsInstance(ModalidadPolicyRegistry.get("PROYECTO_GRADO"), TrabajoDirigidoPolicy)
+
+    def test_policy_depende_de_base_y_no_de_proyecto(self):
+        self.assertTrue(issubclass(TrabajoDirigidoPolicy, BaseModalidadPolicy))
+        self.assertFalse(issubclass(TrabajoDirigidoPolicy, ProyectoGradoPolicy))
+
+    def test_configuracion_declara_tres_tribunales_del_perfil_td(self):
+        policy = ModalidadPolicyRegistry.get(self.post)
+        groups = policy.get_configuracion_actores(
+            self.post, self.follow["PERFIL_TRABAJO_DIRIGIDO"],
+        )
+        self.assertIn("regimen_workflow", groups)
+        groups = groups["grupos"]
+        tribunal = next(item for item in groups if item["tipo_participacion"] == "TRIBUNAL")
+        self.assertEqual(tribunal["codigo_etapa"], "PERFIL_TRABAJO_DIRIGIDO")
+        self.assertEqual((tribunal["minimo"], tribunal["maximo"]), (3, 3))
+        self.assertEqual(tribunal["ordenes_permitidos"], [1, 2, 3])
+        self.assertNotIn("PERFIL_PROYECTO", str(groups))
+
+        first = AsignacionService.asignar_actor(
+            self.post, self.teachers[0], "TRIBUNAL", self.admin,
+            orden_cargo=1, seguimiento_etapa=self.follow["PERFIL_TRABAJO_DIRIGIDO"],
+        )
+        with self.assertRaisesMessage(ValidationError, "Ya existe un tribunal activo con ese orden"):
+            AsignacionService.asignar_actor(
+                self.post, self.teachers[1], "TRIBUNAL", self.admin,
+                orden_cargo=1, seguimiento_etapa=self.follow["PERFIL_TRABAJO_DIRIGIDO"],
+            )
+        assignments = [first, *[
+            AsignacionService.asignar_actor(
+                self.post, teacher, "TRIBUNAL", self.admin,
+                orden_cargo=index, seguimiento_etapa=self.follow["PERFIL_TRABAJO_DIRIGIDO"],
+            )
+            for index, teacher in ((2, self.teachers[1]), (3, self.teachers[2]))
+        ]]
+        self.assertEqual([item.orden_cargo for item in assignments], [1, 2, 3])
+        with self.assertRaisesMessage(ValidationError, "exactamente tres"):
+            AsignacionService.asignar_actor(
+                self.post, self.teachers[3], "TRIBUNAL", self.admin,
+                orden_cargo=1, seguimiento_etapa=self.follow["PERFIL_TRABAJO_DIRIGIDO"],
+            )
+
+    def test_decision_exige_composicion_formal_completa(self):
+        assignments = self.assign_tribunals(amount=2)
+        with self.assertRaises(ValidationError):
+            self.approve_proposal(assignments)
+        self.assertFalse(DecisionAcademicaEtapa.objects.exists())
+
+        third = AsignacionService.asignar_actor(
+            self.post, self.teachers[2], "TRIBUNAL", self.admin,
+            orden_cargo=3, seguimiento_etapa=self.follow["PERFIL_TRABAJO_DIRIGIDO"],
+        )
+        decision = self.approve_proposal([*assignments, third])
+        self.assertEqual(decision.codigo, TrabajoDirigidoPolicy.PROPUESTA_APROBADA)
+        self.assertEqual(decision.participaciones.count(), 3)
+
+    def test_tutor_se_bloquea_antes_de_decision_y_se_habilita_despues(self):
+        with self.assertRaisesMessage(ValidationError, "aprobar formalmente la propuesta"):
+            AsignacionService.asignar_actor(
+                self.post, self.teachers[3], "TUTOR", self.admin,
+            )
+
+        self.approve_proposal()
+        tutor = AsignacionService.asignar_actor(
+            self.post, self.teachers[3], "TUTOR", self.admin,
+        )
+        self.assertIsNone(tutor.seguimiento_etapa_id)
+
+    def test_orientacion_recorre_tribunal_decision_tutor_y_documentos(self):
+        policy = ModalidadPolicyRegistry.get(self.post)
+        profile = self.follow["PERFIL_TRABAJO_DIRIGIDO"]
+        orientation = policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=profile)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "GESTIONAR_ACTORES")
+
+        assignments = self.assign_tribunals()
+        orientation = policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=profile)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "REGISTRAR_DECISION")
+
+        self.approve_proposal(assignments)
+        orientation = policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=profile)
+        self.assertEqual(orientation["siguiente_accion"]["titulo"], "Asignar Tutor de Trabajo Dirigido")
+
+        AsignacionService.asignar_actor(self.post, self.teachers[3], "TUTOR", self.admin)
+        orientation = policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=profile)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        self.assertEqual(
+            {item["codigo"] for item in orientation["requisitos"]},
+            {
+                "TRIBUNAL_PROPUESTA_TD",
+                TrabajoDirigidoPolicy.PROPUESTA_APROBADA,
+                "TUTOR_TRABAJO_DIRIGIDO",
+                "PERFIL_TRABAJO_DIRIGIDO",
+                "INFORME_TUTOR_PERFIL_TD",
+            },
+        )
+        with patch.object(policy, "get_orientacion_documental_prioritaria", return_value=None), patch.object(
+            policy, "_missing_documents",
+            return_value=["PERFIL_TRABAJO_DIRIGIDO", "INFORME_TUTOR_PERFIL_TD"],
+        ):
+            orientation = policy.get_orientacion_etapa_actual(
+                postulacion=self.post, seguimiento=profile,
+            )
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "GESTIONAR_DOCUMENTOS")
+        with patch.object(policy, "get_orientacion_documental_prioritaria", return_value=None), patch.object(
+            policy, "_missing_documents", return_value=[],
+        ):
+            orientation = policy.get_orientacion_etapa_actual(
+                postulacion=self.post, seguimiento=profile,
+            )
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "PROGRAMAR_EVENTO")
+        self.assertEqual(
+            {item["codigo"] for item in orientation["requisitos"] if item["tipo"] == "DOCUMENTO"},
+            {"PERFIL_TRABAJO_DIRIGIDO", "INFORME_TUTOR_PERFIL_TD"},
+        )
+
+    def test_tutor_historico_permite_continuidad_sin_crear_decision(self):
+        assignments = self.assign_tribunals()
+        tutor = AsignacionPostulacion.objects.create(
+            postulacion=self.post, usuario=self.teachers[3], tipo_participacion="TUTOR",
+            designado_por=self.admin,
+        )
+        policy = ModalidadPolicyRegistry.get(self.post)
+        orientation = policy.get_orientacion_etapa_actual(
+            postulacion=self.post, seguimiento=self.follow["PERFIL_TRABAJO_DIRIGIDO"],
+        )
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        self.assertFalse(DecisionAcademicaEtapa.objects.exists())
+        decision_requirement = next(
+            item for item in orientation["requisitos"]
+            if item["codigo"] == TrabajoDirigidoPolicy.PROPUESTA_APROBADA
+        )
+        self.assertFalse(decision_requirement["cumplido"])
+        self.assertEqual(
+            decision_requirement["estado_display"],
+            "Sin decisión formal (continuidad histórica)",
+        )
+        with self.assertRaisesMessage(
+            ValidationError, "aprobación formal de la propuesta",
+        ):
+            policy.validar_aprobacion_etapa(self.follow["PERFIL_TRABAJO_DIRIGIDO"])
+        config = policy.get_configuracion_actores(
+            self.post, self.follow["PERFIL_TRABAJO_DIRIGIDO"],
+        )
+        tutor_group = next(item for item in config["grupos"] if item["tipo_participacion"] == "TUTOR")
+        self.assertEqual(tutor_group["precondicion"]["estado"], "CONTINUIDAD_HISTORICA")
+        self.assertTrue(tutor.activo)
+        self.assertEqual(len(assignments), 3)
+
+    def test_perfil_exige_tutor_documentos_y_defensa_suficiente(self):
+        policy = ModalidadPolicyRegistry.get(self.post)
+        profile = self.follow["PERFIL_TRABAJO_DIRIGIDO"]
+        self.approve_proposal()
+        with self.assertRaisesMessage(ValidationError, "Tutor de Trabajo Dirigido activo"):
+            policy.validar_aprobacion_etapa(profile)
+
+        AsignacionService.asignar_actor(self.post, self.teachers[3], "TUTOR", self.admin)
+        with patch.object(policy, "_require_sufficient_event"), patch.object(
+            policy, "_missing_documents",
+            return_value=["PERFIL_TRABAJO_DIRIGIDO", "INFORME_TUTOR_PERFIL_TD"],
+        ):
+            with self.assertRaises(ValidationError) as error:
+                policy.validar_aprobacion_etapa(profile)
+        self.assertEqual(
+            set(error.exception.message_dict["faltantes"]),
+            {"PERFIL_TRABAJO_DIRIGIDO", "INFORME_TUTOR_PERFIL_TD"},
+        )
 
     def test_capacidades_y_configuracion_estan_habilitadas(self):
         policy = ModalidadPolicyRegistry.get(self.post)
@@ -165,8 +371,20 @@ class TrabajoDirigidoTest(TestCase):
 
     def test_copia_material_de_proyecto_se_resuelve_con_quorum_de_trabajo_dirigido(self):
         policy = ModalidadPolicyRegistry.get(self.post).evento_policy
+        self.assertEqual(policy.ASSIGNMENTS["DEFENSA_PERFIL"], {"TRIBUNAL": 3})
+        self.assertEqual(
+            policy.ASSIGNMENTS["DEFENSA_PRIVADA"],
+            {"TRIBUNAL": 2, "DOCENTE_MODALIDAD": 1},
+        )
         self.assertEqual(policy.ASSIGNMENTS["DEFENSA_PUBLICA"], {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1})
+        self.assertEqual(policy.get_etapa_asociada("DEFENSA_PRIVADA"), "DEFENSA_PRIVADA")
         self.assertEqual(policy.get_etapa_asociada("DEFENSA_PUBLICA"), "DEFENSA_PUBLICA")
+        revision = ModalidadPolicyRegistry.get(self.post).get_revision_tribunal_previa_policy()
+        self.assertEqual(revision.ETAPA, "REVISION_TRIBUNAL_PREVIA")
+        self.assertIn(
+            "ACTA_DEFENSA_TD",
+            TrabajoDirigidoPolicy.requisitos_policy.get_documentos_requeridos("CIERRE_DOCUMENTAL"),
+        )
 
     def test_api_respeta_propietario_y_permisos_de_escritura(self):
         client = APIClient()

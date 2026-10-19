@@ -286,6 +286,16 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         with self.assertRaisesMessage(ValidationError, "resultado consolidado SUFICIENTE"):
             WorkflowService.aprobar_etapa(self.follow["PERFIL_PROYECTO"], self.admin)
 
+    def test_hitos_bloquea_aprobacion_perfil_si_faltan_precondiciones_academicas(self):
+        self.post.regimen_workflow = Postulacion.RegimenWorkflowChoices.PG_HITOS_V1
+        self.post.save(update_fields=["regimen_workflow", "updated_at"])
+
+        with self.assertRaises(ValidationError) as error:
+            WorkflowService.aprobar_etapa(self.follow["PERFIL_PROYECTO"], self.admin)
+
+        self.assertIn("CARTA_SOLICITUD_TRIBUNAL_PROYECTO", error.exception.message_dict["faltantes"])
+        self.assertIn("PERFIL_ACADEMICO_PROYECTO", error.exception.message_dict["faltantes"])
+
     def test_consolidacion_suficiente_aprueba_perfil_y_deja_documento_final_pendiente(self):
         otros = [self.follow[codigo] for codigo in ("DEFENSA_PRIVADA", "DEFENSA_PUBLICA", "REVISION_FINAL_POST_PUBLICA")]
         etapas_otras = [seguimiento.etapa for seguimiento in otros]
@@ -315,6 +325,19 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
     def test_programacion_y_auditoria(self):
         ev=EventoDefensaService.programar_evento(self.post,self.follow["PERFIL_PROYECTO"],"DEFENSA_PERFIL",timezone.now(),self.admin,lugar="Sala")
         self.assertEqual(ev.tipo_evento,"DEFENSA_PERFIL"); self.assertTrue(AuditLog.objects.filter(accion="PROGRAM",modulo="DEFENSAS").exists())
+
+    def test_hitos_no_programa_defensa_perfil_sin_precondiciones_academicas(self):
+        self.post.regimen_workflow = Postulacion.RegimenWorkflowChoices.PG_HITOS_V1
+        self.post.save(update_fields=["regimen_workflow", "updated_at"])
+
+        with self.assertRaises(ValidationError) as error:
+            EventoDefensaService.programar_evento(
+                self.post, self.follow["PERFIL_PROYECTO"], "DEFENSA_PERFIL",
+                timezone.now(), self.admin, lugar="Sala",
+            )
+
+        self.assertIn("CARTA_SOLICITUD_TRIBUNAL_PROYECTO", error.exception.message_dict["faltantes"])
+        self.assertIn("TRIBUNAL_FORMAL", error.exception.message_dict["faltantes"])
 
     def test_contrato_actual_reutiliza_tribunales_de_perfil_para_programar_privada_y_publica(self):
         for order, assignment in enumerate(self.assign["TRIBUNAL"], 1):

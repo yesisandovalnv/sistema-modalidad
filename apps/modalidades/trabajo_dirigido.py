@@ -4,11 +4,15 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from apps.modalidades.models import TrabajoDirigidoExpediente
-from apps.modalidades.policies import BaseRequisitosPolicy, EtapaDefinition
+from apps.modalidades.policies import (
+    BaseModalidadPolicy,
+    BaseRequisitosPolicy,
+    DecisionAcademicaDefinition,
+    EtapaDefinition,
+)
 from apps.modalidades.proyecto_grado import (
     ProyectoGradoEventoPolicy,
     ProyectoGradoLegacyEvaluacionPolicy,
-    ProyectoGradoPolicy,
     ProyectoGradoRevisionTribunalPreviaPolicy,
 )
 
@@ -84,12 +88,124 @@ class TrabajoDirigidoRequisitosPolicy(BaseRequisitosPolicy):
         return tuple(dict.fromkeys(code for values in self.DOCUMENTS_BY_STAGE.values() for code in values))
 
 
-class TrabajoDirigidoPolicy(ProyectoGradoPolicy):
+class TrabajoDirigidoPolicy(BaseModalidadPolicy):
     codigo = "TRABAJO_DIRIGIDO"
+    PROPUESTA_APROBADA = "PROPUESTA_TRABAJO_DIRIGIDO_APROBADA"
+    RESULTADO_PROPUESTA_APROBADA = "APROBADA"
     etapas = ETAPAS
     evento_policy = TrabajoDirigidoEventoPolicy()
     evaluacion_policy = ProyectoGradoLegacyEvaluacionPolicy()
     requisitos_policy = TrabajoDirigidoRequisitosPolicy()
+
+    def get_decisiones_academicas_permitidas(self, codigo_etapa):
+        if codigo_etapa != "PERFIL_TRABAJO_DIRIGIDO":
+            return ()
+        return (
+            DecisionAcademicaDefinition(
+                codigo=self.PROPUESTA_APROBADA,
+                resultados=(self.RESULTADO_PROPUESTA_APROBADA,),
+                nombre="Propuesta de Trabajo Dirigido aprobada",
+                roles_participantes=("TRIBUNAL",),
+                participantes_minimos=3,
+                participantes_maximos=3,
+                ordenes_requeridos=(1, 2, 3),
+                validar_composicion_asignaciones=True,
+            ),
+        )
+
+    @staticmethod
+    def _seguimiento_perfil(postulacion):
+        return postulacion.seguimientos_etapa.filter(
+            activo=True,
+            etapa__codigo="PERFIL_TRABAJO_DIRIGIDO",
+        ).order_by("-numero_intento", "-pk").first()
+
+    def _propuesta_aprobada(self, postulacion, seguimiento=None):
+        from apps.postulantes.models import DecisionAcademicaEtapa
+
+        if not seguimiento or seguimiento.etapa.codigo != "PERFIL_TRABAJO_DIRIGIDO":
+            seguimiento = self._seguimiento_perfil(postulacion)
+        return bool(
+            seguimiento
+            and DecisionAcademicaEtapa.objects.filter(
+                seguimiento_etapa=seguimiento,
+                codigo=self.PROPUESTA_APROBADA,
+                resultado=self.RESULTADO_PROPUESTA_APROBADA,
+                activo=True,
+            ).exists()
+        )
+
+    @staticmethod
+    def _tutor_activo(postulacion):
+        return bool(
+            postulacion
+            and postulacion.asignaciones.filter(
+                activo=True,
+                tipo_participacion="TUTOR",
+                seguimiento_etapa__isnull=True,
+            ).exists()
+        )
+
+    def get_configuracion_actores(self, postulacion=None, seguimiento=None):
+        propuesta_aprobada = bool(postulacion and self._propuesta_aprobada(postulacion, seguimiento))
+        tutor_preexistente = self._tutor_activo(postulacion)
+        tutor_habilitado = propuesta_aprobada or tutor_preexistente
+        precondicion_tutor = {
+            "codigo": self.PROPUESTA_APROBADA,
+            "estado": "CUMPLIDA" if propuesta_aprobada else (
+                "CONTINUIDAD_HISTORICA" if tutor_preexistente else "PENDIENTE"
+            ),
+            "enforcement": "INFORMATIVO" if tutor_preexistente and not propuesta_aprobada else "ACTIVO",
+        }
+        return {
+            "regimen_workflow": getattr(postulacion, "regimen_workflow", None),
+            "grupos": [
+                {
+                    "clave": "TRIBUNAL_PROPUESTA_TRABAJO_DIRIGIDO",
+                    "tipo_participacion": "TRIBUNAL",
+                    "nombre": "Tribunal de propuesta de Trabajo Dirigido",
+                    "ambito": "ETAPA",
+                    "codigo_etapa": "PERFIL_TRABAJO_DIRIGIDO",
+                    "minimo": 3,
+                    "maximo": 3,
+                    "ordenado": True,
+                    "ordenes_permitidos": [1, 2, 3],
+                    "obligatoriedad": True,
+                    "habilitada": True,
+                    "precondicion": None,
+                    "posiciones": [
+                        {"clave": "TRIBUNAL_PROPUESTA_TD_1", "orden_cargo": 1, "nombre": "Tribunal 1"},
+                        {"clave": "TRIBUNAL_PROPUESTA_TD_2", "orden_cargo": 2, "nombre": "Tribunal 2"},
+                        {"clave": "TRIBUNAL_PROPUESTA_TD_3", "orden_cargo": 3, "nombre": "Tribunal 3"},
+                    ],
+                },
+                {
+                    "clave": "TUTOR_TRABAJO_DIRIGIDO",
+                    "tipo_participacion": "TUTOR",
+                    "nombre": "Tutor de Trabajo Dirigido",
+                    "ambito": "POSTULACION",
+                    "minimo": 1,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "obligatoriedad": True,
+                    "habilitada": tutor_habilitado,
+                    "precondicion": precondicion_tutor,
+                    "bloqueo_precondicion_pendiente": {
+                        "codigo": "PROPUESTA_TRABAJO_DIRIGIDO_NO_APROBADA",
+                        "mensaje": "El Tutor solo puede designarse después de aprobar formalmente la propuesta de Trabajo Dirigido.",
+                    },
+                    "posiciones": [{
+                        "clave": "TUTOR_TRABAJO_DIRIGIDO_1",
+                        "orden_cargo": None,
+                        "nombre": "Tutor de Trabajo Dirigido",
+                    }],
+                },
+            ],
+        }
+
+    def get_reglas_asignacion(self):
+        return self.evento_policy.ASSIGNMENTS
 
     def usa_conclusion_academica_propia(self):
         return True
@@ -101,9 +217,13 @@ class TrabajoDirigidoPolicy(ProyectoGradoPolicy):
         return None
 
     def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
-        if seguimiento and seguimiento.etapa.codigo == "INSCRIPCION":
+        if not seguimiento:
+            return None
+        if seguimiento.etapa.codigo == "INSCRIPCION":
             return self._orientar_inscripcion(postulacion)
-        return super().get_orientacion_etapa_actual(
+        if seguimiento.etapa.codigo == "PERFIL_TRABAJO_DIRIGIDO":
+            return self._orientar_perfil(postulacion, seguimiento)
+        return self.get_orientacion_documental_prioritaria(
             postulacion=postulacion,
             seguimiento=seguimiento,
         )
@@ -173,26 +293,252 @@ class TrabajoDirigidoPolicy(ProyectoGradoPolicy):
         return requirements
 
     def _orientar_inscripcion(self, postulacion):
-        orientation = super()._orientar_inscripcion(postulacion)
-        completed = orientation["requisitos_cumplidos"]
-        total = orientation["requisitos_totales"]
-        message_by_action = {
-            "COMPLETAR_DOCUMENTOS": "Completa los documentos pendientes.",
-            "GESTIONAR_DOCUMENTOS": "Los documentos están pendientes de revisión administrativa.",
-            "GESTIONAR_ENTREGA_FISICA": "Falta registrar la recepción del fólder amarillo.",
-            "APROBAR_ETAPA": "Los requisitos están cumplidos. La etapa puede aprobarse.",
+        requirements = self._evaluar_requisitos_inscripcion(postulacion)
+        completed = sum(item["cumplido"] for item in requirements)
+        missing_documents = [
+            item for item in requirements
+            if item["tipo"] == "DOCUMENTO" and not item["presentado"]
+        ]
+        corrections = [
+            item for item in requirements
+            if item["tipo"] == "DOCUMENTO" and item["estado_display"] == "Requiere corrección"
+        ]
+        pending_review = [
+            item for item in requirements
+            if item["tipo"] == "DOCUMENTO" and item["presentado"]
+            and not item["cumplido"] and item not in corrections
+        ]
+        folder_complete = requirements[-1]["cumplido"]
+        if missing_documents or corrections:
+            code, title, description, destination, label = (
+                "COMPLETAR_DOCUMENTOS", "Completar documentos de Inscripción",
+                "Presenta o corrige los documentos obligatorios de Inscripción.",
+                "#documentos", "Ir a documentos",
+            )
+        elif pending_review:
+            code, title, description, destination, label = (
+                "GESTIONAR_DOCUMENTOS", "Revisión administrativa de documentos",
+                "Los documentos presentados deben ser aprobados por personal administrativo.",
+                "#documentos", "Revisar documentos",
+            )
+        elif not folder_complete:
+            code, title, description, destination, label = (
+                "GESTIONAR_ENTREGA_FISICA", "Registrar recepción del fólder amarillo",
+                "El personal administrativo debe registrar la recepción del fólder rotulado.",
+                "#inscripcion-entregas", "Ir a recepción física",
+            )
+        else:
+            code, title, description, destination, label = (
+                "APROBAR_ETAPA", "Aprobar Inscripción",
+                "Los requisitos de Inscripción están aprobados y recibidos.",
+                "#resumen", "Aprobar etapa",
+            )
+        return {
+            "operacion": "ORIENTAR_ETAPA",
+            "mensaje": f"{completed}/{len(requirements)} requisitos de Inscripción cumplidos.",
+            "requisitos": requirements,
+            "requisitos_cumplidos": completed,
+            "requisitos_totales": len(requirements),
+            "permite_aprobar_etapa": completed == len(requirements),
+            "siguiente_accion": {
+                "codigo": code, "titulo": title, "descripcion": description,
+                "estado": "DISPONIBLE" if code == "APROBAR_ETAPA" else "PENDIENTE",
+                "estado_display": "Disponible" if code == "APROBAR_ETAPA" else "Pendiente",
+                "destino": destination, "accion_label": label,
+            },
+            "conflictos_identidad": [],
         }
-        action_code = orientation["siguiente_accion"]["codigo"]
-        message = message_by_action.get(action_code)
-        if message:
-            orientation["mensaje"] = (
-                f"{completed}/{total} requisitos de Inscripción cumplidos. {message}"
+
+    @staticmethod
+    def _requisito_orientacion(tipo, codigo, nombre, cumplido, destino, estado_display=None):
+        return {
+            "tipo": tipo,
+            "codigo": codigo,
+            "nombre": nombre,
+            "cumplido": cumplido,
+            "estado": "CUMPLIDO" if cumplido else "PENDIENTE",
+            "estado_display": estado_display or ("Cumplido" if cumplido else "Pendiente"),
+            "destino": None if cumplido else destino,
+        }
+
+    @staticmethod
+    def _accion_orientacion(codigo, titulo, descripcion, destino, label, disponible=False):
+        return {
+            "codigo": codigo,
+            "titulo": titulo,
+            "descripcion": descripcion,
+            "estado": "DISPONIBLE" if disponible else "PENDIENTE",
+            "estado_display": "Disponible" if disponible else "Pendiente",
+            "destino": destino,
+            "accion_label": label,
+        }
+
+    def _orientar_perfil(self, postulacion, seguimiento):
+        tribunales = postulacion.asignaciones.filter(
+            activo=True,
+            tipo_participacion="TRIBUNAL",
+            seguimiento_etapa=seguimiento,
+            orden_cargo__in=(1, 2, 3),
+        )
+        ordenes = set(tribunales.values_list("orden_cargo", flat=True))
+        tribunal_completo = ordenes == {1, 2, 3} and tribunales.count() == 3
+        requisitos = [self._requisito_orientacion(
+            "ACTOR", "TRIBUNAL_PROPUESTA_TD", "Tribunal de propuesta",
+            tribunal_completo, "#actores", f"{len(ordenes)}/3",
+        )]
+        if not tribunal_completo:
+            accion = self._accion_orientacion(
+                "GESTIONAR_ACTORES", "Completar Tribunal de propuesta",
+                "Asigna las tres posiciones del Tribunal de propuesta de Trabajo Dirigido.",
+                "#actores", "Gestionar actores",
             )
-        if action_code == "APROBAR_ETAPA":
-            orientation["siguiente_accion"]["descripcion"] = (
-                "Los requisitos de Inscripción están aprobados y recibidos."
+            mensaje = "Completa la composición formal del Tribunal antes de registrar la decisión académica."
+            return self._respuesta_orientacion(mensaje, requisitos, accion)
+
+        propuesta_aprobada = self._propuesta_aprobada(postulacion, seguimiento)
+        requisitos.append(self._requisito_orientacion(
+            "DECISION_ACADEMICA", self.PROPUESTA_APROBADA,
+            "Propuesta de Trabajo Dirigido aprobada", propuesta_aprobada,
+            "#decisiones-academicas",
+            "Sin decisión formal (continuidad histórica)"
+            if not propuesta_aprobada and self._tutor_activo(postulacion)
+            else None,
+        ))
+        tutor_activo = self._tutor_activo(postulacion)
+        if not propuesta_aprobada and not tutor_activo:
+            accion = self._accion_orientacion(
+                "REGISTRAR_DECISION", "Registrar aprobación de la propuesta",
+                "Registra la decisión formal de los tres tribunales sobre la propuesta.",
+                "#decisiones-academicas", "Registrar decisión", disponible=True,
             )
-        return orientation
+            return self._respuesta_orientacion(
+                "El Tribunal está completo. Registra la aprobación formal de la propuesta.",
+                requisitos, accion,
+            )
+
+        requisitos.append(self._requisito_orientacion(
+            "ACTOR", "TUTOR_TRABAJO_DIRIGIDO", "Tutor de Trabajo Dirigido",
+            tutor_activo, "#actores",
+            "Asignado" if tutor_activo else "Pendiente",
+        ))
+        if not tutor_activo:
+            accion = self._accion_orientacion(
+                "GESTIONAR_ACTORES", "Asignar Tutor de Trabajo Dirigido",
+                "La propuesta está aprobada. Asigna al Tutor para elaborar el Perfil.",
+                "#actores", "Gestionar actores",
+            )
+            return self._respuesta_orientacion(
+                "La propuesta fue aprobada. Corresponde designar al Tutor de Trabajo Dirigido.",
+                requisitos, accion,
+            )
+
+        codigos_documentales = self.get_documentos_requeridos("PERFIL_TRABAJO_DIRIGIDO")
+        documentos_pendientes = set(self._missing_documents(postulacion, codigos_documentales))
+        orientacion_documental = self.get_orientacion_documental_prioritaria(
+            postulacion=postulacion,
+            seguimiento=seguimiento,
+        )
+        if orientacion_documental is not None:
+            documentos_orientados = {
+                item["codigo"] for item in orientacion_documental.get("requisitos", [])
+                if item.get("tipo") == "DOCUMENTO"
+            }
+            orientacion_documental.setdefault("requisitos", []).extend(
+                self._requisito_orientacion(
+                    "DOCUMENTO",
+                    codigo,
+                    codigo,
+                    codigo not in documentos_pendientes,
+                    "#documentos",
+                    "Pendiente de presentación o aprobación"
+                    if codigo in documentos_pendientes else "Aprobado",
+                )
+                for codigo in codigos_documentales
+                if codigo not in documentos_orientados
+            )
+            orientacion_documental["requisitos"] = (
+                requisitos + orientacion_documental.get("requisitos", [])
+            )
+            orientacion_documental["mensaje"] = (
+                "Completa el Perfil de Trabajo Dirigido y el informe del Tutor antes de la defensa."
+            )
+            return orientacion_documental
+
+        if documentos_pendientes:
+            requisitos.extend(
+                self._requisito_orientacion(
+                    "DOCUMENTO",
+                    codigo,
+                    codigo,
+                    False,
+                    "#documentos",
+                    "Pendiente de presentación o aprobación",
+                )
+                for codigo in codigos_documentales
+            )
+            accion = self._accion_orientacion(
+                "GESTIONAR_DOCUMENTOS", "Completar documentos del Perfil",
+                "Gestiona la presentación y aprobación del Perfil y del informe del Tutor.",
+                "#documentos", "Gestionar documentos",
+            )
+            return self._respuesta_orientacion(
+                "El Perfil y el informe del Tutor deben estar presentados y aprobados antes de programar la defensa.",
+                requisitos, accion,
+            )
+
+        requisitos.extend(
+            self._requisito_orientacion("DOCUMENTO", codigo, codigo, True, "#documentos", "Aprobado")
+            for codigo in codigos_documentales
+        )
+        evento = seguimiento.eventos_defensa.filter(
+            tipo_evento="DEFENSA_PERFIL", activo=True,
+        ).order_by("-numero_intento", "-pk").first()
+        if evento is None:
+            accion = self._accion_orientacion(
+                "PROGRAMAR_EVENTO", "Programar Defensa de Perfil",
+                "El Tutor y los documentos están completos. Programa la Defensa de Perfil.",
+                "#defensas", "Ir a programar defensa", disponible=True,
+            )
+        elif evento.estado != "FINALIZADA":
+            accion = self._accion_orientacion(
+                "GESTIONAR_DEFENSA", "Gestionar Defensa de Perfil",
+                "Completa la gestión de la Defensa de Perfil programada.",
+                "#defensas", "Ir a defensas",
+            )
+        elif not evento.evaluaciones.filter(
+            tipo_evaluacion="RESULTADO_FINAL", activo=True,
+        ).exists():
+            accion = self._accion_orientacion(
+                "CONSOLIDAR_RESULTADO", "Consolidar resultado del Perfil",
+                "Registra y consolida la evaluación de la Defensa de Perfil.",
+                "#defensas", "Ir a defensas", disponible=True,
+            )
+        else:
+            if propuesta_aprobada:
+                accion = self._accion_orientacion(
+                    "APROBAR_ETAPA", "Aprobar Perfil de Trabajo Dirigido",
+                    "La Defensa de Perfil tiene un resultado consolidado. Revisa y aprueba la etapa.",
+                    "#resumen", "Aprobar etapa", disponible=True,
+                )
+            else:
+                accion = self._accion_orientacion(
+                    "REGISTRAR_DECISION", "Registrar aprobación de la propuesta",
+                    "La continuidad histórica no sustituye la decisión académica formal de los tribunales.",
+                    "#decisiones-academicas", "Registrar decisión", disponible=True,
+                )
+        return self._respuesta_orientacion(
+            "Gestiona la Defensa de Perfil para completar esta etapa.", requisitos, accion,
+        )
+
+    @staticmethod
+    def _respuesta_orientacion(mensaje, requisitos, accion):
+        return {
+            "operacion": "ORIENTAR_ETAPA",
+            "mensaje": mensaje,
+            "requisitos": requisitos,
+            "siguiente_accion": accion,
+            "conflictos_identidad": [],
+        }
 
     def validar_asignacion(self, *, queryset_contexto, tipo_participacion, seguimiento_etapa,
                            orden_cargo, postulacion, queryset_activas, usuario_asignado, **kwargs):
@@ -204,15 +550,17 @@ class TrabajoDirigidoPolicy(ProyectoGradoPolicy):
             tipo_participacion=tipo_participacion, seguimiento_etapa=seguimiento_etapa,
         )
         stage = seguimiento_etapa.etapa.codigo if seguimiento_etapa else None
-        if tipo_participacion == "TUTOR" and not postulacion.seguimientos_etapa.filter(
-            etapa__codigo="PERFIL_TRABAJO_DIRIGIDO", estado="APROBADA",
-        ).exists():
-            raise ValidationError("El Tutor se designa después de aprobar la propuesta de Trabajo Dirigido.")
+        if tipo_participacion == "TUTOR" and not self._propuesta_aprobada(postulacion, seguimiento_etapa):
+            raise ValidationError(
+                "El Tutor solo puede designarse después de aprobar formalmente la propuesta de Trabajo Dirigido."
+            )
         if tipo_participacion == "TRIBUNAL" and stage == "PERFIL_TRABAJO_DIRIGIDO":
             if queryset_contexto.count() >= 3:
                 raise ValidationError("El perfil requiere exactamente tres docentes de tribunal.")
             if orden_cargo not in {1, 2, 3}:
                 raise ValidationError("Los tribunales del perfil requieren órdenes 1, 2 y 3.")
+            if queryset_contexto.filter(orden_cargo=orden_cargo).exists():
+                raise ValidationError("Ya existe un tribunal activo con ese orden de cargo.")
 
     def validar_inicio_etapa(self, seguimiento):
         if seguimiento.etapa.codigo == "DESARROLLO_TRABAJO_DIRIGIDO":
@@ -231,12 +579,17 @@ class TrabajoDirigidoPolicy(ProyectoGradoPolicy):
             RevisionTribunalPreviaService.validar_aprobacion(seguimiento)
             return
         if stage == "PERFIL_TRABAJO_DIRIGIDO":
+            if not self._propuesta_aprobada(seguimiento.postulacion, seguimiento):
+                raise ValidationError("La etapa requiere la aprobación formal de la propuesta de Trabajo Dirigido.")
+            if not self._tutor_activo(seguimiento.postulacion):
+                raise ValidationError("La etapa requiere un Tutor de Trabajo Dirigido activo.")
             self._require_sufficient_event(seguimiento, "DEFENSA_PERFIL")
         if stage == "DEFENSA_PRIVADA":
             self._require_sufficient_event(seguimiento, "DEFENSA_PRIVADA")
             return
         if stage == "DEFENSA_PUBLICA":
-            return super().validar_aprobacion_etapa(seguimiento)
+            self._validar_aprobacion_defensa_publica(seguimiento)
+            return
         missing = self._missing_documents(seguimiento.postulacion, self.get_documentos_requeridos(stage))
         if stage == "DESARROLLO_TRABAJO_DIRIGIDO":
             expediente = self._validar_institucion(seguimiento.postulacion)
@@ -244,6 +597,33 @@ class TrabajoDirigidoPolicy(ProyectoGradoPolicy):
                 missing.extend(self._missing_documents(seguimiento.postulacion, ("CONVENIO_TRABAJO_DIRIGIDO",)))
         if missing:
             raise ValidationError({"faltantes": sorted(set(missing))})
+
+    @staticmethod
+    def _validar_aprobacion_defensa_publica(seguimiento):
+        from apps.postulantes.defensas import EvaluacionDefensaService
+        from apps.postulantes.models import EvaluacionDefensa
+
+        evento = seguimiento.eventos_defensa.filter(
+            tipo_evento="DEFENSA_PUBLICA", estado="FINALIZADA", activo=True,
+        ).order_by("-fecha_fin_real", "-pk").first()
+        if not evento:
+            raise ValidationError("No se puede aprobar DEFENSA_PUBLICA sin un evento público finalizado.")
+        if not evento.evaluaciones.filter(
+            tipo_evaluacion="RESULTADO_FINAL",
+            es_resultado_final_evento=True,
+            nota_numerica__isnull=False,
+            activo=True,
+        ).exists():
+            raise ValidationError(
+                "No se puede aprobar DEFENSA_PUBLICA sin un resultado público consolidado válido."
+            )
+        resultado = EvaluacionDefensaService.calcular_resultado_final(
+            seguimiento.postulacion, None, auditar=False,
+        )
+        if resultado["nota_final"] is None or resultado["clasificacion"] == EvaluacionDefensa.Resultado.POSTERGADO:
+            raise ValidationError(
+                "No se puede aprobar DEFENSA_PUBLICA sin un resultado final completo y aprobatorio."
+            )
 
     def validar_nuevo_intento(self, *, etapa, ultimo_seguimiento, **kwargs):
         if etapa.codigo == "PERFIL_TRABAJO_DIRIGIDO":

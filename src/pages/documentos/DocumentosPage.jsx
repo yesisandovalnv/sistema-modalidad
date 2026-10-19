@@ -87,10 +87,16 @@ export default function DocumentosPage() {
     setUpload(null)
   }
 
-  const loadApplicableTypes = async (selectedId) => {
+  const loadApplicableTypes = async (
+    selectedId,
+    { preserveCurrent = false, excludeTypeIds = [] } = {},
+  ) => {
     applicableController.current?.abort()
     setApplicationId(selectedId)
-    setApplicableTypes([])
+    const excludedTypeIds = new Set(excludeTypeIds.map(String))
+    setApplicableTypes((current) => preserveCurrent
+      ? current.filter((type) => !excludedTypeIds.has(String(type.id)))
+      : [])
     setApplicableError('')
     if (!selectedId) return
 
@@ -147,6 +153,14 @@ export default function DocumentosPage() {
       : `${successCount} documento${successCount === 1 ? '' : 's'} cargado${successCount === 1 ? '' : 's'}. ${failureCount} documento${failureCount === 1 ? '' : 's'} no pudo${failureCount === 1 ? '' : 'ieron'} cargarse.`
     if (controller.signal.aborted) {
       return { total: results.length, successCount, failureCount, items: results, summary: '', canceled: true }
+    }
+    if (successCount > 0) {
+      await loadApplicableTypes(applicationId, {
+        preserveCurrent: true,
+        excludeTypeIds: results
+          .filter((item) => item.status === 'success')
+          .map((item) => item.tipo_documento_id),
+      })
     }
     setUpload((current) => current ? { ...current, submitting: false, success: summary } : current)
     if (successCount > 0) setRevision((value) => value + 1)

@@ -26,6 +26,7 @@ from apps.postulantes.models import (
     ParticipanteEvento,
     ParticipacionDecisionAcademica,
     Postulacion,
+    PublicacionMemorandumDesignacion,
     SeguimientoEtapa,
 )
 
@@ -100,6 +101,7 @@ class Command(BaseCommand):
         ConfirmacionCorreccionDocumento.all_objects.filter(postulacion__in=postulacion_ids).delete()
         DictamenRevisionDocumento.all_objects.filter(seguimiento_etapa__postulacion__in=postulacion_ids).delete()
         InformeRevisionTribunalPrevia.all_objects.filter(seguimiento_etapa__postulacion__in=postulacion_ids).delete()
+        PublicacionMemorandumDesignacion.all_objects.filter(postulacion__in=postulacion_ids).delete()
 
         ObservacionDocumento.all_objects.filter(version_documento__documento__postulacion__in=postulacion_ids).delete()
         VersionDocumento.all_objects.filter(documento__postulacion__in=postulacion_ids).delete()

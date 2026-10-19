@@ -22,18 +22,11 @@ class MemorandumDesignacionService:
             postulacion=postulacion, seguimiento_etapa=seguimiento,
             tipo_participacion="TRIBUNAL", orden_cargo__in=(1, 2, 3), activo=True,
         ).select_related("usuario").order_by("orden_cargo"))
-        tutores = list(AsignacionPostulacion.objects.filter(
-            postulacion=postulacion, seguimiento_etapa__isnull=True,
-            tipo_participacion="TUTOR", activo=True,
-        ).select_related("usuario"))
         if len(tribunales) != 3 or {item.orden_cargo for item in tribunales} != {1, 2, 3}:
             raise ValidationError({"asignaciones": ["Se requieren los tres tribunales oficiales con órdenes 1, 2 y 3."]})
-        if len(tutores) != 1:
-            raise ValidationError({"asignaciones": ["Se requiere exactamente un Tutor oficial activo."]})
-        actores = [*tribunales, *tutores]
-        if len({item.usuario_id for item in actores}) != 4:
-            raise ValidationError({"asignaciones": ["Tutor y tribunales deben ser personas diferentes."]})
-        return actores
+        if len({item.usuario_id for item in tribunales}) != 3:
+            raise ValidationError({"asignaciones": ["Los tres tribunales oficiales deben ser personas diferentes."]})
+        return tribunales
 
     @classmethod
     def es_vigente(cls, publicacion):
@@ -41,7 +34,22 @@ class MemorandumDesignacionService:
             actuales = cls.composicion_actual(publicacion.postulacion, publicacion.seguimiento_etapa)
         except ValidationError:
             return False
-        return publicacion.activo and {item.pk for item in actuales} == set(publicacion.asignaciones.values_list("pk", flat=True))
+        actuales_ids = {item.pk for item in actuales}
+        publicados = list(publicacion.asignaciones.all())
+        publicados_ids = {item.pk for item in publicados}
+        legacy_tutores = [
+            item for item in publicados
+            if item.pk not in actuales_ids
+            and item.tipo_participacion == "TUTOR"
+            and item.postulacion_id == publicacion.postulacion_id
+            and item.seguimiento_etapa_id is None
+        ]
+        return (
+            publicacion.activo
+            and actuales_ids.issubset(publicados_ids)
+            and len(publicados_ids - actuales_ids) == len(legacy_tutores)
+            and len(legacy_tutores) in (0, 1)
+        )
 
     @classmethod
     @transaction.atomic

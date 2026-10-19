@@ -172,6 +172,22 @@ describe('DefenseEvaluation por modalidad', () => {
     expect(screen.queryByText('Evaluación consensuada registrada')).not.toBeInTheDocument()
   })
 
+  it('notifica completion después de consolidar el flujo general', async () => {
+    const onChanged = vi.fn()
+    const onCompleted = vi.fn()
+    const finalizedDefense = {
+      ...privateDefense('TRABAJO_DIRIGIDO'),
+      evaluaciones: [{ id: 40, tipo_evaluacion: 'PRIVADA', modalidad_registro: 'CONSENSO', resultado_cualitativo: 'SUFICIENTE', nota_numerica: 28 }],
+    }
+    postulacionesService.consolidarEvaluacionDefensa.mockResolvedValue({})
+    render(<DefenseEvaluation defense={finalizedDefense} quorum={quorum} canManage onChanged={onChanged} onCompleted={onCompleted} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Consolidar resultado del evento' }))
+
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1))
+    expect(onChanged).toHaveBeenCalledTimes(1)
+  })
+
   it('no muestra la explicación contextual de Proyecto en otras modalidades', async () => {
     render(<DefenseEvaluation defense={profileDefense('TESIS_GRADO')} quorum={quorum} canManage onChanged={vi.fn()} />)
     await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
@@ -228,7 +244,8 @@ describe('DefenseEvaluation por modalidad', () => {
     postulacionesService.finalizarDefensa.mockImplementation(async () => { operations.push('finalizar'); return finalized })
     postulacionesService.consolidarEvaluacionDefensa.mockImplementation(async () => { operations.push('consolidar'); return consolidated.resultado_consolidado })
     const onChanged = vi.fn(async () => { operations.push('refresh-padre') })
-    const view = render(<DefenseEvaluation defense={baseDefense} quorum={quorum} canManage onChanged={onChanged} projectProfileFlow />)
+    const onCompleted = vi.fn()
+    const view = render(<DefenseEvaluation defense={baseDefense} quorum={quorum} canManage onChanged={onChanged} onCompleted={onCompleted} projectProfileFlow />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Registrar resultado de la defensa' }))
     const flow = screen.getByRole('dialog', { name: 'Registrar resultado de la defensa' })
@@ -237,6 +254,7 @@ describe('DefenseEvaluation por modalidad', () => {
     await userEvent.click(within(flow).getByRole('button', { name: 'Registrar resultado y finalizar' }))
 
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
+    expect(onCompleted).toHaveBeenCalledTimes(1)
     expect(operations).toEqual(['refresh-inicial', 'registrar', 'refresh-evaluacion', 'finalizar', 'refresh-finalizacion', 'consolidar', 'refresh-consolidacion', 'refresh-padre'])
     expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(9, 'perfil', { observaciones: 'Requiere ajustes', modalidad_registro: 'CONSENSO', resultado: 'INSUFICIENTE' }, expect.any(AbortSignal))
     expect(postulacionesService.finalizarDefensa).toHaveBeenCalledWith(9, expect.any(AbortSignal))
@@ -264,7 +282,8 @@ describe('DefenseEvaluation por modalidad', () => {
     postulacionesService.finalizarDefensa.mockRejectedValueOnce({ message: 'No se pudo finalizar temporalmente.' }).mockResolvedValueOnce(finalized)
     postulacionesService.consolidarEvaluacionDefensa.mockResolvedValue(consolidated.resultado_consolidado)
     const onChanged = vi.fn()
-    render(<DefenseEvaluation defense={baseDefense} quorum={quorum} canManage onChanged={onChanged} projectProfileFlow />)
+    const onCompleted = vi.fn()
+    render(<DefenseEvaluation defense={baseDefense} quorum={quorum} canManage onChanged={onChanged} onCompleted={onCompleted} projectProfileFlow />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Registrar resultado de la defensa' }))
     await userEvent.click(screen.getByRole('button', { name: 'Registrar resultado y finalizar' }))
@@ -272,11 +291,13 @@ describe('DefenseEvaluation por modalidad', () => {
     expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
     expect(postulacionesService.finalizarDefensa).toHaveBeenCalledTimes(1)
     expect(postulacionesService.consolidarEvaluacionDefensa).not.toHaveBeenCalled()
+    expect(onCompleted).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: 'Comprobar estado y continuar' }))
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1))
     expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
     expect(postulacionesService.finalizarDefensa).toHaveBeenCalledTimes(2)
     expect(postulacionesService.consolidarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+    expect(onCompleted).toHaveBeenCalledTimes(1)
   })
 })

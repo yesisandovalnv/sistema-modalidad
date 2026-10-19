@@ -30,7 +30,7 @@ const resultFlowState = (defense, flowType = 'perfil') => ({
   consolidated: Boolean(defense.resultado_consolidado),
 })
 
-function ProjectProfileResultFlow({ defense, onChanged, onReviewAttendance }) {
+function ProjectProfileResultFlow({ defense, onChanged, onCompleted, onReviewAttendance }) {
   const [dialog, setDialog] = useState(null)
   const controller = useRef(null)
   const flowType = defense.tipo_evento === 'DEFENSA_PRIVADA' ? 'privada' : 'perfil'
@@ -128,6 +128,7 @@ function ProjectProfileResultFlow({ defense, onChanged, onReviewAttendance }) {
       const finalEvaluation = canonical.resultado_consolidado || resultSourceEvaluation(canonical, flowType)
       updateSteps(canonical, { submitting: false, complete: true, result: finalEvaluation?.resultado_cualitativo || selectedResult })
       await onChanged(request.signal, canonical)
+      onCompleted?.(canonical)
     } catch (error) {
       if (error.canceled || request.signal.aborted) return
       try {
@@ -157,7 +158,7 @@ function ProjectProfileResultFlow({ defense, onChanged, onReviewAttendance }) {
   </>
 }
 
-export default function DefenseEvaluation({ defense, quorum, canManage, onChanged, projectProfileFlow = false, onReviewAttendance }) {
+export default function DefenseEvaluation({ defense, quorum, canManage, onChanged, onCompleted, projectProfileFlow = false, onReviewAttendance }) {
   const [form, setForm] = useState(null)
   const [projectPrivateNote, setProjectPrivateNote] = useState('')
   const [projectPublicNote, setProjectPublicNote] = useState('')
@@ -181,7 +182,7 @@ export default function DefenseEvaluation({ defense, quorum, canManage, onChange
   const hasResult = Boolean(defense.resultado_consolidado)
   const writable = canManage && ['EN_CURSO', 'FINALIZADA'].includes(defense.estado) && quorum.data?.valido === true
 
-  if (projectProfileFlow && writable && !hasResult && (projectProfile || privateQuickFlow)) return <ProjectProfileResultFlow defense={defense} onChanged={onChanged} onReviewAttendance={onReviewAttendance} />
+  if (projectProfileFlow && writable && !hasResult && (projectProfile || privateQuickFlow)) return <ProjectProfileResultFlow defense={defense} onChanged={onChanged} onCompleted={onCompleted} onReviewAttendance={onReviewAttendance} />
 
   const submit = async (event) => {
     event.preventDefault()
@@ -223,7 +224,7 @@ export default function DefenseEvaluation({ defense, quorum, canManage, onChange
   const consolidate = async () => {
     if (form?.submitting) return
     controller.current?.abort(); controller.current = new AbortController(); setForm({ action: 'consolidar', submitting: true, error: '', fields: {} })
-    try { await postulacionesService.consolidarEvaluacionDefensa(defense.id, controller.current.signal); setForm(null); await onChanged(controller.current.signal) }
+    try { await postulacionesService.consolidarEvaluacionDefensa(defense.id, controller.current.signal); setForm(null); await onChanged(controller.current.signal); onCompleted?.() }
     catch (error) { if (!error.canceled) setForm({ action: 'consolidar', submitting: false, error: error.message, fields: error.fields || {} }) }
   }
 

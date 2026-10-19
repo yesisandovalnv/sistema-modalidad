@@ -318,6 +318,8 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
             WorkflowService.observar_etapa(seguimiento, self.admin, "   ")
 
     def test_aprobar_cierre_documental_bloquea_solo_requisitos_tecnicos(self):
+        self.postulacion.regimen_workflow = Postulacion.RegimenWorkflowChoices.PG_LEGACY
+        self.postulacion.save(update_fields=["regimen_workflow"])
         WorkflowService.inicializar_flujo(self.postulacion, self.admin)
         self.habilitar_aprobacion_inscripcion()
         for etapa in (self.etapa_inscripcion, self.etapa_perfil, self.etapa_opcional, self.etapa_cierre):
@@ -388,6 +390,8 @@ class WorkflowServiceTest(WorkflowBaseMixin, TestCase):
         self.assertEqual(nuevo_intento.estado, SeguimientoEtapa.EstadoChoices.PENDIENTE)
 
     def test_porcentaje_avance_no_sobrecuenta_intentos_repetidos(self):
+        self.postulacion.regimen_workflow = Postulacion.RegimenWorkflowChoices.PG_LEGACY
+        self.postulacion.save(update_fields=["regimen_workflow"])
         WorkflowService.inicializar_flujo(self.postulacion, self.admin)
         self.habilitar_aprobacion_inscripcion()
         WorkflowService.aprobar_etapa(

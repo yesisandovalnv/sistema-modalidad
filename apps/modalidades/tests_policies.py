@@ -50,18 +50,21 @@ class RegistryTests(TestCase):
 
     def test_trabajo_dirigido_does_not_inherit_project_identity_restriction(self):
         groups = TrabajoDirigidoPolicy().get_configuracion_actores()["grupos"]
-        tribunal = next(group for group in groups if group["clave"] == "TRIBUNAL_PERFIL")
+        tribunal = next(
+            group for group in groups
+            if group["clave"] == "TRIBUNAL_PROPUESTA_TRABAJO_DIRIGIDO"
+        )
 
         self.assertIsNone(tribunal.get("restriccion_identidad"))
 
     def test_ocupacion_actor_is_opt_in_for_project_grade_pilot_only(self):
         project_groups = ProyectoGradoPolicy().get_configuracion_actores()["grupos"]
         td_groups = TrabajoDirigidoPolicy().get_configuracion_actores()["grupos"]
-        thesis_config = TesisGradoPolicy().get_configuracion_actores()
+        thesis_groups = TesisGradoPolicy().get_configuracion_actores()["grupos"]
 
         self.assertTrue(all(group["ocupacion_actor"]["aplica"] for group in project_groups))
         self.assertTrue(all(group.get("ocupacion_actor") is None for group in td_groups))
-        self.assertEqual(thesis_config, {})
+        self.assertTrue(all(group.get("ocupacion_actor") is None for group in thesis_groups))
 
     def test_capacidades_examen_configuradas(self):
         examen = Modalidad.objects.create(codigo="EXAMEN_GRADO", nombre="Examen capacidades configuradas")
@@ -267,22 +270,29 @@ class ProyectoGradoOrientacionDocumentalPerfilTests(TestCase):
             postulacion=self.postulacion, seguimiento=self.seguimiento,
         )
 
-    def test_sin_documentos_prioriza_carga_y_excluye_documento_administrativo(self):
+    def test_sin_documentos_proyecta_todos_los_documentos_aplicables_del_estudiante(self):
         orientacion = self._orientacion()
 
         self.assertEqual(orientacion["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
         self.assertEqual([item["codigo"] for item in orientacion["requisitos"]], [
-            "CARTA_SOLICITUD_TRIBUNAL_PROYECTO", "PERFIL_ACADEMICO_PROYECTO",
+            "CARTA_SOLICITUD_TRIBUNAL_PROYECTO",
+            "PERFIL_ACADEMICO_PROYECTO",
         ])
         self.assertTrue(all(item["estado"] == "NO_PRESENTADO" for item in orientacion["requisitos"]))
 
-    def test_carga_parcial_conserva_progreso_y_orienta_al_faltante(self):
+    def test_carta_aprobada_conserva_ambos_requisitos_y_perfil_pendiente(self):
         self._documento(self.carta, self.aprobado)
 
         orientacion = self._orientacion()
 
-        self.assertEqual([item["cumplido"] for item in orientacion["requisitos"]], [True, False])
-        self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Cargar documentos")
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        self.assertEqual(
+            [(item["codigo"], item["estado"], item["cumplido"]) for item in orientacion["requisitos"]],
+            [
+                ("CARTA_SOLICITUD_TRIBUNAL_PROYECTO", "APROBADO", True),
+                ("PERFIL_ACADEMICO_PROYECTO", "NO_PRESENTADO", False),
+            ],
+        )
 
     def test_documentos_enviados_orientan_a_esperar_revision(self):
         self._documento(self.carta, self.enviado)
@@ -291,6 +301,10 @@ class ProyectoGradoOrientacionDocumentalPerfilTests(TestCase):
         orientacion = self._orientacion()
 
         self.assertEqual(orientacion["siguiente_accion"]["codigo"], "ESPERAR_REVISION_DOCUMENTOS")
+        self.assertEqual([item["codigo"] for item in orientacion["requisitos"]], [
+            "CARTA_SOLICITUD_TRIBUNAL_PROYECTO",
+            "PERFIL_ACADEMICO_PROYECTO",
+        ])
         self.assertTrue(all(item["estado"] == "PENDIENTE_REVISION" for item in orientacion["requisitos"]))
 
     def test_documento_observado_orienta_a_correccion_o_reenvio(self):
@@ -301,6 +315,7 @@ class ProyectoGradoOrientacionDocumentalPerfilTests(TestCase):
 
         self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Corregir o reenviar documentos")
         self.assertEqual(orientacion["requisitos"][0]["estado"], "REQUIERE_CORRECCION")
+        self.assertEqual(orientacion["requisitos"][1]["estado"], "APROBADO")
 
     def test_documentos_aprobados_dejan_continuar_orientacion_academica(self):
         self._documento(self.carta, self.aprobado)
@@ -310,6 +325,36 @@ class ProyectoGradoOrientacionDocumentalPerfilTests(TestCase):
 
         self.assertEqual(orientacion["siguiente_accion"]["codigo"], "GESTIONAR_ACTORES")
         self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Completar Tribunal de Perfil")
+
+    def test_despues_de_propuesta_y_tutor_orienta_a_presentar_perfil(self):
+        self._documento(self.carta, self.aprobado)
+        docente_role = Role.objects.create(codigo="DOC_ORIENTACION", nombre="Docente")
+        docentes = [
+            CustomUser.objects.create_user(username=f"doc-orientacion-{indice}", role=docente_role)
+            for indice in range(4)
+        ]
+        from apps.postulantes.models import AsignacionPostulacion
+
+        for orden, docente in enumerate(docentes[:3], start=1):
+            AsignacionPostulacion.objects.create(
+                postulacion=self.postulacion, usuario=docente, tipo_participacion="TRIBUNAL",
+                orden_cargo=orden, seguimiento_etapa=self.seguimiento, designado_por=docentes[3],
+            )
+        AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion, usuario=docentes[3], tipo_participacion="TUTOR",
+            designado_por=docentes[3],
+        )
+
+        with patch.object(self.policy, "_propuesta_aprobada", return_value=True):
+            orientacion = self._orientacion()
+
+        self.assertEqual([item["codigo"] for item in orientacion["requisitos"]], [
+            "CARTA_SOLICITUD_TRIBUNAL_PROYECTO",
+            "PERFIL_ACADEMICO_PROYECTO",
+        ])
+        self.assertTrue(orientacion["requisitos"][0]["cumplido"])
+        self.assertFalse(orientacion["requisitos"][1]["cumplido"])
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
 
     def test_modalidad_sin_documentos_aplicables_no_inventa_orientacion(self):
         class SinDocumentosPolicy(BaseModalidadPolicy):

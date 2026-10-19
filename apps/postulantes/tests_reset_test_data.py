@@ -29,6 +29,7 @@ from apps.postulantes.models import (
     ParticipacionDecisionAcademica,
     ParticipanteEvento,
     Postulacion,
+    PublicacionMemorandumDesignacion,
     SeguimientoEtapa,
 )
 from apps.usuarios.models import CustomUser
@@ -389,6 +390,13 @@ class ResetTestDataCommandTests(TestCase):
                 )
             ]
         )
+        publicacion_memorandum = PublicacionMemorandumDesignacion.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=self.seguimiento,
+            version_documento=self.version,
+            publicado_por=self.docente,
+        )
+        publicacion_memorandum.asignaciones.add(self.asignacion)
 
         self._run_reset(confirm=True)
 
@@ -403,6 +411,7 @@ class ResetTestDataCommandTests(TestCase):
         self.assertEqual(ConfirmacionCorreccionDocumento.all_objects.count(), 0)
         self.assertEqual(DictamenRevisionDocumento.all_objects.count(), 0)
         self.assertEqual(InformeRevisionTribunalPrevia.all_objects.count(), 0)
+        self.assertEqual(PublicacionMemorandumDesignacion.all_objects.count(), 0)
 
     def test_18_segunda_ejecucion_es_idempotente(self):
         self._run_reset(confirm=True)

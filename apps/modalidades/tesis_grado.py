@@ -534,6 +534,83 @@ class TesisGradoPolicy(BaseModalidadPolicy):
     def get_reglas_asignacion(self):
         return {"TEMATICA_TESIS": {"TRIBUNAL": 3}, "TUTOR": {"precondicion": "TEMATICA_TESIS_APROBADA"}}
 
+    def get_configuracion_actores(self, postulacion=None, seguimiento=None):
+        """Declara las posiciones gestionables de actores de Tesis."""
+        tematica_aprobada = bool(
+            postulacion
+            and postulacion.seguimientos_etapa.filter(
+                etapa__codigo="TEMATICA_TESIS",
+                estado="APROBADA",
+            ).exists()
+        )
+        grupos = [
+            {
+                "clave": "TRIBUNAL_TEMATICA_TESIS",
+                "tipo_participacion": "TRIBUNAL",
+                "nombre": "Tribunal de Tematica de Tesis",
+                "ambito": "ETAPA",
+                "codigo_etapa": "TEMATICA_TESIS",
+                "minimo": 3,
+                "maximo": 3,
+                "ordenado": True,
+                "ordenes_permitidos": [1, 2, 3],
+                "obligatoriedad": True,
+                "habilitada": True,
+                "precondicion": None,
+                "posiciones": [
+                    {"clave": "TRIBUNAL_TEMATICA_TESIS_1", "orden_cargo": 1, "nombre": "Tribunal 1"},
+                    {"clave": "TRIBUNAL_TEMATICA_TESIS_2", "orden_cargo": 2, "nombre": "Tribunal 2"},
+                    {"clave": "TRIBUNAL_TEMATICA_TESIS_3", "orden_cargo": 3, "nombre": "Tribunal 3"},
+                ],
+            },
+            {
+                "clave": "TUTOR_TESIS",
+                "tipo_participacion": "TUTOR",
+                "nombre": "Tutor de Tesis",
+                "ambito": "POSTULACION",
+                "minimo": 1,
+                "maximo": 1,
+                "ordenado": False,
+                "ordenes_permitidos": [],
+                "obligatoriedad": True,
+                "habilitada": True,
+                "precondicion": {
+                    "codigo": "TEMATICA_TESIS_APROBADA",
+                    "estado": "CUMPLIDA" if tematica_aprobada else "PENDIENTE",
+                    "enforcement": "ACTIVO",
+                },
+                "bloqueo_precondicion_pendiente": {
+                    "codigo": "TEMATICA_TESIS_NO_APROBADA",
+                    "mensaje": "El Tutor solo puede designarse después de aprobar la temática de Tesis.",
+                },
+                "posiciones": [
+                    {"clave": "TUTOR_TESIS_1", "orden_cargo": None, "nombre": "Tutor de Tesis"},
+                ],
+            },
+        ]
+        if seguimiento and seguimiento.etapa.codigo == "DEFENSA_PRIVADA":
+            grupos.append({
+                "clave": "DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS",
+                "tipo_participacion": "DOCENTE_MODALIDAD",
+                "nombre": "Docente de Modalidad",
+                "ambito": "POSTULACION",
+                "minimo": 1,
+                "maximo": 1,
+                "ordenado": False,
+                "ordenes_permitidos": [],
+                "obligatoriedad": True,
+                "habilitada": True,
+                "precondicion": None,
+                "posiciones": [{
+                    "clave": "DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS_1",
+                    "orden_cargo": None,
+                    "nombre": "Docente de Modalidad",
+                }],
+            })
+        return {
+            "grupos": grupos,
+        }
+
     def validar_asignacion(self, *, queryset_contexto, postulacion, tipo_participacion,
                            seguimiento_etapa, orden_cargo, **kwargs):
         if tipo_participacion == "TRIBUNAL" and seguimiento_etapa and seguimiento_etapa.etapa.codigo == "TEMATICA_TESIS":

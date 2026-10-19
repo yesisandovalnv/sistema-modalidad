@@ -89,3 +89,12 @@ Si un cambio futuro en código compartido puede afectar `TESIS_GRADO`:
 3. Si la tarea requiere modificar deliberadamente el comportamiento protegido de Tesis, detenerse antes de editar y solicitar autorización explícita.
 
 Esta protección no impide cambios internos compartidos necesarios para otras modalidades cuando se demuestre mediante regresión que Tesis conserva exactamente su comportamiento.
+
+## Buenas prácticas para modales y overlays
+
+Al diagnosticar o cambiar diálogos, backdrops y overlays:
+
+- Reproducir y medir los estados relevantes antes y después del montaje; inspeccionar geometría, estilos efectivos y reglas CSS que realmente coincidan.
+- Seguir ancestros, containing blocks, contextos de apilamiento, márgenes y utilidades de espaciado, overflow, scrollbars y cambios dinámicos; confirmar la causa raíz, sin asumir que un caso previo se repite.
+- Aplicar la corrección estructural mínima compatible con la arquitectura existente; no recurrir por defecto a portales, offsets, alturas fijas, opacidades o z-index.
+- Probar el par de diálogos afectado y los demás flujos/modalidades que compartan la superficie, además del espaciado del contenido normal y la accesibilidad.

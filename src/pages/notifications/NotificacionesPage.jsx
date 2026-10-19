@@ -14,7 +14,7 @@ function DetailModal({ notification, onClose }) {
   const closeRef = useRef(null)
   useEffect(() => { closeRef.current?.focus(); const key = (event) => event.key === 'Escape' && onClose(); document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key) }, [onClose])
   const metadata = notification.metadata && typeof notification.metadata === 'object' ? Object.entries(notification.metadata).filter(([key]) => safeMetadata[key]) : []
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="notification-title" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="notification-title" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
       <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-semibold text-slate-500">{readable(notification.tipo)}</p><h2 id="notification-title" className="mt-1 text-xl font-bold">{notification.titulo}</h2></div><Button ref={closeRef} variant="ghost" aria-label="Cerrar detalle" onClick={onClose}><X className="h-5 w-5" /></Button></div>
       <p className="mt-4 whitespace-pre-wrap break-words">{notification.mensaje}</p>

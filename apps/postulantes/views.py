@@ -201,6 +201,14 @@ class PostulacionViewSet(viewsets.ModelViewSet):
 
                     ProyectoGradoWorkflowOrchestrator.inicializar_proceso(postulacion, request.user)
                     postulacion.refresh_from_db()
+                elif (
+                    postulacion.modalidad.codigo == "TESIS_GRADO"
+                    and postulacion.tipo_registro != Postulacion.TipoRegistroChoices.HISTORICO
+                ):
+                    from apps.postulantes.tesis_grado_workflow import TesisGradoWorkflowOrchestrator
+
+                    TesisGradoWorkflowOrchestrator.inicializar_proceso(postulacion, request.user)
+                    postulacion.refresh_from_db()
         except DjangoValidationError as exc:
             raise DRFValidationError(str(exc)) from exc
 

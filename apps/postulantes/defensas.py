@@ -221,6 +221,8 @@ class EvaluacionDefensaService:
     @staticmethod
     @transaction.atomic
     def consolidar_evaluacion_evento(evento,usuario):
+        from apps.modalidades.policies import ReintentoNoElegibleError
+
         evento=EventoDefensa.objects.select_for_update().select_related("seguimiento_etapa").get(pk=evento.pk)
         policy=ModalidadPolicyRegistry.get(evento.postulacion)
         if not policy.permite_evaluaciones(): raise ValidationError("La modalidad no soporta evaluaciones.")
@@ -239,7 +241,18 @@ class EvaluacionDefensaService:
         if rechazo:
             WorkflowService.rechazar_etapa(evento.seguimiento_etapa, usuario, rechazo)
             if evento.seguimiento_etapa.numero_intento == 1:
-                WorkflowService.crear_nuevo_intento(evento.postulacion, evento.seguimiento_etapa.etapa, usuario)
+                try:
+                    WorkflowService.crear_nuevo_intento(evento.postulacion, evento.seguimiento_etapa.etapa, usuario)
+                except ReintentoNoElegibleError as error:
+                    if not policy.evaluacion_policy.conservar_rechazo_sin_reintento(
+                        evento=evento, error=error,
+                    ):
+                        raise
+                    e._reintento = {
+                        "creado": False,
+                        "habilitado": False,
+                        "motivo": error.messages[0],
+                    }
         return e
 
     @staticmethod

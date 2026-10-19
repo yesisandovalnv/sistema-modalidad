@@ -10,6 +10,65 @@ from apps.modalidades.policies import (BaseEvaluacionPolicy, BaseEventoPolicy,
     ActorCargaDocumento, DecisionAcademicaDefinition, EtapaDefinition)
 
 
+def _documento_aprobado_vigente(postulacion, codigo):
+    documento = postulacion.documentos.filter(
+        tipo_documento__codigo=codigo,
+        activo=True,
+        estado__codigo="APR",
+        requiere_correccion=False,
+    ).first()
+    return bool(
+        documento
+        and documento.versiones.filter(activo=True, es_version_actual=True).exists()
+    )
+
+
+def _propuesta_aprobada_hitos(postulacion, seguimiento):
+    if (
+        postulacion.regimen_workflow != "PG_HITOS_V1"
+        or not seguimiento
+        or seguimiento.postulacion_id != postulacion.pk
+        or seguimiento.etapa.codigo != "PERFIL_PROYECTO"
+    ):
+        return False
+    from apps.postulantes.models import DecisionAcademicaEtapa
+
+    return DecisionAcademicaEtapa.objects.filter(
+        seguimiento_etapa=seguimiento,
+        codigo="PROPUESTA_APROBADA",
+        resultado="APROBADA",
+        activo=True,
+    ).exists()
+
+
+def _faltantes_predefensa_perfil(seguimiento):
+    postulacion = seguimiento.postulacion
+    faltantes = []
+    for codigo in (
+        "CARTA_SOLICITUD_TRIBUNAL_PROYECTO",
+        "PERFIL_ACADEMICO_PROYECTO",
+    ):
+        if not _documento_aprobado_vigente(postulacion, codigo):
+            faltantes.append(codigo)
+    tribunales = postulacion.asignaciones.filter(
+        activo=True,
+        tipo_participacion="TRIBUNAL",
+        seguimiento_etapa=seguimiento,
+        orden_cargo__in=(1, 2, 3),
+    )
+    if set(tribunales.values_list("orden_cargo", flat=True)) != {1, 2, 3}:
+        faltantes.append("TRIBUNAL_FORMAL")
+    if not _propuesta_aprobada_hitos(postulacion, seguimiento):
+        faltantes.append("PROPUESTA_APROBADA")
+    if not postulacion.asignaciones.filter(
+        activo=True,
+        tipo_participacion="TUTOR",
+        seguimiento_etapa__isnull=True,
+    ).exists():
+        faltantes.append("TUTOR")
+    return faltantes
+
+
 STAGE_DATA = (
     ("INSCRIPCION", "Inscripción"), ("PERFIL_PROYECTO", "Perfil de Proyecto"),
     ("DOCUMENTO_FINAL", "Documento Final"), ("REVISION_TRIBUNAL_PREVIA", "Revisión de Tribunal Previa"),
@@ -81,6 +140,14 @@ class ProyectoGradoEventoPolicy(BaseEventoPolicy):
             raise ValidationError("La composición de la Defensa Pública contiene una persona con cargos incompatibles. Presidente, Secretario y tribunales deben ser personas distintas.")
         missing = {rol:item["minimo"]-item["actual"] for rol,item in evaluacion["requisitos"].items() if item["actual"] < item["minimo"]}
         if missing: raise ValidationError(f"No existen asignaciones mínimas activas: {missing}.")
+        if (
+            tipo_evento == "DEFENSA_PERFIL"
+            and seguimiento.postulacion.regimen_workflow == "PG_HITOS_V1"
+            and seguimiento.postulacion.tipo_registro != "HISTORICO"
+        ):
+            faltantes = _faltantes_predefensa_perfil(seguimiento)
+            if faltantes:
+                raise ValidationError({"faltantes": faltantes})
         anticipacion = self.MINIMUM_NOTICE_HOURS.get(tipo_evento)
         if anticipacion and fecha_programada < timezone.now()+timedelta(hours=anticipacion): raise ValidationError(f"La defensa pública debe programarse con al menos {anticipacion} horas de anticipación (diagrama oficial).")
     def validar_quorum(self, evento):
@@ -426,15 +493,7 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
             or seguimiento.etapa.codigo != "PERFIL_PROYECTO"
         ):
             return False
-        from apps.postulantes.models import DecisionAcademicaEtapa
-
-        definition = self.get_decisiones_academicas_permitidas("PERFIL_PROYECTO")[0]
-        return DecisionAcademicaEtapa.objects.filter(
-            seguimiento_etapa=seguimiento,
-            codigo=definition.codigo,
-            resultado=definition.resultados[0],
-            activo=True,
-        ).exists()
+        return _propuesta_aprobada_hitos(postulacion, seguimiento)
 
     def get_configuracion_actores(self, postulacion=None, seguimiento=None):
         """Fuente canónica del contrato formal de actores para Proyecto de Grado.
@@ -993,6 +1052,13 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
                 raise ValidationError({"faltantes": missing})
             return None
         if seguimiento.etapa.codigo == "PERFIL_PROYECTO":
+            if (
+                seguimiento.postulacion.regimen_workflow == "PG_HITOS_V1"
+                and seguimiento.postulacion.tipo_registro != "HISTORICO"
+            ):
+                faltantes = _faltantes_predefensa_perfil(seguimiento)
+                if faltantes:
+                    raise ValidationError({"faltantes": faltantes})
             evento = seguimiento.eventos_defensa.filter(
                 tipo_evento="DEFENSA_PERFIL",
                 estado="FINALIZADA",

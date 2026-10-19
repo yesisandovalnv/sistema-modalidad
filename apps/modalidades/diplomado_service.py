@@ -1,12 +1,12 @@
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
 from apps.academico.models import EtapaModalidad
-from apps.modalidades.diplomado import DiplomadoPolicy, postulacion_modulos
+from apps.modalidades.diplomado import DiplomadoPolicy, MODULE_ORDER_BY_STAGE, postulacion_modulos
 from apps.modalidades.models import DiplomadoDefensa, DiplomadoModulo
 from apps.postulantes.models import Postulacion, SeguimientoEtapa
 from apps.postulantes.workflow import WorkflowService
@@ -38,11 +38,30 @@ class DiplomadoService:
     @classmethod
     @transaction.atomic
     def set_module_result(cls, postulacion, order, nota, usuario, observaciones=""):
-        modules = cls.ensure_modules(postulacion)
-        if not 1 <= int(order) <= 5:
+        cls._validate(postulacion)
+        try:
+            order = int(order)
+        except (TypeError, ValueError):
+            raise ValidationError({"modulo": "El módulo es obligatorio."})
+        if not 1 <= order <= 5:
             raise ValidationError({"modulo": "El Diplomado tiene como máximo cinco módulos."})
-        module = modules[int(order) - 1]
-        module.nota = Decimal(str(nota)).quantize(Decimal("0.01"))
+        current_stage = postulacion.seguimientos_etapa.filter(
+            estado__in=(SeguimientoEtapa.EstadoChoices.EN_PROCESO, SeguimientoEtapa.EstadoChoices.OBSERVADA),
+            activo=True,
+        ).select_related("etapa").order_by("etapa__orden", "numero_intento").first()
+        if current_stage is None:
+            raise ValidationError({"modulo": "No existe una etapa académica de módulo en curso."})
+        expected_order = MODULE_ORDER_BY_STAGE.get(current_stage.etapa.codigo)
+        if expected_order is None:
+            raise ValidationError({"modulo": "La etapa actual no admite registrar resultados de módulo."})
+        if order != expected_order:
+            raise ValidationError({"modulo": "Solo puede registrar el resultado del módulo correspondiente a la etapa actual."})
+        modules = cls.ensure_modules(postulacion)
+        module = modules[order - 1]
+        try:
+            module.nota = Decimal(str(nota)).quantize(Decimal("0.01"))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValidationError({"nota": "La nota debe ser un número entre 0 y 100."}) from exc
         module.estado = DiplomadoModulo.Estado.APROBADO if module.nota > 65 else DiplomadoModulo.Estado.REPROBADO
         module.observaciones = (observaciones or "").strip()
         module.save()

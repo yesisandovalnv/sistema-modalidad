@@ -11,6 +11,7 @@ from apps.modalidades.policies import (
     BaseModalidadPolicy,
     BaseRequisitosPolicy,
     EtapaDefinition,
+    ReintentoNoElegibleError,
 )
 
 STAGE_DATA = (
@@ -48,6 +49,14 @@ DOCUMENTS_BY_STAGE = {
     ),
     "CIERRE_DOCUMENTAL": ("ACTA_DEFENSA_DIPL", "MONOGRAFIA_EMPAST_D"),
     "CONCLUSION_ACADEMICA": ("ACTA_DEFENSA_DIPL", "MONOGRAFIA_EMPAST_D"),
+}
+
+MODULE_ORDER_BY_STAGE = {
+    "MODULO_1": 1,
+    "MODULO_2": 2,
+    "MODULO_3": 3,
+    "MODULO_4": 4,
+    "TALLER_INVESTIGACION": 5,
 }
 
 
@@ -160,8 +169,12 @@ class DiplomadoEvaluacionPolicy(BaseEvaluacionPolicy):
             classification = "EXCELENTE"
         return {"nota_final": note, "clasificacion": classification}
 
+    @staticmethod
+    def es_resultado_aprobatorio(nota):
+        return nota is not None and nota > 65
+
     def obtener_aprobacion_por_consolidacion(self, *, evento, evaluacion, resultado_final, **kwargs):
-        if resultado_final["nota_final"] is not None and resultado_final["nota_final"] > 65:
+        if self.es_resultado_aprobatorio(resultado_final["nota_final"]):
             return "Defensa de Monografía aprobada conforme a la escala del Artículo 26."
         return None
 
@@ -169,6 +182,9 @@ class DiplomadoEvaluacionPolicy(BaseEvaluacionPolicy):
         if resultado_final["nota_final"] is not None and resultado_final["nota_final"] <= 65:
             return "Defensa reprobada o postergada; se habilita una nueva defensa dentro de 30 días calendario."
         return None
+
+    def conservar_rechazo_sin_reintento(self, *, evento, error):
+        return isinstance(error, ReintentoNoElegibleError)
 
 
 class DiplomadoPolicy(BaseModalidadPolicy):
@@ -181,6 +197,96 @@ class DiplomadoPolicy(BaseModalidadPolicy):
     def get_reglas_asignacion(self):
         return {"VICERRECTOR_POSGRADO": 1, "DECANO_FACULTAD": 1, "TRIBUNAL": 2}
 
+    def get_configuracion_actores(self, postulacion=None, seguimiento=None):
+        """Declara la composicion efectiva de la defensa publica de Diplomado."""
+        identidad = {"grupo": "COMISION_DEFENSA_DIPLOMADO", "unica_persona": True}
+        ocupacion = {
+            "aplica": True,
+            "ambito": "POSTULACION",
+            "motivo": "YA_TIENE_ASIGNACION_VIGENTE_EN_DEFENSA_DIPLOMADO",
+            "relevantes": [
+                "DECANO_FACULTAD",
+                "VICERRECTOR_POSGRADO",
+                "DIRECTOR_CARRERA",
+                "TRIBUNAL",
+            ],
+        }
+        comun = {
+            "ambito": "POSTULACION",
+            "restriccion_identidad": identidad,
+            "ocupacion_actor": ocupacion,
+            "habilitada": True,
+            "precondicion": None,
+        }
+        return {
+            "regimen_workflow": getattr(postulacion, "regimen_workflow", None),
+            "grupos": [
+                {
+                    **comun,
+                    "clave": "DECANO_DIPLOMADO",
+                    "tipo_participacion": "DECANO_FACULTAD",
+                    "nombre": "Decano de Facultad",
+                    "minimo": 1,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "obligatoriedad": True,
+                    "posiciones": [{
+                        "clave": "DECANO_DIPLOMADO_1",
+                        "orden_cargo": None,
+                        "nombre": "Decano de Facultad",
+                    }],
+                },
+                {
+                    **comun,
+                    "clave": "VICERRECTOR_POSGRADO_DIPLOMADO",
+                    "tipo_participacion": "VICERRECTOR_POSGRADO",
+                    "nombre": "Vicerrector de Posgrado",
+                    "minimo": 0,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "obligatoriedad": False,
+                    "posiciones": [{
+                        "clave": "VICERRECTOR_POSGRADO_DIPLOMADO_1",
+                        "orden_cargo": None,
+                        "nombre": "Vicerrector de Posgrado",
+                    }],
+                },
+                {
+                    **comun,
+                    "clave": "DIRECTOR_CARRERA_DIPLOMADO",
+                    "tipo_participacion": "DIRECTOR_CARRERA",
+                    "nombre": "Director de Carrera",
+                    "minimo": 0,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "obligatoriedad": False,
+                    "posiciones": [{
+                        "clave": "DIRECTOR_CARRERA_DIPLOMADO_1",
+                        "orden_cargo": None,
+                        "nombre": "Director de Carrera",
+                    }],
+                },
+                {
+                    **comun,
+                    "clave": "TRIBUNAL_DIPLOMADO",
+                    "tipo_participacion": "TRIBUNAL",
+                    "nombre": "Tribunal docente",
+                    "minimo": 2,
+                    "maximo": 2,
+                    "ordenado": True,
+                    "ordenes_permitidos": [1, 2],
+                    "obligatoriedad": True,
+                    "posiciones": [
+                        {"clave": "TRIBUNAL_DIPLOMADO_1", "orden_cargo": 1, "nombre": "Tribunal docente 1"},
+                        {"clave": "TRIBUNAL_DIPLOMADO_2", "orden_cargo": 2, "nombre": "Tribunal docente 2"},
+                    ],
+                },
+            ],
+        }
+
     def get_cierre_policy(self):
         return None
 
@@ -190,6 +296,217 @@ class DiplomadoPolicy(BaseModalidadPolicy):
     def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
         if seguimiento is None:
             return None
+        if seguimiento.etapa.codigo in {"INSCRIPCION", "REVISION_MONOGRAFIA", "DEFENSA_PUBLICA"}:
+            stage_code = seguimiento.etapa.codigo
+            stage_name = seguimiento.etapa.nombre
+            orientacion_documental = self.get_orientacion_documental_prioritaria(
+                postulacion=postulacion,
+                seguimiento=seguimiento,
+            )
+            if orientacion_documental is not None:
+                requisitos = orientacion_documental["requisitos"]
+                orientacion_documental["requisitos_cumplidos"] = sum(
+                    item["cumplido"] is True for item in requisitos
+                )
+                orientacion_documental["requisitos_totales"] = len(requisitos)
+                accion = orientacion_documental["siguiente_accion"]
+                if stage_code == "INSCRIPCION" and accion["codigo"] == "COMPLETAR_DOCUMENTOS":
+                    accion.update({
+                        "titulo": "Gestionar documentos",
+                        "descripcion": "Completa los documentos requeridos para continuar con la inscripción.",
+                        "accion_label": "Gestionar documentos",
+                    })
+                return orientacion_documental
+
+            codigos = self.requisitos_policy.get_documentos_requeridos(stage_code)
+            if not missing_documents(postulacion, codigos):
+                from apps.documentos.models import TipoDocumento
+                from apps.postulantes.models import EvaluacionDefensa, EventoDefensa
+                from apps.postulantes.workflow import WorkflowService
+
+                nombres = dict(
+                    TipoDocumento.objects.filter(codigo__in=codigos, activo=True)
+                    .values_list("codigo", "nombre")
+                )
+                requisitos = [{
+                    "tipo": "DOCUMENTO",
+                    "codigo": codigo,
+                    "nombre": nombres.get(codigo, codigo.replace("_", " ").title()),
+                    "cumplido": True,
+                    "estado": "APROBADO",
+                    "estado_display": "Aprobado",
+                    "destino": None,
+                } for codigo in codigos]
+                if stage_code == "DEFENSA_PUBLICA":
+                    evento = EventoDefensa.objects.filter(
+                        postulacion=postulacion,
+                        seguimiento_etapa=seguimiento,
+                        tipo_evento=EventoDefensa.Tipo.DEFENSA_PUBLICA,
+                        numero_intento=seguimiento.numero_intento,
+                        activo=True,
+                    ).order_by("-id").first()
+                    if evento is None:
+                        try:
+                            self.evento_policy.validar_programacion(
+                                seguimiento=seguimiento,
+                                asignaciones=postulacion.asignaciones.filter(activo=True),
+                            )
+                        except ValidationError:
+                            accion = {
+                                "codigo": "GESTIONAR_ACTORES",
+                                "titulo": "Actores de la defensa",
+                                "descripcion": "Completa la composición requerida antes de programar la defensa.",
+                                "estado": "PENDIENTE",
+                                "estado_display": "Pendiente",
+                                "destino": "#actores",
+                                "accion_label": "Gestionar actores",
+                            }
+                        else:
+                            accion = {
+                                "codigo": "PROGRAMAR_EVENTO",
+                                "titulo": "Programar defensa pública",
+                                "descripcion": "Los requisitos documentales y de actores permiten programar la defensa.",
+                                "estado": "DISPONIBLE",
+                                "estado_display": "Disponible",
+                                "destino": "#defensas",
+                                "accion_label": "Programar defensa",
+                            }
+                    elif evento.estado == EventoDefensa.Estado.PROGRAMADA:
+                        accion = {
+                            "codigo": "INICIAR_DEFENSA", "titulo": "Iniciar defensa pública",
+                            "descripcion": "La defensa está programada y debe gestionarse en Defensas.",
+                            "estado": "DISPONIBLE", "estado_display": "Disponible",
+                            "destino": "#defensas", "accion_label": "Gestionar defensa",
+                        }
+                    elif evento.estado == EventoDefensa.Estado.EN_CURSO:
+                        accion = {
+                            "codigo": "FINALIZAR_DEFENSA", "titulo": "Finalizar defensa pública",
+                            "descripcion": "Registra la asistencia y finaliza la defensa cuando se cumpla el quórum.",
+                            "estado": "PENDIENTE", "estado_display": "Pendiente",
+                            "destino": "#defensas", "accion_label": "Gestionar defensa",
+                        }
+                    elif evento.estado == EventoDefensa.Estado.FINALIZADA:
+                        evaluaciones = evento.evaluaciones.filter(activo=True)
+                        consolidado = evaluaciones.filter(
+                            tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,
+                            es_resultado_final_evento=True,
+                        ).first()
+                        if consolidado is not None:
+                            accion = None
+                        elif evaluaciones.exclude(
+                            tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,
+                        ).exists():
+                            accion = {
+                                "codigo": "CONSOLIDAR_RESULTADO", "titulo": "Consolidar resultado",
+                                "descripcion": "La evaluación registrada debe consolidarse para resolver la defensa.",
+                                "estado": "DISPONIBLE", "estado_display": "Disponible",
+                                "destino": "#defensas", "accion_label": "Consolidar resultado",
+                            }
+                        else:
+                            accion = {
+                                "codigo": "REGISTRAR_EVALUACION", "titulo": "Registrar evaluación",
+                                "descripcion": "Registra la calificación de la defensa finalizada.",
+                                "estado": "PENDIENTE", "estado_display": "Pendiente",
+                                "destino": "#defensas", "accion_label": "Registrar evaluación",
+                            }
+                    else:
+                        accion = {
+                            "codigo": "PROGRAMAR_EVENTO", "titulo": "Gestionar defensa pública",
+                            "descripcion": "Revisa el estado del evento antes de continuar.",
+                            "estado": "PENDIENTE", "estado_display": "Pendiente",
+                            "destino": "#defensas", "accion_label": "Gestionar defensa",
+                        }
+                    return {
+                        "operacion": "PROGRAMAR_EVENTO",
+                        "tipo_evento": EventoDefensa.Tipo.DEFENSA_PUBLICA,
+                        "mensaje": "Los siete requisitos documentales de la defensa pública están aprobados.",
+                        "requisitos": requisitos,
+                        "requisitos_cumplidos": len(requisitos),
+                        "requisitos_totales": len(requisitos),
+                        "siguiente_accion": accion,
+                        "conflictos_identidad": [],
+                    }
+                return {
+                    "operacion": "ORIENTAR_ETAPA",
+                    "mensaje": f"Los documentos requeridos de {stage_name} están aprobados.",
+                    "requisitos": requisitos,
+                    "requisitos_cumplidos": len(requisitos),
+                    "requisitos_totales": len(requisitos),
+                    "siguiente_accion": {
+                        "codigo": "APROBAR_ETAPA",
+                        "titulo": f"Aprobar {stage_name}",
+                        "descripcion": f"Los requisitos documentales de {stage_name} están aprobados.",
+                        "estado": "DISPONIBLE",
+                        "estado_display": "Disponible",
+                        "destino": "#resumen",
+                        "accion_label": "Aprobar etapa",
+                    } if "aprobar" in WorkflowService.obtener_acciones_permitidas(seguimiento) else None,
+                    "conflictos_identidad": [],
+                }
+        module_order = MODULE_ORDER_BY_STAGE.get(seguimiento.etapa.codigo)
+        if module_order is not None:
+            module = postulacion.diplomado_modulos.filter(
+                activo=True,
+                orden=module_order,
+            ).first()
+            module_name = "Taller de Investigación" if module_order == 5 else f"Módulo {module_order}"
+            approved = module is not None and module.estado == DiplomadoModulo.Estado.APROBADO
+            failed = module is not None and module.estado == DiplomadoModulo.Estado.REPROBADO
+            note = module.nota if module is not None else None
+            requirement = {
+                "tipo": "RESULTADO_ACADEMICO",
+                "codigo": seguimiento.etapa.codigo,
+                "nombre": f"Resultado de {module_name}",
+                "cumplido": approved,
+                "estado": module.estado if module is not None else DiplomadoModulo.Estado.PENDIENTE,
+                "estado_display": (
+                    f"{module.get_estado_display()} · Nota: {note}"
+                    if module is not None and note is not None
+                    else "Pendiente de registro"
+                ),
+                "destino": None if approved else "#diplomado",
+            }
+            if approved:
+                from apps.postulantes.workflow import WorkflowService
+
+                action = {
+                    "codigo": "APROBAR_ETAPA",
+                    "titulo": f"Aprobar {module_name}",
+                    "descripcion": f"El resultado académico de {module_name} está aprobado.",
+                    "estado": "DISPONIBLE",
+                    "estado_display": "Disponible",
+                    "destino": "#resumen",
+                    "accion_label": "Aprobar etapa",
+                } if "aprobar" in WorkflowService.obtener_acciones_permitidas(seguimiento) else None
+                message = f"El resultado académico de {module_name} está aprobado."
+            else:
+                action = {
+                    "codigo": "REGISTRAR_RESULTADO_MODULO",
+                    "titulo": f"{'Actualizar' if failed else 'Registrar'} resultado de {module_name}",
+                    "descripcion": (
+                        f"{module_name} está reprobado. Registra el resultado académico real que corresponda."
+                        if failed
+                        else f"Registra la calificación real de {module_name} para continuar."
+                    ),
+                    "estado": "PENDIENTE",
+                    "estado_display": "Pendiente",
+                    "destino": "#diplomado",
+                    "accion_label": "Gestionar resultado",
+                }
+                message = (
+                    f"El resultado académico de {module_name} está reprobado y bloquea la aprobación de la etapa."
+                    if failed
+                    else f"Falta registrar el resultado académico de {module_name}."
+                )
+            return {
+                "operacion": "ORIENTAR_ETAPA",
+                "mensaje": message,
+                "requisitos": [requirement],
+                "requisitos_cumplidos": int(approved),
+                "requisitos_totales": 1,
+                "siguiente_accion": action,
+                "conflictos_identidad": [],
+            }
         return {
             "operacion": "ORIENTAR_ETAPA", "mensaje": "Completa el seguimiento documental y académico del Diplomado.",
             "requisitos": [{"tipo": "DOCUMENTO", "codigo": code, "nombre": code.replace("_", " ").title(), "cumplido": None, "estado": "PENDIENTE", "destino": "#documentos"} for code in self.requisitos_policy.get_documentos_requeridos(seguimiento.etapa.codigo)],
@@ -204,6 +521,39 @@ class DiplomadoPolicy(BaseModalidadPolicy):
                 raise ValidationError("Los cinco módulos deben estar aprobados antes de la defensa.")
 
     def validar_aprobacion_etapa(self, seguimiento):
+        module_order = MODULE_ORDER_BY_STAGE.get(seguimiento.etapa.codigo)
+        if module_order is not None:
+            module = seguimiento.postulacion.diplomado_modulos.filter(
+                activo=True,
+                orden=module_order,
+            ).first()
+            if module is None or module.estado != DiplomadoModulo.Estado.APROBADO:
+                raise ValidationError({
+                    "faltantes": [f"RESULTADO_{seguimiento.etapa.codigo}"],
+                })
+        if seguimiento.etapa.codigo == "DEFENSA_PUBLICA":
+            from apps.postulantes.models import EvaluacionDefensa, EventoDefensa
+
+            evento = EventoDefensa.objects.filter(
+                postulacion=seguimiento.postulacion,
+                seguimiento_etapa=seguimiento,
+                tipo_evento=EventoDefensa.Tipo.DEFENSA_PUBLICA,
+                numero_intento=seguimiento.numero_intento,
+                activo=True,
+            ).order_by("-id").first()
+            if evento is None:
+                raise ValidationError({"faltantes": ["EVENTO_DEFENSA_PUBLICA"]})
+            if evento.estado != EventoDefensa.Estado.FINALIZADA:
+                raise ValidationError({"faltantes": ["DEFENSA_PUBLICA_FINALIZADA"]})
+            consolidado = evento.evaluaciones.filter(
+                activo=True,
+                tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,
+                es_resultado_final_evento=True,
+            ).first()
+            if consolidado is None:
+                raise ValidationError({"faltantes": ["RESULTADO_FINAL_DEFENSA_PUBLICA"]})
+            if not self.evaluacion_policy.es_resultado_aprobatorio(consolidado.nota_numerica):
+                raise ValidationError("El resultado consolidado de la defensa pública no es aprobatorio.")
         if seguimiento.etapa.codigo in DOCUMENTS_BY_STAGE:
             missing = missing_documents(seguimiento.postulacion, DOCUMENTS_BY_STAGE[seguimiento.etapa.codigo])
             if missing:
@@ -211,16 +561,31 @@ class DiplomadoPolicy(BaseModalidadPolicy):
 
     def validar_nuevo_intento(self, *, postulacion, etapa, ultimo_seguimiento):
         if etapa.codigo != "DEFENSA_PUBLICA" or ultimo_seguimiento.numero_intento >= 2:
-            raise ValidationError("Solo se permite una nueva defensa de Diplomado.")
+            raise ReintentoNoElegibleError("Solo se permite una nueva defensa de Diplomado.")
         defensa = DiplomadoDefensa.objects.filter(postulacion=postulacion, numero_intento=1).first()
         if not defensa or not defensa.reintento_hasta or timezone.now() > defensa.reintento_hasta:
-            raise ValidationError("La nueva defensa debe realizarse dentro de 30 días calendario.")
+            raise ReintentoNoElegibleError("La nueva defensa debe realizarse dentro de 30 días calendario.")
 
-    def validar_asignacion(self, *, queryset_contexto, tipo_participacion, orden_cargo, **kwargs):
+    def validar_asignacion(
+        self,
+        *,
+        queryset_contexto,
+        tipo_participacion,
+        orden_cargo,
+        seguimiento_etapa=None,
+        **kwargs,
+    ):
         if tipo_participacion not in {"VICERRECTOR_POSGRADO", "DECANO_FACULTAD", "DIRECTOR_CARRERA", "TRIBUNAL"}:
             raise ValidationError("El actor no corresponde a Diplomado.")
+        if seguimiento_etapa is not None:
+            raise ValidationError("Los actores de Defensa Pública deben asignarse en el contexto de postulación.")
         if tipo_participacion == "TRIBUNAL" and orden_cargo not in {1, 2}:
             raise ValidationError("Los docentes del tribunal requieren órdenes 1 y 2.")
+        if tipo_participacion == "TRIBUNAL" and queryset_contexto.filter(
+            seguimiento_etapa__isnull=True,
+            orden_cargo=orden_cargo,
+        ).exists():
+            raise ValidationError("Ya existe un tribunal activo en esa posición.")
         if tipo_participacion != "TRIBUNAL" and queryset_contexto.exists():
             raise ValidationError("El actor institucional ya está asignado.")
 

@@ -193,9 +193,81 @@ describe('Subir documento', () => {
     await waitFor(() => expect(crudService.list).toHaveBeenCalledTimes(4))
   })
 
+  it('actualiza las capacidades tras una carga y conserva solo pendientes o correcciones permitidas', async () => {
+    const user = userEvent.setup()
+    const pendingType = {
+      id: 12,
+      codigo: 'INFORME_PENDIENTE',
+      nombre: 'Informe pendiente de revisión',
+      capacidad_carga: { permitida: false, codigo: 'ESPERANDO_REVISION' },
+    }
+    const rejectedType = {
+      id: 13,
+      codigo: 'DOCUMENTO_RECHAZADO',
+      nombre: 'Documento rechazado',
+      capacidad_carga: { permitida: true, codigo: 'RECHAZADO' },
+    }
+    const correctionType = {
+      id: 14,
+      codigo: 'DOCUMENTO_CORREGIBLE',
+      nombre: 'Documento con corrección autorizada',
+      capacidad_carga: { permitida: true, codigo: 'CORRECCION_POST_APROBACION' },
+    }
+    setup({
+      applicableResponse: {
+        documentos_aplicables: [
+          applicableType,
+          secondApplicableType,
+          pendingType,
+          rejectedType,
+          correctionType,
+        ],
+      },
+    })
+    postulacionesService.obtenerDocumentosAplicables
+      .mockResolvedValueOnce({
+        documentos_aplicables: [
+          applicableType,
+          secondApplicableType,
+          pendingType,
+          rejectedType,
+          correctionType,
+        ],
+      })
+      .mockResolvedValueOnce({
+        documentos_aplicables: [
+          { ...applicableType, capacidad_carga: { permitida: false, codigo: 'DOCUMENTO_APROBADO' } },
+          { ...secondApplicableType, capacidad_carga: { permitida: false, codigo: 'DOCUMENTO_APROBADO' } },
+          pendingType,
+          rejectedType,
+          correctionType,
+        ],
+      })
+
+    await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
+    await user.upload(await screen.findByLabelText('Documento Final'), new File(['uno'], 'uno.pdf'))
+    await user.upload(screen.getByLabelText('Informe final'), new File(['dos'], 'dos.pdf'))
+    await user.click(screen.getByRole('button', { name: 'Cargar 2 documentos' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Cargar documento' })
+    expect(await within(dialog).findByText('2 documentos cargados correctamente.')).toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledTimes(2)
+    expect(within(dialog).queryByLabelText('Documento Final')).not.toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Informe final')).not.toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Informe pendiente de revisión')).not.toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Documento rechazado')).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Documento con corrección autorizada')).toBeInTheDocument()
+  })
+
   it('conserva los fallidos y reintenta únicamente esos documentos', async () => {
     const user = userEvent.setup()
     setup()
+    const approvedType = { ...applicableType, capacidad_carga: { permitida: false, codigo: 'DOCUMENTO_APROBADO' } }
+    const rejectedType = { ...secondApplicableType, capacidad_carga: { permitida: true, codigo: 'RECHAZADO' } }
+    postulacionesService.obtenerDocumentosAplicables
+      .mockResolvedValueOnce({ documentos_aplicables: [applicableType, secondApplicableType] })
+      .mockResolvedValueOnce({ documentos_aplicables: [approvedType, rejectedType] })
+      .mockResolvedValueOnce({ documentos_aplicables: [approvedType, { ...secondApplicableType, capacidad_carga: { permitida: false, codigo: 'DOCUMENTO_APROBADO' } }] })
     postulacionesService.cargarDocumento
       .mockResolvedValueOnce({ id: 1 })
       .mockRejectedValueOnce({ message: 'Carga rechazada.' })
@@ -207,6 +279,8 @@ describe('Subir documento', () => {
 
     expect(await screen.findByText('1 documento cargado. 1 documento no pudo cargarse.')).toBeInTheDocument()
     expect(screen.getByText('Carga rechazada.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Documento Final')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Informe final')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Reintentar' }))
 
     await waitFor(() => expect(postulacionesService.cargarDocumento).toHaveBeenCalledTimes(3))
@@ -215,6 +289,8 @@ describe('Subir documento', () => {
       expect.any(AbortSignal),
     )
     expect(await screen.findByText('1 documento cargado correctamente.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Informe final')).not.toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledTimes(3)
   })
 
   it('bloquea la carga cuando no existen documentos aplicables o postulaciones accesibles', async () => {
@@ -223,8 +299,8 @@ describe('Subir documento', () => {
     await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
 
     expect(screen.getByText('No existe una postulación disponible para subir documentos.')).toBeInTheDocument()
-    expect(screen.getByText('0 documentos seleccionados')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Cargar 0 documentos' })).toBeDisabled()
+    expect(screen.getByText('No hay tipos documentales activos disponibles.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cargar 0 documentos' })).not.toBeInTheDocument()
     expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
   })
 
@@ -268,7 +344,7 @@ describe('Subir documento', () => {
     await user.click(await screen.findByRole('button', { name: 'Subir documento' }))
 
     expect(await screen.findByText('No tienes documentos pendientes de carga o corrección.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Cargar 0 documentos' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Cargar 0 documentos' })).not.toBeInTheDocument()
   })
 
   it('muestra errores de documentos aplicables sin recurrir al catálogo global', async () => {
@@ -279,7 +355,7 @@ describe('Subir documento', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudieron cargar los documentos aplicables.')
     expect(screen.queryByText(documentType.nombre)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Cargar 0 documentos' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Cargar 0 documentos' })).not.toBeInTheDocument()
   })
 
   it('mantiene puede_cargar_documentos como condición de la acción', async () => {

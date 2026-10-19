@@ -6,9 +6,10 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
-from apps.documentos.models import EstadoDocumento, TipoDocumento
+from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento
 from apps.postulantes.memorandums import MemorandumDesignacionService
 from apps.postulantes.models import (
     AsignacionPostulacion,
@@ -98,9 +99,10 @@ class MemorandumDesignacionTests(TestCase):
         publicacion = self._publicar()
 
         self.assertTrue(MemorandumDesignacionService.es_vigente(publicacion))
-        self.assertEqual(set(publicacion.asignaciones.values_list("pk", flat=True)), {
-            self.tutor.pk, *(item.pk for item in self.tribunales),
-        })
+        self.assertEqual(
+            set(publicacion.asignaciones.values_list("pk", flat=True)),
+            {item.pk for item in self.tribunales},
+        )
         publicacion.version_documento.documento.refresh_from_db()
         self.assertEqual(publicacion.version_documento.documento.estado.codigo, "APR")
 
@@ -113,6 +115,29 @@ class MemorandumDesignacionTests(TestCase):
         publicacion.refresh_from_db()
         self.assertFalse(publicacion.activo)
         self.assertTrue(MemorandumDesignacionService.es_vigente(nueva))
+
+    def test_publicacion_no_requiere_tutor_y_solo_respalda_los_tres_tribunales(self):
+        self.tutor.activo = False
+        self.tutor.save(update_fields=["activo"])
+
+        publicacion = self._publicar()
+
+        self.assertTrue(MemorandumDesignacionService.es_vigente(publicacion))
+        self.assertEqual(
+            set(publicacion.asignaciones.values_list("pk", flat=True)),
+            {item.pk for item in self.tribunales},
+        )
+
+    def test_publicacion_historica_con_tutor_sigue_vigente_si_cambia_el_tutor(self):
+        publicacion = self._publicar()
+        publicacion.asignaciones.add(self.tutor)
+        self.assertTrue(MemorandumDesignacionService.es_vigente(publicacion))
+
+        self.tutor.activo = False
+        self.tutor.save(update_fields=["activo"])
+        self._asignar(self.docentes[4], "TUTOR")
+
+        self.assertTrue(MemorandumDesignacionService.es_vigente(publicacion))
 
     def test_rechaza_composicion_incompleta_y_usuario_no_administrativo(self):
         self.tribunales[2].activo = False
@@ -131,8 +156,33 @@ class MemorandumDesignacionTests(TestCase):
                 usuario=self.student,
             )
 
+    def test_rechaza_tribunales_duplicados_y_archivo_no_pdf(self):
+        AsignacionPostulacion.objects.filter(pk=self.tribunales[1].pk).update(
+            usuario=self.docentes[1],
+        )
+        with self.assertRaises(ValidationError):
+            self._publicar()
+        self.assertFalse(PublicacionMemorandumDesignacion.all_objects.exists())
+
+        AsignacionPostulacion.objects.filter(pk=self.tribunales[1].pk).update(
+            usuario=self.docentes[2],
+        )
+        with self.assertRaises(DRFValidationError):
+            MemorandumDesignacionService.publicar(
+                postulacion=self.postulacion,
+                seguimiento=self.seguimiento,
+                archivo=SimpleUploadedFile("memorandum.txt", b"no es PDF", content_type="text/plain"),
+                usuario=self.admin,
+            )
+        self.assertFalse(PublicacionMemorandumDesignacion.all_objects.exists())
+        self.assertFalse(DocumentoPostulacion.all_objects.filter(
+            postulacion=self.postulacion,
+            tipo_documento__codigo="MEMORANDUM_DESIGNACION_PROYECTO",
+        ).exists())
+
     def test_estudiante_solo_consulta_y_descarga_la_version_publicada_vigente(self):
         publicacion = self._publicar()
+        publicacion.asignaciones.add(self.tutor)
         client = APIClient()
         client.force_authenticate(self.student)
 
@@ -144,6 +194,14 @@ class MemorandumDesignacionTests(TestCase):
         ))
         detail = client.get(f"/api/v1/documentos/versiones/{publicacion.version_documento_id}/")
         self.assertEqual(detail.status_code, 200, getattr(detail, "data", None))
+        download = client.get(f"/api/v1/documentos/versiones/{publicacion.version_documento_id}/descargar/")
+        self.assertEqual(download.status_code, 200, getattr(download, "data", None))
+
+        self.tutor.activo = False
+        self.tutor.save(update_fields=["activo"])
+        self._asignar(self.docentes[4], "TUTOR")
+        response = client.get(f"/api/v1/postulaciones/{self.postulacion.pk}/memorandums-designacion/")
+        self.assertEqual([item["id"] for item in response.data], [publicacion.pk])
         download = client.get(f"/api/v1/documentos/versiones/{publicacion.version_documento_id}/descargar/")
         self.assertEqual(download.status_code, 200, getattr(download, "data", None))
 

@@ -18,6 +18,13 @@ class ModalidadNoSoportadaError(ValidationError):
         super().__init__(f"La modalidad '{codigo}' no tiene normativa específica configurada.", code="modalidad_no_soportada")
 
 
+class ReintentoNoElegibleError(ValidationError):
+    """Denegacion academica esperada al solicitar un nuevo intento."""
+
+    def __init__(self, message: str):
+        super().__init__(message, code="reintento_no_elegible")
+
+
 class ActorCargaDocumento:
     """Actores que el motor documental reconoce como responsables de una carga."""
 
@@ -120,6 +127,7 @@ class BaseEvaluacionPolicy(ABC):
     def obtener_evaluacion_para_consolidar(self, *, evento, evaluaciones): raise NotImplementedError
     def obtener_aprobacion_por_consolidacion(self, *, evento, evaluacion, resultado_final): return None
     def obtener_rechazo_por_consolidacion(self, *, evento, evaluacion, resultado_final): return None
+    def conservar_rechazo_sin_reintento(self, *, evento, error): return False
 
 
 class BaseRevisionTribunalPreviaPolicy(ABC):

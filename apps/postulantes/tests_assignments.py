@@ -719,26 +719,15 @@ class ProyectoGradoHitosAssignmentTests(AssignmentBaseMixin, TestCase):
             participantes=participants,
         )
 
-    def test_tutor_se_designa_antes_de_aprobar_propuesta_y_permanece_en_postulacion(self):
-        tutor = AsignacionService.asignar_actor(
-            self.postulacion, self.docente_4, "TUTOR", self.admin,
-        )
-        self.assertIsNone(tutor.seguimiento_etapa_id)
-        self.assertTrue(tutor.activo)
-
-        assignments = self._tribunales_perfil()
-        with self.assertRaisesMessage(ValidationError, "mínimo de participantes"):
-            self._registrar_propuesta([
-                {"asignacion": tutor, "rol": "TUTOR", "orden": 1},
-            ])
-
-        decision = self._registrar_propuesta(self._participantes(assignments))
-        self.assertEqual(decision.resultado, "APROBADA")
+    def test_tutor_se_designa_antes_de_aprobar_propuesta(self):
         actor_config = ProyectoGradoPolicy().get_configuracion_actores(
             self.postulacion,
             self.seguimiento_perfil,
         )
         tutor_group = next(group for group in actor_config["grupos"] if group["tipo_participacion"] == "TUTOR")
+        self.assertIsNone(tutor_group["precondicion"])
+        self.assertTrue(tutor_group["habilitada"])
+
         tutor_payload = FlujoPostulacionSerializer()._proyectar_posicion(
             None,
             tutor_group,
@@ -749,11 +738,19 @@ class ProyectoGradoHitosAssignmentTests(AssignmentBaseMixin, TestCase):
             True,
             tutor_group["posiciones"][0],
         )
-        self.assertIsNone(tutor_payload["precondicion"])
         self.assertTrue(tutor_payload["habilitada"])
         self.assertIsNone(tutor_payload["bloqueo"])
         self.assertEqual(tutor_payload["acciones_permitidas"], ["ASIGNAR"])
 
+        tutor = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_4, "TUTOR", self.admin,
+        )
+        self.assertIsNone(tutor.seguimiento_etapa_id)
+        self.assertTrue(tutor.activo)
+
+        assignments = self._tribunales_perfil()
+        decision = self._registrar_propuesta(self._participantes(assignments))
+        self.assertEqual(decision.resultado, "APROBADA")
         orientacion = ProyectoGradoPolicy().get_orientacion_etapa_actual(
             postulacion=self.postulacion,
             seguimiento=self.seguimiento_perfil,
@@ -762,6 +759,26 @@ class ProyectoGradoHitosAssignmentTests(AssignmentBaseMixin, TestCase):
             orientacion
             and orientacion.get("siguiente_accion", {}).get("titulo") == "Asignar Tutor"
         )
+
+    def test_tutor_permanece_compatible_en_pg_legacy(self):
+        self.postulacion.regimen_workflow = Postulacion.RegimenWorkflowChoices.PG_LEGACY
+        self.postulacion.save(update_fields=["regimen_workflow", "updated_at"])
+
+        tutor = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_4, "TUTOR", self.admin,
+        )
+
+        self.assertTrue(tutor.activo)
+
+    def test_tutor_permanece_compatible_en_registro_historico(self):
+        self.postulacion.tipo_registro = Postulacion.TipoRegistroChoices.HISTORICO
+        self.postulacion.save(update_fields=["tipo_registro", "updated_at"])
+
+        tutor = AsignacionService.asignar_actor(
+            self.postulacion, self.docente_4, "TUTOR", self.admin,
+        )
+
+        self.assertTrue(tutor.activo)
 
     def test_decision_requiere_tres_tribunales_y_ordenes_formales(self):
         assignments = self._tribunales_perfil()
