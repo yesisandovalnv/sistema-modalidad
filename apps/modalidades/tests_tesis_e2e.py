@@ -13,7 +13,7 @@ from apps.documentos.services import ConfirmacionCorreccionDocumentoService, Doc
 from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.defensas import EventoDefensaService, EvaluacionDefensaService
 from apps.postulantes.dictamenes_revision import DictamenRevisionDocumentoService
-from apps.postulantes.models import EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.models import EstadoPostulacion, HistorialEstado, Postulacion, SeguimientoEtapa
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import CustomUser, Role
 
@@ -152,6 +152,19 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         self.docs.aprobar_documento(DocumentoPostulacion.objects.get(pk=acta.documento_id), self.admin)
         concluded = WorkflowService.concluir_postulacion(self.post, self.admin)
         self.assertEqual(concluded.estado_actual.codigo, "CONCLUIDA")
+        history_count = HistorialEstado.objects.filter(
+            postulacion=self.post, estado_nuevo=concluded.estado_actual,
+        ).count()
+
+        repeated = WorkflowService.concluir_postulacion(self.post, self.admin)
+
+        self.assertEqual(repeated.estado_actual.codigo, "CONCLUIDA")
+        self.assertEqual(
+            HistorialEstado.objects.filter(
+                postulacion=self.post, estado_nuevo=repeated.estado_actual,
+            ).count(),
+            history_count,
+        )
 
     def test_e2e_publica_postergada_crea_segunda_y_bloquea_tercera(self):
         private_stage, _final_version, private_secretary = self.reach_private()

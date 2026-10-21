@@ -3,12 +3,15 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.academico.models import Modalidad, Periodo
+from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
+from apps.documentos.services import DocumentoService
 from apps.modalidades.models import TrabajoDirigidoExpediente
 from apps.modalidades.policies import BaseModalidadPolicy, ModalidadPolicyRegistry
 from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
@@ -21,9 +24,13 @@ from apps.postulantes.models import (
     AsignacionPostulacion,
     DecisionAcademicaEtapa,
     EstadoPostulacion,
+    EvaluacionDefensa,
+    EventoDefensa,
+    ParticipanteEvento,
     Postulacion,
     SeguimientoEtapa,
 )
+from apps.postulantes.defensas import EvaluacionDefensaService
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import CustomUser, Role
 
@@ -49,7 +56,7 @@ class TrabajoDirigidoTest(TestCase):
                 f"td-teacher-{index}", password="x", role=teacher_role,
                 ci=f"TD-D{index}", ru=f"TD-DR{index}",
             )
-            for index in range(1, 5)
+            for index in range(1, 6)
         ]
         cls.post = Postulacion.objects.create(
             codigo="TD-TEST-001", estudiante=cls.student,
@@ -97,6 +104,150 @@ class TrabajoDirigidoTest(TestCase):
                 for assignment in assignments
             ],
         )
+
+    def assign_public_team(self, tribunal_count=3):
+        assignments = [
+            AsignacionPostulacion.objects.create(
+                postulacion=self.post, usuario=teacher, tipo_participacion="TRIBUNAL",
+                designado_por=self.admin,
+            )
+            for teacher in self.teachers[:tribunal_count]
+        ]
+        assignments.extend([
+            AsignacionPostulacion.objects.create(
+                postulacion=self.post, usuario=self.teachers[3], tipo_participacion="PRESIDENTE",
+                designado_por=self.admin,
+            ),
+            AsignacionPostulacion.objects.create(
+                postulacion=self.post, usuario=self.teachers[4], tipo_participacion="SECRETARIO",
+                designado_por=self.admin,
+            ),
+        ])
+        return assignments
+
+    def public_event(self, tribunal_count=2, assignments=None):
+        assignments = assignments or self.assign_public_team()
+        event = EventoDefensa.objects.create(
+            postulacion=self.post,
+            seguimiento_etapa=self.follow["DEFENSA_PUBLICA"],
+            tipo_evento="DEFENSA_PUBLICA",
+            estado="EN_CURSO",
+            fecha_programada=timezone.now() - timedelta(minutes=1),
+            lugar="Sala",
+            programado_por=self.admin,
+        )
+        attendees = [
+            assignment for assignment in assignments
+            if assignment.tipo_participacion == "TRIBUNAL"
+        ][:tribunal_count]
+        attendees.extend(
+            assignment for assignment in assignments
+            if assignment.tipo_participacion in {"PRESIDENTE", "SECRETARIO"}
+        )
+        for assignment in attendees:
+            ParticipanteEvento.objects.create(
+                evento=event,
+                asignacion=assignment,
+                rol_evento=assignment.tipo_participacion,
+                presente=True,
+            )
+        return event, assignments
+
+    def create_public_event(self, seguimiento, *, estado="FINALIZADA", activo=True):
+        now = timezone.now()
+        return EventoDefensa.objects.create(
+            postulacion=seguimiento.postulacion,
+            seguimiento_etapa=seguimiento,
+            tipo_evento="DEFENSA_PUBLICA",
+            numero_intento=seguimiento.numero_intento,
+            estado=estado,
+            fecha_programada=now - timedelta(hours=1),
+            fecha_inicio_real=now - timedelta(minutes=30),
+            fecha_fin_real=now if estado == "FINALIZADA" else None,
+            lugar="Auditorio",
+            programado_por=self.admin,
+            activo=activo,
+        )
+
+    def create_closure_document(
+        self, codigo, *, evento=None, estado="APR", incluir_version=True,
+        version_activa=True, version_actual=True, requiere_correccion=False,
+    ):
+        documento = DocumentoPostulacion.objects.create(
+            postulacion=self.post,
+            tipo_documento=TipoDocumento.objects.get(codigo=codigo),
+            estado=EstadoDocumento.objects.get(codigo=estado),
+            evento_defensa=evento,
+            requiere_correccion=requiere_correccion,
+        )
+        if incluir_version:
+            VersionDocumento.objects.create(
+                documento=documento,
+                subido_por=self.admin,
+                numero_version=1,
+                archivo=SimpleUploadedFile(f"{codigo.lower()}.pdf", b"%PDF-1.4 test"),
+                nombre_original=f"{codigo.lower()}.pdf",
+                tamano_bytes=13,
+                hash_sha256="a" * 64,
+                activo=version_activa,
+                es_version_actual=version_actual,
+            )
+        return documento
+
+    def prepare_conclusion_documents(
+        self, *, public_follow=None, acta_event=None, link_acta=True,
+        acta_state="APR", acta_version=True,
+    ):
+        public_follow = public_follow or self.follow["DEFENSA_PUBLICA"]
+        public_follow.estado = SeguimientoEtapa.EstadoChoices.APROBADA
+        public_follow.save(update_fields=["estado"])
+        public_event = self.create_public_event(public_follow)
+        acta_event = acta_event if acta_event is not None else public_event
+
+        private_event = EventoDefensa.objects.create(
+            postulacion=self.post,
+            seguimiento_etapa=self.follow["DEFENSA_PRIVADA"],
+            tipo_evento="DEFENSA_PRIVADA",
+            estado="FINALIZADA",
+            fecha_programada=timezone.now() - timedelta(days=1),
+            fecha_inicio_real=timezone.now() - timedelta(days=1),
+            fecha_fin_real=timezone.now(),
+            lugar="Sala",
+            programado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=private_event,
+            tipo_evaluacion="RESULTADO_FINAL",
+            modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",
+            nota_numerica=Decimal("21"),
+            ponderacion=Decimal("30.00"),
+            aporte_ponderado=Decimal("21.00"),
+            es_resultado_final_evento=True,
+            registrado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=public_event,
+            tipo_evaluacion="RESULTADO_FINAL",
+            modalidad_registro="CONSENSO",
+            nota_numerica=Decimal("95"),
+            ponderacion=Decimal("70.00"),
+            aporte_ponderado=Decimal("66.50"),
+            semantica_nota=EvaluacionDefensa.SemanticaNota.BRUTA_100,
+            es_resultado_final_evento=True,
+            registrado_por=self.admin,
+        )
+        self.create_closure_document("DOCUMENTO_FINAL_TD")
+        self.create_closure_document(
+            "ACTA_DEFENSA_TD", evento=acta_event if link_acta else None,
+            estado=acta_state, incluir_version=acta_version,
+        )
+        return public_event
+
+    def approve_prior_stages_for_closure(self):
+        self.post.seguimientos_etapa.exclude(
+            etapa__codigo__in=("DEFENSA_PUBLICA", "CIERRE_DOCUMENTAL"),
+        ).update(estado=SeguimientoEtapa.EstadoChoices.APROBADA)
 
     def test_registry_identifica_modalidad_y_mantiene_aislamiento(self):
         self.assertIsInstance(ModalidadPolicyRegistry.get(self.post), TrabajoDirigidoPolicy)
@@ -361,13 +512,118 @@ class TrabajoDirigidoTest(TestCase):
         private = policy.get_valores_registro(evento=None, tipo="PRIVADA", nota=Decimal("21"))
         public = policy.get_valores_registro(evento=None, tipo="PUBLICA", nota=Decimal("55"))
         self.assertEqual(private, {"ponderacion": Decimal("30.00"), "aporte_ponderado": Decimal("21.00")})
-        self.assertEqual(public, {"ponderacion": Decimal("70.00"), "aporte_ponderado": Decimal("55.00")})
+        self.assertEqual(public, {"ponderacion": Decimal("70.00"), "aporte_ponderado": Decimal("38.50")})
         self.assertEqual(policy.get_semantica_nota(evento=None, tipo="PRIVADA"), "MODALIDAD_ESPECIFICA")
         self.assertNotEqual(policy.get_semantica_nota(evento=None, tipo="PRIVADA"), "BRUTA_100")
         self.assertEqual(policy.clasificar_nota_final(Decimal("50")), "POSTERGADO")
         self.assertEqual(policy.clasificar_nota_final(Decimal("51")), "APROBADO")
         self.assertEqual(policy.clasificar_nota_final(Decimal("75")), "APROBACION_PLENA")
         self.assertEqual(policy.clasificar_nota_final(Decimal("90")), "APROBACION_PLENA_CON_FELICITACION")
+
+    def test_defensa_publica_consensuada_pondera_una_vez_y_conserva_clasificacion(self):
+        event, _ = self.public_event()
+        evaluation = EvaluacionDefensaService.registrar_evaluacion_publica(
+            event, self.admin, Decimal("95"), modalidad_registro="CONSENSO",
+        )
+
+        self.assertEqual(evaluation.nota_numerica, Decimal("95"))
+        self.assertEqual(evaluation.semantica_nota, EvaluacionDefensa.SemanticaNota.BRUTA_100)
+        self.assertEqual(evaluation.ponderacion, Decimal("70.00"))
+        self.assertEqual(evaluation.aporte_ponderado, Decimal("66.50"))
+
+        private_event = EventoDefensa.objects.create(
+            postulacion=self.post,
+            seguimiento_etapa=self.follow["DEFENSA_PRIVADA"],
+            tipo_evento="DEFENSA_PRIVADA",
+            estado="FINALIZADA",
+            fecha_programada=timezone.now(),
+            lugar="Sala",
+            programado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=private_event,
+            tipo_evaluacion="RESULTADO_FINAL",
+            modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",
+            nota_numerica=Decimal("21"),
+            ponderacion=Decimal("30.00"),
+            aporte_ponderado=Decimal("21.00"),
+            es_resultado_final_evento=True,
+            registrado_por=self.admin,
+        )
+        event.estado = "FINALIZADA"
+        event.fecha_fin_real = timezone.now()
+        event.save()
+        with patch("apps.postulantes.workflow.WorkflowService.aprobar_etapa"):
+            consolidated = EvaluacionDefensaService.consolidar_evaluacion_evento(event, self.admin)
+
+        self.assertEqual(consolidated.aporte_ponderado, Decimal("66.50"))
+        result = TrabajoDirigidoPolicy.evaluacion_policy.calcular_resultado_final(self.post)
+        self.assertEqual(result["nota_final"], Decimal("87.50"))
+        self.assertEqual(result["clasificacion"], "APROBACION_PLENA")
+
+    def test_defensa_publica_rechaza_notas_fuera_de_escala_y_evaluacion_individual(self):
+        event, _ = self.public_event()
+        for note in (Decimal("0"), Decimal("100.01")):
+            with self.subTest(note=note), self.assertRaises(ValidationError):
+                EvaluacionDefensaService.registrar_evaluacion_publica(
+                    event, self.admin, note, modalidad_registro="CONSENSO",
+                )
+
+        tribunal = event.participantes.filter(rol_evento="TRIBUNAL").first()
+        with self.assertRaisesMessage(ValidationError, "individual de Trabajo Dirigido está pendiente"):
+            EvaluacionDefensaService.registrar_evaluacion_publica(
+                event, self.admin, Decimal("75"), evaluador=tribunal,
+                modalidad_registro="INDIVIDUAL",
+            )
+        self.assertFalse(event.evaluaciones.exists())
+
+    def test_composicion_publica_exige_tres_designados_sin_elevar_quorum(self):
+        policy = TrabajoDirigidoPolicy.evento_policy
+        follow = self.follow["DEFENSA_PUBLICA"]
+        date = timezone.now() + timedelta(days=3)
+        two_assignments = self.assign_public_team(tribunal_count=2)
+        with self.assertRaisesMessage(ValidationError, "exactamente tres docentes evaluadores"):
+            policy.validar_programacion(
+                tipo_evento="DEFENSA_PUBLICA", seguimiento=follow,
+                fecha_programada=date,
+                asignaciones=AsignacionPostulacion.objects.filter(postulacion=self.post, activo=True),
+            )
+
+        event, _ = self.public_event(tribunal_count=2, assignments=two_assignments)
+        quorum = policy.validar_quorum(event)
+        self.assertTrue(quorum["valido"])
+        self.assertEqual(quorum["detalle"]["TRIBUNAL"], 2)
+        self.assertEqual(len(two_assignments), 4)
+
+        president = event.participantes.get(rol_evento="PRESIDENTE")
+        president.presente = False
+        president.save(update_fields=["presente"])
+        quorum_without_president = policy.validar_quorum(event)
+        self.assertFalse(quorum_without_president["valido"])
+        self.assertEqual(quorum_without_president["faltantes"], {"PRESIDENTE": 1})
+
+        AsignacionPostulacion.objects.create(
+            postulacion=self.post, usuario=self.teachers[2], tipo_participacion="TRIBUNAL",
+            designado_por=self.admin,
+        )
+        policy.validar_programacion(
+            tipo_evento="DEFENSA_PUBLICA", seguimiento=follow,
+            fecha_programada=date,
+            asignaciones=AsignacionPostulacion.objects.filter(postulacion=self.post, activo=True),
+        )
+
+    def test_umbral_y_rangos_de_clasificacion_se_conservan(self):
+        policy = TrabajoDirigidoPolicy.evaluacion_policy
+        cases = {
+            "50": "POSTERGADO",
+            "51": "APROBADO",
+            "75": "APROBACION_PLENA",
+            "90": "APROBACION_PLENA_CON_FELICITACION",
+        }
+        for note, expected in cases.items():
+            with self.subTest(note=note):
+                self.assertEqual(policy.clasificar_nota_final(Decimal(note)), expected)
 
     def test_copia_material_de_proyecto_se_resuelve_con_quorum_de_trabajo_dirigido(self):
         policy = ModalidadPolicyRegistry.get(self.post).evento_policy
@@ -376,7 +632,8 @@ class TrabajoDirigidoTest(TestCase):
             policy.ASSIGNMENTS["DEFENSA_PRIVADA"],
             {"TRIBUNAL": 2, "DOCENTE_MODALIDAD": 1},
         )
-        self.assertEqual(policy.ASSIGNMENTS["DEFENSA_PUBLICA"], {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1})
+        self.assertEqual(policy.ASSIGNMENTS["DEFENSA_PUBLICA"], {"TRIBUNAL": 3, "PRESIDENTE": 1, "SECRETARIO": 1})
+        self.assertEqual(policy.QUORUM["DEFENSA_PUBLICA"], {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1})
         self.assertEqual(policy.get_etapa_asociada("DEFENSA_PRIVADA"), "DEFENSA_PRIVADA")
         self.assertEqual(policy.get_etapa_asociada("DEFENSA_PUBLICA"), "DEFENSA_PUBLICA")
         revision = ModalidadPolicyRegistry.get(self.post).get_revision_tribunal_previa_policy()
@@ -404,3 +661,264 @@ class TrabajoDirigidoTest(TestCase):
             TrabajoDirigidoExpediente.objects.create(
                 postulacion=project_post, **self.institution_data(),
             )
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_acta_td_se_carga_vinculada_a_defensa_publica_del_intento_vigente(self):
+        seguimiento = self.follow["DEFENSA_PUBLICA"]
+        seguimiento.estado = SeguimientoEtapa.EstadoChoices.APROBADA
+        seguimiento.save(update_fields=["estado"])
+        evento = self.create_public_event(seguimiento)
+
+        version = DocumentoService().subir_documento(
+            self.post,
+            TipoDocumento.objects.get(codigo="ACTA_DEFENSA_TD"),
+            SimpleUploadedFile("acta-td.pdf", b"%PDF-1.4 acta TD"),
+            self.admin,
+            evento_defensa=evento,
+        )
+
+        self.assertEqual(version.documento.evento_defensa_id, evento.pk)
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_acta_td_rechaza_evento_ausente_ajeno_o_no_valido(self):
+        seguimiento = self.follow["DEFENSA_PUBLICA"]
+        seguimiento.estado = SeguimientoEtapa.EstadoChoices.APROBADA
+        seguimiento.save(update_fields=["estado"])
+        self.create_public_event(seguimiento)
+        pending_event = self.create_public_event(
+            seguimiento, estado="PROGRAMADA", activo=False,
+        )
+        inactive_event = self.create_public_event(seguimiento, activo=False)
+        private_event = EventoDefensa.objects.create(
+            postulacion=self.post,
+            seguimiento_etapa=self.follow["DEFENSA_PRIVADA"],
+            tipo_evento="DEFENSA_PRIVADA",
+            estado="FINALIZADA",
+            fecha_programada=timezone.now() - timedelta(days=1),
+            fecha_inicio_real=timezone.now() - timedelta(days=1),
+            fecha_fin_real=timezone.now(),
+            lugar="Sala",
+            programado_por=self.admin,
+        )
+        foreign_post = Postulacion.objects.create(
+            codigo="TD-ACTA-FOREIGN", estudiante=self.other,
+            modalidad=self.post.modalidad, periodo=self.post.periodo,
+            estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"),
+        )
+        foreign_stages = WorkflowService.inicializar_flujo(foreign_post, self.admin)
+        foreign_public = next(
+            item for item in foreign_stages if item.etapa.codigo == "DEFENSA_PUBLICA"
+        )
+        foreign_public.estado = SeguimientoEtapa.EstadoChoices.APROBADA
+        foreign_public.save(update_fields=["estado"])
+        foreign_event = self.create_public_event(foreign_public)
+
+        invalid_events = (
+            ("sin evento", None),
+            ("otra postulación", foreign_event),
+            ("evento privado", private_event),
+            ("evento no finalizado", pending_event),
+            ("evento inactivo", inactive_event),
+        )
+        for label, evento in invalid_events:
+            with self.subTest(evento=label), self.assertRaises(ValidationError):
+                DocumentoService().subir_documento(
+                    self.post,
+                    TipoDocumento.objects.get(codigo="ACTA_DEFENSA_TD"),
+                    SimpleUploadedFile(f"acta-{label}.pdf", b"%PDF-1.4 acta TD"),
+                    self.admin,
+                    evento_defensa=evento,
+                )
+        self.assertFalse(DocumentoPostulacion.objects.filter(
+            postulacion=self.post, tipo_documento__codigo="ACTA_DEFENSA_TD",
+        ).exists())
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_acta_td_rechaza_evento_publico_de_intento_anterior(self):
+        first_follow = self.follow["DEFENSA_PUBLICA"]
+        old_event = self.create_public_event(first_follow)
+        first_follow.estado = SeguimientoEtapa.EstadoChoices.RECHAZADA
+        first_follow.save(update_fields=["estado"])
+        current_follow = SeguimientoEtapa.objects.create(
+            postulacion=self.post,
+            etapa=first_follow.etapa,
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA,
+            numero_intento=2,
+        )
+        self.create_public_event(current_follow)
+
+        with self.assertRaisesMessage(ValidationError, "intento vigente"):
+            DocumentoService().subir_documento(
+                self.post,
+                TipoDocumento.objects.get(codigo="ACTA_DEFENSA_TD"),
+                SimpleUploadedFile("acta-anterior.pdf", b"%PDF-1.4 acta TD"),
+                self.admin,
+                evento_defensa=old_event,
+            )
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_conclusion_td_acepta_acta_aprobada_vinculada_al_intento_vigente(self):
+        self.prepare_conclusion_documents()
+
+        self.assertIsNone(TrabajoDirigidoPolicy().validar_conclusion_academica(self.post))
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_conclusion_td_rechaza_acta_sin_evento_o_de_otro_intento(self):
+        self.prepare_conclusion_documents(link_acta=False)
+        with self.assertRaisesMessage(ValidationError, "ACTA_DEFENSA_TD aprobada y vinculada"):
+            TrabajoDirigidoPolicy().validar_conclusion_academica(self.post)
+
+        self.post.documentos.all().delete()
+        self.post.eventos_defensa.all().delete()
+        self.post.seguimientos_etapa.filter(etapa__codigo="DEFENSA_PUBLICA").delete()
+        self.follow = {
+            item.etapa.codigo: item
+            for item in WorkflowService.inicializar_flujo(self.post, self.admin)
+        }
+        first_follow = self.follow["DEFENSA_PUBLICA"]
+        old_event = self.create_public_event(first_follow)
+        first_follow.estado = SeguimientoEtapa.EstadoChoices.RECHAZADA
+        first_follow.save(update_fields=["estado"])
+        current_follow = SeguimientoEtapa.objects.create(
+            postulacion=self.post,
+            etapa=first_follow.etapa,
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA,
+            numero_intento=2,
+        )
+        self.prepare_conclusion_documents(public_follow=current_follow, acta_event=old_event)
+        with self.assertRaisesMessage(ValidationError, "ACTA_DEFENSA_TD aprobada y vinculada"):
+            TrabajoDirigidoPolicy().validar_conclusion_academica(self.post)
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_conclusion_td_rechaza_acta_no_aprobada_o_sin_version_vigente(self):
+        self.prepare_conclusion_documents()
+        acta = DocumentoPostulacion.objects.get(
+            postulacion=self.post, tipo_documento__codigo="ACTA_DEFENSA_TD",
+        )
+        invalid_states = (
+            ("ENV", False, True, True),
+            ("REC", False, True, True),
+            ("APR", True, True, True),
+            ("APR", False, False, True),
+            ("APR", False, True, False),
+        )
+        for state, correction, version_active, version_current in invalid_states:
+            with self.subTest(state=state, correction=correction, version_active=version_active, version_current=version_current):
+                DocumentoPostulacion.objects.filter(pk=acta.pk).update(
+                    estado=EstadoDocumento.objects.get(codigo=state),
+                    requiere_correccion=correction,
+                )
+                VersionDocumento.objects.filter(documento=acta).update(
+                    activo=version_active,
+                    es_version_actual=version_current,
+                )
+                with self.assertRaises(ValidationError):
+                    TrabajoDirigidoPolicy().validar_conclusion_academica(self.post)
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_conclusion_td_conserva_requisitos_documentales(self):
+        self.prepare_conclusion_documents()
+        DocumentoPostulacion.objects.filter(
+            postulacion=self.post, tipo_documento__codigo="DOCUMENTO_FINAL_TD",
+        ).update(activo=False)
+
+        with self.assertRaises(ValidationError) as error:
+            TrabajoDirigidoPolicy().validar_conclusion_academica(self.post)
+
+        self.assertIn("DOCUMENTO_FINAL_TD", error.exception.message_dict["faltantes"])
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_endpoint_concluye_td_con_acta_vigente_y_respeta_permisos(self):
+        self.prepare_conclusion_documents()
+        self.approve_prior_stages_for_closure()
+        client = APIClient()
+        url = f"/api/v1/postulaciones/{self.post.pk}/trabajo-dirigido/concluir/"
+
+        client.force_authenticate(self.student)
+        self.assertEqual(client.post(url, {}, format="json").status_code, 403)
+
+        client.force_authenticate(self.admin)
+        response = client.post(url, {}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"etapa": "CIERRE_DOCUMENTAL", "estado": "APROBADA"})
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.estado_actual.codigo, "CONCLUIDA")
+        self.assertEqual(
+            self.post.seguimientos_etapa.get(etapa__codigo="CIERRE_DOCUMENTAL").estado,
+            SeguimientoEtapa.EstadoChoices.APROBADA,
+        )
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_endpoint_no_concluye_si_acta_no_tiene_evento_y_revierte_cierre(self):
+        self.prepare_conclusion_documents(link_acta=False)
+        self.approve_prior_stages_for_closure()
+        client = APIClient()
+        client.force_authenticate(self.admin)
+
+        response = client.post(
+            f"/api/v1/postulaciones/{self.post.pk}/trabajo-dirigido/concluir/",
+            {}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("ACTA_DEFENSA_TD aprobada y vinculada", str(response.data))
+        self.post.refresh_from_db()
+        self.assertNotEqual(self.post.estado_actual.codigo, "CONCLUIDA")
+        self.assertEqual(
+            self.post.seguimientos_etapa.get(etapa__codigo="CIERRE_DOCUMENTAL").estado,
+            SeguimientoEtapa.EstadoChoices.PENDIENTE,
+        )
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_endpoint_no_concluye_si_acta_pertenece_a_intento_publico_anterior(self):
+        first_follow = self.follow["DEFENSA_PUBLICA"]
+        old_event = self.create_public_event(first_follow)
+        first_follow.estado = SeguimientoEtapa.EstadoChoices.RECHAZADA
+        first_follow.save(update_fields=["estado"])
+        current_follow = SeguimientoEtapa.objects.create(
+            postulacion=self.post,
+            etapa=first_follow.etapa,
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA,
+            numero_intento=2,
+        )
+        self.prepare_conclusion_documents(public_follow=current_follow, acta_event=old_event)
+        self.approve_prior_stages_for_closure()
+        client = APIClient()
+        client.force_authenticate(self.admin)
+
+        response = client.post(
+            f"/api/v1/postulaciones/{self.post.pk}/trabajo-dirigido/concluir/",
+            {}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("ACTA_DEFENSA_TD aprobada y vinculada", str(response.data))
+        self.post.refresh_from_db()
+        self.assertNotEqual(self.post.estado_actual.codigo, "CONCLUIDA")
+        self.assertEqual(
+            self.post.seguimientos_etapa.get(
+                etapa__codigo="CIERRE_DOCUMENTAL", numero_intento=1,
+            ).estado,
+            SeguimientoEtapa.EstadoChoices.PENDIENTE,
+        )

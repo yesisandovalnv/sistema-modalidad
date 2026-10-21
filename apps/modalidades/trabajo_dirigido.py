@@ -48,16 +48,104 @@ class TrabajoDirigidoEventoPolicy(ProyectoGradoEventoPolicy):
     ASSIGNMENTS = {
         "DEFENSA_PERFIL": {"TRIBUNAL": 3},
         "DEFENSA_PRIVADA": {"TRIBUNAL": 2, "DOCENTE_MODALIDAD": 1},
+        "DEFENSA_PUBLICA": {"TRIBUNAL": 3, "PRESIDENTE": 1, "SECRETARIO": 1},
+    }
+    QUORUM = {
         "DEFENSA_PUBLICA": {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1},
     }
+
+    @staticmethod
+    def obtener_seguimiento_publico_vigente(postulacion):
+        return postulacion.seguimientos_etapa.filter(
+            etapa__codigo="DEFENSA_PUBLICA",
+            activo=True,
+        ).order_by("-numero_intento", "-pk").first()
+
+    @staticmethod
+    def obtener_evento_publico_finalizado(seguimiento):
+        if not seguimiento:
+            return None
+        return seguimiento.eventos_defensa.filter(
+            tipo_evento="DEFENSA_PUBLICA",
+            numero_intento=seguimiento.numero_intento,
+            estado="FINALIZADA",
+            activo=True,
+        ).order_by("-fecha_fin_real", "-pk").first()
+
+    def requiere_vinculo_evento_documento(self, tipo_documento):
+        return (
+            tipo_documento.codigo == "ACTA_DEFENSA_TD"
+            or super().requiere_vinculo_evento_documento(tipo_documento)
+        )
+
+    def validar_vinculo_documento(self, *, postulacion, tipo_documento, evento_defensa):
+        if tipo_documento.codigo != "ACTA_DEFENSA_TD":
+            return super().validar_vinculo_documento(
+                postulacion=postulacion,
+                tipo_documento=tipo_documento,
+                evento_defensa=evento_defensa,
+            )
+
+        seguimiento = self.obtener_seguimiento_publico_vigente(postulacion)
+        evento_vigente = self.obtener_evento_publico_finalizado(seguimiento)
+        if (
+            not evento_defensa
+            or not seguimiento
+            or seguimiento.estado != "APROBADA"
+            or not evento_vigente
+            or evento_defensa.pk != evento_vigente.pk
+            or evento_defensa.postulacion_id != postulacion.pk
+            or evento_defensa.seguimiento_etapa_id != seguimiento.pk
+            or evento_defensa.numero_intento != seguimiento.numero_intento
+            or evento_defensa.tipo_evento != "DEFENSA_PUBLICA"
+            or evento_defensa.estado != "FINALIZADA"
+            or not evento_defensa.activo
+        ):
+            raise ValidationError(
+                "ACTA_DEFENSA_TD debe vincularse a la Defensa Pública finalizada y aprobada del intento vigente."
+            )
 
     def validar_programacion(self, *, tipo_evento, seguimiento, fecha_programada, asignaciones, **kwargs):
         if tipo_evento not in self.EVENT_STAGE:
             raise ValidationError("Tipo de evento no soportado por Trabajo Dirigido.")
+        if tipo_evento == "DEFENSA_PUBLICA":
+            tribunales = asignaciones.filter(tipo_participacion="TRIBUNAL").values("usuario_id").distinct().count()
+            if tribunales != 3:
+                raise ValidationError("La Defensa Pública requiere exactamente tres docentes evaluadores designados.")
         return super().validar_programacion(
             tipo_evento=tipo_evento, seguimiento=seguimiento,
             fecha_programada=fecha_programada, asignaciones=asignaciones, **kwargs,
         )
+
+    def validar_quorum(self, evento):
+        if evento.tipo_evento != "DEFENSA_PUBLICA":
+            return super().validar_quorum(evento)
+
+        presentes = evento.participantes.filter(presente=True, activo=True)
+        counts = {
+            role: presentes.filter(rol_evento=role).values("asignacion__usuario_id").distinct().count()
+            for role in self.QUORUM[evento.tipo_evento]
+        }
+        missing = {
+            role: required - counts[role]
+            for role, required in self.QUORUM[evento.tipo_evento].items()
+            if counts[role] < required
+        }
+        roles_by_user = {}
+        for user_id, role in presentes.filter(
+            rol_evento__in=("TRIBUNAL", "PRESIDENTE", "SECRETARIO"),
+        ).values_list("asignacion__usuario_id", "rol_evento"):
+            roles_by_user.setdefault(user_id, set()).add(role)
+        conflicts = [
+            {"usuario_id": user_id, "roles": sorted(roles)}
+            for user_id, roles in roles_by_user.items() if len(roles) > 1
+        ]
+        return {
+            "valido": not missing and not conflicts,
+            "faltantes": missing,
+            "detalle": counts,
+            "conflictos_identidad": conflicts,
+        }
 
 
 class TrabajoDirigidoRevisionPolicy(ProyectoGradoRevisionTribunalPreviaPolicy):
@@ -88,13 +176,99 @@ class TrabajoDirigidoRequisitosPolicy(BaseRequisitosPolicy):
         return tuple(dict.fromkeys(code for values in self.DOCUMENTS_BY_STAGE.values() for code in values))
 
 
+class TrabajoDirigidoEvaluacionPolicy(ProyectoGradoLegacyEvaluacionPolicy):
+    def validar_solicitud_registro(self, *, modalidad_registro, evaluador, **kwargs):
+        if modalidad_registro != "CONSENSO" or evaluador is not None:
+            raise ValidationError("La evaluación individual de Trabajo Dirigido está pendiente de definición normativa.")
+
+    def get_semantica_nota(self, *, evento, tipo):
+        if tipo == "PUBLICA":
+            from apps.postulantes.models import EvaluacionDefensa
+
+            return EvaluacionDefensa.SemanticaNota.BRUTA_100
+        return super().get_semantica_nota(evento=evento, tipo=tipo)
+
+    def get_valores_registro(self, *, evento, tipo, nota):
+        from decimal import Decimal, ROUND_HALF_UP
+
+        if tipo != "PUBLICA":
+            return super().get_valores_registro(evento=evento, tipo=tipo, nota=nota)
+        aporte = None if nota is None else (
+            Decimal(str(nota)) * Decimal("0.70")
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return {"ponderacion": Decimal("70.00"), "aporte_ponderado": aporte}
+
+    def validar_registro(self, evaluacion):
+        from decimal import Decimal, ROUND_HALF_UP
+        from apps.postulantes.models import EvaluacionDefensa, EventoDefensa
+
+        if evaluacion.tipo_evaluacion != "PUBLICA":
+            return super().validar_registro(evaluacion)
+        if evaluacion.evento.tipo_evento != EventoDefensa.Tipo.DEFENSA_PUBLICA:
+            raise ValidationError({"tipo_evaluacion": "La evaluación pública requiere una Defensa Pública."})
+        if evaluacion.modalidad_registro != "CONSENSO" or evaluacion.evaluador_id:
+            raise ValidationError({"modalidad_registro": "La evaluación pública de Trabajo Dirigido debe ser por consenso."})
+        if evaluacion.nota_numerica is None or not Decimal("1") <= evaluacion.nota_numerica <= Decimal("100"):
+            raise ValidationError({"nota_numerica": "La nota pública debe estar entre 1 y 100."})
+        aporte_esperado = (evaluacion.nota_numerica * Decimal("0.70")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP,
+        )
+        if evaluacion.semantica_nota != EvaluacionDefensa.SemanticaNota.BRUTA_100:
+            raise ValidationError({"semantica_nota": "La nota pública debe declararse como calificación bruta sobre 100."})
+        if evaluacion.ponderacion != Decimal("70.00") or evaluacion.aporte_ponderado != aporte_esperado:
+            raise ValidationError({"aporte_ponderado": "El aporte público debe ser el 70% de la nota bruta."})
+
+    def construir_consolidado(self, evaluacion, usuario):
+        consolidado = super().construir_consolidado(evaluacion, usuario)
+        if evaluacion.tipo_evaluacion == "PUBLICA":
+            consolidado.semantica_nota = evaluacion.semantica_nota
+            consolidado.aporte_ponderado = evaluacion.aporte_ponderado
+        return consolidado
+
+    def calcular_resultado_final(self, postulacion):
+        from decimal import Decimal, ROUND_HALF_UP
+        from apps.postulantes.models import EvaluacionDefensa
+
+        resultados = EvaluacionDefensa.objects.filter(
+            evento__postulacion=postulacion,
+            tipo_evaluacion="RESULTADO_FINAL",
+            es_resultado_final_evento=True,
+            activo=True,
+        )
+        privada = resultados.filter(evento__tipo_evento="DEFENSA_PRIVADA").order_by("-created_at").first()
+        publica = resultados.filter(evento__tipo_evento="DEFENSA_PUBLICA").order_by("-created_at").first()
+        aporte_privada = (
+            privada.aporte_ponderado if privada and privada.aporte_ponderado is not None
+            else privada.nota_numerica if privada else None
+        )
+        aporte_publica = (
+            publica.aporte_ponderado if publica and publica.aporte_ponderado is not None
+            else None
+        )
+        nota_final = (
+            (aporte_privada + aporte_publica).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if aporte_privada is not None and aporte_publica is not None else None
+        )
+        clasificacion = None if nota_final is None else self.clasificar_nota_final(nota_final)
+        return {
+            "nota_privada": privada.nota_numerica if privada else None,
+            "nota_publica": publica.nota_numerica if publica else None,
+            "aporte_privada": aporte_privada,
+            "aporte_publica": aporte_publica,
+            "nota_final": nota_final,
+            "clasificacion": clasificacion,
+            "resultado": clasificacion,
+            "limitacion_normativa": "" if nota_final is not None else "La nota final requiere resultados consolidados de defensa privada y pública.",
+        }
+
+
 class TrabajoDirigidoPolicy(BaseModalidadPolicy):
     codigo = "TRABAJO_DIRIGIDO"
     PROPUESTA_APROBADA = "PROPUESTA_TRABAJO_DIRIGIDO_APROBADA"
     RESULTADO_PROPUESTA_APROBADA = "APROBADA"
     etapas = ETAPAS
     evento_policy = TrabajoDirigidoEventoPolicy()
-    evaluacion_policy = ProyectoGradoLegacyEvaluacionPolicy()
+    evaluacion_policy = TrabajoDirigidoEvaluacionPolicy()
     requisitos_policy = TrabajoDirigidoRequisitosPolicy()
 
     def get_decisiones_academicas_permitidas(self, codigo_etapa):
@@ -603,9 +777,7 @@ class TrabajoDirigidoPolicy(BaseModalidadPolicy):
         from apps.postulantes.defensas import EvaluacionDefensaService
         from apps.postulantes.models import EvaluacionDefensa
 
-        evento = seguimiento.eventos_defensa.filter(
-            tipo_evento="DEFENSA_PUBLICA", estado="FINALIZADA", activo=True,
-        ).order_by("-fecha_fin_real", "-pk").first()
+        evento = TrabajoDirigidoPolicy.evento_policy.obtener_evento_publico_finalizado(seguimiento)
         if not evento:
             raise ValidationError("No se puede aprobar DEFENSA_PUBLICA sin un evento público finalizado.")
         if not evento.evaluaciones.filter(
@@ -638,9 +810,33 @@ class TrabajoDirigidoPolicy(BaseModalidadPolicy):
             raise ValidationError("Tras la segunda oportunidad con nota menor a 51, el postulante queda reprobado.")
 
     def validar_conclusion_academica(self, postulacion):
+        from apps.documentos.models import DocumentoPostulacion
+
         result = self.evaluacion_policy.calcular_resultado_final(postulacion)
         if result["nota_final"] is None or result["nota_final"] < 51:
             raise ValidationError("Trabajo Dirigido requiere una nota final mínima de 51 puntos.")
+
+        seguimiento_publico = self.evento_policy.obtener_seguimiento_publico_vigente(postulacion)
+        if not seguimiento_publico or seguimiento_publico.estado != "APROBADA":
+            raise ValidationError(
+                "La conclusión requiere la Defensa Pública aprobada del intento vigente."
+            )
+        evento_publico = self.evento_policy.obtener_evento_publico_finalizado(seguimiento_publico)
+        acta_vigente = bool(evento_publico and DocumentoPostulacion.objects.filter(
+            postulacion=postulacion,
+            tipo_documento__codigo="ACTA_DEFENSA_TD",
+            evento_defensa=evento_publico,
+            activo=True,
+            estado__codigo="APR",
+            requiere_correccion=False,
+            versiones__activo=True,
+            versiones__es_version_actual=True,
+        ).exists())
+        if not acta_vigente:
+            raise ValidationError(
+                "La conclusión requiere ACTA_DEFENSA_TD aprobada y vinculada a la Defensa Pública del intento vigente."
+            )
+
         missing = self._missing_documents(postulacion, self.get_documentos_requeridos("CIERRE_DOCUMENTAL"))
         if missing:
             raise ValidationError({"faltantes": missing})

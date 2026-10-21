@@ -60,8 +60,15 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
     if (!uploading) onClose()
   }
   const selectedType = fixedType || types.data.find((type) => String(type.id) === String(selectedTypeId))
-  const isDefenseRecord = selectedType?.codigo === 'ACTA_DEFENSA' || selectedType?.tipo_documento_codigo === 'ACTA_DEFENSA'
-  const hasDefenseRecord = multiple && uploadTypes.some((type) => (type.codigo || type.tipo_documento_codigo) === 'ACTA_DEFENSA')
+  const selectedTypeCode = selectedType?.codigo || selectedType?.tipo_documento_codigo
+  const isTrabajoDirigidoActa = selectedTypeCode === 'ACTA_DEFENSA_TD'
+  const isDefenseRecord = selectedTypeCode === 'ACTA_DEFENSA' || isTrabajoDirigidoActa
+  const hasTrabajoDirigidoActa = multiple && uploadTypes.some((type) => (
+    (type.codigo || type.tipo_documento_codigo) === 'ACTA_DEFENSA_TD'
+  ))
+  const hasDefenseRecord = multiple && uploadTypes.some((type) => (
+    ['ACTA_DEFENSA', 'ACTA_DEFENSA_TD'].includes(type.codigo || type.tipo_documento_codigo)
+  ))
 
   useEffect(() => {
     if (!fixedType && multiple) {
@@ -92,6 +99,17 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
     setPublicDefenses({ data: [], loading: true, error: '' })
     const load = async () => {
       try {
+        let currentPublicStage = null
+        if (isTrabajoDirigidoActa || hasTrabajoDirigidoActa) {
+          const expediente = await postulacionesService.obtenerExpediente(postulacion, controller.signal)
+          currentPublicStage = [...(expediente.flujo?.etapas || [])]
+            .filter((stage) => stage.codigo === 'DEFENSA_PUBLICA' && stage.activo !== false)
+            .sort((left, right) => Number(right.numero_intento) - Number(left.numero_intento))[0]
+          if (!currentPublicStage || currentPublicStage.estado !== 'APROBADA') {
+            if (!controller.signal.aborted) setPublicDefenses({ data: [], loading: false, error: '' })
+            return
+          }
+        }
         const candidates = []
         const seenCandidates = new Set()
         const seenNextPages = new Set()
@@ -101,6 +119,10 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
           const result = await postulacionesService.obtenerDefensas(postulacion, page, controller.signal)
           const items = result?.results || result || []
           items.filter((item) => item.tipo_evento === 'DEFENSA_PUBLICA' && item.estado === 'FINALIZADA' && item.activo !== false).forEach((item) => {
+            if (currentPublicStage && (
+              String(item.seguimiento_etapa) !== String(currentPublicStage.id)
+              || Number(item.numero_intento) !== Number(currentPublicStage.numero_intento)
+            )) return
             if (!seenCandidates.has(item.id)) { seenCandidates.add(item.id); candidates.push(item) }
           })
           const nextPage = result?.next || ''
@@ -118,7 +140,7 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
     }
     load()
     return () => controller.abort()
-  }, [hasDefenseRecord, isDefenseRecord, postulacion])
+  }, [hasDefenseRecord, hasTrabajoDirigidoActa, isDefenseRecord, isTrabajoDirigidoActa, postulacion])
 
   const fieldMessage = (name) => {
     const value = upload.fields?.[name]
@@ -145,8 +167,18 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
     event.preventDefault()
     const selectedEntries = historicalSelections
       .filter((item) => item.file)
-      .map((item) => ({ tipo_documento_id: item.typeId, archivo: item.file, evento_defensa_id: item.typeCode === 'ACTA_DEFENSA' ? selectedEventId : undefined, typeId: item.typeId, typeName: item.typeName }))
+      .map((item) => ({ tipo_documento_id: item.typeId, archivo: item.file, evento_defensa_id: ['ACTA_DEFENSA', 'ACTA_DEFENSA_TD'].includes(item.typeCode) ? selectedEventId : undefined, typeId: item.typeId, typeName: item.typeName }))
     if (selectedEntries.length === 0) return
+    if (isHistorical && selectedEntries.some((item) => (
+      historicalSelections.find((selection) => selection.typeId === item.typeId)?.typeCode === 'ACTA_DEFENSA_TD'
+    ))) {
+      setHistoricalStatus({
+        submitting: false,
+        summary: 'ACTA_DEFENSA_TD requiere el flujo operativo para guardar su vínculo a la Defensa Pública.',
+        items: [],
+      })
+      return
+    }
     if (selectedEntries.some((item) => item.evento_defensa_id === '')) {
       setHistoricalStatus({ submitting: false, summary: 'Selecciona la Defensa Pública finalizada.', items: [] })
       return
@@ -176,8 +208,18 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
   const retryFailedHistoricalUpload = async () => {
     const retryEntries = historicalSelections
       .filter((item) => item.file && item.status === 'error')
-      .map((item) => ({ tipo_documento_id: item.typeId, archivo: item.file, evento_defensa_id: item.typeCode === 'ACTA_DEFENSA' ? selectedEventId : undefined, typeId: item.typeId, typeName: item.typeName }))
+      .map((item) => ({ tipo_documento_id: item.typeId, archivo: item.file, evento_defensa_id: ['ACTA_DEFENSA', 'ACTA_DEFENSA_TD'].includes(item.typeCode) ? selectedEventId : undefined, typeId: item.typeId, typeName: item.typeName }))
     if (retryEntries.length === 0) return
+    if (isHistorical && retryEntries.some((item) => (
+      historicalSelections.find((selection) => selection.typeId === item.typeId)?.typeCode === 'ACTA_DEFENSA_TD'
+    ))) {
+      setHistoricalStatus({
+        submitting: false,
+        summary: 'ACTA_DEFENSA_TD requiere el flujo operativo para guardar su vínculo a la Defensa Pública.',
+        items: [],
+      })
+      return
+    }
     setHistoricalStatus({ submitting: true, summary: '', items: [] })
     try {
       const result = await onMultipleSubmit(retryEntries)
@@ -216,6 +258,11 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
         )}
         {historicalSelections.map((entry) => (
           <div key={entry.typeId} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            {['ACTA_DEFENSA', 'ACTA_DEFENSA_TD'].includes(entry.typeCode) && publicDefenses.data.length > 0 && <label className="mb-3 block text-sm">Defensa Pública finalizada
+              <select required value={selectedEventId} disabled={upload.submitting || historicalStatus.submitting} onChange={(event) => setSelectedEventId(event.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
+                <option value="">Seleccione la Defensa Pública</option>{publicDefenses.data.map((defense) => <option key={defense.id} value={defense.id}>{formatDefenseDate(defense.fecha_fin_real || defense.fecha_programada)} — {defense.lugar || 'Sin lugar'}</option>)}
+              </select>
+            </label>}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <label htmlFor={`historical-file-${entry.typeId}`} className="min-w-0 flex-1 text-sm font-medium text-slate-800 dark:text-slate-100">
                 {entry.typeName}
@@ -230,11 +277,6 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
               <input id={`historical-file-${entry.typeId}`} aria-label={entry.typeName} type="file" disabled={upload.submitting || historicalStatus.submitting} className="block w-full rounded-lg border border-slate-300 p-2 text-sm dark:border-slate-700 dark:bg-slate-950" onChange={(event) => handleHistoricalFileChange(entry.typeId, event.target.files?.[0] || null)} />
               {entry.file && <span className="truncate text-xs text-slate-500">{entry.file.name}</span>}
             </div>
-            {entry.typeCode === 'ACTA_DEFENSA' && publicDefenses.data.length > 0 && <label className="mt-3 block text-sm">Defensa Pública finalizada
-              <select required value={selectedEventId} disabled={upload.submitting || historicalStatus.submitting} onChange={(event) => setSelectedEventId(event.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
-                <option value="">Seleccione la Defensa Pública</option>{publicDefenses.data.map((defense) => <option key={defense.id} value={defense.id}>{formatDefenseDate(defense.fecha_fin_real || defense.fecha_programada)} — {defense.lugar || 'Sin lugar'}</option>)}
-              </select>
-            </label>}
             {upload.trackIndividualStatus && <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Estado: {entry.status === 'uploaded' ? 'Cargado' : entry.status === 'error' ? 'Error' : entry.file ? 'Seleccionado' : 'Pendiente'}</p>}
             {entry.error && <p className="mt-2 text-xs text-red-600">{entry.error}</p>}
           </div>
@@ -264,7 +306,7 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
         {(historicalSelections.length > 0 || (isHistorical && types.data.length > 0)) && (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
             <span>{selectedHistoryCount} documento{selectedHistoryCount === 1 ? '' : 's'} seleccionado{selectedHistoryCount === 1 ? '' : 's'}</span>
-            <Button type="submit" disabled={historicalStatus.submitting || selectedHistoryCount === 0 || (historicalSelections.some((item) => item.file && item.typeCode === 'ACTA_DEFENSA') && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))} className="min-w-[180px]">
+            <Button type="submit" disabled={historicalStatus.submitting || selectedHistoryCount === 0 || (historicalSelections.some((item) => item.file && ['ACTA_DEFENSA', 'ACTA_DEFENSA_TD'].includes(item.typeCode)) && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))} className="min-w-[180px]">
               {historicalStatus.submitting ? `Cargando ${selectedHistoryCount} de ${selectedHistoryCount}...` : `Cargar ${selectedHistoryCount} documento${selectedHistoryCount === 1 ? '' : 's'}`}
             </Button>
           </div>
@@ -296,7 +338,7 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
       {!fixedType && !types.loading && !types.error && types.data.length === 0 && <p role="status">No hay tipos documentales activos disponibles.</p>}
       {hasDefenseRecord && publicDefenses.loading && <p role="status">Buscando Defensas Públicas finalizadas…</p>}
       {hasDefenseRecord && publicDefenses.error && <p role="alert" className="text-red-600">{publicDefenses.error}</p>}
-      {hasDefenseRecord && !publicDefenses.loading && !publicDefenses.error && publicDefenses.data.length === 0 && <p role="alert" className="text-amber-700">No existen Defensas Públicas finalizadas disponibles para vincular el Acta de Defensa.</p>}
+      {hasDefenseRecord && !publicDefenses.loading && !publicDefenses.error && publicDefenses.data.length === 0 && <p role="alert" className="text-amber-700">{hasTrabajoDirigidoActa ? 'No existe una Defensa Pública finalizada y aprobada para el intento vigente.' : 'No existen Defensas Públicas finalizadas disponibles para vincular el Acta de Defensa.'}</p>}
       {isDefenseRecord && publicDefenses.loading && <p role="status">Buscando Defensas Públicas finalizadas…</p>}
       {isDefenseRecord && publicDefenses.error && <p role="alert" className="text-red-600">{publicDefenses.error}</p>}
       {isDefenseRecord && !publicDefenses.loading && !publicDefenses.error && publicDefenses.data.length === 0 && <p role="alert" className="text-amber-700">No existen Defensas Públicas finalizadas disponibles para vincular el Acta de Defensa.</p>}

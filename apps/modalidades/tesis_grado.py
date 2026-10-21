@@ -411,6 +411,23 @@ class TesisGradoPolicy(BaseModalidadPolicy):
                     "La evaluación está registrada y requiere consolidación.",
                     "DISPONIBLE", destination, "Ir a consolidar resultado",
                 ), [self._orientation_requirement("RESULTADO_CONSOLIDADO", "Resultado consolidado", False, destination)]
+            consolidado = evaluations.filter(
+                tipo_evaluacion="RESULTADO_FINAL",
+                es_resultado_final_evento=True,
+            ).first()
+            if (
+                event_type == "DEFENSA_TEMATICA"
+                and consolidado
+                and consolidado.resultado_cualitativo == "INSUFICIENTE"
+            ):
+                return self._orientation_action(
+                    "RESOLUCION_ACADEMICA_PENDIENTE", "Resolución académica pendiente",
+                    "La Temática obtuvo resultado INSUFICIENTE. La continuación requiere resolución académica conforme al Art. 44 del Reglamento de Tesis.",
+                    "PENDIENTE", None, "Pendiente de resolución académica",
+                ), [self._orientation_requirement(
+                    "RESOLUCION_ACADEMICA", "Resolución académica conforme al Art. 44",
+                    False, None, "Pendiente",
+                )]
             return self._orientation_action(
                 "APROBAR_ETAPA", "Aprobar etapa",
                 "La defensa tiene un resultado consolidado. Revisa y aprueba la etapa.",
@@ -461,7 +478,11 @@ class TesisGradoPolicy(BaseModalidadPolicy):
             else:
                 action, event_requirements = self._event_orientation(postulacion, seguimiento, "DEFENSA_TEMATICA")
                 requirements.extend(event_requirements)
-            message = "Completa la composición del tribunal y la evaluación de la temática."
+            message = (
+                action["descripcion"]
+                if action["codigo"] == "RESOLUCION_ACADEMICA_PENDIENTE"
+                else "Completa la composición del tribunal y la evaluación de la temática."
+            )
         elif stage == "PERFIL_TESIS":
             tutor = postulacion.asignaciones.filter(activo=True, tipo_participacion="TUTOR").exists()
             requirements = [self._orientation_requirement("TUTOR", "Tutor", tutor, "#actores")]
@@ -786,6 +807,27 @@ class TesisGradoPolicy(BaseModalidadPolicy):
                 raise ValidationError("La Defensa Privada requiere evento finalizado y resultado SUFICIENTE consolidado.")
         if seguimiento.etapa.codigo == "DEFENSA_PUBLICA":
             self.validar_gate_publica(seguimiento.postulacion)
+            from apps.postulantes.models import EventoDefensa
+            evento = seguimiento.eventos_defensa.filter(
+                tipo_evento="DEFENSA_PUBLICA",
+                estado=EventoDefensa.Estado.FINALIZADA,
+                activo=True,
+            ).first()
+            consolidado = evento and evento.evaluaciones.filter(
+                tipo_evaluacion="RESULTADO_FINAL",
+                es_resultado_final_evento=True,
+                activo=True,
+            ).first()
+            resultado_final = self.evaluacion_policy.calcular_resultado_final(seguimiento.postulacion)
+            aprobacion = consolidado and self.evaluacion_policy.obtener_aprobacion_por_consolidacion(
+                evento=evento,
+                evaluacion=consolidado,
+                resultado_final=resultado_final,
+            )
+            if not evento or not consolidado or resultado_final["nota_final"] is None or not aprobacion:
+                raise ValidationError(
+                    "La Defensa Pública requiere evento finalizado y resultado consolidado aprobatorio del intento actual."
+                )
 
     def validar_dictamen_revision(self, *, seguimiento, tipo_revision, version_documento_revisada,
                                   evidencia_version, asignacion_emisora, resultado, **kwargs):

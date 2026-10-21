@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient, APIRequestFactory
 
@@ -55,6 +55,128 @@ class TesisGradoPolicyTest(TestCase):
         SeguimientoEtapa.objects.filter(pk=etapa.pk).update(estado="EN_PROCESO")
         etapa.refresh_from_db()
         return etapa
+
+    def _preparar_gate_publica_valido(self):
+        private = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=self.seguimientos["DEFENSA_PRIVADA"],
+            tipo_evento="DEFENSA_PRIVADA", estado="FINALIZADA", numero_intento=1,
+            fecha_programada="2026-08-01T10:00:00Z", fecha_fin_real="2026-08-01T11:00:00Z",
+            lugar="Aula", programado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=private, tipo_evaluacion="RESULTADO_FINAL", modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE", nota_numerica=Decimal("20"),
+            es_resultado_final_evento=True, registrado_por=self.admin,
+        )
+        DocumentoPostulacion.objects.create(
+            postulacion=self.postulacion,
+            tipo_documento=TipoDocumento.objects.get(codigo="DOCUMENTO_FINAL"),
+            estado=EstadoDocumento.objects.get(codigo="APR"),
+        )
+        return private
+
+    def _crear_evento_publico_consolidado(self, seguimiento, *, nota=Decimal("70")):
+        event = EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=seguimiento,
+            tipo_evento="DEFENSA_PUBLICA", estado="FINALIZADA",
+            numero_intento=seguimiento.numero_intento,
+            fecha_programada="2026-08-02T10:00:00Z", fecha_fin_real="2026-08-02T11:00:00Z",
+            lugar="Auditorio", programado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=event, tipo_evaluacion="RESULTADO_FINAL", modalidad_registro="CONSENSO",
+            nota_numerica=nota, es_resultado_final_evento=True, registrado_por=self.admin,
+        )
+        return event
+
+    def _crear_evento_tematica_consolidado(self, seguimiento, resultado):
+        for order, teacher in enumerate(self.docentes[:3], start=1):
+            AsignacionService.asignar_actor(
+                self.postulacion, teacher, "TRIBUNAL", self.admin,
+                orden_cargo=order, seguimiento_etapa=seguimiento,
+            )
+        event = EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=seguimiento,
+            tipo_evento="DEFENSA_TEMATICA", estado="FINALIZADA", numero_intento=1,
+            fecha_programada="2026-08-01T10:00:00Z", fecha_fin_real="2026-08-01T11:00:00Z",
+            lugar="Aula", programado_por=self.admin,
+        )
+        return EvaluacionDefensa.objects.create(
+            evento=event, tipo_evaluacion="RESULTADO_FINAL", modalidad_registro="CONSENSO",
+            resultado_cualitativo=resultado, es_resultado_final_evento=True,
+            registrado_por=self.admin,
+        )
+
+    def _preparar_conclusion_valida(
+        self, *, estado_publico="APROBADA", nota_publica=Decimal("50"),
+        incluir_acta=True, estado_acta="APR", incluir_version=True,
+        version_activa=True, version_actual=True, acta_otro_intento=False,
+    ):
+        private = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=self.seguimientos["DEFENSA_PRIVADA"],
+            tipo_evento="DEFENSA_PRIVADA", estado="FINALIZADA", numero_intento=1,
+            fecha_programada="2026-08-01T10:00:00Z", fecha_fin_real="2026-08-01T11:00:00Z",
+            lugar="Aula", programado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=private, tipo_evaluacion="RESULTADO_FINAL", modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE", nota_numerica=Decimal("20"),
+            es_resultado_final_evento=True, registrado_por=self.admin,
+        )
+        public = self.seguimientos["DEFENSA_PUBLICA"]
+        acta_event = None
+        if acta_otro_intento:
+            acta_event = EventoDefensa.objects.create(
+                postulacion=self.postulacion, seguimiento_etapa=public,
+                tipo_evento="DEFENSA_PUBLICA", estado="FINALIZADA", numero_intento=1,
+                fecha_programada="2026-08-02T10:00:00Z", fecha_fin_real="2026-08-02T11:00:00Z",
+                lugar="Auditorio", programado_por=self.admin,
+            )
+            public.estado = SeguimientoEtapa.EstadoChoices.RECHAZADA
+            public.save(update_fields=["estado"])
+            public = SeguimientoEtapa.objects.create(
+                postulacion=self.postulacion, etapa=public.etapa, numero_intento=2,
+                estado=estado_publico,
+            )
+        else:
+            public.estado = estado_publico
+            public.save(update_fields=["estado"])
+        public_event = EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=public,
+            tipo_evento="DEFENSA_PUBLICA", estado="FINALIZADA",
+            numero_intento=public.numero_intento,
+            fecha_programada="2026-08-03T10:00:00Z", fecha_fin_real="2026-08-03T11:00:00Z",
+            lugar="Auditorio", programado_por=self.admin,
+        )
+        if nota_publica is not None:
+            EvaluacionDefensa.objects.create(
+                evento=public_event, tipo_evaluacion="RESULTADO_FINAL", modalidad_registro="CONSENSO",
+                nota_numerica=nota_publica, es_resultado_final_evento=True, registrado_por=self.admin,
+            )
+        if incluir_acta:
+            estado = EstadoDocumento.objects.get(codigo="APR")
+            if estado_acta != "APR":
+                estado = EstadoDocumento.objects.create(codigo="PENDIENTE_TEST", nombre="Pendiente de prueba")
+            document = DocumentoPostulacion.objects.create(
+                postulacion=self.postulacion,
+                tipo_documento=TipoDocumento.objects.get(codigo="ACTA_DEFENSA"),
+                evento_defensa=acta_event or public_event,
+                estado=estado,
+            )
+            if incluir_version:
+                with override_settings(STORAGES={
+                    "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+                }):
+                    VersionDocumento.objects.create(
+                        documento=document, subido_por=self.admin, numero_version=1,
+                        archivo=SimpleUploadedFile("acta.pdf", b"pdf"),
+                        nombre_original="acta.pdf", tamano_bytes=3,
+                        hash_sha256="a" * 64, activo=version_activa,
+                        es_version_actual=version_actual,
+                    )
+        return public
 
     def _gestion_actores(self, usuario):
         request = APIRequestFactory().get("/")
@@ -319,12 +441,180 @@ class TesisGradoPolicyTest(TestCase):
         self.assertEqual(displays, ["0/3", "1/3", "2/3", "3/3"])
         self.assertEqual(orientacion["siguiente_accion"]["codigo"], "PROGRAMAR_EVENTO")
 
+    def test_orientacion_tematica_insuficiente_requiere_resolucion_academica(self):
+        tematica = self._activar_tematica()
+        consolidado = self._crear_evento_tematica_consolidado(tematica, "INSUFICIENTE")
+
+        orientacion = TesisGradoPolicy().get_orientacion_etapa_actual(
+            postulacion=self.postulacion,
+            seguimiento=tematica,
+        )
+
+        self.assertEqual(
+            orientacion["siguiente_accion"]["codigo"],
+            "RESOLUCION_ACADEMICA_PENDIENTE",
+        )
+        self.assertNotEqual(orientacion["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+        self.assertIsNone(orientacion["siguiente_accion"]["destino"])
+        self.assertIn("INSUFICIENTE", orientacion["mensaje"])
+        self.assertIn("Art. 44", orientacion["mensaje"])
+        self.assertNotIn("aprobar", WorkflowService.obtener_acciones_permitidas(tematica))
+        tematica.refresh_from_db()
+        self.assertEqual(tematica.estado, SeguimientoEtapa.EstadoChoices.EN_PROCESO)
+        consolidado.refresh_from_db()
+        self.assertTrue(consolidado.activo)
+
+    def test_orientacion_tematica_suficiente_conserva_aprobacion(self):
+        tematica = self._activar_tematica()
+        self._crear_evento_tematica_consolidado(tematica, "SUFICIENTE")
+
+        orientacion = TesisGradoPolicy().get_orientacion_etapa_actual(
+            postulacion=self.postulacion,
+            seguimiento=tematica,
+        )
+
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+        self.assertEqual(orientacion["siguiente_accion"]["estado"], "DISPONIBLE")
+
     def test_bloquea_inicio_fuera_de_secuencia_e_inscripcion_sin_documentos(self):
         with self.assertRaises(ValidationError):
             WorkflowService.iniciar_etapa(self.seguimientos["TEMATICA_TESIS"], self.admin)
         WorkflowService.iniciar_etapa(self.seguimientos["INSCRIPCION"], self.admin)
         with self.assertRaises(ValidationError):
             WorkflowService.aprobar_etapa(self.seguimientos["INSCRIPCION"], self.admin)
+
+    def test_aprobacion_publica_requiere_evento_del_intento_actual(self):
+        self._preparar_gate_publica_valido()
+        public = self._activar_etapa("DEFENSA_PUBLICA")
+
+        with self.assertRaises(ValidationError):
+            WorkflowService.aprobar_etapa(public, self.admin)
+
+    def test_endpoint_administrativo_bloquea_aprobacion_publica_sin_evento(self):
+        self._preparar_gate_publica_valido()
+        public = self._activar_etapa("DEFENSA_PUBLICA")
+        client = APIClient()
+        client.force_authenticate(self.admin)
+
+        response = client.post(
+            f"/api/v1/seguimientos-etapa/{public.pk}/aprobar/",
+            {}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertIn("evento finalizado", str(response.data))
+
+    def test_aprobacion_publica_requiere_evento_finalizado(self):
+        self._preparar_gate_publica_valido()
+        public = self._activar_etapa("DEFENSA_PUBLICA")
+        EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=public,
+            tipo_evento="DEFENSA_PUBLICA", estado="PROGRAMADA", numero_intento=public.numero_intento,
+            fecha_programada="2026-08-02T10:00:00Z", lugar="Auditorio", programado_por=self.admin,
+        )
+
+        with self.assertRaises(ValidationError):
+            WorkflowService.aprobar_etapa(public, self.admin)
+
+    def test_aprobacion_publica_requiere_consolidado(self):
+        self._preparar_gate_publica_valido()
+        public = self._activar_etapa("DEFENSA_PUBLICA")
+        EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=public,
+            tipo_evento="DEFENSA_PUBLICA", estado="FINALIZADA", numero_intento=public.numero_intento,
+            fecha_programada="2026-08-02T10:00:00Z", fecha_fin_real="2026-08-02T11:00:00Z",
+            lugar="Auditorio", programado_por=self.admin,
+        )
+
+        with self.assertRaises(ValidationError):
+            WorkflowService.aprobar_etapa(public, self.admin)
+
+    def test_aprobacion_publica_rechaza_consolidado_postergado(self):
+        self._preparar_gate_publica_valido()
+        public = self._activar_etapa("DEFENSA_PUBLICA")
+        self._crear_evento_publico_consolidado(public, nota=Decimal("20"))
+
+        with self.assertRaises(ValidationError):
+            WorkflowService.aprobar_etapa(public, self.admin)
+
+    def test_aprobacion_publica_no_reutiliza_evento_aprobado_de_intento_anterior(self):
+        self._preparar_gate_publica_valido()
+        previous = self._activar_etapa("DEFENSA_PUBLICA")
+        previous.estado = SeguimientoEtapa.EstadoChoices.APROBADA
+        previous.save(update_fields=["estado"])
+        self._crear_evento_publico_consolidado(previous)
+        current = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion, etapa=previous.etapa, numero_intento=2,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+        )
+
+        with self.assertRaises(ValidationError):
+            WorkflowService.aprobar_etapa(current, self.admin)
+
+    def test_conclusion_requiere_defensa_publica_aprobada(self):
+        self._preparar_conclusion_valida(estado_publico="EN_PROCESO")
+
+        with self.assertRaisesRegex(ValidationError, "Defensa Pública aprobada"):
+            TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    def test_conclusion_requiere_resultado_completo_y_no_postergado(self):
+        self._preparar_conclusion_valida(nota_publica=None)
+        with self.assertRaisesRegex(ValidationError, "nota final aprobatoria"):
+            TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    def test_conclusion_rechaza_resultado_postergado(self):
+        self._preparar_conclusion_valida(nota_publica=Decimal("20"))
+        with self.assertRaisesRegex(ValidationError, "nota final aprobatoria"):
+            TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    def test_conclusion_requiere_acta_vinculada_al_intento_actual(self):
+        self._preparar_conclusion_valida(incluir_acta=False)
+        with self.assertRaisesRegex(ValidationError, "ACTA_DEFENSA vigente"):
+            TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    def test_conclusion_rechaza_acta_de_otro_intento(self):
+        self._preparar_conclusion_valida(acta_otro_intento=True)
+        with self.assertRaisesRegex(ValidationError, "ACTA_DEFENSA vigente"):
+            TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    def test_conclusion_requiere_acta_aprobada_sin_correccion_pendiente(self):
+        self._preparar_conclusion_valida(estado_acta="PENDIENTE_TEST")
+        with self.assertRaisesRegex(ValidationError, "ACTA_DEFENSA vigente"):
+            TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    def test_conclusion_rechaza_acta_con_correccion_pendiente(self):
+        self._preparar_conclusion_valida()
+        DocumentoPostulacion.objects.filter(
+            postulacion=self.postulacion, tipo_documento__codigo="ACTA_DEFENSA",
+        ).update(requiere_correccion=True)
+        with self.assertRaisesRegex(ValidationError, "ACTA_DEFENSA vigente"):
+            TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    def test_conclusion_requiere_version_actual_activa(self):
+        self._preparar_conclusion_valida(incluir_version=False)
+        with self.assertRaisesRegex(ValidationError, "ACTA_DEFENSA vigente"):
+            TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    def test_conclusion_rechaza_version_inactiva(self):
+        self._preparar_conclusion_valida(version_activa=False)
+        with self.assertRaisesRegex(ValidationError, "ACTA_DEFENSA vigente"):
+            TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    def test_conclusion_rechaza_version_no_actual(self):
+        self._preparar_conclusion_valida(version_actual=False)
+        with self.assertRaisesRegex(ValidationError, "ACTA_DEFENSA vigente"):
+            TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    def test_endpoint_conclusion_rechaza_usuario_no_autorizado(self):
+        client = APIClient()
+        client.force_authenticate(self.student)
+
+        response = client.post(
+            f"/api/v1/postulaciones/{self.postulacion.pk}/concluir-academicamente/",
+            {}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
 
     def test_documentos_aplicables_por_etapa(self):
         policy = TesisGradoPolicy().requisitos_policy

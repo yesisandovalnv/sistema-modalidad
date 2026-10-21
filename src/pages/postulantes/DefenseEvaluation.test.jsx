@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import DefenseEvaluation from './DefenseEvaluation'
@@ -12,6 +12,16 @@ vi.mock('../../services/postulacionesService', () => ({ postulacionesService: {
 } }))
 
 const quorum = { data: { valido: true } }
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 const defense = (modalidad) => ({
   id: 9, tipo_evento: 'DEFENSA_PUBLICA', postulacion_modalidad_codigo: modalidad,
   estado: 'EN_CURSO', participantes: [{ id: 20, rol_evento: 'TRIBUNAL', activo: true, usuario_nombre: 'Tribunal' }], evaluaciones: [], resultado_consolidado: null,
@@ -54,6 +64,314 @@ describe('DefenseEvaluation por modalidad', () => {
     await userEvent.type(input, '100')
     await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
     expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(9, 'publica', expect.objectContaining({ modalidad_registro: 'CONSENSO', nota: '100' }), expect.any(AbortSignal))
+  })
+
+  it('registra la Defensa Pública de Trabajo Dirigido por consenso con nota bruta 1--100', async () => {
+    postulacionesService.registrarEvaluacionDefensa.mockResolvedValue({})
+    render(<DefenseEvaluation defense={defense('TRABAJO_DIRIGIDO')} quorum={quorum} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+
+    const input = screen.getByLabelText('Nota de Defensa Pública (1–100)')
+    expect(input).toHaveAttribute('min', '1')
+    expect(input).toHaveAttribute('max', '100')
+    expect(screen.queryByLabelText('Modo')).not.toBeInTheDocument()
+    await userEvent.type(input, '95')
+    expect(screen.getByText('Aporte ponderado: 66,50 / 70')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(9, 'publica', {
+      observaciones: '', modalidad_registro: 'CONSENSO', nota_publica: '95',
+    }, expect.any(AbortSignal))
+  })
+
+  it('registra Defensa Privada de Tesis en modo individual con el evaluador seleccionado', async () => {
+    postulacionesService.registrarEvaluacionDefensa.mockResolvedValue({})
+    render(<DefenseEvaluation defense={privateDefense()} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    await userEvent.selectOptions(screen.getByLabelText('Modo'), 'INDIVIDUAL')
+    await userEvent.selectOptions(screen.getByLabelText('Tribunal evaluador'), '20')
+    await userEvent.type(screen.getByLabelText('Nota individual'), '25')
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(9, 'privada', {
+      observaciones: '', modalidad_registro: 'INDIVIDUAL', resultado: 'SUFICIENTE', evaluador: '20', nota: '25',
+    }, expect.any(AbortSignal))
+  })
+
+  it('reanuda consenso y no permite cambiar a evaluaciones individuales', async () => {
+    render(<DefenseEvaluation defense={{ ...privateDefense(), evaluaciones: [{
+      id: 40, tipo_evaluacion: 'PRIVADA', modalidad_registro: 'CONSENSO',
+      resultado_cualitativo: 'SUFICIENTE', nota_numerica: '28.00',
+    }] }} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    expect(screen.getByText('Evaluación consensuada registrada')).toBeInTheDocument()
+    expect(screen.getByText('Evaluación: Consenso del tribunal')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /registrar evaluación/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Consolidar resultado del evento' })).toBeInTheDocument()
+  })
+
+  it.each([1, 2])('reanuda %s evaluación individual y sólo permite continuar en modo individual', async (evaluationCount) => {
+    const tribunals = [20, 21, 22].map((id) => ({
+      id, rol_evento: 'TRIBUNAL', activo: true, usuario_nombre: `Tribunal ${id}`,
+    }))
+    const evaluations = tribunals.slice(0, evaluationCount).map((participant, index) => ({
+      id: 40 + index, evaluador: participant.id, evaluador_nombre: participant.usuario_nombre,
+      tipo_evaluacion: 'PRIVADA', modalidad_registro: 'INDIVIDUAL',
+      resultado_cualitativo: 'SUFICIENTE', nota_numerica: '20.00',
+    }))
+    render(<DefenseEvaluation defense={{
+      ...privateDefense(), participantes: tribunals, evaluaciones: evaluations,
+    }} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    expect(screen.getByText(`${evaluationCount}/3 evaluaciones individuales registradas`)).toBeInTheDocument()
+    for (const evaluation of evaluations) expect(screen.getByText(new RegExp(`${evaluation.evaluador_nombre} — Nota:`))).toBeInTheDocument()
+    expect(screen.getByText(`Evaluadores pendientes: ${tribunals.slice(evaluationCount).map((participant) => participant.usuario_nombre).join(', ')}`)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Registrar siguiente evaluación individual' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar siguiente evaluación individual' }))
+    expect(screen.getByLabelText('Modo')).toHaveValue('INDIVIDUAL')
+    expect(screen.getByLabelText('Modo')).toBeDisabled()
+    expect(screen.getByRole('option', { name: `Tribunal ${tribunals[evaluationCount].id}` })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Por consenso' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Consolidar resultado del evento' })).not.toBeInTheDocument()
+  })
+
+  it('con las tres evaluaciones individuales no permite registrar otra y permite consolidar si finalizó', async () => {
+    const participants = [20, 21, 22].map((id) => ({ id, rol_evento: 'TRIBUNAL', activo: true, usuario_nombre: `Tribunal ${id}` }))
+    const evaluations = participants.map((participant, index) => ({
+      id: 40 + index, evaluador: participant.id, evaluador_nombre: participant.usuario_nombre,
+      tipo_evaluacion: 'PRIVADA', modalidad_registro: 'INDIVIDUAL',
+      resultado_cualitativo: 'SUFICIENTE', nota_numerica: `${20 + index}.00`,
+    }))
+    render(<DefenseEvaluation defense={{
+      ...privateDefense(), participantes: participants, evaluaciones: evaluations,
+    }} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    expect(screen.getByText('3/3 evaluaciones individuales registradas')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Registrar siguiente evaluación individual' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /registrar evaluación/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Consolidar resultado del evento' })).toBeInTheDocument()
+  })
+
+  it('no ofrece consolidación individual antes de que finalice la defensa', () => {
+    const participants = [20, 21, 22].map((id) => ({ id, rol_evento: 'TRIBUNAL', activo: true, usuario_nombre: `Tribunal ${id}` }))
+    const evaluations = participants.map((participant, index) => ({
+      id: 40 + index, evaluador: participant.id, tipo_evaluacion: 'PRIVADA', modalidad_registro: 'INDIVIDUAL',
+      resultado_cualitativo: 'SUFICIENTE', nota_numerica: `${20 + index}.00`,
+    }))
+    render(<DefenseEvaluation defense={{
+      ...privateDefense(), estado: 'EN_CURSO', participantes: participants, evaluaciones: evaluations,
+    }} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    expect(screen.getByText('3/3 evaluaciones individuales registradas')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Consolidar resultado del evento' })).not.toBeInTheDocument()
+  })
+
+  it('muestra el resultado consolidado sin acciones para registrar o consolidar', () => {
+    const result = { tipo_evaluacion: 'RESULTADO_FINAL', resultado_cualitativo: 'SUFICIENTE', nota_numerica: '24.00' }
+    render(<DefenseEvaluation defense={{
+      ...privateDefense(),
+      evaluaciones: [{ id: 40, tipo_evaluacion: 'PRIVADA', modalidad_registro: 'INDIVIDUAL', evaluador: 20 }],
+      resultado_consolidado: result,
+    }} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    expect(screen.getByText('Resultado consolidado')).toBeInTheDocument()
+    expect(screen.getByText('Resultado académico: Suficiente')).toBeInTheDocument()
+    expect(screen.getByText('Nota consolidada: 24.00')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /registrar evaluación/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Consolidar resultado del evento' })).not.toBeInTheDocument()
+    expect(postulacionesService.registrarEvaluacionDefensa).not.toHaveBeenCalled()
+    expect(postulacionesService.consolidarEvaluacionDefensa).not.toHaveBeenCalled()
+  })
+
+  it('reconcilia con el estado canónico tras un error ambiguo de registro', async () => {
+    const evaluated = {
+      ...privateDefense(),
+      evaluaciones: [{
+        id: 40, evaluador: 20, evaluador_nombre: 'Tribunal 20',
+        tipo_evaluacion: 'PRIVADA', modalidad_registro: 'INDIVIDUAL',
+        resultado_cualitativo: 'SUFICIENTE', nota_numerica: '25.00',
+      }],
+    }
+    postulacionesService.registrarEvaluacionDefensa.mockRejectedValue(new Error('La conexión se interrumpió.'))
+    postulacionesService.obtenerDefensa.mockResolvedValue(evaluated)
+    render(<DefenseEvaluation defense={privateDefense()} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    await userEvent.selectOptions(screen.getByLabelText('Modo'), 'INDIVIDUAL')
+    await userEvent.selectOptions(screen.getByLabelText('Tribunal evaluador'), '20')
+    await userEvent.type(screen.getByLabelText('Nota individual'), '25')
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+
+    expect(await screen.findByText('1/3 evaluaciones individuales registradas')).toBeInTheDocument()
+    expect(screen.getByText(/Tribunal 20 — Nota:/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Registrar siguiente evaluación individual' })).toBeInTheDocument()
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.obtenerDefensa).toHaveBeenCalledWith(9, expect.any(AbortSignal))
+  })
+
+  it('reconcilia una consolidación ambigua y muestra el resultado canónico', async () => {
+    const evaluations = [20, 21, 22].map((evaluador, index) => ({
+      id: 40 + index, evaluador, tipo_evaluacion: 'PRIVADA', modalidad_registro: 'INDIVIDUAL',
+      resultado_cualitativo: 'SUFICIENTE', nota_numerica: '24.00',
+    }))
+    const consolidated = {
+      ...privateDefense(), evaluaciones: evaluations,
+      resultado_consolidado: {
+        tipo_evaluacion: 'RESULTADO_FINAL', resultado_cualitativo: 'SUFICIENTE', nota_numerica: '24.00',
+      },
+    }
+    const onChanged = vi.fn()
+    const onCompleted = vi.fn()
+    postulacionesService.consolidarEvaluacionDefensa.mockRejectedValue(new Error('La conexión se interrumpió.'))
+    postulacionesService.obtenerDefensa.mockResolvedValue(consolidated)
+    render(<DefenseEvaluation defense={{
+      ...privateDefense(), participantes: [20, 21, 22].map((id) => ({ id, rol_evento: 'TRIBUNAL', activo: true })), evaluaciones: evaluations,
+    }} quorum={quorum} canManage onChanged={onChanged} onCompleted={onCompleted} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Consolidar resultado del evento' }))
+
+    expect(await screen.findByText('Resultado consolidado')).toBeInTheDocument()
+    expect(screen.getByText('Nota consolidada: 24.00')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Consolidar resultado del evento' })).not.toBeInTheDocument()
+    expect(postulacionesService.consolidarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.obtenerDefensa).toHaveBeenCalledWith(9, expect.any(AbortSignal))
+    expect(onChanged).toHaveBeenCalledWith(expect.any(AbortSignal), consolidated)
+    expect(onCompleted).toHaveBeenCalledWith(consolidated)
+  })
+
+  it('conserva el bloqueo tras cancelar un registro incierto y permite reintentar sólo tras confirmar que no se guardó', async () => {
+    postulacionesService.registrarEvaluacionDefensa.mockRejectedValue(new Error('La conexión se interrumpió.'))
+    postulacionesService.obtenerDefensa
+      .mockRejectedValueOnce(new Error('No se pudo consultar el estado.'))
+      .mockResolvedValue(privateDefense())
+    render(<DefenseEvaluation defense={privateDefense()} quorum={quorum} canManage onChanged={vi.fn()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    await userEvent.type(screen.getByLabelText('Nota privada'), '25')
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo confirmar el estado real')
+    expect(screen.getByRole('button', { name: 'Comprobar estado antes de reintentar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Registrar' })).toBeDisabled()
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(screen.queryByRole('button', { name: /registrar evaluación/i })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Comprobar estado antes de reintentar' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Registrar' })).toBeEnabled()
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+
+    postulacionesService.registrarEvaluacionDefensa.mockResolvedValue({})
+    await userEvent.type(screen.getByLabelText('Nota privada'), '24')
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+    await waitFor(() => expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(2))
+  })
+
+  it('conserva la recuperación si el registro se confirma pero falla onChanged', async () => {
+    const savedDefense = {
+      ...privateDefense(),
+      evaluaciones: [{
+        id: 41, tipo_evaluacion: 'PRIVADA', modalidad_registro: 'CONSENSO',
+        resultado_cualitativo: 'SUFICIENTE', nota_numerica: '25.00',
+      }],
+    }
+    const onChanged = vi.fn()
+      .mockRejectedValueOnce(new Error('No se pudo refrescar el expediente.'))
+      .mockRejectedValueOnce(new Error('El segundo refresco también falló.'))
+      .mockResolvedValue(undefined)
+    postulacionesService.registrarEvaluacionDefensa.mockResolvedValue({})
+    postulacionesService.obtenerDefensa.mockResolvedValue(savedDefense)
+    render(<DefenseEvaluation defense={privateDefense()} quorum={quorum} canManage onChanged={onChanged} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    await userEvent.type(screen.getByLabelText('Nota privada'), '25')
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Comprobar estado antes de reintentar' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /registrar evaluación/i })).not.toBeInTheDocument()
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.obtenerDefensa).toHaveBeenCalledWith(9, expect.any(AbortSignal))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Comprobar estado antes de reintentar' }))
+
+    expect(await screen.findByText('Evaluación consensuada registrada')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /registrar evaluación/i })).not.toBeInTheDocument()
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.obtenerDefensa).toHaveBeenCalledTimes(2)
+    expect(onChanged).toHaveBeenCalledTimes(3)
+  })
+
+  it('ignora la respuesta canónica de una defensa anterior después de cambiar el ID', async () => {
+    const canonicalRequest = deferred()
+    const originalDefense = privateDefense()
+    const nextDefense = { ...privateDefense(), id: 10 }
+    const oldCanonicalDefense = {
+      ...originalDefense,
+      evaluaciones: [{
+        id: 51, tipo_evaluacion: 'PRIVADA', modalidad_registro: 'CONSENSO',
+        resultado_cualitativo: 'SUFICIENTE', nota_numerica: '25.00',
+      }],
+    }
+    const onChanged = vi.fn()
+    postulacionesService.registrarEvaluacionDefensa.mockRejectedValue(new Error('La conexión se interrumpió.'))
+    postulacionesService.obtenerDefensa.mockReturnValue(canonicalRequest.promise)
+    const view = render(<DefenseEvaluation defense={originalDefense} quorum={quorum} canManage onChanged={onChanged} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    await userEvent.type(screen.getByLabelText('Nota privada'), '25')
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+    await waitFor(() => expect(postulacionesService.obtenerDefensa).toHaveBeenCalledWith(9, expect.any(AbortSignal)))
+
+    view.rerender(<DefenseEvaluation defense={nextDefense} quorum={quorum} canManage onChanged={onChanged} />)
+    await act(async () => canonicalRequest.resolve(oldCanonicalDefense))
+
+    expect(screen.queryByText('Evaluación consensuada registrada')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /registrar evaluación/i })).toBeInTheDocument()
+    expect(onChanged).not.toHaveBeenCalled()
+    expect(postulacionesService.obtenerDefensa).toHaveBeenCalledTimes(1)
+  })
+
+  it('no ejecuta el callback anterior si el registro termina después de cambiar el ID', async () => {
+    const registration = deferred()
+    const originalOnChanged = vi.fn()
+    const nextOnChanged = vi.fn()
+    const view = render(<DefenseEvaluation defense={privateDefense()} quorum={quorum} canManage onChanged={originalOnChanged} />)
+    postulacionesService.registrarEvaluacionDefensa.mockReturnValue(registration.promise)
+
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    await userEvent.type(screen.getByLabelText('Nota privada'), '25')
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+    view.rerender(<DefenseEvaluation defense={{ ...privateDefense(), id: 10 }} quorum={quorum} canManage onChanged={nextOnChanged} />)
+    await act(async () => registration.resolve({}))
+
+    expect(originalOnChanged).not.toHaveBeenCalled()
+    expect(nextOnChanged).not.toHaveBeenCalled()
+    expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(
+      9, 'privada', expect.objectContaining({ modalidad_registro: 'CONSENSO', nota: '25' }), expect.any(AbortSignal),
+    )
+  })
+
+  it('invalida la solicitud al desmontar y no ejecuta callbacks posteriores', async () => {
+    const registration = deferred()
+    const onChanged = vi.fn()
+    postulacionesService.registrarEvaluacionDefensa.mockReturnValue(registration.promise)
+    const view = render(<DefenseEvaluation defense={privateDefense()} quorum={quorum} canManage onChanged={onChanged} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    await userEvent.type(screen.getByLabelText('Nota privada'), '25')
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+    const requestSignal = postulacionesService.registrarEvaluacionDefensa.mock.calls[0][3]
+    expect(requestSignal.aborted).toBe(false)
+
+    view.unmount()
+    expect(requestSignal.aborted).toBe(true)
+    await act(async () => registration.resolve({}))
+
+    expect(onChanged).not.toHaveBeenCalled()
+    expect(requestSignal.aborted).toBe(true)
   })
 
   it.each(['0', '30'])('envía la nota privada consensuada válida %s para Tesis', async (nota) => {
@@ -168,7 +486,7 @@ describe('DefenseEvaluation por modalidad', () => {
   it('no confunde un RESULTADO_FINAL con la evaluación ordinaria de Privada', async () => {
     render(<DefenseEvaluation defense={{ ...privateDefense(), evaluaciones: [{ id: 32, tipo_evaluacion: 'RESULTADO_FINAL', modalidad_registro: 'CONSENSO', es_resultado_final_evento: true, resultado_cualitativo: 'SUFICIENTE' }] }} quorum={quorum} canManage onChanged={vi.fn()} />)
 
-    expect(screen.getByRole('button', { name: 'Registrar evaluación consensuada' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Registrar evaluación' })).toBeInTheDocument()
     expect(screen.queryByText('Evaluación consensuada registrada')).not.toBeInTheDocument()
   })
 
@@ -212,7 +530,7 @@ describe('DefenseEvaluation por modalidad', () => {
     expect(within(flow).queryByRole('button', { name: 'Registrar evaluación consensuada' })).not.toBeInTheDocument()
   })
 
-  it('abre el flujo rápido único para Defensa Privada y exige la nota privada antes de finalizar', async () => {
+  it('mantiene la evaluación estándar de Defensa Privada de Tesis aunque se solicite el flujo de Proyecto', async () => {
     const baseDefense = {
       ...privateDefense(),
       estado: 'EN_CURSO',
@@ -221,12 +539,11 @@ describe('DefenseEvaluation por modalidad', () => {
 
     render(<DefenseEvaluation defense={baseDefense} quorum={quorum} canManage onChanged={vi.fn()} projectProfileFlow />)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Registrar resultado de la defensa' }))
-    const flow = screen.getByRole('dialog', { name: 'Registrar resultado de la defensa' })
-
-    expect(within(flow).getByRole('button', { name: 'Registrar resultado y finalizar' })).toBeInTheDocument()
-    expect(within(flow).getByLabelText('Nota privada')).toBeInTheDocument()
-    expect(within(flow).queryByRole('button', { name: 'Registrar evaluación consensuada' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Registrar evaluación' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Registrar resultado de la defensa' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar evaluación' }))
+    expect(screen.getByLabelText('Modo')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Registrar resultado de la defensa' })).not.toBeInTheDocument()
   })
 
   it('completa en orden el flujo rápido de Perfil y refresca el padre solamente al final', async () => {

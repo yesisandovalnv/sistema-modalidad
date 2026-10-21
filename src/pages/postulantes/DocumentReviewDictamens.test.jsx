@@ -26,6 +26,8 @@ describe('DocumentReviewDictamens', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
     await waitFor(() => expect(postulacionesService.registrarDictamenRevision).toHaveBeenCalledWith(7, { tipo_revision: 'TUTOR', version_documento_revisada: 101, evidencia_version: 102, resultado: 'SUFICIENTE', observaciones: 'Aprobado', asignacion_emisora: 22 }, expect.any(AbortSignal)))
     expect(changed).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Dictamen del Tutor' })).not.toBeInTheDocument())
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Registrar dictamen' })))
   })
   it('registra Tribunal, preserva el histórico y muestra un error backend', async () => {
     postulacionesService.obtenerDictamenesRevision.mockResolvedValue([{ id: 1, tipo_revision: 'TRIBUNAL', resultado: 'INSUFICIENTE', version_documento_revisada: 99, evidencia_version: 90, evidencia_version_nombre: 'informe-anterior.pdf', activo: false, observaciones: 'Corregir' }])
@@ -39,13 +41,30 @@ describe('DocumentReviewDictamens', () => {
   it('cancela el modal sin registrar y Escape lo cierra', async () => {
     render(<DocumentReviewDictamens stage={stage('REVISION_TRIBUNAL')} documents={documents} assignments={assignments} canManage onChanged={vi.fn()} />)
     await screen.findByText('Dictamen del Tribunal')
-    await userEvent.click(screen.getByRole('button', { name: 'Registrar dictamen' }))
+    const opener = screen.getByRole('button', { name: 'Registrar dictamen' })
+    await userEvent.click(opener)
     expect(screen.getByRole('dialog', { name: 'Dictamen del Tribunal' })).toBeInTheDocument()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: 'Dictamen del Tribunal' })).not.toBeInTheDocument()
+    await waitFor(() => expect(document.activeElement).toBe(opener))
     await userEvent.click(screen.getByRole('button', { name: 'Registrar dictamen' }))
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
     expect(postulacionesService.registrarDictamenRevision).not.toHaveBeenCalled()
+    await waitFor(() => expect(document.activeElement).toBe(opener))
+  })
+
+  it.each([
+    ['deshabilitado', (opener) => { opener.disabled = true }],
+    ['desmontado', (opener) => { opener.remove() }],
+  ])('no restaura el foco al disparador %s', async (_description, invalidateOpener) => {
+    render(<DocumentReviewDictamens stage={stage('REVISION_TUTOR')} documents={documents} assignments={assignments} canManage onChanged={vi.fn()} />)
+    await screen.findByText('Dictamen del Tutor')
+    const opener = screen.getByRole('button', { name: 'Registrar dictamen' })
+    await userEvent.click(opener)
+    invalidateOpener(opener)
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Dictamen del Tutor' })).not.toBeInTheDocument()
+    expect(document.activeElement).not.toBe(opener)
   })
   it('evita doble envío y no muestra controles fuera de la etapa de dictamen', async () => {
     let resolve; postulacionesService.registrarDictamenRevision.mockReturnValue(new Promise((done) => { resolve = done }))

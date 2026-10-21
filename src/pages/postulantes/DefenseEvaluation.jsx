@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '../../components/ui/button'
 import { Modal } from '../../components/crud/CrudShell'
 import { postulacionesService } from '../../services/postulacionesService'
@@ -160,34 +160,167 @@ function ProjectProfileResultFlow({ defense, onChanged, onCompleted, onReviewAtt
 
 export default function DefenseEvaluation({ defense, quorum, canManage, onChanged, onCompleted, projectProfileFlow = false, onReviewAttendance }) {
   const [form, setForm] = useState(null)
+  const [recovery, setRecovery] = useState(null)
   const [projectPrivateNote, setProjectPrivateNote] = useState('')
   const [projectPublicNote, setProjectPublicNote] = useState('')
+  const [canonicalDefenseState, setCanonicalDefenseState] = useState(() => ({ defenseId: defense.id, value: defense }))
   const controller = useRef(null)
+  const mounted = useRef(false)
+  const currentDefense = useRef(defense)
+  const callbacks = useRef({ onChanged, onCompleted })
+  const operationSequence = useRef(0)
+  const activeOperation = useRef(null)
+  const canonicalDefense = String(canonicalDefenseState.defenseId) === String(defense.id)
+    ? canonicalDefenseState.value
+    : defense
+  const updateCanonicalDefense = (value, defenseId = defense.id) => setCanonicalDefenseState({ defenseId, value })
+  currentDefense.current = defense
+  callbacks.current = { onChanged, onCompleted }
+  const beginOperation = () => {
+    const operation = { defenseId: defense.id, token: ++operationSequence.current }
+    activeOperation.current = operation
+    return operation
+  }
+  const operationIsCurrent = (operation) => mounted.current
+    && String(currentDefense.current.id) === String(operation.defenseId)
+    && activeOperation.current?.token === operation.token
+    && String(activeOperation.current.defenseId) === String(operation.defenseId)
+  const invalidateOperation = useCallback(() => {
+    operationSequence.current += 1
+    activeOperation.current = null
+    controller.current?.abort()
+    controller.current = null
+  }, [])
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      invalidateOperation()
+    }
+  }, [invalidateOperation])
+  useEffect(() => {
+    if (activeOperation.current && String(activeOperation.current.defenseId) !== String(defense.id)) {
+      invalidateOperation()
+      setForm(null)
+      setRecovery(null)
+    }
+    setCanonicalDefenseState({ defenseId: defense.id, value: defense })
+  }, [defense, invalidateOperation])
   const type = kind[defense.tipo_evento]
   const tesis = defense.postulacion_modalidad_codigo === 'TESIS_GRADO'
   const proyectoGrado = defense.postulacion_modalidad_codigo === 'PROYECTO_GRADO'
+  const trabajoDirigido = defense.postulacion_modalidad_codigo === 'TRABAJO_DIRIGIDO'
   const tesisPrivada = tesis && type === 'privada'
   const tesisPublica = tesis && type === 'publica'
+  const thesisModeEvaluation = tesisPrivada || tesisPublica
   const projectProfile = type === 'perfil' && (defense.postulacion_modalidad_codigo === 'PROYECTO_GRADO' || projectProfileFlow)
   const correspondingEvaluationType = evaluationTypeByEvent[type]
-  const existingEvaluation = correspondingEvaluationType
-    ? (defense.evaluaciones || []).find((item) => item.tipo_evaluacion === correspondingEvaluationType && item.modalidad_registro === 'CONSENSO' && !item.es_resultado_final_evento)
-    : null
+  const eventEvaluations = correspondingEvaluationType
+    ? (canonicalDefense.evaluaciones || []).filter((item) => item.tipo_evaluacion === correspondingEvaluationType && !item.es_resultado_final_evento)
+    : []
+  const existingEvaluation = eventEvaluations.find((item) => item.modalidad_registro === 'CONSENSO') || null
+  const individualEvaluations = eventEvaluations.filter((item) => item.modalidad_registro === 'INDIVIDUAL')
+  const registeredMode = !thesisModeEvaluation ? null : existingEvaluation ? 'CONSENSO' : individualEvaluations.length ? 'INDIVIDUAL' : null
   const profileEvaluation = projectProfile ? existingEvaluation : null
-  const privateQuickFlow = defense.tipo_evento === 'DEFENSA_PRIVADA' && defense.postulacion_modalidad_codigo === 'TESIS_GRADO'
-  const individual = form?.mode === 'INDIVIDUAL'
-  const tribunals = (defense.participantes || []).filter((item) => item.rol_evento === 'TRIBUNAL' && item.activo !== false)
-  const evaluated = new Set((defense.evaluaciones || []).filter((item) => item.modalidad_registro === 'INDIVIDUAL').map((item) => String(item.evaluador)))
-  const hasEvaluation = (defense.evaluaciones || []).some((item) => item.tipo_evaluacion !== 'RESULTADO_FINAL')
-  const hasResult = Boolean(defense.resultado_consolidado)
-  const writable = canManage && ['EN_CURSO', 'FINALIZADA'].includes(defense.estado) && quorum.data?.valido === true
+  const individual = thesisModeEvaluation && (form?.mode === 'INDIVIDUAL' || registeredMode === 'INDIVIDUAL')
+  const tribunals = (canonicalDefense.participantes || []).filter((item) => item.rol_evento === 'TRIBUNAL' && item.activo !== false)
+  const evaluated = new Set(individualEvaluations.map((item) => String(item.evaluador)))
+  const hasEvaluation = thesisModeEvaluation
+    ? eventEvaluations.length > 0
+    : (canonicalDefense.evaluaciones || []).some((item) => item.tipo_evaluacion !== 'RESULTADO_FINAL')
+  const hasResult = Boolean(canonicalDefense.resultado_consolidado)
+  const writable = canManage && ['EN_CURSO', 'FINALIZADA'].includes(canonicalDefense.estado) && quorum.data?.valido === true
+  const canRegister = thesisModeEvaluation
+    ? writable && !hasResult && !existingEvaluation && individualEvaluations.length < 3
+    : writable && !existingEvaluation && !profileEvaluation
+  const canConsolidate = canManage && hasEvaluation && !hasResult && canonicalDefense.estado === 'FINALIZADA'
+    && (!thesisModeEvaluation || registeredMode !== 'INDIVIDUAL' || individualEvaluations.length === 3)
 
-  if (projectProfileFlow && writable && !hasResult && (projectProfile || privateQuickFlow)) return <ProjectProfileResultFlow defense={defense} onChanged={onChanged} onCompleted={onCompleted} onReviewAttendance={onReviewAttendance} />
+  if (projectProfileFlow && writable && !hasResult && projectProfile) return <ProjectProfileResultFlow defense={defense} onChanged={onChanged} onCompleted={onCompleted} onReviewAttendance={onReviewAttendance} />
+
+  const reconcileEvaluation = async ({ operation, error, confirmed = false }) => {
+    if (!operationIsCurrent(operation)) return
+    const pending = { ...operation, confirmed: operation.confirmed || confirmed }
+    setRecovery(pending)
+    setForm((current) => ({
+      ...(current || {}),
+      action: 'evaluar',
+      mode: pending.mode,
+      submitting: true,
+      uncertain: false,
+      error: '',
+      fields: current?.fields || {},
+    }))
+    controller.current?.abort()
+    controller.current = new AbortController()
+    try {
+      const canonical = await postulacionesService.obtenerDefensa(defense.id, controller.current.signal)
+      if (!operationIsCurrent(operation)) return
+      if (!canonical || !Array.isArray(canonical.evaluaciones)) throw new Error('La consulta no devolvió una defensa válida.')
+      updateCanonicalDefense(canonical, operation.defenseId)
+      const savedEvaluations = canonical.evaluaciones.filter((item) => (
+        item.tipo_evaluacion === correspondingEvaluationType && !item.es_resultado_final_evento
+      ))
+      const operationConfirmed = pending.confirmed
+        || savedEvaluations.length > pending.baselineCount
+        || Boolean(canonical.resultado_consolidado)
+      if (!operationConfirmed) {
+        activeOperation.current = null
+        setRecovery(null)
+        setForm((current) => ({
+          ...(current || {}),
+          action: 'evaluar',
+          mode: pending.mode,
+          submitting: false,
+          uncertain: false,
+          error: error?.message || '',
+          fields: error?.fields || {},
+        }))
+        return
+      }
+
+      setRecovery({ ...pending, confirmed: true })
+      try {
+        await callbacks.current.onChanged(controller.current.signal, canonical)
+        if (!operationIsCurrent(operation)) return
+        activeOperation.current = null
+        setRecovery(null)
+        setForm(null)
+      } catch (refreshError) {
+        if (!operationIsCurrent(operation)) return
+        if (refreshError.canceled) return
+        setForm((current) => ({
+          ...(current || {}),
+          action: 'evaluar',
+          mode: pending.mode,
+          submitting: false,
+          uncertain: true,
+          error: 'El registro fue confirmado, pero no se pudo actualizar el expediente. Compruebe el estado antes de continuar.',
+          fields: {},
+        }))
+      }
+    } catch (queryError) {
+      if (!operationIsCurrent(operation)) return
+      if (queryError.canceled) return
+      setForm((current) => ({
+        ...(current || {}),
+        action: 'evaluar',
+        mode: pending.mode,
+        submitting: false,
+        uncertain: true,
+        error: pending.confirmed
+          ? 'El registro fue aceptado, pero no se pudo consultar su estado. Compruebe el estado antes de continuar.'
+          : 'No se pudo confirmar el estado real. Compruebe el estado antes de continuar.',
+        fields: {},
+      }))
+    }
+  }
 
   const submit = async (event) => {
     event.preventDefault()
-    if (form?.submitting) return
+    if (form?.submitting || recovery) return
     const elements = event.currentTarget.elements
+    if (!canRegister || (registeredMode && registeredMode !== form?.mode)) return
     const payload = { observaciones: elements.observaciones.value.trim(), modalidad_registro: individual ? 'INDIVIDUAL' : 'CONSENSO' }
     if (type !== 'publica') payload.resultado = elements.resultado.value
     if (type === 'privada' && !tesis) payload.nota_privada = elements.nota_privada.value
@@ -211,34 +344,201 @@ export default function DefenseEvaluation({ defense, quorum, canManage, onChange
         if (individual) payload.evaluador = elements.evaluador.value
       } else payload.nota_publica = elements.nota_publica.value
     }
+    if (!thesisModeEvaluation) {
+      const operation = beginOperation()
+      controller.current?.abort(); controller.current = new AbortController()
+      setForm((current) => ({ ...current, submitting: true, error: '', fields: {} }))
+      try {
+        await postulacionesService.registrarEvaluacionDefensa(defense.id, type, payload, controller.current.signal)
+        if (!operationIsCurrent(operation)) return
+        await callbacks.current.onChanged(controller.current.signal)
+        if (!operationIsCurrent(operation)) return
+        activeOperation.current = null
+        setForm(null)
+      } catch (error) {
+        if (!operationIsCurrent(operation)) return
+        if (error.canceled) return
+        if (error.fields) {
+          activeOperation.current = null
+          setForm((current) => ({ ...current, submitting: false, error: error.message, fields: error.fields }))
+          return
+        }
+        try {
+          const canonical = await postulacionesService.obtenerDefensa(defense.id, controller.current.signal)
+          if (!operationIsCurrent(operation)) return
+          if (!canonical || !Array.isArray(canonical.evaluaciones)) throw new Error('La consulta no devolvió una defensa válida.')
+          updateCanonicalDefense(canonical, operation.defenseId)
+          const savedEvaluations = canonical.evaluaciones.filter((item) => (
+            item.tipo_evaluacion === correspondingEvaluationType && !item.es_resultado_final_evento
+          ))
+          if (savedEvaluations.length > eventEvaluations.length || canonical.resultado_consolidado) {
+            setForm(null)
+            await callbacks.current.onChanged(controller.current.signal, canonical)
+            if (!operationIsCurrent(operation)) return
+            activeOperation.current = null
+            return
+          }
+          activeOperation.current = null
+          setForm((current) => ({ ...current, canonical, submitting: false, error: error.message, fields: error.fields || {} }))
+        } catch (refreshError) {
+          if (!operationIsCurrent(operation)) return
+          if (refreshError.canceled) return
+          setForm((current) => ({
+            ...current,
+            submitting: false,
+            uncertain: true,
+            error: 'No se pudo confirmar el estado real. Compruebe el estado antes de continuar.',
+          }))
+        }
+      }
+      return
+    }
+    const operation = { ...beginOperation(), action: 'evaluar', mode: form.mode, baselineCount: eventEvaluations.length, confirmed: false }
+    setRecovery(operation)
     controller.current?.abort(); controller.current = new AbortController()
     setForm((current) => ({ ...current, submitting: true, error: '', fields: {} }))
     try {
       await postulacionesService.registrarEvaluacionDefensa(defense.id, type, payload, controller.current.signal)
-      setForm(null); await onChanged(controller.current.signal)
     } catch (error) {
-      if (!error.canceled) setForm((current) => ({ ...current, submitting: false, error: error.message, fields: error.fields || {} }))
+      if (!operationIsCurrent(operation)) return
+      if (error.canceled) return
+      if (error.fields) {
+        activeOperation.current = null
+        setRecovery(null)
+        setForm((current) => ({ ...current, submitting: false, error: error.message, fields: error.fields }))
+        return
+      }
+      await reconcileEvaluation({ operation, error })
+      return
+    }
+    if (!operationIsCurrent(operation)) return
+    setRecovery({ ...operation, confirmed: true })
+    try {
+      await callbacks.current.onChanged(controller.current.signal)
+      if (!operationIsCurrent(operation)) return
+      activeOperation.current = null
+      setRecovery(null)
+      setForm(null)
+    } catch (error) {
+      if (!operationIsCurrent(operation)) return
+      if (error.canceled) return
+      await reconcileEvaluation({ operation, error, confirmed: true })
+    }
+  }
+
+  const checkCanonicalState = async () => {
+    if (form?.submitting) return
+    if (recovery?.action === 'evaluar') {
+      await reconcileEvaluation({ operation: recovery, confirmed: recovery.confirmed })
+      return
+    }
+    const operation = form?.operation || beginOperation()
+    controller.current?.abort()
+    controller.current = new AbortController()
+    setForm((current) => ({ ...current, submitting: true, error: '' }))
+    try {
+      const canonical = await postulacionesService.obtenerDefensa(defense.id, controller.current.signal)
+      if (!operationIsCurrent(operation)) return
+      if (!canonical || !Array.isArray(canonical.evaluaciones)) throw new Error('La consulta no devolvió una defensa válida.')
+      updateCanonicalDefense(canonical, operation.defenseId)
+      const savedEvaluations = (canonical.evaluaciones || []).filter((item) => (
+        item.tipo_evaluacion === correspondingEvaluationType && !item.es_resultado_final_evento
+      ))
+      const operationConfirmed = form?.action === 'consolidar'
+        ? Boolean(canonical.resultado_consolidado)
+        : savedEvaluations.length > eventEvaluations.length || Boolean(canonical.resultado_consolidado)
+      if (operationConfirmed) {
+        await callbacks.current.onChanged(controller.current.signal, canonical)
+        if (!operationIsCurrent(operation)) return
+        if (form?.action === 'consolidar') callbacks.current.onCompleted?.(canonical)
+        activeOperation.current = null
+        setRecovery(null)
+        setForm(null)
+      } else {
+        activeOperation.current = null
+        setForm((current) => ({ ...current, canonical, submitting: false, uncertain: false, error: '' }))
+      }
+    } catch (error) {
+      if (operationIsCurrent(operation) && !error.canceled) setForm((current) => ({
+          ...current,
+          operation,
+          submitting: false,
+          uncertain: true,
+          error: 'No se pudo confirmar el estado real. Compruebe el estado antes de continuar.',
+        }))
     }
   }
 
   const consolidate = async () => {
     if (form?.submitting) return
-    controller.current?.abort(); controller.current = new AbortController(); setForm({ action: 'consolidar', submitting: true, error: '', fields: {} })
-    try { await postulacionesService.consolidarEvaluacionDefensa(defense.id, controller.current.signal); setForm(null); await onChanged(controller.current.signal); onCompleted?.() }
-    catch (error) { if (!error.canceled) setForm({ action: 'consolidar', submitting: false, error: error.message, fields: error.fields || {} }) }
+    const operation = { ...beginOperation(), action: 'consolidar' }
+    controller.current?.abort(); controller.current = new AbortController(); setForm({ ...operation, action: 'consolidar', submitting: true, error: '', fields: {} })
+    try {
+      await postulacionesService.consolidarEvaluacionDefensa(defense.id, controller.current.signal)
+      if (!operationIsCurrent(operation)) return
+      await callbacks.current.onChanged(controller.current.signal)
+      if (!operationIsCurrent(operation)) return
+      callbacks.current.onCompleted?.()
+      activeOperation.current = null
+      setForm(null)
+    }
+    catch (error) {
+      if (!operationIsCurrent(operation)) return
+      if (error.canceled) return
+      try {
+        const canonical = await postulacionesService.obtenerDefensa(defense.id, controller.current.signal)
+        if (!operationIsCurrent(operation)) return
+        if (!canonical || !Array.isArray(canonical.evaluaciones)) throw new Error('La consulta no devolvió una defensa válida.')
+        updateCanonicalDefense(canonical, operation.defenseId)
+        if (canonical.resultado_consolidado) {
+          await callbacks.current.onChanged(controller.current.signal, canonical)
+          if (!operationIsCurrent(operation)) return
+          callbacks.current.onCompleted?.(canonical)
+          activeOperation.current = null
+          setForm(null)
+          return
+        }
+        activeOperation.current = null
+        setForm({ ...operation, action: 'consolidar', submitting: false, error: error.message, fields: error.fields || {} })
+      } catch (refreshError) {
+        if (operationIsCurrent(operation) && !refreshError.canceled) setForm({
+          ...operation,
+          action: 'consolidar', submitting: false, uncertain: true,
+          error: 'No se pudo confirmar el estado real. Compruebe el estado antes de continuar.',
+        })
+      }
+    }
   }
 
   if (!canManage) return null
   return <section className="mt-5 border-t pt-5" aria-label="Gestión de evaluación">
-    {!writable && !hasEvaluation && <p className="text-sm text-slate-500">La evaluación requiere una defensa en curso o finalizada y quórum válido.</p>}
+    {!writable && !hasEvaluation && !hasResult && <p className="text-sm text-slate-500">La evaluación requiere una defensa en curso o finalizada y quórum válido.</p>}
     {(existingEvaluation || profileEvaluation) && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950"><p className="font-semibold">Evaluación consensuada registrada</p><p className="mt-1">Tipo: {formatEvaluationLabel((existingEvaluation || profileEvaluation).tipo_evaluacion)}</p><p className="mt-1">Resultado académico: {(existingEvaluation || profileEvaluation).resultado_cualitativo === 'SUFICIENTE' ? 'Suficiente' : 'Insuficiente'}</p>{(existingEvaluation || profileEvaluation).nota_numerica !== null && (existingEvaluation || profileEvaluation).nota_numerica !== undefined && <p className="mt-1">Nota: {String((existingEvaluation || profileEvaluation).nota_numerica)}</p>}<p className="mt-1">Evaluación: {formatRegistroLabel((existingEvaluation || profileEvaluation).modalidad_registro)}</p></div>}
-    {!existingEvaluation && !profileEvaluation && writable && !form && <Button onClick={() => { setProjectPrivateNote(''); setProjectPublicNote(''); setForm({ action: 'evaluar', mode: 'CONSENSO', submitting: false, error: '', fields: {} }) }}>Registrar evaluación consensuada</Button>}
+    {thesisModeEvaluation && registeredMode === 'INDIVIDUAL' && <div className="rounded-lg border p-3 text-sm" aria-label="Evaluaciones individuales registradas">
+      <p className="font-semibold">{individualEvaluations.length}/3 evaluaciones individuales registradas</p>
+      <ul className="mt-2 space-y-1">{individualEvaluations.map((evaluation) => <li key={evaluation.id}>{evaluation.evaluador_nombre || `Evaluador ${evaluation.evaluador}`} — Nota: {String(evaluation.nota_numerica ?? 'No registrada')}</li>)}</ul>
+      <p className="mt-2">Evaluadores pendientes: {tribunals.filter((participant) => !evaluated.has(String(participant.id))).map((participant) => participant.usuario_nombre || `Tribunal ${participant.id}`).join(', ') || 'Ninguno'}</p>
+    </div>}
+    {thesisModeEvaluation && hasResult && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950">
+      <p className="font-semibold">Resultado consolidado</p>
+      {canonicalDefense.resultado_consolidado.resultado_cualitativo && <p className="mt-1">Resultado académico: {canonicalDefense.resultado_consolidado.resultado_cualitativo === 'SUFICIENTE' ? 'Suficiente' : 'Insuficiente'}</p>}
+      {canonicalDefense.resultado_consolidado.nota_numerica !== null && canonicalDefense.resultado_consolidado.nota_numerica !== undefined && <p className="mt-1">Nota consolidada: {String(canonicalDefense.resultado_consolidado.nota_numerica)}</p>}
+    </div>}
+    {canRegister && !form && !recovery && <Button onClick={() => {
+      setProjectPrivateNote('')
+      setProjectPublicNote('')
+      setForm({ action: 'evaluar', mode: registeredMode || 'CONSENSO', submitting: false, error: '', fields: {} })
+    }}>{registeredMode === 'INDIVIDUAL' ? 'Registrar siguiente evaluación individual' : thesisModeEvaluation ? 'Registrar evaluación' : 'Registrar evaluación consensuada'}</Button>}
+    {recovery?.action === 'evaluar' && <div className="mt-4">
+      {form?.error && <p role="alert" className="text-sm text-red-600">{form.error}</p>}
+      <Button type="button" variant="secondary" disabled={form?.submitting} onClick={checkCanonicalState}>Comprobar estado antes de reintentar</Button>
+    </div>}
     {form?.action === 'evaluar' && <form className="mt-4 space-y-4" onSubmit={submit} noValidate={tesisPrivada && !individual}>
       {projectProfile && <aside className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm dark:border-sky-800 dark:bg-sky-950">
         <p className="font-semibold">Evaluación consensuada del Tribunal</p>
         <p className="mt-1">Registra una única decisión conjunta de los tribunales presentes. La cuenta administrativa quedará registrada como responsable de la carga.</p>
       </aside>}
-      {tesis && ['privada', 'publica'].includes(type) && <label className="block text-sm font-medium">Modo<select value={form.mode} onChange={(e) => setForm((v) => ({ ...v, mode: e.target.value }))}><option value="CONSENSO">Por consenso</option><option value="INDIVIDUAL">Individual</option></select></label>}{type !== 'publica' && <label className="block text-sm font-medium">Resultado<select name="resultado" className="mt-1 w-full rounded-md border p-2" required><option value="SUFICIENTE">Suficiente</option><option value="INSUFICIENTE">Insuficiente</option></select></label>}
+      {tesis && ['privada', 'publica'].includes(type) && <label className="block text-sm font-medium">Modo<select value={form.mode} disabled={Boolean(registeredMode)} onChange={(e) => setForm((v) => ({ ...v, mode: e.target.value }))}>{!registeredMode && <><option value="CONSENSO">Por consenso</option><option value="INDIVIDUAL">Individual</option></>}{registeredMode && <option value={registeredMode}>{registeredMode === 'CONSENSO' ? 'Por consenso' : 'Individual'}</option>}</select></label>}{type !== 'publica' && <label className="block text-sm font-medium">Resultado<select name="resultado" className="mt-1 w-full rounded-md border p-2" required><option value="SUFICIENTE">Suficiente</option><option value="INSUFICIENTE">Insuficiente</option></select></label>}
       {tesis && ['privada', 'publica'].includes(type) && individual && <><label>Tribunal evaluador<select name="evaluador" required>{tribunals.filter((p) => !evaluated.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{p.usuario_nombre || `Tribunal ${p.id}`}</option>)}</select></label><label>Nota individual<input name="nota" type="number" min={tesisPublica ? '1' : undefined} max={tesisPublica ? '100' : undefined} step="0.01" required /></label><p>{evaluated.size}/3 evaluaciones registradas</p></>}
       {tesisPrivada && !individual && <label className="block text-sm font-medium">Nota privada<input name="nota" type="number" min="0" max="30" step="0.01" required aria-describedby="nota-privada-error" className="mt-1 w-full rounded-md border p-2" />{form.fields?.nota_numerica && <span id="nota-privada-error" role="alert" className="mt-1 block text-sm text-red-600">{firstFieldError(form.fields.nota_numerica)}</span>}</label>}
       {type === 'privada' && !tesis && (proyectoGrado ? <div>
@@ -248,17 +548,23 @@ export default function DefenseEvaluation({ defense, quorum, canManage, onChange
       </div> : <label className="block text-sm font-medium">Nota privada (0–30)<input name="nota_privada" type="number" min="0" max="30" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label>)}
       {type === 'publica' && (!tesisPublica || !individual) && (tesisPublica
         ? <label className="block text-sm font-medium">Nota pública (1–100)<input name="nota" type="number" min="1" max="100" step="0.01" required /></label>
-        : proyectoGrado ? <div>
+        : trabajoDirigido ? <div>
+          <label className="block text-sm font-medium">Nota de Defensa Pública (1–100)<input name="nota_publica" type="number" min="1" max="100" step="0.01" required onChange={(event) => setProjectPublicNote(event.target.value)} className="mt-1 w-full rounded-md border p-2" /></label>
+          <p className="mt-2 text-sm text-slate-600">Ponderación en la nota final: 70%</p>
+          <p className="text-sm font-medium" aria-live="polite">Aporte ponderado: {weightedNotePreview(projectPublicNote, 70) || '—'} / 70</p>
+        </div>
+          : proyectoGrado ? <div>
           <label className="block text-sm font-medium">Nota de Defensa Pública (0–100)<input name="nota_publica" type="number" min="0" max="100" step="0.01" required onChange={(event) => setProjectPublicNote(event.target.value)} className="mt-1 w-full rounded-md border p-2" /></label>
           <p className="mt-2 text-sm text-slate-600">Ponderación en la nota final: 70%</p>
           <p className="text-sm font-medium" aria-live="polite">Aporte ponderado: {weightedNotePreview(projectPublicNote, 70) || '—'} / 70</p>
         </div>
           : <label className="block text-sm font-medium">Nota pública (0–70)<input name="nota_publica" type="number" min="0" max="70" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label>)}
       <label className="block text-sm font-medium">Observaciones<textarea name="observaciones" className="mt-1 w-full rounded-md border p-2" /></label>
-      {form.error && <p role="alert" className="text-sm text-red-600">{form.error}</p>}
-      <div className="flex gap-2"><Button type="submit" disabled={form.submitting}>{form.submitting ? 'Procesando…' : 'Registrar'}</Button><Button type="button" variant="secondary" disabled={form.submitting} onClick={() => setForm(null)}>Cancelar</Button></div>
+      {form.error && recovery?.action !== 'evaluar' && <p role="alert" className="text-sm text-red-600">{form.error}</p>}
+      <div className="flex gap-2"><Button type="submit" disabled={form.submitting || form.uncertain}>{form.submitting ? 'Procesando…' : 'Registrar'}</Button><Button type="button" variant="secondary" disabled={form.submitting} onClick={() => setForm(null)}>Cancelar</Button></div>
     </form>}
-    {hasEvaluation && !hasResult && defense.estado === 'FINALIZADA' && <div className="mt-4"><Button disabled={form?.submitting} onClick={consolidate}>{form?.submitting ? 'Procesando…' : 'Consolidar resultado del evento'}</Button></div>}
+    {canConsolidate && <div className="mt-4"><Button disabled={form?.submitting || form?.uncertain} onClick={consolidate}>{form?.action === 'consolidar' && form?.submitting ? 'Procesando…' : 'Consolidar resultado del evento'}</Button></div>}
     {form?.action === 'consolidar' && form.error && <p role="alert" className="mt-2 text-sm text-red-600">{form.error}</p>}
+    {form?.action === 'consolidar' && form.uncertain && <Button type="button" variant="secondary" disabled={form.submitting} onClick={checkCanonicalState}>Comprobar estado antes de continuar</Button>}
   </section>
 }

@@ -178,6 +178,7 @@ export default function ExpedientePage() {
   const [documentTypes, setDocumentTypes] = useState({ data: [], loading: false, error: '' })
   const [upload, setUpload] = useState(null)
   const [uploadOrigin, setUploadOrigin] = useState(null)
+  const uploadOpener = useRef(null)
   const uploadController = useRef(null)
   const [review, setReview] = useState(null)
   const reviewController = useRef(null)
@@ -621,18 +622,26 @@ export default function ExpedientePage() {
   const inscriptionDocumentRequirements = isProjectInscription
     ? currentRequirements.filter((item) => item.tipo === 'DOCUMENTO')
     : []
+  const isConcluded = detalle.estado_actual_detalle?.codigo === 'CONCLUIDA'
+    || cierre.data?.concluida === true
+    || cierre.data?.estado_general === 'CONCLUIDA'
   const isThesisGrade = detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' || flujo.modalidad?.codigo === 'TESIS_GRADO'
   const isThesisPublicStage = isThesisGrade && currentStage?.codigo === 'DEFENSA_PUBLICA'
+  const latestPublicStage = stages
+    .filter((stage) => stage.codigo === 'DEFENSA_PUBLICA' && stage.activo !== false)
+    .sort((left, right) => Number(right.numero_intento) - Number(left.numero_intento))[0]
   const publicDefenseMissingRoles = isThesisPublicStage
     ? getMissingPublicDefenseRoles(flujo.orientacion_etapa_actual)
     : []
-  const thesisConclusionOrientation = getThesisConclusionOrientation({
-    isThesisPublicStage,
-    currentStage,
-    resultado,
-    documents,
-    defenses,
-  })
+  const thesisConclusionOrientation = isThesisPublicStage && currentStage?.estado === 'APROBADA'
+    ? getThesisConclusionOrientation({
+        publicStage: latestPublicStage,
+        concluded: isConcluded,
+        resultado,
+        documents,
+        defenses,
+      })
+    : null
   const actionOrientation = thesisConclusionOrientation || flujo.orientacion_etapa_actual
   const registerableAcademicDecisions = actionOrientation?.siguiente_accion?.codigo === 'REGISTRAR_DECISION'
     ? (flujo.gestion_decisiones_academicas?.decisiones || []).filter((decision) => decision.acciones_permitidas?.includes('REGISTRAR'))
@@ -662,9 +671,6 @@ export default function ExpedientePage() {
       && !pendingCurrentRequirements
       && !activeCurrentDefense
     ))
-  const isConcluded = detalle.estado_actual_detalle?.codigo === 'CONCLUIDA'
-    || cierre.data?.concluida === true
-    || cierre.data?.estado_general === 'CONCLUIDA'
   const canStartCurrentStage = canManageApplications
     && currentStage?.id
     && currentStage.estado === 'PENDIENTE'
@@ -1030,6 +1036,7 @@ export default function ExpedientePage() {
 
   const openUpload = async (document = null) => {
     if (document && !isHistorical && document.capacidad_carga?.permitida !== true) return
+    uploadOpener.current = globalThis.document.activeElement
     uploadController.current?.abort()
     const controller = new AbortController()
     uploadController.current = controller
@@ -1079,6 +1086,7 @@ export default function ExpedientePage() {
   }
 
   const openProfileObservationUpload = async (defense) => {
+    uploadOpener.current = globalThis.document.activeElement
     uploadController.current?.abort()
     const controller = new AbortController()
     uploadController.current = controller
@@ -1100,13 +1108,15 @@ export default function ExpedientePage() {
     }
   }
 
-  const closeUpload = () => {
+  const closeUpload = ({ restoreDocumentDetail = true } = {}) => {
     const document = upload?.document
     const profileDefenseId = upload?.profileDefenseId
     const refreshedDefense = upload?.refreshedDefense
     const origin = uploadOrigin
+    const opener = uploadOpener.current
     uploadController.current?.abort()
     uploadController.current = null
+    uploadOpener.current = null
     setUpload(null)
     setUploadOrigin(null)
     if (profileDefenseId) {
@@ -1115,15 +1125,27 @@ export default function ExpedientePage() {
         loadQuorum(refreshedDefense)
       }
     } else if (document && origin !== 'TRIBUNAL_REVIEW_EVIDENCE') {
-      setSelectedDocument(document)
-      setVersionsRevision((value) => value + 1)
+      setSelectedDocument(restoreDocumentDetail ? document : null)
+      if (restoreDocumentDetail) setVersionsRevision((value) => value + 1)
     }
     if (origin === 'TRIBUNAL_REVIEW_EVIDENCE') {
       setTribunalReportDialog({ view: 'REGISTER_REPORT', draft: { resultado: '', evidencia_version: '', observaciones: '' }, assignment: { submitting: false, fields: {}, error: '' }, submitting: false, fields: {}, error: '' })
     }
+    requestAnimationFrame(() => {
+      if (opener?.isConnected && !opener.closest('[hidden]') && !opener.disabled && typeof opener.focus === 'function') opener.focus()
+    })
+  }
+
+  const closeSuccessfulUpload = () => {
+    const shouldReturnToSummary = !isHistorical
+      && !upload?.profileDefenseId
+      && uploadOrigin !== 'TRIBUNAL_REVIEW_EVIDENCE'
+    closeUpload({ restoreDocumentDetail: false })
+    if (shouldReturnToSummary) navigateToSection('resumen', { history: 'replace' })
   }
 
   const openTribunalEvidenceUpload = async () => {
+    uploadOpener.current = globalThis.document.activeElement
     closeTribunalReport()
     setUploadOrigin('TRIBUNAL_REVIEW_EVIDENCE')
     const controller = new AbortController()
@@ -1201,6 +1223,7 @@ export default function ExpedientePage() {
       setRevision((value) => value + 1)
       if (upload.profileDefenseId) setDefensesRevision((value) => value + 1)
       if (upload.document) setVersionsRevision((value) => value + 1)
+      if (!isHistorical && !upload.profileDefenseId && uploadOrigin !== 'TRIBUNAL_REVIEW_EVIDENCE') closeSuccessfulUpload()
     } catch (requestError) {
       if (!requestError.canceled) setUpload((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
     }
@@ -1284,6 +1307,7 @@ export default function ExpedientePage() {
       setDocumentsRevision((value) => value + 1)
       setRevision((value) => value + 1)
     }
+    if (!isHistorical && failureCount === 0 && successCount === entries.length) closeSuccessfulUpload()
 
     return { total: entries.length, successCount, failureCount, items: results, summary }
   }
@@ -1632,7 +1656,7 @@ export default function ExpedientePage() {
       {effectiveResult.data?.clasificacion && <p className="mt-5 rounded-lg bg-slate-100 px-4 py-3 text-center font-bold tracking-wide dark:bg-slate-800">{formatAcademicClassification(effectiveResult.data.clasificacion)}</p>}
       {effectiveResult.data?.limitacion_normativa && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{effectiveResult.data.limitacion_normativa}</p>}
     </Card>
-    <AcademicConclusion postulacion={detalle.id} modalidadCodigo={detalle.modalidad_detalle?.codigo} resultado={resultado} canManage={canManageClosure} onChanged={() => { setRevision((value) => value + 1); setHistoryRevision((value) => value + 1) }} />
+    <AcademicConclusion postulacion={detalle.id} modalidadCodigo={detalle.modalidad_detalle?.codigo} resultado={resultado} defensaPublicaAprobada={latestPublicStage?.estado === 'APROBADA'} actaValida={thesisConclusionOrientation?.actaValida} concluida={isConcluded} canManage={canManageClosure} onChanged={() => { setRevision((value) => value + 1); setHistoryRevision((value) => value + 1) }} />
   </>
   const closureSection = cierreSoportado && <details id="condiciones-tecnicas" open={closureDetailsOpen} className="scroll-mt-24 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
     <summary className="cursor-pointer list-none px-6 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">
@@ -3053,8 +3077,8 @@ function getMissingPublicDefenseRoles(orientation) {
   return PUBLIC_DEFENSE_AUTHORITY_ROLES.filter((role) => new RegExp(`\\b${role}\\b`).test(contractText))
 }
 
-function getThesisConclusionOrientation({ isThesisPublicStage, currentStage, resultado, documents, defenses }) {
-  if (!isThesisPublicStage || currentStage?.estado !== 'APROBADA' || documents.loading || defenses.loading || documents.error || defenses.error) return null
+function getThesisConclusionOrientation({ publicStage, concluded, resultado, documents, defenses }) {
+  if (!publicStage || publicStage.estado !== 'APROBADA' || concluded || documents.loading || defenses.loading || documents.error || defenses.error) return null
 
   const result = resultado?.data
   const resultApproved = result?.nota_final != null && result?.clasificacion && result.clasificacion !== 'POSTERGADO'
@@ -3063,10 +3087,11 @@ function getThesisConclusionOrientation({ isThesisPublicStage, currentStage, res
   const documentRows = documents.data?.results || []
   const defenseRows = defenses.data?.results || []
   const acta = documentRows.find((document) => document.activo !== false && document.tipo_documento_codigo === 'ACTA_DEFENSA')
-  const linkedPublicDefense = acta && defenseRows.find((defense) => String(defense.id) === String(acta.evento_defensa)
+  const currentPublicDefense = defenseRows.find((defense) => String(defense.seguimiento_etapa) === String(publicStage.id)
     && defense.tipo_evento === 'DEFENSA_PUBLICA' && defense.estado === 'FINALIZADA' && defense.activo !== false)
   const currentVersion = acta?.versiones?.some((version) => version.activo !== false && version.es_version_actual)
-  const validActa = Boolean(acta && acta.estado_codigo === 'APR' && !acta.requiere_correccion && currentVersion && linkedPublicDefense)
+  const validActa = Boolean(acta && acta.estado_codigo === 'APR' && !acta.requiere_correccion && currentVersion
+    && currentPublicDefense && String(acta.evento_defensa) === String(currentPublicDefense.id))
   const requirements = [
     { tipo: 'ACADEMICO', codigo: 'DEFENSA_PUBLICA_APROBADA', nombre: 'Defensa Pública aprobada', cumplido: true, estado: 'CUMPLIDO', estado_display: 'Cumplido', destino: '#resumen' },
     { tipo: 'ACADEMICO', codigo: 'RESULTADO_FINAL_APROBATORIO', nombre: `Resultado final aprobatorio (${result.nota_final}/100)`, cumplido: true, estado: 'CUMPLIDO', estado_display: 'Cumplido', destino: '#resumen' },
@@ -3081,7 +3106,7 @@ function getThesisConclusionOrientation({ isThesisPublicStage, currentStage, res
   } else {
     action = { codigo: 'CARGAR_ACTA_DEFENSA', titulo: 'Cargar Acta de Defensa', descripcion: 'La Defensa Pública está aprobada. Para concluir académicamente el expediente debes cargar y vincular el Acta de Defensa vigente.', estado: 'PENDIENTE', estado_display: 'Pendiente', destino: '#documentos', accion_label: 'Ir a documentos' }
   }
-  return { operacion: 'ORIENTAR_CONCLUSION_ACADEMICA', mensaje: 'Completa las precondiciones posteriores al macroflujo para concluir académicamente el expediente.', requisitos: requirements, siguiente_accion: action, conflictos_identidad: [] }
+  return { operacion: 'ORIENTAR_CONCLUSION_ACADEMICA', mensaje: 'Completa las precondiciones posteriores al macroflujo para concluir académicamente el expediente.', requisitos: requirements, siguiente_accion: action, conflictos_identidad: [], actaValida: validActa }
 }
 
 function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, onSubmit, onClose }) {
@@ -3428,9 +3453,7 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
   )
   const profileQuickFlow = profileContext && evaluationManager && quorum.data?.valido === true && !hasResult
     && ((defense.estado === 'EN_CURSO' && (!hasEvaluation || hasProjectProfileConsensus)) || (defense.estado === 'FINALIZADA' && hasProjectProfileConsensus))
-  const privateQuickFlow = !profileContext && defense.tipo_evento === 'DEFENSA_PRIVADA' && defense.postulacion_modalidad_codigo === 'TESIS_GRADO' && evaluationManager && quorum.data?.valido === true && !hasResult
-    && ['EN_CURSO', 'FINALIZADA'].includes(defense.estado)
-  const quickProfileEvaluationAction = profileQuickFlow || privateQuickFlow ? 'registrar_evaluacion' : null
+  const quickProfileEvaluationAction = profileQuickFlow ? 'registrar_evaluacion' : null
   const primaryAction = quickProfileEvaluationAction || (((canManage && actions.includes(orientedAction)) || evaluationActionAvailable) ? orientedAction : null)
   const secondaryActions = primaryAction ? actions.filter((action) => action !== primaryAction) : actions
   const hasSecondaryEvaluationAction = (canRegisterEvaluation && primaryAction !== 'registrar_evaluacion') || (canConsolidateEvaluation && primaryAction !== 'consolidar_resultado')
@@ -3496,9 +3519,9 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
         </div>
       </section>
 
-      {displayedPrimaryAction && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950" aria-labelledby="siguiente-accion-defensa-title"><h3 id="siguiente-accion-defensa-title" className="text-sm font-bold uppercase tracking-wide text-sky-800 dark:text-sky-200">Acción principal</h3>{![ 'iniciar', 'registrar_evaluacion'].includes(displayedPrimaryAction) && <p className="mt-2 font-semibold">{displayedPrimaryTitle}</p>}{displayedPrimaryDescription && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{displayedPrimaryDescription}</p>}{['registrar_evaluacion', 'consolidar_resultado'].includes(displayedPrimaryAction) ? <DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} action={displayedPrimaryAction} actionLabel={displayedPrimaryTitle} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} projectProfileFlow={profileQuickFlow || privateQuickFlow} onReviewAttendance={() => { setAttendanceReviewRequest((value) => value + 1); const participantsHeading = document.getElementById('participantes-defensa-title'); if (typeof participantsHeading?.scrollIntoView === 'function') participantsHeading.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} /> : <Button className="mt-4" disabled={displayedPrimaryAction === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)} onClick={() => onAction(displayedPrimaryAction)}>{displayedPrimaryTitle}</Button>}</section>}
+      {displayedPrimaryAction && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950" aria-labelledby="siguiente-accion-defensa-title"><h3 className="text-sm font-bold uppercase tracking-wide text-sky-800 dark:text-sky-200">Acción principal</h3>{![ 'iniciar', 'registrar_evaluacion'].includes(displayedPrimaryAction) && <p className="mt-2 font-semibold">{displayedPrimaryTitle}</p>}{displayedPrimaryDescription && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{displayedPrimaryDescription}</p>}{['registrar_evaluacion', 'consolidar_resultado'].includes(displayedPrimaryAction) ? <DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} action={displayedPrimaryAction} actionLabel={displayedPrimaryTitle} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} projectProfileFlow={profileQuickFlow} onReviewAttendance={() => { setAttendanceReviewRequest((value) => value + 1); const participantsHeading = document.getElementById('participantes-defensa-title'); if (typeof participantsHeading?.scrollIntoView === 'function') participantsHeading.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} /> : <Button className="mt-4" disabled={displayedPrimaryAction === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)} onClick={() => onAction(displayedPrimaryAction)}>{displayedPrimaryTitle}</Button>}</section>}
 
-      {showEvaluationSection && !(profileQuickFlow || privateQuickFlow) && <section aria-labelledby="evaluacion-defensa-title"><h3 id="evaluacion-defensa-title" className="text-lg font-bold">Evaluación</h3><DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} buttonVariant="secondary" hiddenAction={primaryAction} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} /></section>}
+      {showEvaluationSection && !['registrar_evaluacion', 'consolidar_resultado'].includes(primaryAction) && <section aria-labelledby="evaluacion-defensa-title"><h3 id="evaluacion-defensa-title" className="text-lg font-bold">Evaluación</h3><DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} buttonVariant="secondary" hiddenAction={primaryAction} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} /></section>}
 
       {canManage && secondaryOperationalActions.length > 0 && <section aria-labelledby="otras-acciones-defensa-title"><h3 id="otras-acciones-defensa-title" className="text-lg font-bold">Más acciones</h3><div className="mt-3 flex flex-wrap gap-2">{secondaryOperationalActions.map((action) => {
         const finalBlocked = action === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)
