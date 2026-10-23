@@ -4,6 +4,9 @@ export const authService = {
   async login(credentials) {
     return apiClient.post('/api/v1/auth/login/', credentials)
   },
+  async studentLogin(credentials) {
+    return apiClient.post('/api/v1/auth/student-login/', credentials)
+  },
   async me() {
     return apiClient.get('/api/v1/auth/me/')
   },

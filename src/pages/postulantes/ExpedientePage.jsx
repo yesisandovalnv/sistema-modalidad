@@ -116,6 +116,21 @@ const PROJECT_STAGE_UI = {
   CIERRE_DOCUMENTAL: { review: false, academicResult: true, closure: true, corrections: true },
 }
 
+const TRIBUNAL_REVIEW_DOCUMENTS = {
+  PROYECTO_GRADO: {
+    finalDocumentCode: 'DOCUMENTO_FINAL',
+    evidenceDocumentCode: 'INFORME_REVISION_TRIBUNAL_PREVIA',
+  },
+  TRABAJO_DIRIGIDO: {
+    finalDocumentCode: 'DOCUMENTO_FINAL_TD',
+    evidenceDocumentCode: 'INFORME_REVISION_TRIBUNAL_TD',
+  },
+}
+
+function getTribunalReviewDocuments(modalityCode) {
+  return TRIBUNAL_REVIEW_DOCUMENTS[modalityCode] || TRIBUNAL_REVIEW_DOCUMENTS.PROYECTO_GRADO
+}
+
 function getStageUiVisibility(modalityCode, stageCode) {
   if (modalityCode !== 'PROYECTO_GRADO') return { review: true, academicResult: true, closure: true, corrections: true }
   return PROJECT_STAGE_UI[stageCode] || { review: true, academicResult: true, closure: true, corrections: true }
@@ -217,6 +232,7 @@ export default function ExpedientePage() {
   const [diplomadoRevision, setDiplomadoRevision] = useState(0)
   const [trabajoDirigido, setTrabajoDirigido] = useState(null)
   const [trabajoDirigidoRevision, setTrabajoDirigidoRevision] = useState(0)
+  const [trabajoDirigidoReportSuccess, setTrabajoDirigidoReportSuccess] = useState('')
 
   useEffect(() => {
     uploadController.current?.abort()
@@ -263,6 +279,7 @@ export default function ExpedientePage() {
     tribunalAssignmentController.current = null
     tribunalAssignmentSubmitting.current = false
     setTribunalReports({ data: null, loading: true, error: '' })
+    setTrabajoDirigidoReportSuccess('')
   }, [id])
 
   useEffect(() => () => {
@@ -533,6 +550,7 @@ export default function ExpedientePage() {
   const cierreSoportado = data.capacidades?.cierre_soportado ?? detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO'
   const student = detalle.estudiante_detalle
   const period = detalle.periodo_detalle
+  const modalityCode = detalle.modalidad_detalle?.codigo
   const currentStage = flujo.etapa_actual
   const progress = flujo.porcentaje_avance === null || flujo.porcentaje_avance === undefined
     ? null
@@ -564,14 +582,12 @@ export default function ExpedientePage() {
     : resultado
   const tribunalReviewStage = (flujo.etapas || []).find((stage) => stage.codigo === 'REVISION_TRIBUNAL_PREVIA')
   const documentRows = documents.data?.results || []
-  const finalDocument = documentRows.find((document) => document.tipo_documento_nombre === 'Documento Final' || document.tipo_documento_codigo === 'DOCUMENTO_FINAL')
+  const tribunalReviewDocuments = getTribunalReviewDocuments(modalityCode)
+  const finalDocument = documentRows.find((document) => document.tipo_documento_codigo === tribunalReviewDocuments.finalDocumentCode)
   const currentFinalVersion = finalDocument?.versiones?.find((version) => version.es_version_actual && version.activo !== false)
   const evidenceDocuments = documentRows.filter((document) => (
-    document.activo !== false && (
-      document.tipo_documento_codigo === 'INFORME_REVISION_TRIBUNAL_PREVIA'
-      || document.tipo_documento_nombre === 'Informe de Evaluación del Tribunal'
-      || document.tipo_documento_nombre === 'Informe de revisión'
-    )
+    document.activo !== false
+    && document.tipo_documento_codigo === tribunalReviewDocuments.evidenceDocumentCode
   ))
   const currentEvidenceVersions = evidenceDocuments.flatMap((document) => document.versiones || []).filter((version) => version.es_version_actual && version.activo !== false)
   const isCurrentProjectTribunalReview = isProjectGrade && currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA'
@@ -611,7 +627,7 @@ export default function ExpedientePage() {
     && cierre.data?.estado_general !== 'CONCLUIDA'
   )
   const currentRequirements = flujo.orientacion_etapa_actual?.requisitos || []
-  const pendingCurrentRequirements = currentRequirements.filter((item) => item.estado !== 'INFORMATIVO' && item.cumplido === false).length
+  const pendingCurrentRequirements = currentRequirements.filter((item) => item.estado !== 'INFORMATIVO' && item.bloquea_siguiente_accion !== false && item.cumplido === false).length
   const currentOrientation = flujo.orientacion_etapa_actual
   const stageApprovalAllowed = Array.isArray(currentStage?.acciones_permitidas)
     ? currentStage.acciones_permitidas.includes('aprobar')
@@ -652,6 +668,7 @@ export default function ExpedientePage() {
     && actionOrientation.siguiente_accion.estado === 'DISPONIBLE'
     && stageApprovalAllowed
   const canApproveStage = canManageApplications && orientationApprovalAvailable
+  const isTrabajoDirigido = modalityCode === 'TRABAJO_DIRIGIDO'
   const activeCurrentDefense = hasActiveCurrentDefense({
     defenses: defenses.data?.results || [],
     orientation: actionOrientation,
@@ -665,16 +682,17 @@ export default function ExpedientePage() {
   })
   const openCurrentDefenseProgramming = () => openDefenseOperation('programar', null, defenseProgrammingContext)
   const canProgramDefense = canManageDefenses
+    && !activeCurrentDefense
     && (!isProjectGrade || (
       actionOrientation?.siguiente_accion?.codigo === 'PROGRAMAR_EVENTO'
       && actionOrientation?.siguiente_accion?.estado === 'DISPONIBLE'
       && !pendingCurrentRequirements
-      && !activeCurrentDefense
     ))
   const canStartCurrentStage = canManageApplications
     && currentStage?.id
     && currentStage.estado === 'PENDIENTE'
     && !isConcluded
+    && (!isTrabajoDirigido || currentStage.acciones_permitidas?.includes('iniciar'))
     && (!isAcademicExcellence || currentStage.acciones_permitidas?.includes('iniciar'))
   const examConclusionPending = Boolean(
     isExamGrade
@@ -1156,8 +1174,9 @@ export default function ExpedientePage() {
       const response = await postulacionesService.obtenerDocumentosAplicables(id, controller.signal)
       const rows = response.documentos_aplicables || []
       setDocumentTypes({ data: rows, loading: false, error: '' })
-      const fixedType = rows.find((type) => String(type.codigo || type.tipo_documento_codigo) === 'INFORME_EVALUACION_TRIBUNAL')
-        || rows.find((type) => String(type.nombre || type.tipo_documento_nombre) === 'Informe de Evaluación del Tribunal')
+      const fixedType = rows.find((type) => (
+        String(type.codigo || type.tipo_documento_codigo) === tribunalReviewDocuments.evidenceDocumentCode
+      ))
       if (!fixedType) {
         setUpload({ document: null, eventoDefensaId: undefined, submitting: false, fields: {}, error: 'No existe un tipo documental disponible para el Informe de Evaluación del Tribunal.', success: '' })
         return
@@ -1166,8 +1185,8 @@ export default function ExpedientePage() {
         ...fixedType,
         tipo_documento: fixedType.id,
         id: fixedType.id,
-        codigo: fixedType.codigo || fixedType.tipo_documento_codigo || 'INFORME_EVALUACION_TRIBUNAL',
-        tipo_documento_codigo: fixedType.codigo || fixedType.tipo_documento_codigo || 'INFORME_EVALUACION_TRIBUNAL',
+        codigo: fixedType.codigo || fixedType.tipo_documento_codigo || tribunalReviewDocuments.evidenceDocumentCode,
+        tipo_documento_codigo: fixedType.codigo || fixedType.tipo_documento_codigo || tribunalReviewDocuments.evidenceDocumentCode,
         nombre: fixedType.nombre || fixedType.tipo_documento_nombre || 'Informe de Evaluación del Tribunal',
         tipo_documento_nombre: fixedType.nombre || fixedType.tipo_documento_nombre || 'Informe de Evaluación del Tribunal',
       }
@@ -1645,10 +1664,14 @@ export default function ExpedientePage() {
             <Score label="Aporte de Defensa Pública" value={effectiveResult.data?.aporte_publica} scale={effectiveResult.data?.aporte_publica != null ? '70' : null} detail={effectiveResult.data?.aporte_publica != null ? 'Ponderación 70%' : null} decimalComma />
           </> : isExamGrade ? <>
             <Score label="Calificación final" value={effectiveResult.data?.nota_final} scale="100" fallback="Pendiente" decimalComma />
+          </> : isThesisGrade ? <>
+            <Score label="Nota privada" value={effectiveResult.data?.nota_privada} scale={effectiveResult.data?.semantica_privada === 'BRUTA_100' ? '100' : effectiveResult.data?.semantica_privada === 'MODALIDAD_ESPECIFICA' ? '30' : null} detail={effectiveResult.data?.semantica_privada === 'BRUTA_100' ? 'Calificación bruta' : effectiveResult.data?.semantica_privada === 'MODALIDAD_ESPECIFICA' ? 'Escala histórica' : null} />
+            <Score label="Aporte privado" value={effectiveResult.data?.aporte_privada} scale={effectiveResult.data?.aporte_privada != null ? '30' : null} detail={effectiveResult.data?.aporte_privada != null ? 'Ponderación 30%' : null} />
+            <Score label="Nota pública" value={effectiveResult.data?.nota_publica} scale="100" />
+            <Score label="Aporte pública" value={effectiveResult.data?.aporte_publica} scale={effectiveResult.data?.aporte_publica != null ? '70' : null} detail={effectiveResult.data?.aporte_publica != null ? 'Ponderación 70%' : null} />
           </> : <>
             <Score label="Privada" value={effectiveResult.data?.nota_privada} scale="30" />
             <Score label="Pública" value={effectiveResult.data?.nota_publica} scale={detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' ? '100' : '70'} />
-            {detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' && <Score label="Aporte pública" value={effectiveResult.data?.aporte_publica} scale="70" />}
           </>}
           {!isExamGrade && <Score label={isProjectGrade ? 'Nota Final' : 'Final'} value={effectiveResult.data?.nota_final} scale="100" fallback="Pendiente" decimalComma={isProjectGrade} />}
         </dl>
@@ -1696,7 +1719,6 @@ export default function ExpedientePage() {
         </div>
       </div>
     </details>
-  const modalityCode = detalle.modalidad_detalle?.codigo
   const hasModalityTab = !isHistorical && (
     (modalityCode === 'TRABAJO_DIRIGIDO' && Boolean(trabajoDirigido))
     || (modalityCode === 'EXAMEN_GRADO' && Boolean(examen))
@@ -1961,7 +1983,7 @@ export default function ExpedientePage() {
         {modalityCode === 'EXAMEN_GRADO' && <ExamenGradoAreas postulacion={detalle.id} examen={examen} etapaCodigo={currentStage?.codigo} postulacionConcluida={isConcluded} canManage={canManageEvaluations} onChanged={() => { setExamenRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
         {modalityCode === 'EXCELENCIA_ACADEMICA' && <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
         {modalityCode === 'GRADUACION_VIA_DIPLOMADO' && <Diplomado postulacion={detalle.id} diplomado={diplomado} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setDiplomadoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
-        {modalityCode === 'TRABAJO_DIRIGIDO' && <TrabajoDirigido postulacion={detalle.id} trabajo={trabajoDirigido} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setTrabajoDirigidoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+        {modalityCode === 'TRABAJO_DIRIGIDO' && <TrabajoDirigido postulacion={detalle.id} trabajo={trabajoDirigido} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} reportSuccess={trabajoDirigidoReportSuccess} onReportSuccess={setTrabajoDirigidoReportSuccess} onChanged={() => { setTrabajoDirigidoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
       </div>}
 
       {hasOutcomeTab && <div id="resultado-y-cierre" role="tabpanel" aria-labelledby="expediente-tab-resultado-cierre" data-expediente-panel="resultado-cierre" hidden={activeTab !== 'resultado-cierre'}>
@@ -2006,7 +2028,7 @@ export default function ExpedientePage() {
       />}
       {actorManagement && <ActorManagementDialog state={actorManagement} postulacion={detalle.id} management={flujo.gestion_actores} stageName={currentStage?.nombre || currentStage?.codigo} memorandumContract={isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO' ? getMemorandumPublicationContract(data) : null} memorandumSeguimientoEtapa={flujo.gestion_decisiones_academicas?.contexto?.seguimiento_etapa} memorandums={memorandums} canPublishMemorandum={canManageAssignments}       onMemorandumPublished={() => { actorManagementSummaryNavigationPending.current = true; setMemorandumRevision((value) => value + 1) }} onRetryMemorandums={() => setMemorandumRevision((value) => value + 1)} onSubmit={submitActorManagement} onFinalize={(position, observaciones) => submitActorManagement([{ action: 'FINALIZAR', position, payload: { observaciones } }])} onClose={closeActorManagement} />}
       {teamAssignment?.mode === 'PUBLIC_AUTHORITIES'
-        ? <PublicAuthoritiesDialog assignment={teamAssignment} postulacion={detalle.id} stage={currentStage} orientation={flujo.orientacion_etapa_actual} onSubmit={submitTeamAssignment} onClose={closeTeamAssignment} />
+        ? <PublicAuthoritiesDialog assignment={teamAssignment} postulacion={detalle.id} stage={currentStage} orientation={flujo.orientacion_etapa_actual} allowIdentityReuse={flujo.orientacion_etapa_actual?.siguiente_accion?.capacidades?.permite_identidad_reutilizada === true} onSubmit={submitTeamAssignment} onClose={closeTeamAssignment} />
         : null}
       {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} canUpload={canUpload} canManageAssignments={canManageAssignments} tribunalReviewStage={tribunalReviewStage} activeActors={activeActors.data?.results || []} activeTribunals={activeTribunals} onRetryActiveTribunals={() => setActiveTribunalsRevision((value) => value + 1)} onDraftChange={updateTribunalReportDraft} onAssignMissing={(order) => setTribunalReportDialog((current) => ({ ...current, view: 'ASSIGN_MISSING_TRIBUNAL', assignment: { order, submitting: false, fields: {}, error: '' } }))} onBackToReport={() => setTribunalReportDialog((current) => ({ ...current, view: 'REGISTER_REPORT' }))} onSubmitMissing={submitMissingTribunal} onUploadEvidence={openTribunalEvidenceUpload} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
     </section>
@@ -2017,10 +2039,13 @@ function StudentProcessView({ detalle, flujo, cierre, cierreSoportado, progress,
   const currentStage = flujo.etapa_actual
   const orientation = flujo.orientacion_etapa_actual
   const requirements = orientation?.requisitos || []
+  const stageRequirements = requirements.filter((item) => item.bloquea_siguiente_accion !== false)
+  const documentaryChecklist = requirements.filter((item) => item.bloquea_siguiente_accion === false)
   const stages = flujo.etapas || []
   const completed = flujo.etapas_completadas
   const total = flujo.etapas_totales
   const nextAction = orientation?.siguiente_accion
+  const institutionManagementPending = nextAction?.codigo === 'GESTIONAR_INSTITUCION'
   const isDocumentAction = nextAction?.destino === '#documentos'
   const requiresDocumentUpload = /^(COMPLETAR|CARGAR|CORREGIR|ACTUALIZAR)_/.test(nextAction?.codigo || '')
   const canNavigateToDocuments = isDocumentAction
@@ -2052,13 +2077,15 @@ function StudentProcessView({ detalle, flujo, cierre, cierreSoportado, progress,
       <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="student-orientation-title">
         <h3 id="student-orientation-title" className="text-lg font-bold">Qué debes hacer ahora</h3>
         <p className="mt-2 text-sm">{orientation?.mensaje || 'No hay una orientación pendiente para esta etapa.'}</p>
-        {nextAction && <div className="mt-4 rounded-lg border border-sky-200 bg-white/70 p-4 dark:border-sky-800 dark:bg-slate-900/60">
+        {institutionManagementPending && <p className="mt-2 text-sm">Solicita al personal responsable que registre la institución y el supervisor.</p>}
+        {nextAction && !institutionManagementPending && <div className="mt-4 rounded-lg border border-sky-200 bg-white/70 p-4 dark:border-sky-800 dark:bg-slate-900/60">
           <p className="font-semibold">{nextAction.titulo}</p>
           {nextAction.descripcion && <p className="mt-1 text-sm">{nextAction.descripcion}</p>}
           {nextAction.estado && <p className="mt-2 text-sm font-medium">{nextAction.estado_display || formatStatus(nextAction.estado)}</p>}
           {canNavigateToDocuments && <Link className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" to="/documentos">{nextAction.accion_label || 'Ir a documentos'}</Link>}
         </div>}
-        {requirements.length > 0 && <div className="mt-5"><h4 className="font-semibold">Requisitos relevantes</h4><ul className="mt-3 space-y-2">{requirements.map((requirement) => <li key={`${requirement.tipo}-${requirement.codigo}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 text-sm dark:border-sky-800 dark:bg-slate-900/60"><span className="font-medium">{requirement.nombre}</span><span>{requirement.estado_display || formatStatus(requirement.estado)}</span></li>)}</ul></div>}
+        {stageRequirements.length > 0 && <div className="mt-5"><h4 className="font-semibold">Requisitos relevantes</h4><ul className="mt-3 space-y-2">{stageRequirements.map((requirement) => <li key={`${requirement.tipo}-${requirement.codigo}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 text-sm dark:border-sky-800 dark:bg-slate-900/60"><span className="font-medium">{requirement.nombre}</span><span>{requirement.estado_display || formatStatus(requirement.estado)}</span></li>)}</ul></div>}
+        {documentaryChecklist.length > 0 && <div className="mt-5"><h4 className="font-semibold">Checklist documental</h4><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Estos documentos se muestran para seguimiento y no bloquean la siguiente acción académica.</p>{canViewDocuments && canUploadDocuments && <Link className="mt-2 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" to="/documentos">Gestionar documentos</Link>}<ul className="mt-3 space-y-2">{documentaryChecklist.map((requirement) => <li key={`${requirement.tipo}-${requirement.codigo}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 text-sm dark:border-sky-800 dark:bg-slate-900/60"><span className="font-medium">{requirement.nombre}</span><span>{requirement.estado_display || formatStatus(requirement.estado)}</span></li>)}</ul></div>}
       </section>
     </Card>
 
@@ -2217,23 +2244,27 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
   const operationIsCurrent = ['EN_PROCESO', 'OBSERVADA'].includes(currentStage?.estado)
     || orientation?.operacion === 'ORIENTAR_CONCLUSION_ACADEMICA'
     || (isAcademicExcellence && orientation?.operacion === 'CONFIGURAR_EXCELENCIA')
+    || orientation?.siguiente_accion?.codigo === 'GESTIONAR_INSTITUCION'
     || currentStage?.estado == null
   const effectiveOrientation = operationIsCurrent
     ? clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, currentStage)
     : null
   const requirements = [...(effectiveOrientation?.requisitos || []), ...getClosureTrackingRequirements(cierre, currentStage)]
   const pendingClosureTrackingDocuments = requirements.filter((item) => item.tipo === 'DOCUMENTO' && CLOSURE_TRACKING_DOCUMENT_CODES.includes(item.codigo) && item.cumplido === false)
-  const publicAuthorityRequirements = isProjectGrade && currentStage?.codigo === 'DEFENSA_PUBLICA'
+  const publicAuthoritiesCapability = effectiveOrientation?.siguiente_accion?.capacidades
+  const supportsPublicAuthoritiesDialog = isProjectGrade
+    || publicAuthoritiesCapability?.modal === 'PUBLIC_AUTHORITIES'
+  const publicAuthorityRequirements = supportsPublicAuthoritiesDialog && currentStage?.codigo === 'DEFENSA_PUBLICA'
     ? requirements.filter((item) => ['PRESIDENTE', 'SECRETARIO'].includes(item.codigo))
     : []
   const publicAuthorityConflict = publicAuthorityRequirements.some((item) => item.conflicto_identidad === true)
     || (effectiveOrientation?.conflictos_identidad || []).length > 0
   const publicAuthorityAction = canManageAssignments
-    && isProjectGrade
+    && supportsPublicAuthoritiesDialog
     && currentStage?.codigo === 'DEFENSA_PUBLICA'
     && ['EN_PROCESO', 'OBSERVADA'].includes(currentStage?.estado)
     && publicAuthorityRequirements.some((item) => item.cumplido === false)
-    && !publicAuthorityConflict
+    && (publicAuthoritiesCapability?.permite_identidad_reutilizada || !publicAuthorityConflict)
   const profileDefense = isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO'
     ? defenses.find((defense) => defense.tipo_evento === 'DEFENSA_PERFIL'
       && String(defense.seguimiento_etapa) === String(currentStage.id)
@@ -2283,6 +2314,7 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
       }
     : null
   const nextAction = profileDefenseAction || closureDocumentAction || (studentMustWaitForApproval ? null : orientationAction)
+  const assignmentActionUnavailable = nextAction?.requiere_permiso === 'GESTIONAR_ASIGNACIONES' && !canManageAssignments
   const profileActionAvailable = profileDefenseAction?.requiredCapability === 'DEFENSE_MANAGEMENT'
     ? canManageDefenses
     : profileDefenseAction?.requiredCapability === 'EVALUATION_MANAGEMENT'
@@ -2295,14 +2327,16 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
     ? 'Programar Defensa Pública'
     : nextAction?.titulo
   const visibleNextActionTitle = nextActionTitle
-  const completedRequirements = requirements.filter((item) => item.cumplido).length
+  const stageRequirements = requirements.filter((item) => item.bloquea_siguiente_accion !== false)
+  const documentaryChecklist = requirements.filter((item) => item.bloquea_siguiente_accion === false)
+  const completedRequirements = stageRequirements.filter((item) => item.cumplido).length
   const approvalMissingLabels = Array.isArray(stageApproval?.fields?.faltantes)
     ? stageApproval.fields.faltantes.map(humanizeRequirementCode).join(', ')
     : ''
   const orientationMessage = approvalMissingLabels
     ? `Falta completar: ${approvalMissingLabels}.`
     : publicAuthorityAction
-      ? 'Completa las autoridades requeridas para continuar con la Defensa Pública.'
+      ? effectiveOrientation?.mensaje || 'Completa las autoridades requeridas para continuar con la Defensa Pública.'
     : studentMustWaitForApproval
     ? isProjectGrade && currentStage?.codigo === 'DOCUMENTO_FINAL'
       ? 'El Documento Final del Proyecto de Grado está aprobado. Espera la aprobación de la etapa por el personal responsable.'
@@ -2343,9 +2377,9 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
       <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 id="administrative-action-title" className="text-lg font-bold">En espera del personal responsable</h3><p className="mt-1 text-sm">{profileDefenseAction.waitingMessage}</p></div><StatusBadge value="Pendiente" compact /></div>
       <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#defensas">Ver defensa</a>
     </section> : publicAuthorityAction ? <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="public-authority-action-title">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 id="public-authority-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">Completar autoridades</p><p className="mt-1 text-sm">Completa las autoridades requeridas para continuar con la Defensa Pública.</p></div><StatusBadge value="Pendiente" compact /></div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 id="public-authority-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{effectiveOrientation?.siguiente_accion?.titulo || 'Completar autoridades'}</p><p className="mt-1 text-sm">{effectiveOrientation?.siguiente_accion?.descripcion || 'Completa las autoridades requeridas para continuar con la Defensa Pública.'}</p></div><StatusBadge value="Pendiente" compact /></div>
       <p className="mt-2 text-sm">Pendientes: {publicAuthorityRequirements.filter((item) => item.cumplido === false).map((item) => item.nombre).join(', ')}.</p>
-      <Button className="mt-3" type="button" onClick={onCompleteAuthorities}>Completar autoridades</Button>
+      <Button className="mt-3" type="button" onClick={onCompleteAuthorities}>{effectiveOrientation?.siguiente_accion?.accion_label || 'Completar autoridades'}</Button>
     </section> : visibleOrientationAction && <section className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950" aria-labelledby="next-action-title" data-personal-action={personalDocumentAction || undefined}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{visibleNextActionTitle}</p><p className="mt-1 text-sm">{nextAction.descripcion}</p></div>
@@ -2360,19 +2394,31 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
           : canNavigateToDocumentUpload ? <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#documentos" onClick={(event) => { event.preventDefault(); onGoToDocuments() }}>Gestionar documentos</a>
             : canOpenAcademicDecision ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={() => onRegisterAcademicDecision(orientationAcademicDecision)}>{nextAction.accion_label || 'Ir a gestionar'}</button>
             : canOpenDefenseProgramming ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onProgramDefense}>{nextAction.accion_label || 'Ir a gestionar'}</button>
-          : nextAction.destino && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'GESTIONAR_ACTORES' ? (event) => { event.preventDefault(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.accion_label || 'Ir a gestionar'}</a>}
+          : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'GESTIONAR_ACTORES' ? (event) => { event.preventDefault(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.accion_label || 'Ir a gestionar'}</a>}
       {nextAction.codigo === 'APROBAR_ETAPA' && stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
     </section>}
-    {!hideRequirements && requirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">
+    {!hideRequirements && stageRequirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">
       <h3 id="stage-requirements-title" className="text-lg font-bold">Requisitos de esta etapa</h3>
-      <ul className="mt-3 space-y-2">{requirements.map((item) => (
+      <ul className="mt-3 space-y-2">{stageRequirements.map((item) => (
         <li key={`${item.tipo}-${item.codigo}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 dark:border-sky-800 dark:bg-slate-900/60">
             <span className="font-medium">{item.cumplido === true ? '✓' : item.cumplido === false ? '⚠' : 'ℹ'} {item.nombre}</span>
             {item.actual !== undefined && item.minimo !== undefined ? <span className="text-right text-sm"><span className="block font-semibold">{item.actual} vigentes</span><span className="block text-slate-600 dark:text-slate-300">Mínimo requerido: {item.minimo}</span><span className={item.cumplido === true ? 'font-semibold text-emerald-700 dark:text-emerald-300' : item.cumplido === false ? 'font-semibold text-amber-700 dark:text-amber-300' : 'font-semibold text-sky-700 dark:text-sky-300'}>{item.cumplido === true ? 'Requisito cumplido' : item.cumplido === false ? 'Pendiente' : item.estado_display}</span></span> : <span className={item.cumplido === true ? 'font-semibold text-emerald-700 dark:text-emerald-300' : item.cumplido === false ? 'font-semibold text-amber-700 dark:text-amber-300' : 'font-semibold text-sky-700 dark:text-sky-300'}>{item.estado_display}</span>}
             {item.destino && item.destino !== nextAction?.destino && !(publicAuthorityAction && ['PRESIDENTE', 'SECRETARIO'].includes(item.codigo)) && <a className="w-full text-sm font-medium text-sky-700 hover:underline dark:text-sky-300" href={item.destino}>Ir a gestionar</a>}
         </li>
       ))}</ul>
-      <p className="mt-3 text-sm font-semibold">{completedRequirements} de {requirements.length} cumplidos</p>
+      <p className="mt-3 text-sm font-semibold">{completedRequirements} de {stageRequirements.length} cumplidos</p>
+    </section>}
+    {!hideRequirements && documentaryChecklist.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="documentary-checklist-title">
+      <h3 id="documentary-checklist-title" className="text-lg font-bold">Checklist documental</h3>
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Seguimiento de documentos; estos pendientes no bloquean la siguiente acción académica.</p>
+      <ul className="mt-3 space-y-2">{documentaryChecklist.map((item) => (
+        <li key={`${item.tipo}-${item.codigo}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 dark:border-sky-800 dark:bg-slate-900/60">
+          <span className="font-medium">{item.cumplido === true ? '✓' : '⚠'} {item.nombre}</span>
+          <span className={item.cumplido === true ? 'font-semibold text-emerald-700 dark:text-emerald-300' : 'font-semibold text-amber-700 dark:text-amber-300'}>{item.estado_display}</span>
+          {canUpload && item.destino && <a className="w-full text-sm font-medium text-sky-700 hover:underline dark:text-sky-300" href={item.destino}>Ir a documentos</a>}
+        </li>
+      ))}</ul>
+      <p className="mt-3 text-sm font-semibold">{documentaryChecklist.filter((item) => item.cumplido).length} de {documentaryChecklist.length} documentos aprobados</p>
     </section>}
     {additionalContent && <div className="mt-5 grid gap-5 border-t border-sky-200 pt-5 dark:border-sky-800">{additionalContent}</div>}
   </Card>
@@ -2461,9 +2507,8 @@ function getDefenseProgrammingContext({ currentStage, orientation, activeCurrent
 }
 
 function hasActiveCurrentDefense({ defenses, orientation, currentStage }) {
-  const action = orientation?.siguiente_accion
   const tipoEvento = orientation?.tipo_evento
-  if (action?.codigo !== 'PROGRAMAR_EVENTO' || action.estado !== 'DISPONIBLE' || !tipoEvento || !currentStage) return false
+  if (!currentStage) return false
   return defenses.some((defense) => {
     const sameStage = defense.seguimiento_etapa && currentStage.id
       ? String(defense.seguimiento_etapa) === String(currentStage.id)
@@ -2472,7 +2517,8 @@ function hasActiveCurrentDefense({ defenses, orientation, currentStage }) {
         : false
     const sameAttempt = defense.numero_intento === undefined || currentStage.numero_intento === undefined
       || Number(defense.numero_intento) === Number(currentStage.numero_intento)
-    return defense.activo !== false && defense.tipo_evento === tipoEvento && sameStage && sameAttempt
+    const sameType = !tipoEvento || defense.tipo_evento === tipoEvento
+    return defense.activo !== false && sameType && sameStage && sameAttempt
   })
 }
 
@@ -3072,6 +3118,13 @@ function getActiveAssignmentLabels(userId, activeActors) {
 }
 
 function getMissingPublicDefenseRoles(orientation) {
+  const structuredRequirements = (orientation?.requisitos || [])
+    .filter((item) => PUBLIC_DEFENSE_AUTHORITY_ROLES.includes(item.codigo))
+  if (structuredRequirements.length > 0) {
+    return PUBLIC_DEFENSE_AUTHORITY_ROLES.filter((role) => (
+      structuredRequirements.some((item) => item.codigo === role && item.cumplido === false)
+    ))
+  }
   const contractText = [orientation?.mensaje, orientation?.siguiente_accion?.titulo, orientation?.siguiente_accion?.descripcion,
     ...(orientation?.requisitos || []).flatMap((item) => [item.codigo, item.nombre, item.estado_display])].filter(Boolean).join(' ')
   return PUBLIC_DEFENSE_AUTHORITY_ROLES.filter((role) => new RegExp(`\\b${role}\\b`).test(contractText))
@@ -3109,7 +3162,7 @@ function getThesisConclusionOrientation({ publicStage, concluded, resultado, doc
   return { operacion: 'ORIENTAR_CONCLUSION_ACADEMICA', mensaje: 'Completa las precondiciones posteriores al macroflujo para concluir académicamente el expediente.', requisitos: requirements, siguiente_accion: action, conflictos_identidad: [], actaValida: validActa }
 }
 
-function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, onSubmit, onClose }) {
+function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, allowIdentityReuse = false, onSubmit, onClose }) {
   const [candidateQuery, setCandidateQuery] = useState('')
   const [candidateSearch, setCandidateSearch] = useState('')
   const [candidatePage, setCandidatePage] = useState(1)
@@ -3204,7 +3257,7 @@ function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, 
       return
     }
     const selectedIds = jobs.map((job) => String(job.payload.usuario))
-    if (new Set(selectedIds).size !== selectedIds.length) {
+    if (!allowIdentityReuse && new Set(selectedIds).size !== selectedIds.length) {
       setValidationError('Selecciona personas distintas para Presidente y Secretario.')
       return
     }
@@ -3241,12 +3294,14 @@ function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, 
             : <label className="mt-2 block text-sm">Seleccionar persona<select aria-label={`Seleccionar persona para ${label}`} value={selectedValue} onChange={(event) => { setSelections((current) => ({ ...current, [role]: event.target.value })); setValidationError('') }} disabled={assignment.submitting || candidateRows.length === 0} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una persona</option>{candidateRows.map((candidate) => {
               const id = String(candidate.id)
               const currentAssignments = getActiveAssignmentLabels(candidate.id, activeAssignmentRows)
-              const hasIncompatibleAssignment = activeAssignmentRows.some((actor) => (
+              const hasIncompatibleAssignment = !allowIdentityReuse && activeAssignmentRows.some((actor) => (
                 actor.activo !== false
                 && String(actor.usuario) === id
                 && ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO'].includes(actor.tipo_participacion)
               ))
-              const disabled = hasIncompatibleAssignment || (otherSelection && id === String(otherSelection)) || otherAssignedIds.has(id)
+              const conflictsWithOtherAuthority = !allowIdentityReuse
+                && ((otherSelection && id === String(otherSelection)) || otherAssignedIds.has(id))
+              const disabled = hasIncompatibleAssignment || conflictsWithOtherAuthority
               const assignmentDescription = currentAssignments.length > 0 ? ` · Asignación vigente: ${currentAssignments.join(', ')}` : ''
               return <option key={candidate.id} value={id} disabled={disabled}>{candidate.nombre_completo || candidate.username} — {candidate.rol_nombre || candidate.rol_codigo}{assignmentDescription}</option>
             })}</select></label>}

@@ -179,6 +179,24 @@ describe('postulacionesService', () => {
     expect(apiClient.post).toHaveBeenCalledWith('/api/v1/seguimientos-etapa/18/iniciar/', {}, { signal })
   })
 
+  it('conserva validaciones públicas del inicio y omite detalles internos', async () => {
+    apiClient.post.mockRejectedValueOnce({
+      response: { status: 400, data: { detail: ["['Debe registrar la institución y el supervisor de Trabajo Dirigido.']"] } },
+    })
+    await expect(postulacionesService.iniciarEtapa(18)).rejects.toMatchObject({
+      status: 400,
+      message: 'Debe registrar la institución y el supervisor de Trabajo Dirigido.',
+    })
+
+    apiClient.post.mockRejectedValueOnce({
+      response: { status: 400, data: { detail: 'Traceback: internal server error' } },
+    })
+    await expect(postulacionesService.iniciarEtapa(18)).rejects.toMatchObject({
+      status: 400,
+      message: 'No se pudo iniciar la etapa. Revisa las condiciones pendientes e intenta nuevamente.',
+    })
+  })
+
   it('aprueba una etapa usando el endpoint real del seguimiento', async () => {
     const signal = new AbortController().signal
     apiClient.post.mockResolvedValue({ data: { id: 18, codigo: 'DOCUMENTO_FINAL', estado: 'APROBADA' } })

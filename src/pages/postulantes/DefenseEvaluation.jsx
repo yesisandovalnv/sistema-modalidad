@@ -324,13 +324,16 @@ export default function DefenseEvaluation({ defense, quorum, canManage, onChange
     const payload = { observaciones: elements.observaciones.value.trim(), modalidad_registro: individual ? 'INDIVIDUAL' : 'CONSENSO' }
     if (type !== 'publica') payload.resultado = elements.resultado.value
     if (type === 'privada' && !tesis) payload.nota_privada = elements.nota_privada.value
-    if (tesisPrivada && !individual) {
+    if (thesisModeEvaluation) {
       const nota = elements.nota.value
       const numericNote = Number(nota)
+      const minimum = tesisPublica ? 1 : 0
+      const maximum = tesisPublica ? 100 : 30
+      const label = tesisPublica ? 'pública' : 'privada'
       let message = ''
-      if (nota === '') message = 'La nota privada es obligatoria.'
-      else if (!Number.isFinite(numericNote)) message = 'La nota privada debe ser un número.'
-      else if (numericNote < 0 || numericNote > 30) message = 'La nota privada debe estar entre 0 y 30.'
+      if (nota === '') message = `La nota ${label} es obligatoria.`
+      else if (!Number.isFinite(numericNote)) message = `La nota ${label} debe ser un número.`
+      else if (numericNote < minimum || numericNote > maximum) message = `La nota ${label} debe estar entre ${minimum} y ${maximum}.`
       if (message) {
         setForm((current) => ({ ...current, fields: { ...current.fields, nota_numerica: [message] }, error: '' }))
         return
@@ -539,15 +542,15 @@ export default function DefenseEvaluation({ defense, quorum, canManage, onChange
         <p className="mt-1">Registra una única decisión conjunta de los tribunales presentes. La cuenta administrativa quedará registrada como responsable de la carga.</p>
       </aside>}
       {tesis && ['privada', 'publica'].includes(type) && <label className="block text-sm font-medium">Modo<select value={form.mode} disabled={Boolean(registeredMode)} onChange={(e) => setForm((v) => ({ ...v, mode: e.target.value }))}>{!registeredMode && <><option value="CONSENSO">Por consenso</option><option value="INDIVIDUAL">Individual</option></>}{registeredMode && <option value={registeredMode}>{registeredMode === 'CONSENSO' ? 'Por consenso' : 'Individual'}</option>}</select></label>}{type !== 'publica' && <label className="block text-sm font-medium">Resultado<select name="resultado" className="mt-1 w-full rounded-md border p-2" required><option value="SUFICIENTE">Suficiente</option><option value="INSUFICIENTE">Insuficiente</option></select></label>}
-      {tesis && ['privada', 'publica'].includes(type) && individual && <><label>Tribunal evaluador<select name="evaluador" required>{tribunals.filter((p) => !evaluated.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{p.usuario_nombre || `Tribunal ${p.id}`}</option>)}</select></label><label>Nota individual<input name="nota" type="number" min={tesisPublica ? '1' : undefined} max={tesisPublica ? '100' : undefined} step="0.01" required /></label><p>{evaluated.size}/3 evaluaciones registradas</p></>}
-      {tesisPrivada && !individual && <label className="block text-sm font-medium">Nota privada<input name="nota" type="number" min="0" max="30" step="0.01" required aria-describedby="nota-privada-error" className="mt-1 w-full rounded-md border p-2" />{form.fields?.nota_numerica && <span id="nota-privada-error" role="alert" className="mt-1 block text-sm text-red-600">{firstFieldError(form.fields.nota_numerica)}</span>}</label>}
-      {type === 'privada' && !tesis && (proyectoGrado ? <div>
+      {tesis && ['privada', 'publica'].includes(type) && individual && <><label>Tribunal evaluador<select name="evaluador" required>{tribunals.filter((p) => !evaluated.has(String(p.id))).map((p) => <option key={p.id} value={p.id}>{p.usuario_nombre || `Tribunal ${p.id}`}</option>)}</select></label><label>Nota individual ({tesisPublica ? '1–100' : '0–30'})<input name="nota" type="number" min={tesisPublica ? '1' : '0'} max={tesisPublica ? '100' : '30'} step="0.01" required aria-describedby="nota-individual-error" /></label>{form.fields?.nota_numerica && <span id="nota-individual-error" role="alert" className="block text-sm text-red-600">{firstFieldError(form.fields.nota_numerica)}</span>}<p>{evaluated.size}/3 evaluaciones registradas</p></>}
+      {tesisPrivada && !individual && <label className="block text-sm font-medium">Nota privada (0–30)<input name="nota" type="number" min="0" max="30" step="0.01" required aria-describedby="nota-privada-error" className="mt-1 w-full rounded-md border p-2" />{form.fields?.nota_numerica && <span id="nota-privada-error" role="alert" className="mt-1 block text-sm text-red-600">{firstFieldError(form.fields.nota_numerica)}</span>}</label>}
+      {type === 'privada' && !tesis && (proyectoGrado || trabajoDirigido ? <div>
         <label className="block text-sm font-medium">Nota de Defensa Privada (0–100)<input name="nota_privada" type="number" min="0" max="100" step="0.01" required onChange={(event) => setProjectPrivateNote(event.target.value)} className="mt-1 w-full rounded-md border p-2" /></label>
         <p className="mt-2 text-sm text-slate-600">Ponderación en la nota final: 30%</p>
         <p className="text-sm font-medium" aria-live="polite">Aporte ponderado: {weightedNotePreview(projectPrivateNote, 30) || '—'} / 30</p>
       </div> : <label className="block text-sm font-medium">Nota privada (0–30)<input name="nota_privada" type="number" min="0" max="30" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label>)}
       {type === 'publica' && (!tesisPublica || !individual) && (tesisPublica
-        ? <label className="block text-sm font-medium">Nota pública (1–100)<input name="nota" type="number" min="1" max="100" step="0.01" required /></label>
+        ? <label className="block text-sm font-medium">Nota pública (1–100)<input name="nota" type="number" min="1" max="100" step="0.01" required aria-describedby="nota-publica-error" className="mt-1 w-full rounded-md border p-2" />{form.fields?.nota_numerica && <span id="nota-publica-error" role="alert" className="mt-1 block text-sm text-red-600">{firstFieldError(form.fields.nota_numerica)}</span>}</label>
         : trabajoDirigido ? <div>
           <label className="block text-sm font-medium">Nota de Defensa Pública (1–100)<input name="nota_publica" type="number" min="1" max="100" step="0.01" required onChange={(event) => setProjectPublicNote(event.target.value)} className="mt-1 w-full rounded-md border p-2" /></label>
           <p className="mt-2 text-sm text-slate-600">Ponderación en la nota final: 70%</p>

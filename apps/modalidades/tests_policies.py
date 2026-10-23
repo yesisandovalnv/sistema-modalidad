@@ -398,13 +398,18 @@ class ActorConfigurationContractTests(TestCase):
         self.assertTrue(docente_modalidad["obligatoriedad"])
         self.assertIsNone(docente_modalidad["posiciones"][0]["orden_cargo"])
 
-    def test_docente_modalidad_defensa_privada_no_se_hereda_a_trabajo_dirigido(self):
+    def test_trabajo_dirigido_declara_su_propio_docente_modalidad_para_defensa_privada(self):
         configuration = TrabajoDirigidoPolicy().get_configuracion_actores(postulacion=None, seguimiento=None)
 
-        self.assertFalse(any(
-            group["tipo_participacion"] == "DOCENTE_MODALIDAD"
-            for group in configuration["grupos"]
-        ))
+        docente = next(
+            group for group in configuration["grupos"]
+            if group["tipo_participacion"] == "DOCENTE_MODALIDAD"
+        )
+
+        self.assertEqual(docente["clave"], "DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TD")
+        self.assertEqual(docente["codigo_etapa"], "DEFENSA_PRIVADA")
+        self.assertEqual((docente["minimo"], docente["maximo"]), (1, 1))
+        self.assertNotIn("PROYECTO", str(docente))
 
     def test_proyecto_declara_decision_aprobacion_de_propuesta_con_composicion_formal(self):
         definitions = ProyectoGradoPolicy().get_decisiones_academicas_permitidas("PERFIL_PROYECTO")

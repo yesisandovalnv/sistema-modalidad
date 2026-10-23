@@ -31,7 +31,7 @@ const examenModality = { id: 6, codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado
 const trabajoDirigidoModality = { id: 2, codigo: 'TRABAJO_DIRIGIDO', nombre: 'Trabajo Dirigido', activo: true }
 const auth = { hasPermission: (name) => name === 'puede_gestionar_postulaciones' }
 
-function setup({ periods = [period], rows = [], students = [student], modalities = [modality], listImplementation } = {}) {
+function setup({ periods = [period], rows = [], students = [student], modalities = [modality], listImplementation, authValue = auth } = {}) {
   crudService.list.mockImplementation(listImplementation || (() => Promise.resolve({ count: rows.length, next: null, previous: null, results: rows })))
   listAll.mockImplementation((path) => Promise.resolve(path === endpoints.modalidades ? modalities : path === endpoints.periodos ? periods : students))
   postulacionesService.obtenerCapacidadesModalidad.mockImplementation((id) => Promise.resolve(
@@ -39,7 +39,7 @@ function setup({ periods = [period], rows = [], students = [student], modalities
       ? { soportada: true, configuracion_valida: true }
       : { soportada: false, configuracion_valida: false },
   ))
-  return render(<MemoryRouter><AuthContext.Provider value={auth}><PostulantesPage /></AuthContext.Provider></MemoryRouter>)
+  return render(<MemoryRouter><AuthContext.Provider value={authValue}><PostulantesPage /></AuthContext.Provider></MemoryRouter>)
 }
 
 describe('Nueva postulación', () => {
@@ -50,6 +50,11 @@ describe('Nueva postulación', () => {
   it('formatea estudiante y periodo sin mostrar el ID interno', () => {
     expect(formatStudentLabel(student)).toBe('394090 - Luis Fernando Menacho Melgar')
     expect(formatPeriodoLabel(period)).toBe('Gestión 2026 - Semestre II')
+  })
+
+  it('muestra un estado vacío específico al estudiante sin postulaciones', async () => {
+    setup({ authValue: { hasPermission: () => false, roleCode: 'ESTUDIANTE' } })
+    expect(await screen.findByRole('status')).toHaveTextContent('Todavía no tienes postulaciones académicas registradas.')
   })
 
   it('consume catálogos paginados y muestra etiquetas legibles', async () => {

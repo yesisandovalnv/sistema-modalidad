@@ -42,7 +42,7 @@ const humanizeTipoRegistro = (value) => {
 }
 
 export default function PostulantesPage() {
-  const { hasPermission } = useAuth()
+  const { hasPermission, roleCode } = useAuth()
   const canManage = hasPermission('puede_gestionar_postulaciones')
   const [query, setQuery] = useState('')
   const [search, setSearch] = useState('')
@@ -396,6 +396,7 @@ export default function PostulantesPage() {
         loading={loading}
         error={error}
         empty={!data.results?.length}
+        emptyMessage={roleCode === 'ESTUDIANTE' ? 'Todavía no tienes postulaciones académicas registradas.' : 'No se encontraron registros.'}
         onRetry={() => setRevision((value) => value + 1)}
       >
         <div className="space-y-3">

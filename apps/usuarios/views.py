@@ -12,7 +12,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 
-from apps.usuarios.serializers import AssignmentCandidateSerializer, LoginSerializer, LogoutSerializer, RoleAdminSerializer, StudentOptionSerializer, UserAdminSerializer, UserProfileSerializer
+from apps.usuarios.serializers import AssignmentCandidateSerializer, LoginSerializer, LogoutSerializer, RoleAdminSerializer, StudentLoginSerializer, StudentOptionSerializer, UserAdminSerializer, UserProfileSerializer
 from apps.usuarios.models import CustomUser, Role
 from apps.postulantes.models import Postulacion
 from apps.usuarios.services import UserCapabilitiesService
@@ -48,6 +48,19 @@ class CustomTokenRefreshView(TokenRefreshView):
     def post(self, request, *args, **kwargs):
         """Refresca el access token usando un refresh token válido."""
         return super().post(request, *args, **kwargs)
+
+
+class StudentTokenObtainPairView(APIView):
+    """Emite JWT para una cuenta estudiantil existente mediante R.U. y C.I."""
+
+    authentication_classes = ()
+    permission_classes = ()
+    serializer_class = StudentLoginSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data["tokens"], status=status.HTTP_200_OK)
 
 
 class LogoutView(APIView):

@@ -189,3 +189,33 @@ class AuditLog(BaseModel):
     def __str__(self) -> str:
         """Retorna un resumen legible del registro de auditoría."""
         return f"{self.usuario} - {self.accion} - {self.modulo}"
+
+
+class StudentLoginThrottle(BaseModel):
+    """Contador persistente y pseudonimizado para el acceso estudiantil."""
+
+    class Scope(models.TextChoices):
+        ACCOUNT = "ACCOUNT", "Cuenta"
+        ORIGIN = "ORIGIN", "Origen"
+
+    scope = models.CharField(max_length=10, choices=Scope.choices)
+    key_digest = models.CharField(max_length=64)
+    failed_attempts = models.PositiveSmallIntegerField(default=0)
+    window_started_at = models.DateTimeField(blank=True, null=True)
+    blocked_until = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Control de acceso estudiantil"
+        verbose_name_plural = "Controles de acceso estudiantil"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scope", "key_digest"],
+                name="unique_student_login_throttle_key",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["scope", "blocked_until"], name="idx_student_login_block"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.scope} - intentos {self.failed_attempts}"

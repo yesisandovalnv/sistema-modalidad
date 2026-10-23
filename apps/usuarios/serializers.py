@@ -60,6 +60,23 @@ class LoginSerializer(serializers.Serializer):
         return attrs
 
 
+class StudentLoginSerializer(serializers.Serializer):
+    """Credenciales institucionales exclusivas del acceso estudiantil."""
+
+    ru = serializers.CharField(required=True, write_only=True, allow_blank=False, max_length=20)
+    ci = serializers.CharField(required=True, write_only=True, allow_blank=False, max_length=20)
+
+    def validate(self, attrs):
+        from apps.usuarios.student_auth import authenticate_student
+
+        attrs["tokens"] = authenticate_student(
+            ru=attrs["ru"],
+            ci=attrs["ci"],
+            request=self.context["request"],
+        )
+        return attrs
+
+
 class UserProfileSerializer(serializers.ModelSerializer):
     """Serializer para exponer datos básicos del usuario autenticado."""
 

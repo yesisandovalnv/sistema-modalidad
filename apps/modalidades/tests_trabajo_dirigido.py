@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+import tempfile
 from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
@@ -69,6 +70,11 @@ class TrabajoDirigidoTest(TestCase):
         )
 
     def setUp(self):
+        self._media_temp = tempfile.TemporaryDirectory()
+        self.override_media = override_settings(MEDIA_ROOT=self._media_temp.name)
+        self.override_media.enable()
+        self.addCleanup(self.override_media.disable)
+        self.addCleanup(self._media_temp.cleanup)
         self.follow = {item.etapa.codigo: item for item in WorkflowService.inicializar_flujo(self.post, self.admin)}
 
     def institution_data(self, **overrides):
@@ -194,6 +200,38 @@ class TrabajoDirigidoTest(TestCase):
             )
         return documento
 
+    def activate_development(self):
+        for code, seguimiento in self.follow.items():
+            seguimiento.estado = (
+                SeguimientoEtapa.EstadoChoices.EN_PROCESO
+                if code == "DESARROLLO_TRABAJO_DIRIGIDO"
+                else SeguimientoEtapa.EstadoChoices.APROBADA
+            )
+            seguimiento.save(update_fields=["estado"])
+
+    def activate_private_defense(self):
+        for code, seguimiento in self.follow.items():
+            seguimiento.estado = (
+                SeguimientoEtapa.EstadoChoices.EN_PROCESO
+                if code == "DEFENSA_PRIVADA"
+                else SeguimientoEtapa.EstadoChoices.APROBADA
+                if seguimiento.etapa.orden < self.follow["DEFENSA_PRIVADA"].etapa.orden
+                else SeguimientoEtapa.EstadoChoices.PENDIENTE
+            )
+            seguimiento.save(update_fields=["estado"])
+
+    def activate_public_defense(self):
+        public_order = self.follow["DEFENSA_PUBLICA"].etapa.orden
+        for seguimiento in self.follow.values():
+            seguimiento.estado = (
+                SeguimientoEtapa.EstadoChoices.EN_PROCESO
+                if seguimiento.etapa.codigo == "DEFENSA_PUBLICA"
+                else SeguimientoEtapa.EstadoChoices.APROBADA
+                if seguimiento.etapa.orden < public_order
+                else SeguimientoEtapa.EstadoChoices.PENDIENTE
+            )
+            seguimiento.save(update_fields=["estado"])
+
     def prepare_conclusion_documents(
         self, *, public_follow=None, acta_event=None, link_acta=True,
         acta_state="APR", acta_version=True,
@@ -257,6 +295,198 @@ class TrabajoDirigidoTest(TestCase):
         self.assertTrue(issubclass(TrabajoDirigidoPolicy, BaseModalidadPolicy))
         self.assertFalse(issubclass(TrabajoDirigidoPolicy, ProyectoGradoPolicy))
 
+    def test_desarrollo_orienta_al_registro_institucional_con_contrato_comun(self):
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DESARROLLO_TRABAJO_DIRIGIDO"],
+        )
+
+        action = orientation["siguiente_accion"]
+        self.assertEqual(action["codigo"], "GESTIONAR_INSTITUCION")
+        self.assertEqual(action["titulo"], "Registrar institución y supervisor")
+        self.assertEqual(
+            action["descripcion"],
+            "Completa y guarda los datos institucionales necesarios para iniciar Desarrollo",
+        )
+        self.assertEqual(action["destino"], "#trabajo-dirigido")
+        self.assertEqual(action["accion_label"], "Gestionar institución")
+
+    def test_desarrollo_con_institucion_valida_orienta_al_documento_de_supervision(self):
+        TrabajoDirigidoService.configurar_institucion(
+            self.post,
+            self.institution_data(tipo_ejecucion="INTERNO", convenio_vigente=False),
+        )
+
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DESARROLLO_TRABAJO_DIRIGIDO"],
+        )
+
+        action = orientation["siguiente_accion"]
+        self.assertEqual(action["codigo"], "COMPLETAR_DOCUMENTOS")
+        self.assertEqual(
+            action["titulo"],
+            "Completar documento: Informe periódico de supervisión",
+        )
+        self.assertEqual(
+            action["descripcion"],
+            "Presenta el documento requerido para su revisión y aprobación",
+        )
+        self.assertEqual(action["destino"], "#documentos")
+        self.assertEqual(action["accion_label"], "Gestionar documentos")
+
+    def test_desarrollo_distingue_informe_estructurado_del_documento_aprobado(self):
+        TrabajoDirigidoService.configurar_institucion(
+            self.post,
+            self.institution_data(tipo_ejecucion="INTERNO", convenio_vigente=False),
+        )
+        self.create_closure_document("INFORME_SUPERVISION_TD")
+        development = self.follow["DESARROLLO_TRABAJO_DIRIGIDO"]
+        development.estado = SeguimientoEtapa.EstadoChoices.EN_PROCESO
+        development.save(update_fields=["estado"])
+
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=development,
+        )
+
+        self.assertEqual(
+            orientation["siguiente_accion"]["codigo"],
+            "REGISTRAR_INFORME_PERIODICO",
+        )
+        self.assertEqual(orientation["siguiente_accion"]["destino"], "#trabajo-dirigido")
+        self.assertEqual(orientation["requisitos"][0]["codigo"], "INFORME_PERIODICO_TD")
+
+    def test_desarrollo_con_documento_presentado_mantiene_espera_de_revision(self):
+        TrabajoDirigidoService.configurar_institucion(
+            self.post,
+            self.institution_data(tipo_ejecucion="INTERNO", convenio_vigente=False),
+        )
+        self.create_closure_document("INFORME_SUPERVISION_TD", estado="ENV")
+
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DESARROLLO_TRABAJO_DIRIGIDO"],
+        )
+
+        self.assertNotEqual(orientation["siguiente_accion"]["codigo"], "GESTIONAR_INSTITUCION")
+        self.assertNotEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+
+    def test_desarrollo_externo_orienta_al_convenio_documental_faltante(self):
+        TrabajoDirigidoService.configurar_institucion(self.post, self.institution_data())
+        self.create_closure_document("INFORME_SUPERVISION_TD")
+
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DESARROLLO_TRABAJO_DIRIGIDO"],
+        )
+
+        action = orientation["siguiente_accion"]
+        self.assertEqual(action["codigo"], "COMPLETAR_DOCUMENTOS")
+        self.assertEqual(action["titulo"], "Completar documento: Convenio de Trabajo Dirigido")
+        self.assertEqual(
+            action["descripcion"],
+            "La ejecución externa requiere presentar y obtener la aprobación del convenio para completar Desarrollo.",
+        )
+        self.assertEqual(action["destino"], "#documentos")
+        self.assertEqual(action["accion_label"], "Gestionar documentos")
+        convenio = next(
+            item for item in orientation["requisitos"]
+            if item["codigo"] == "CONVENIO_TRABAJO_DIRIGIDO"
+        )
+        self.assertEqual(convenio["estado"], "NO_PRESENTADO")
+        self.assertNotEqual(orientation["mensaje"], action["descripcion"])
+
+    def test_desarrollo_externo_con_convenio_presentado_orienta_a_esperar_revision(self):
+        TrabajoDirigidoService.configurar_institucion(self.post, self.institution_data())
+        self.create_closure_document("INFORME_SUPERVISION_TD")
+        self.create_closure_document("CONVENIO_TRABAJO_DIRIGIDO", estado="ENV")
+
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DESARROLLO_TRABAJO_DIRIGIDO"],
+        )
+
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "ESPERAR_REVISION_DOCUMENTOS")
+        self.assertEqual(
+            orientation["siguiente_accion"]["titulo"],
+            "Convenio de Trabajo Dirigido pendiente de revisión",
+        )
+        convenio = next(
+            item for item in orientation["requisitos"]
+            if item["codigo"] == "CONVENIO_TRABAJO_DIRIGIDO"
+        )
+        self.assertEqual(convenio["estado"], "PENDIENTE_REVISION")
+        self.assertNotEqual(
+            orientation["mensaje"],
+            orientation["siguiente_accion"]["descripcion"],
+        )
+
+    def test_desarrollo_externo_con_convenio_observado_orienta_a_corregir(self):
+        TrabajoDirigidoService.configurar_institucion(self.post, self.institution_data())
+        self.create_closure_document("INFORME_SUPERVISION_TD")
+        convenio = self.create_closure_document(
+            "CONVENIO_TRABAJO_DIRIGIDO",
+            estado="ENV",
+        )
+        DocumentoService().registrar_observacion(
+            convenio,
+            self.admin,
+            "Completar la información del convenio.",
+        )
+
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DESARROLLO_TRABAJO_DIRIGIDO"],
+        )
+
+        convenio = next(
+            item for item in orientation["requisitos"]
+            if item["codigo"] == "CONVENIO_TRABAJO_DIRIGIDO"
+        )
+        self.assertEqual(convenio["estado"], "REQUIERE_CORRECCION")
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        self.assertEqual(
+            orientation["siguiente_accion"]["titulo"],
+            "Corregir documento: Convenio de Trabajo Dirigido",
+        )
+
+    def test_desarrollo_externo_con_convenio_aprobado_continua_orientacion(self):
+        TrabajoDirigidoService.configurar_institucion(self.post, self.institution_data())
+        self.create_closure_document("INFORME_SUPERVISION_TD")
+        self.create_closure_document("CONVENIO_TRABAJO_DIRIGIDO")
+        development = self.follow["DESARROLLO_TRABAJO_DIRIGIDO"]
+        development.estado = SeguimientoEtapa.EstadoChoices.EN_PROCESO
+        development.save(update_fields=["estado"])
+
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=development,
+        )
+
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "REGISTRAR_INFORME_PERIODICO")
+        self.assertEqual(orientation["requisitos"][0]["codigo"], "INFORME_PERIODICO_TD")
+
+    def test_orientacion_muestra_convenio_aprobado_mientras_falta_otro_documento(self):
+        TrabajoDirigidoService.configurar_institucion(self.post, self.institution_data())
+        self.create_closure_document("CONVENIO_TRABAJO_DIRIGIDO")
+
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DESARROLLO_TRABAJO_DIRIGIDO"],
+        )
+
+        convenio = next(
+            item for item in orientation["requisitos"]
+            if item["codigo"] == "CONVENIO_TRABAJO_DIRIGIDO"
+        )
+        self.assertEqual(convenio["estado"], "APROBADO")
+        self.assertTrue(convenio["cumplido"])
+        self.assertEqual(
+            orientation["siguiente_accion"]["titulo"],
+            "Completar documento: Informe periódico de supervisión",
+        )
+
     def test_configuracion_declara_tres_tribunales_del_perfil_td(self):
         policy = ModalidadPolicyRegistry.get(self.post)
         groups = policy.get_configuracion_actores(
@@ -292,6 +522,327 @@ class TrabajoDirigidoTest(TestCase):
                 self.post, self.teachers[3], "TRIBUNAL", self.admin,
                 orden_cargo=1, seguimiento_etapa=self.follow["PERFIL_TRABAJO_DIRIGIDO"],
             )
+
+    def test_defensa_publica_expone_y_asigna_autoridades_por_el_endpoint_existente(self):
+        self.assign_tribunals()
+        self.activate_public_defense()
+        url = f"/api/v1/postulaciones/{self.post.pk}/flujo/"
+        client = APIClient()
+        client.force_authenticate(user=self.admin)
+        response = client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        action = response.data["orientacion_etapa_actual"]["siguiente_accion"]
+        self.assertEqual(action["codigo"], "GESTIONAR_ACTORES")
+        self.assertEqual(action["capacidades"]["modal"], "PUBLIC_AUTHORITIES")
+        self.assertEqual(action["titulo"], "Completar autoridades")
+        positions = response.data["gestion_actores"]["posiciones"]
+        public_positions = {
+            item["tipo_participacion"]: item
+            for item in positions
+            if item["tipo_participacion"] in {"PRESIDENTE", "SECRETARIO"}
+        }
+        self.assertEqual(set(public_positions), {"PRESIDENTE", "SECRETARIO"})
+        for role, position in public_positions.items():
+            self.assertEqual(position["ambito"], "ETAPA")
+            self.assertEqual(position["seguimiento_etapa"], self.follow["DEFENSA_PUBLICA"].pk)
+            self.assertEqual(position["acciones_permitidas"], ["ASIGNAR"])
+
+        assignment_url = f"/api/v1/postulaciones/{self.post.pk}/asignaciones/asignar/"
+        president_response = client.post(assignment_url, {
+            "usuario": self.teachers[3].pk,
+            "tipo_participacion": "PRESIDENTE",
+            "seguimiento_etapa": self.follow["DEFENSA_PUBLICA"].pk,
+        })
+        self.assertEqual(president_response.status_code, 201)
+        duplicate_authority_response = client.post(assignment_url, {
+            "usuario": self.teachers[3].pk,
+            "tipo_participacion": "SECRETARIO",
+            "seguimiento_etapa": self.follow["DEFENSA_PUBLICA"].pk,
+        })
+        self.assertEqual(duplicate_authority_response.status_code, 400)
+        secretary_response = client.post(assignment_url, {
+            "usuario": self.teachers[4].pk,
+            "tipo_participacion": "SECRETARIO",
+            "seguimiento_etapa": self.follow["DEFENSA_PUBLICA"].pk,
+        })
+        self.assertEqual(secretary_response.status_code, 201)
+
+        student_client = APIClient()
+        student_client.force_authenticate(user=self.student)
+        student_response = student_client.get(url)
+        self.assertEqual(student_response.status_code, 200)
+        student_action = student_response.data["orientacion_etapa_actual"]["siguiente_accion"]
+        self.assertEqual(student_action["codigo"], "PROGRAMAR_EVENTO")
+        student_positions = student_response.data["gestion_actores"]["posiciones"]
+        self.assertTrue(
+            {"PRESIDENTE", "SECRETARIO"}.issubset(
+                {item["tipo_participacion"] for item in student_positions}
+            )
+        )
+        self.assertTrue(all(not item["acciones_permitidas"] for item in student_positions))
+        forbidden_assignment = student_client.post(assignment_url, {
+            "usuario": self.teachers[0].pk,
+            "tipo_participacion": "PRESIDENTE",
+            "seguimiento_etapa": self.follow["DEFENSA_PUBLICA"].pk,
+        })
+        self.assertEqual(forbidden_assignment.status_code, 403)
+
+        requirements = response.data["orientacion_etapa_actual"]["requisitos"]
+        after_assignment = client.get(url).data["orientacion_etapa_actual"]
+        document_requirements = [
+            item for item in after_assignment["requisitos"]
+            if item["tipo"] == "DOCUMENTO"
+        ]
+        self.assertEqual(len(document_requirements), 9)
+        self.assertTrue(all(
+            item["bloquea_siguiente_accion"] is False
+            and item["cumplido"] is False
+            for item in document_requirements
+        ))
+        self.assertEqual(after_assignment["siguiente_accion"]["codigo"], "PROGRAMAR_EVENTO")
+        self.assertEqual(
+            {item["codigo"] for item in requirements if item["tipo"] == "DOCUMENTO"},
+            set(TrabajoDirigidoPolicy.requisitos_policy.get_documentos_requeridos("DEFENSA_PUBLICA")),
+        )
+
+    def test_checklist_defensa_publica_conserva_documentos_aprobados(self):
+        self.activate_public_defense()
+        codes = TrabajoDirigidoPolicy.requisitos_policy.get_documentos_requeridos(
+            "DEFENSA_PUBLICA",
+        )
+        for code in codes:
+            self.create_closure_document(code)
+
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DEFENSA_PUBLICA"],
+        )
+        documents = [
+            item for item in orientation["requisitos"]
+            if item["tipo"] == "DOCUMENTO"
+        ]
+
+        self.assertEqual({item["codigo"] for item in documents}, set(codes))
+        self.assertTrue(all(item["cumplido"] for item in documents))
+        self.assertTrue(all(item["estado"] == "APROBADO" for item in documents))
+        self.assertTrue(all(
+            item["bloquea_siguiente_accion"] is False
+            for item in documents
+        ))
+
+    def test_orientacion_no_aplica_un_limite_de_tribunales_que_el_gate_no_exige(self):
+        self.activate_public_defense()
+        self.assign_public_team()
+        extra_teacher = CustomUser.objects.create_user(
+            "td-public-extra",
+            role=self.teachers[0].role,
+            ci="TD-EXTRA",
+            ru="TD-R-EXTRA",
+        )
+        AsignacionPostulacion.objects.create(
+            postulacion=self.post,
+            usuario=extra_teacher,
+            tipo_participacion="TRIBUNAL",
+            designado_por=self.admin,
+        )
+
+        orientation = ModalidadPolicyRegistry.get(self.post).get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DEFENSA_PUBLICA"],
+        )
+
+        tribunal = next(
+            item for item in orientation["requisitos"]
+            if item["codigo"] == "TRIBUNAL"
+        )
+        self.assertEqual(tribunal["actual"], 4)
+        self.assertTrue(tribunal["cumplido"])
+        self.assertEqual(
+            orientation["siguiente_accion"]["codigo"],
+            "PROGRAMAR_EVENTO",
+        )
+
+    def test_orientacion_defensa_publica_sigue_el_estado_del_evento(self):
+        self.activate_public_defense()
+        policy = ModalidadPolicyRegistry.get(self.post)
+
+        for state in (EventoDefensa.Estado.PROGRAMADA, EventoDefensa.Estado.EN_CURSO):
+            with self.subTest(state=state):
+                event = self.create_public_event(self.follow["DEFENSA_PUBLICA"], estado=state)
+                orientation = policy.get_orientacion_etapa_actual(
+                    postulacion=self.post,
+                    seguimiento=self.follow["DEFENSA_PUBLICA"],
+                )
+                self.assertEqual(
+                    orientation["siguiente_accion"]["codigo"],
+                    "GESTIONAR_DEFENSA",
+                )
+                self.assertEqual(orientation["siguiente_accion"]["destino"], "#defensas")
+                event.delete()
+
+    def test_orientacion_defensa_publica_pide_evaluar_y_consolidar_en_orden(self):
+        self.activate_public_defense()
+        policy = ModalidadPolicyRegistry.get(self.post)
+        event = self.create_public_event(
+            self.follow["DEFENSA_PUBLICA"],
+            estado=EventoDefensa.Estado.FINALIZADA,
+        )
+        orientation = policy.get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DEFENSA_PUBLICA"],
+        )
+        self.assertEqual(
+            orientation["siguiente_accion"]["codigo"],
+            "REGISTRAR_EVALUACION",
+        )
+        event.delete()
+
+        event, _ = self.public_event()
+        EvaluacionDefensaService.registrar_evaluacion_publica(
+            event,
+            self.admin,
+            Decimal("85"),
+            modalidad_registro="CONSENSO",
+        )
+        event.estado = EventoDefensa.Estado.FINALIZADA
+        event.fecha_fin_real = timezone.now()
+        event.save(update_fields=["estado", "fecha_fin_real"])
+        orientation = policy.get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DEFENSA_PUBLICA"],
+        )
+        self.assertEqual(
+            orientation["siguiente_accion"]["codigo"],
+            "CONSOLIDAR_RESULTADO",
+        )
+
+    def test_orientacion_defensa_publica_ofrece_aprobacion_solo_si_workflow_la_permite(self):
+        self.activate_public_defense()
+        policy = ModalidadPolicyRegistry.get(self.post)
+        event, _ = self.public_event()
+        EvaluacionDefensaService.registrar_evaluacion_publica(
+            event,
+            self.admin,
+            Decimal("95"),
+            modalidad_registro="CONSENSO",
+        )
+        private_event = EventoDefensa.objects.create(
+            postulacion=self.post,
+            seguimiento_etapa=self.follow["DEFENSA_PRIVADA"],
+            tipo_evento=EventoDefensa.Tipo.DEFENSA_PRIVADA,
+            estado=EventoDefensa.Estado.FINALIZADA,
+            fecha_programada=timezone.now(),
+            lugar="Sala",
+            programado_por=self.admin,
+        )
+        EvaluacionDefensa.objects.create(
+            evento=private_event,
+            tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,
+            modalidad_registro=EvaluacionDefensa.ModalidadRegistro.CONSENSO,
+            resultado_cualitativo=EvaluacionDefensa.Resultado.SUFICIENTE,
+            nota_numerica=Decimal("21"),
+            ponderacion=Decimal("30.00"),
+            aporte_ponderado=Decimal("21.00"),
+            es_resultado_final_evento=True,
+            registrado_por=self.admin,
+        )
+        event.estado = EventoDefensa.Estado.FINALIZADA
+        event.fecha_fin_real = timezone.now()
+        event.save(update_fields=["estado", "fecha_fin_real"])
+        with patch("apps.postulantes.workflow.WorkflowService.aprobar_etapa"):
+            EvaluacionDefensaService.consolidar_evaluacion_evento(event, self.admin)
+
+        orientation = policy.get_orientacion_etapa_actual(
+            postulacion=self.post,
+            seguimiento=self.follow["DEFENSA_PUBLICA"],
+        )
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+        self.assertIn(
+            "aprobar",
+            WorkflowService.obtener_acciones_permitidas(self.follow["DEFENSA_PUBLICA"]),
+        )
+
+    def test_defensa_privada_proyecta_docente_vacante_y_conserva_actores_existentes(self):
+        self.assign_tribunals()
+        self.approve_proposal(self.post.asignaciones.filter(tipo_participacion="TRIBUNAL"))
+        tutor = AsignacionService.asignar_actor(
+            self.post, self.teachers[3], "TUTOR", self.admin,
+        )
+        self.activate_private_defense()
+        url = f"/api/v1/postulaciones/{self.post.pk}/flujo/"
+
+        admin_client = APIClient()
+        admin_client.force_authenticate(user=self.admin)
+        admin_response = admin_client.get(url)
+
+        self.assertEqual(admin_response.status_code, 200)
+        requisitos = {
+            item["codigo"]: item
+            for item in admin_response.data["orientacion_etapa_actual"]["requisitos"]
+        }
+        posiciones = admin_response.data["gestion_actores"]["posiciones"]
+        docente = next(
+            item for item in posiciones
+            if item["tipo_participacion"] == "DOCENTE_MODALIDAD"
+        )
+        tutor_position = next(
+            item for item in posiciones if item["tipo_participacion"] == "TUTOR"
+        )
+
+        self.assertEqual(requisitos["TRIBUNAL"]["actual"], 3)
+        self.assertTrue(requisitos["TRIBUNAL"]["cumplido"])
+        self.assertEqual(requisitos["DOCENTE_MODALIDAD"]["actual"], 0)
+        self.assertFalse(requisitos["DOCENTE_MODALIDAD"]["cumplido"])
+        self.assertEqual(docente["clave"], "DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TD_1")
+        self.assertEqual(docente["ambito"], "ETAPA")
+        self.assertEqual(docente["seguimiento_etapa"], self.follow["DEFENSA_PRIVADA"].pk)
+        self.assertEqual(docente["estado_ocupacion"], "VACANTE")
+        self.assertEqual(docente["acciones_permitidas"], ["ASIGNAR"])
+        self.assertFalse(any(item["tipo_participacion"] == "TRIBUNAL" for item in posiciones))
+        self.assertEqual(tutor_position["ambito"], "POSTULACION")
+        self.assertEqual(tutor_position["asignacion_actual"], tutor.pk)
+
+        student_client = APIClient()
+        student_client.force_authenticate(user=self.student)
+        student_response = student_client.get(url)
+
+        self.assertEqual(student_response.status_code, 200)
+        student_docente = next(
+            item for item in student_response.data["gestion_actores"]["posiciones"]
+            if item["tipo_participacion"] == "DOCENTE_MODALIDAD"
+        )
+        self.assertEqual(student_docente["estado_ocupacion"], "VACANTE")
+        self.assertEqual(student_docente["acciones_permitidas"], [])
+
+    def test_asignar_docente_privado_cumple_requisito_de_orientacion(self):
+        self.assign_tribunals()
+        self.activate_private_defense()
+        privada = self.follow["DEFENSA_PRIVADA"]
+
+        AsignacionService.asignar_actor(
+            self.post,
+            self.teachers[3],
+            "DOCENTE_MODALIDAD",
+            self.admin,
+            seguimiento_etapa=privada,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=self.admin)
+        response = client.get(f"/api/v1/postulaciones/{self.post.pk}/flujo/")
+
+        self.assertEqual(response.status_code, 200)
+        requisitos = {
+            item["codigo"]: item
+            for item in response.data["orientacion_etapa_actual"]["requisitos"]
+        }
+        self.assertEqual(requisitos["DOCENTE_MODALIDAD"]["actual"], 1)
+        self.assertTrue(requisitos["DOCENTE_MODALIDAD"]["cumplido"])
+        self.assertEqual(
+            response.data["orientacion_etapa_actual"]["siguiente_accion"]["codigo"],
+            "PROGRAMAR_EVENTO",
+        )
 
     def test_decision_exige_composicion_formal_completa(self):
         assignments = self.assign_tribunals(amount=2)
@@ -361,6 +912,7 @@ class TrabajoDirigidoTest(TestCase):
                 postulacion=self.post, seguimiento=profile,
             )
         self.assertEqual(orientation["siguiente_accion"]["codigo"], "PROGRAMAR_EVENTO")
+        self.assertEqual(orientation["tipo_evento"], "DEFENSA_PERFIL")
         self.assertEqual(
             {item["codigo"] for item in orientation["requisitos"] if item["tipo"] == "DOCUMENTO"},
             {"PERFIL_TRABAJO_DIRIGIDO", "INFORME_TUTOR_PERFIL_TD"},
@@ -468,6 +1020,132 @@ class TrabajoDirigidoTest(TestCase):
         self.assertIn("CARTA_CONFORMIDAD_INSTITUCION_TD", policy.get_documentos_requeridos("DEFENSA_PUBLICA"))
         self.assertIn("ACTA_DEFENSA_TD", policy.get_documentos_requeridos("CIERRE_DOCUMENTAL"))
 
+    def test_documentos_aplicables_de_desarrollo_incluyen_convenio_solo_para_ejecucion_externa(self):
+        policy = ModalidadPolicyRegistry.get(self.post)
+        development = "DESARROLLO_TRABAJO_DIRIGIDO"
+
+        TrabajoDirigidoService.configurar_institucion(self.post, self.institution_data())
+        self.assertEqual(
+            policy.get_documentos_aplicables_para_postulacion(self.post, development),
+            ("INFORME_SUPERVISION_TD", "CONVENIO_TRABAJO_DIRIGIDO"),
+        )
+
+        TrabajoDirigidoService.configurar_institucion(
+            self.post,
+            self.institution_data(tipo_ejecucion="INTERNO", convenio_vigente=False),
+        )
+        self.assertEqual(
+            policy.get_documentos_aplicables_para_postulacion(self.post, development),
+            ("INFORME_SUPERVISION_TD",),
+        )
+
+    def test_documentos_aplicables_y_carga_de_convenio_externo_comparten_contexto(self):
+        TrabajoDirigidoService.configurar_institucion(self.post, self.institution_data())
+        self.activate_development()
+        tipo_convenio = TipoDocumento.objects.get(codigo="CONVENIO_TRABAJO_DIRIGIDO")
+
+        for usuario in (self.student, self.admin):
+            client = APIClient()
+            client.force_authenticate(user=usuario)
+            response = client.get(
+                f"/api/v1/postulaciones/{self.post.pk}/documentos-aplicables/"
+            )
+
+            self.assertEqual(response.status_code, 200)
+            convenio = next(
+                item for item in response.data["documentos_aplicables"]
+                if item["codigo"] == "CONVENIO_TRABAJO_DIRIGIDO"
+            )
+            self.assertTrue(convenio["capacidad_carga"]["permitida"])
+
+        client = APIClient()
+        client.force_authenticate(user=self.student)
+        response = client.post(
+            "/api/v1/documentos/documentos/subir/",
+            {
+                "postulacion_id": self.post.pk,
+                "tipo_documento_id": tipo_convenio.pk,
+                "archivo": SimpleUploadedFile(
+                    "convenio.pdf", b"%PDF-1.4 convenio", content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        documento = DocumentoPostulacion.objects.get(
+            postulacion=self.post,
+            tipo_documento=tipo_convenio,
+        )
+        self.assertEqual(documento.estado.codigo, "ENV")
+
+    def test_endpoint_documentos_aplicables_omite_convenio_para_ejecucion_interna(self):
+        TrabajoDirigidoService.configurar_institucion(
+            self.post,
+            self.institution_data(tipo_ejecucion="INTERNO", convenio_vigente=False),
+        )
+        self.activate_development()
+        client = APIClient()
+        client.force_authenticate(user=self.student)
+
+        response = client.get(
+            f"/api/v1/postulaciones/{self.post.pk}/documentos-aplicables/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        codigos = {
+            item["codigo"] for item in response.data["documentos_aplicables"]
+        }
+        self.assertIn("INFORME_SUPERVISION_TD", codigos)
+        self.assertNotIn("CONVENIO_TRABAJO_DIRIGIDO", codigos)
+
+    def test_gates_de_aprobacion_de_desarrollo_siguen_exigiendo_convenio_externo(self):
+        TrabajoDirigidoService.configurar_institucion(self.post, self.institution_data())
+        TrabajoDirigidoService.registrar_informe(
+            self.post,
+            {
+                "periodo": "Agosto 2026",
+                "descripcion_desempeno": "Desarrollo satisfactorio",
+                "evaluacion_cualitativa": "Suficiente",
+                "aporte_laboral": "Automatización institucional",
+                "sugerencias_recomendaciones": "Continuar seguimiento",
+            },
+            self.admin,
+        )
+        self.create_closure_document("INFORME_SUPERVISION_TD")
+
+        with self.assertRaises(ValidationError) as error:
+            ModalidadPolicyRegistry.get(self.post).validar_aprobacion_etapa(
+                self.follow["DESARROLLO_TRABAJO_DIRIGIDO"],
+            )
+
+        self.assertIn(
+            "CONVENIO_TRABAJO_DIRIGIDO",
+            error.exception.message_dict["faltantes"],
+        )
+
+    def test_gate_de_aprobacion_de_desarrollo_interno_no_exige_convenio_externo(self):
+        TrabajoDirigidoService.configurar_institucion(
+            self.post,
+            self.institution_data(tipo_ejecucion="INTERNO", convenio_vigente=False),
+        )
+        TrabajoDirigidoService.registrar_informe(
+            self.post,
+            {
+                "periodo": "Agosto 2026",
+                "descripcion_desempeno": "Desarrollo satisfactorio",
+                "evaluacion_cualitativa": "Suficiente",
+                "aporte_laboral": "Automatización institucional",
+                "sugerencias_recomendaciones": "Continuar seguimiento",
+            },
+            self.admin,
+        )
+        self.create_closure_document("INFORME_SUPERVISION_TD")
+
+        ModalidadPolicyRegistry.get(self.post).validar_aprobacion_etapa(
+            self.follow["DESARROLLO_TRABAJO_DIRIGIDO"],
+        )
+
     def test_externo_exige_convenio_y_supervisor(self):
         with self.assertRaises(ValidationError):
             TrabajoDirigidoService.configurar_institucion(
@@ -507,18 +1185,133 @@ class TrabajoDirigidoTest(TestCase):
         with self.assertRaisesMessage(ValidationError, "5 días hábiles"):
             policy.validar_nuevo_intento(etapa=rejected.etapa, ultimo_seguimiento=rejected)
 
-    def test_evaluacion_reutiliza_ponderacion_30_70_y_escala(self):
+    def test_evaluacion_usa_notas_brutas_y_ponderacion_30_70(self):
         policy = ModalidadPolicyRegistry.get(self.post).evaluacion_policy
-        private = policy.get_valores_registro(evento=None, tipo="PRIVADA", nota=Decimal("21"))
+        private = policy.get_valores_registro(evento=None, tipo="PRIVADA", nota=Decimal("85"))
         public = policy.get_valores_registro(evento=None, tipo="PUBLICA", nota=Decimal("55"))
-        self.assertEqual(private, {"ponderacion": Decimal("30.00"), "aporte_ponderado": Decimal("21.00")})
+        self.assertEqual(private, {"ponderacion": Decimal("30.00"), "aporte_ponderado": Decimal("25.50")})
         self.assertEqual(public, {"ponderacion": Decimal("70.00"), "aporte_ponderado": Decimal("38.50")})
-        self.assertEqual(policy.get_semantica_nota(evento=None, tipo="PRIVADA"), "MODALIDAD_ESPECIFICA")
-        self.assertNotEqual(policy.get_semantica_nota(evento=None, tipo="PRIVADA"), "BRUTA_100")
+        self.assertEqual(policy.get_semantica_nota(evento=None, tipo="PRIVADA"), "BRUTA_100")
         self.assertEqual(policy.clasificar_nota_final(Decimal("50")), "POSTERGADO")
         self.assertEqual(policy.clasificar_nota_final(Decimal("51")), "APROBADO")
         self.assertEqual(policy.clasificar_nota_final(Decimal("75")), "APROBACION_PLENA")
         self.assertEqual(policy.clasificar_nota_final(Decimal("90")), "APROBACION_PLENA_CON_FELICITACION")
+
+    def test_defensa_privada_bruta_valida_rango_y_no_deriva_resultado_cualitativo(self):
+        policy = TrabajoDirigidoPolicy.evaluacion_policy
+        event = EventoDefensa(
+            postulacion=self.post,
+            seguimiento_etapa=self.follow["DEFENSA_PRIVADA"],
+            tipo_evento="DEFENSA_PRIVADA",
+            estado="EN_CURSO",
+            fecha_programada=timezone.now(),
+            programado_por=self.admin,
+        )
+
+        for note in (Decimal("0"), Decimal("85"), Decimal("100")):
+            with self.subTest(note=note):
+                values = policy.get_valores_registro(evento=event, tipo="PRIVADA", nota=note)
+                evaluation = EvaluacionDefensa(
+                    evento=event,
+                    tipo_evaluacion="PRIVADA",
+                    modalidad_registro="CONSENSO",
+                    resultado_cualitativo="INSUFICIENTE",
+                    nota_numerica=note,
+                    ponderacion=values["ponderacion"],
+                    aporte_ponderado=values["aporte_ponderado"],
+                    semantica_nota=EvaluacionDefensa.SemanticaNota.BRUTA_100,
+                )
+                policy.validar_registro(evaluation)
+                self.assertEqual(evaluation.resultado_cualitativo, "INSUFICIENTE")
+
+        for note in (Decimal("-0.01"), Decimal("100.01")):
+            with self.subTest(note=note), self.assertRaises(ValidationError):
+                values = policy.get_valores_registro(evento=event, tipo="PRIVADA", nota=note)
+                policy.validar_registro(EvaluacionDefensa(
+                    evento=event,
+                    tipo_evaluacion="PRIVADA",
+                    modalidad_registro="CONSENSO",
+                    resultado_cualitativo="SUFICIENTE",
+                    nota_numerica=note,
+                    ponderacion=values["ponderacion"],
+                    aporte_ponderado=values["aporte_ponderado"],
+                    semantica_nota=EvaluacionDefensa.SemanticaNota.BRUTA_100,
+                ))
+
+    def test_servicio_registra_nota_privada_bruta_y_aporte_ponderado(self):
+        self.activate_private_defense()
+        assignments = [
+            AsignacionPostulacion.objects.create(
+                postulacion=self.post,
+                usuario=self.teachers[index],
+                tipo_participacion=role,
+                designado_por=self.admin,
+                seguimiento_etapa=self.follow["DEFENSA_PRIVADA"],
+            )
+            for index, role in enumerate(("TRIBUNAL", "TRIBUNAL", "DOCENTE_MODALIDAD"))
+        ]
+        event = EventoDefensa.objects.create(
+            postulacion=self.post,
+            seguimiento_etapa=self.follow["DEFENSA_PRIVADA"],
+            tipo_evento="DEFENSA_PRIVADA",
+            estado="EN_CURSO",
+            fecha_programada=timezone.now() - timedelta(minutes=1),
+            lugar="Sala",
+            programado_por=self.admin,
+        )
+        for assignment in assignments:
+            ParticipanteEvento.objects.create(
+                evento=event,
+                asignacion=assignment,
+                rol_evento=assignment.tipo_participacion,
+                presente=True,
+            )
+
+        evaluation = EvaluacionDefensaService.registrar_evaluacion_privada(
+            event,
+            self.admin,
+            EvaluacionDefensa.Resultado.INSUFICIENTE,
+            nota=Decimal("85"),
+            modalidad_registro="CONSENSO",
+        )
+
+        self.assertEqual(evaluation.nota_numerica, Decimal("85"))
+        self.assertEqual(evaluation.semantica_nota, EvaluacionDefensa.SemanticaNota.BRUTA_100)
+        self.assertEqual(evaluation.ponderacion, Decimal("30.00"))
+        self.assertEqual(evaluation.aporte_ponderado, Decimal("25.50"))
+        self.assertEqual(evaluation.resultado_cualitativo, EvaluacionDefensa.Resultado.INSUFICIENTE)
+
+    def test_defensa_privada_historica_conserva_aporte_directo(self):
+        policy = TrabajoDirigidoPolicy.evaluacion_policy
+        private_event = EventoDefensa.objects.create(
+            postulacion=self.post,
+            seguimiento_etapa=self.follow["DEFENSA_PRIVADA"],
+            tipo_evento="DEFENSA_PRIVADA",
+            estado="FINALIZADA",
+            fecha_programada=timezone.now(),
+            lugar="Sala",
+            programado_por=self.admin,
+        )
+        historical = EvaluacionDefensa.objects.create(
+            evento=private_event,
+            tipo_evaluacion="RESULTADO_FINAL",
+            modalidad_registro="CONSENSO",
+            resultado_cualitativo="SUFICIENTE",
+            nota_numerica=Decimal("21"),
+            ponderacion=Decimal("30.00"),
+            aporte_ponderado=Decimal("21.00"),
+            semantica_nota=EvaluacionDefensa.SemanticaNota.MODALIDAD_ESPECIFICA,
+            es_resultado_final_evento=True,
+            registrado_por=self.admin,
+        )
+
+        result = policy.calcular_resultado_final(self.post)
+
+        historical.refresh_from_db()
+        self.assertEqual(historical.nota_numerica, Decimal("21"))
+        self.assertEqual(historical.aporte_ponderado, Decimal("21.00"))
+        self.assertEqual(historical.semantica_nota, EvaluacionDefensa.SemanticaNota.MODALIDAD_ESPECIFICA)
+        self.assertEqual(result["aporte_privada"], Decimal("21.00"))
 
     def test_defensa_publica_consensuada_pondera_una_vez_y_conserva_clasificacion(self):
         event, _ = self.public_event()

@@ -214,7 +214,9 @@ class DocumentoService:
                         raise ValidationError(
                             "No se puede cargar un documento ordinario sin un contexto académico válido."
                         )
-                    documentos_permitidos = policy.get_documentos_aplicables_en_etapa(etapa_actual_codigo)
+                    documentos_permitidos = policy.get_documentos_aplicables_para_postulacion(
+                        postulacion, etapa_actual_codigo,
+                    )
                     if (
                         tipo_documento.codigo not in documentos_permitidos
                         and not capacidad_carga.get("excepcion_aplicabilidad", False)

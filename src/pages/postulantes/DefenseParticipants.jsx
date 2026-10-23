@@ -77,7 +77,21 @@ export default function DefenseParticipants({ defense, canManage, onChanged, pro
       const allowedRoles = defense.postulacion_modalidad_codigo === 'TESIS_GRADO' && defense.tipo_evento === 'DEFENSA_PRIVADA'
         ? PRIVATE_THESIS_ROLES
         : SUPPORTED_ROLES
-      const rows = (data.results || data || []).filter((item) => item.activo !== false && allowedRoles.has(item.tipo_participacion) && !activeIds.has(String(item.id)))
+      const allRows = data.results || data || []
+      const activeParticipantRoles = new Map(participants.filter((item) => item.activo !== false).flatMap((participant) => {
+        const assignment = allRows.find((item) => String(item.id) === String(participant.asignacion))
+        return assignment?.usuario == null ? [] : [[String(assignment.usuario), participant.rol_display || participant.rol_evento]]
+      }))
+      const preventDuplicatePerson = defense.postulacion_modalidad_codigo === 'TESIS_GRADO'
+        && defense.tipo_evento === 'DEFENSA_PUBLICA'
+      const rows = allRows
+        .filter((item) => item.activo !== false && allowedRoles.has(item.tipo_participacion) && !activeIds.has(String(item.id)))
+        .map((item) => ({
+          ...item,
+          blockedByParticipantRole: preventDuplicatePerson && item.usuario != null
+            ? activeParticipantRoles.get(String(item.usuario)) || null
+            : null,
+        }))
       if (!request.signal.aborted) setCatalog({ rows, loading: false, error: '' })
     } catch (error) {
       if (!error.canceled && !request.signal.aborted) setCatalog({ rows: [], loading: false, error: error.message })
@@ -284,9 +298,10 @@ export default function DefenseParticipants({ defense, canManage, onChanged, pro
   const quorumValid = quorum?.valido === true
   const eligibleTribunals = profileContext ? catalog.rows.filter((item) => item.tipo_participacion === 'TRIBUNAL') : []
   const selectedCount = selectedAssignments.size
-  const allVisibleSelected = filtered.length > 0 && filtered.every((item) => selectedAssignments.has(String(item.id)))
+  const selectableFiltered = filtered.filter((item) => !item.blockedByParticipantRole)
+  const allVisibleSelected = selectableFiltered.length > 0 && selectableFiltered.every((item) => selectedAssignments.has(String(item.id)))
   const toggleAssignment = (assignment) => {
-    if (dialog?.submitting) return
+    if (dialog?.submitting || assignment.blockedByParticipantRole) return
     const id = String(assignment.id)
     setSelectedAssignments((current) => {
       const next = new Set(current)
@@ -299,8 +314,8 @@ export default function DefenseParticipants({ defense, canManage, onChanged, pro
     if (dialog?.submitting) return
     setSelectedAssignments((current) => {
       const next = new Set(current)
-      if (allVisibleSelected) filtered.forEach((item) => next.delete(String(item.id)))
-      else filtered.forEach((item) => next.add(String(item.id)))
+      if (allVisibleSelected) selectableFiltered.forEach((item) => next.delete(String(item.id)))
+      else selectableFiltered.forEach((item) => next.add(String(item.id)))
       return next
     })
   }
@@ -419,7 +434,7 @@ export default function DefenseParticipants({ defense, canManage, onChanged, pro
       <label className="block text-sm">Buscar por nombre o rol<input value={search} onChange={(event) => setSearch(event.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>
       {catalog.loading && <p role="status">Cargando asignaciones activas…</p>}
       {catalog.error && <div role="alert"><p>{catalog.error}</p><Button type="button" className="mt-2" onClick={loadCandidates}>Reintentar</Button></div>}
-      {!catalog.loading && !catalog.error && <fieldset disabled={dialog.submitting} className="space-y-1"><legend className="block text-sm font-medium">Candidatos para incorporar</legend>{filtered.length > 1 && <label className="flex items-center gap-2 border-b py-2 text-sm"><input type="checkbox" aria-label="Seleccionar todos los resultados visibles" checked={allVisibleSelected} onChange={toggleVisibleAssignments} />Seleccionar todos los resultados visibles</label>}{filtered.length === 0 && <p className="text-sm text-slate-500">No hay asignaciones activas disponibles.</p>}{filtered.map((item) => { const result = resultById.get(String(item.id)); const roleLabel = item.tipo_participacion_display || item.tipo_participacion_nombre || item.tipo_participacion; const roleDetail = item.orden_cargo ? `${roleLabel} · Orden ${item.orden_cargo}` : roleLabel; return <label key={item.id} className="flex items-start gap-3 border-b py-2 text-sm"><input type="checkbox" aria-label={`${item.usuario_nombre || 'Usuario no disponible'} — ${roleLabel}`} checked={selectedAssignments.has(String(item.id))} onChange={() => toggleAssignment(item)} /> <span className="min-w-0"><span className="block break-words font-semibold">{item.usuario_nombre || 'Usuario no disponible'}</span><span className="block text-slate-500">{roleDetail}</span>{result && <span className={result.status === 'success' ? 'block text-emerald-700' : 'block text-red-700'}>{result.status === 'success' ? '✓ ' : '✕ '}{result.message}</span>}</span></label> })}</fieldset>}
+      {!catalog.loading && !catalog.error && <fieldset disabled={dialog.submitting} className="space-y-1"><legend className="block text-sm font-medium">Candidatos para incorporar</legend>{filtered.length > 1 && <label className="flex items-center gap-2 border-b py-2 text-sm"><input type="checkbox" aria-label="Seleccionar todos los resultados visibles" checked={allVisibleSelected} disabled={selectableFiltered.length === 0} onChange={toggleVisibleAssignments} />Seleccionar todos los resultados visibles</label>}{filtered.length === 0 && <p className="text-sm text-slate-500">No hay asignaciones activas disponibles.</p>}{filtered.map((item) => { const result = resultById.get(String(item.id)); const roleLabel = item.tipo_participacion_display || item.tipo_participacion_nombre || item.tipo_participacion; const roleDetail = item.orden_cargo ? `${roleLabel} · Orden ${item.orden_cargo}` : roleLabel; const blockedMessage = item.blockedByParticipantRole ? `Ya participa como ${item.blockedByParticipantRole}` : ''; return <label key={item.id} className="flex items-start gap-3 border-b py-2 text-sm"><input type="checkbox" aria-label={`${item.usuario_nombre || 'Usuario no disponible'} — ${roleLabel}`} checked={selectedAssignments.has(String(item.id))} disabled={Boolean(item.blockedByParticipantRole)} onChange={() => toggleAssignment(item)} /> <span className="min-w-0"><span className="block break-words font-semibold">{item.usuario_nombre || 'Usuario no disponible'}</span><span className="block text-slate-500">{roleDetail}</span>{blockedMessage && <span className="block text-amber-700">{blockedMessage}; no puede incorporarse nuevamente mediante otra asignación.</span>}{result && <span className={result.status === 'success' ? 'block text-emerald-700' : 'block text-red-700'}>{result.status === 'success' ? '✓ ' : '✕ '}{result.message}</span>}</span></label> })}</fieldset>}
       {selectedCount > 0 && <p className="text-sm font-semibold">{selectedCount} {selectedCount === 1 ? 'seleccionado' : 'seleccionados'}</p>}
       {dialog.progress && <p role="status" className="text-sm">Agregando {Math.min(dialog.progress.completed + 1, dialog.progress.total)} de {dialog.progress.total}…</p>}
       {fieldMessage(dialog.fields, 'asignacion') && <p role="alert" className="text-sm text-red-600">{fieldMessage(dialog.fields, 'asignacion')}</p>}

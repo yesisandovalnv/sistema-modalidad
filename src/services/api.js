@@ -20,7 +20,7 @@ apiClient.interceptors.request.use((config) => {
 let sessionExpired = false
 let refreshPromise = null
 
-const AUTH_ENDPOINTS = ['/api/v1/auth/login/', '/api/v1/auth/refresh/', '/api/v1/auth/logout/']
+const AUTH_ENDPOINTS = ['/api/v1/auth/login/', '/api/v1/auth/student-login/', '/api/v1/auth/refresh/', '/api/v1/auth/logout/']
 const isAuthEndpoint = (url = '') => AUTH_ENDPOINTS.some((path) => url.includes(path))
 
 function expireSession() {
@@ -48,7 +48,7 @@ async function refreshAccessToken() {
 }
 
 apiClient.interceptors.response.use((response) => {
-  if (response.config?.url?.includes('/api/v1/auth/login/')) sessionExpired = false
+  if (response.config?.url?.includes('/api/v1/auth/login/') || response.config?.url?.includes('/api/v1/auth/student-login/')) sessionExpired = false
   return response
 }, async (error) => {
   const originalRequest = error?.config

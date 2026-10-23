@@ -15,9 +15,18 @@ dist-ssr
 .env.*
 !.env.example
 staticfiles/
+media/
 .tmp_test_media/
 .tmp_test_seed/
 backups/*.dump
+backups/*.sql
+backups/*.backup
+
+# Generated reports and test results
+reporte_postulaciones_*
+test-output.txt
+test-results.txt
+vitest-*.json
 
 # Editor directories and files
 .vscode/*

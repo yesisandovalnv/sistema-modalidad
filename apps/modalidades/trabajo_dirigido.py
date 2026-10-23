@@ -182,7 +182,7 @@ class TrabajoDirigidoEvaluacionPolicy(ProyectoGradoLegacyEvaluacionPolicy):
             raise ValidationError("La evaluación individual de Trabajo Dirigido está pendiente de definición normativa.")
 
     def get_semantica_nota(self, *, evento, tipo):
-        if tipo == "PUBLICA":
+        if tipo in {"PRIVADA", "PUBLICA"}:
             from apps.postulantes.models import EvaluacionDefensa
 
             return EvaluacionDefensa.SemanticaNota.BRUTA_100
@@ -191,36 +191,55 @@ class TrabajoDirigidoEvaluacionPolicy(ProyectoGradoLegacyEvaluacionPolicy):
     def get_valores_registro(self, *, evento, tipo, nota):
         from decimal import Decimal, ROUND_HALF_UP
 
-        if tipo != "PUBLICA":
+        if tipo not in {"PRIVADA", "PUBLICA"}:
             return super().get_valores_registro(evento=evento, tipo=tipo, nota=nota)
+        ponderacion = Decimal("30.00") if tipo == "PRIVADA" else Decimal("70.00")
         aporte = None if nota is None else (
-            Decimal(str(nota)) * Decimal("0.70")
+            Decimal(str(nota)) * ponderacion / Decimal("100")
         ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        return {"ponderacion": Decimal("70.00"), "aporte_ponderado": aporte}
+        return {"ponderacion": ponderacion, "aporte_ponderado": aporte}
 
     def validar_registro(self, evaluacion):
         from decimal import Decimal, ROUND_HALF_UP
         from apps.postulantes.models import EvaluacionDefensa, EventoDefensa
 
-        if evaluacion.tipo_evaluacion != "PUBLICA":
+        if evaluacion.tipo_evaluacion not in {"PRIVADA", "PUBLICA"}:
             return super().validar_registro(evaluacion)
-        if evaluacion.evento.tipo_evento != EventoDefensa.Tipo.DEFENSA_PUBLICA:
-            raise ValidationError({"tipo_evaluacion": "La evaluación pública requiere una Defensa Pública."})
+        if (
+            evaluacion.tipo_evaluacion == "PRIVADA"
+            and evaluacion.semantica_nota == EvaluacionDefensa.SemanticaNota.MODALIDAD_ESPECIFICA
+        ):
+            return super().validar_registro(evaluacion)
+        tipo_evento_esperado = (
+            EventoDefensa.Tipo.DEFENSA_PRIVADA
+            if evaluacion.tipo_evaluacion == "PRIVADA"
+            else EventoDefensa.Tipo.DEFENSA_PUBLICA
+        )
+        if evaluacion.evento.tipo_evento != tipo_evento_esperado:
+            raise ValidationError({"tipo_evaluacion": "La evaluación no corresponde al tipo de defensa de Trabajo Dirigido."})
         if evaluacion.modalidad_registro != "CONSENSO" or evaluacion.evaluador_id:
-            raise ValidationError({"modalidad_registro": "La evaluación pública de Trabajo Dirigido debe ser por consenso."})
-        if evaluacion.nota_numerica is None or not Decimal("1") <= evaluacion.nota_numerica <= Decimal("100"):
-            raise ValidationError({"nota_numerica": "La nota pública debe estar entre 1 y 100."})
-        aporte_esperado = (evaluacion.nota_numerica * Decimal("0.70")).quantize(
+            raise ValidationError({"modalidad_registro": "La evaluación de Trabajo Dirigido debe ser por consenso."})
+        if evaluacion.tipo_evaluacion == "PRIVADA" and evaluacion.resultado_cualitativo not in {
+            EvaluacionDefensa.Resultado.SUFICIENTE,
+            EvaluacionDefensa.Resultado.INSUFICIENTE,
+        }:
+            raise ValidationError({"resultado_cualitativo": "La privada requiere SUFICIENTE o INSUFICIENTE."})
+        minimo = Decimal("0") if evaluacion.tipo_evaluacion == "PRIVADA" else Decimal("1")
+        if evaluacion.nota_numerica is None or not minimo <= evaluacion.nota_numerica <= Decimal("100"):
+            etiqueta = "privada" if evaluacion.tipo_evaluacion == "PRIVADA" else "pública"
+            raise ValidationError({"nota_numerica": f"La nota {etiqueta} debe estar entre {minimo} y 100."})
+        ponderacion = Decimal("30.00") if evaluacion.tipo_evaluacion == "PRIVADA" else Decimal("70.00")
+        aporte_esperado = (evaluacion.nota_numerica * ponderacion / Decimal("100")).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP,
         )
         if evaluacion.semantica_nota != EvaluacionDefensa.SemanticaNota.BRUTA_100:
-            raise ValidationError({"semantica_nota": "La nota pública debe declararse como calificación bruta sobre 100."})
-        if evaluacion.ponderacion != Decimal("70.00") or evaluacion.aporte_ponderado != aporte_esperado:
-            raise ValidationError({"aporte_ponderado": "El aporte público debe ser el 70% de la nota bruta."})
+            raise ValidationError({"semantica_nota": "La nota debe declararse como calificación bruta sobre 100."})
+        if evaluacion.ponderacion != ponderacion or evaluacion.aporte_ponderado != aporte_esperado:
+            raise ValidationError({"aporte_ponderado": "El aporte debe calcularse con la ponderación de la defensa."})
 
     def construir_consolidado(self, evaluacion, usuario):
         consolidado = super().construir_consolidado(evaluacion, usuario)
-        if evaluacion.tipo_evaluacion == "PUBLICA":
+        if evaluacion.semantica_nota == "BRUTA_100":
             consolidado.semantica_nota = evaluacion.semantica_nota
             consolidado.aporte_ponderado = evaluacion.aporte_ponderado
         return consolidado
@@ -270,6 +289,23 @@ class TrabajoDirigidoPolicy(BaseModalidadPolicy):
     evento_policy = TrabajoDirigidoEventoPolicy()
     evaluacion_policy = TrabajoDirigidoEvaluacionPolicy()
     requisitos_policy = TrabajoDirigidoRequisitosPolicy()
+
+    def get_documentos_aplicables_para_postulacion(self, postulacion, codigo_etapa: str) -> tuple:
+        documentos = super().get_documentos_aplicables_para_postulacion(
+            postulacion, codigo_etapa,
+        )
+        if codigo_etapa != "DESARROLLO_TRABAJO_DIRIGIDO":
+            return documentos
+        expediente = TrabajoDirigidoExpediente.objects.filter(
+            postulacion=postulacion,
+        ).only("tipo_ejecucion").first()
+        if (
+            expediente
+            and expediente.tipo_ejecucion == TrabajoDirigidoExpediente.TipoEjecucion.EXTERNO
+            and "CONVENIO_TRABAJO_DIRIGIDO" not in documentos
+        ):
+            return (*documentos, "CONVENIO_TRABAJO_DIRIGIDO")
+        return documentos
 
     def get_decisiones_academicas_permitidas(self, codigo_etapa):
         if codigo_etapa != "PERFIL_TRABAJO_DIRIGIDO":
@@ -331,9 +367,7 @@ class TrabajoDirigidoPolicy(BaseModalidadPolicy):
             ),
             "enforcement": "INFORMATIVO" if tutor_preexistente and not propuesta_aprobada else "ACTIVO",
         }
-        return {
-            "regimen_workflow": getattr(postulacion, "regimen_workflow", None),
-            "grupos": [
+        grupos = [
                 {
                     "clave": "TRIBUNAL_PROPUESTA_TRABAJO_DIRIGIDO",
                     "tipo_participacion": "TRIBUNAL",
@@ -375,7 +409,53 @@ class TrabajoDirigidoPolicy(BaseModalidadPolicy):
                         "nombre": "Tutor de Trabajo Dirigido",
                     }],
                 },
-            ],
+                {
+                    "clave": "DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TD",
+                    "tipo_participacion": "DOCENTE_MODALIDAD",
+                    "nombre": "Docente de modalidad",
+                    "ambito": "ETAPA",
+                    "codigo_etapa": "DEFENSA_PRIVADA",
+                    "minimo": 1,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "obligatoriedad": True,
+                    "habilitada": True,
+                    "precondicion": None,
+                    "posiciones": [{
+                        "clave": "DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TD_1",
+                        "orden_cargo": None,
+                        "nombre": "Docente de modalidad",
+                    }],
+                },
+            ]
+        if seguimiento and seguimiento.etapa.codigo == "DEFENSA_PUBLICA":
+            for role, name in (
+                ("PRESIDENTE", "Presidente de Defensa Pública"),
+                ("SECRETARIO", "Secretario de Defensa Pública"),
+            ):
+                grupos.append({
+                    "clave": f"{role}_DEFENSA_PUBLICA_TD",
+                    "tipo_participacion": role,
+                    "nombre": name,
+                    "ambito": "ETAPA",
+                    "codigo_etapa": "DEFENSA_PUBLICA",
+                    "minimo": 1,
+                    "maximo": 1,
+                    "ordenado": False,
+                    "ordenes_permitidos": [],
+                    "obligatoriedad": True,
+                    "habilitada": True,
+                    "precondicion": None,
+                    "posiciones": [{
+                        "clave": f"{role}_DEFENSA_PUBLICA_TD_1",
+                        "orden_cargo": None,
+                        "nombre": name,
+                    }],
+                })
+        return {
+            "regimen_workflow": getattr(postulacion, "regimen_workflow", None),
+            "grupos": grupos,
         }
 
     def get_reglas_asignacion(self):
@@ -397,10 +477,391 @@ class TrabajoDirigidoPolicy(BaseModalidadPolicy):
             return self._orientar_inscripcion(postulacion)
         if seguimiento.etapa.codigo == "PERFIL_TRABAJO_DIRIGIDO":
             return self._orientar_perfil(postulacion, seguimiento)
+        if seguimiento.etapa.codigo == "DESARROLLO_TRABAJO_DIRIGIDO":
+            return self._orientar_desarrollo(postulacion, seguimiento)
+        if seguimiento.etapa.codigo == "DEFENSA_PUBLICA":
+            return self._orientar_defensa_publica(postulacion, seguimiento)
         return self.get_orientacion_documental_prioritaria(
             postulacion=postulacion,
             seguimiento=seguimiento,
         )
+
+    def _orientar_defensa_publica(self, postulacion, seguimiento):
+        from apps.documentos.models import DocumentoPostulacion, TipoDocumento, VersionDocumento
+        from apps.postulantes.models import EventoDefensa, EvaluacionDefensa
+        from apps.postulantes.workflow import WorkflowService
+
+        assignments = postulacion.asignaciones.filter(activo=True)
+        composition = self.evento_policy.evaluar_requisitos_programacion(
+            tipo_evento="DEFENSA_PUBLICA",
+            seguimiento=seguimiento,
+            asignaciones=assignments,
+        )
+        requirements = []
+        for role, minimum in self.evento_policy.ASSIGNMENTS["DEFENSA_PUBLICA"].items():
+            result = composition["requisitos"][role]
+            actual = result["actual"]
+            fulfilled = result["cumplido"]
+            if result.get("conflicto_identidad"):
+                fulfilled = False
+            name = {
+                "TRIBUNAL": "Tribunales",
+                "PRESIDENTE": "Presidente",
+                "SECRETARIO": "Secretario",
+            }.get(role, role)
+            requirements.append({
+                "tipo": "ACTOR",
+                "codigo": role,
+                "nombre": name,
+                "actual": actual,
+                "minimo": minimum,
+                "cumplido": fulfilled,
+                "estado": "CUMPLIDO" if fulfilled else "PENDIENTE",
+                "estado_display": f"{actual}/{minimum} {'✓' if fulfilled else 'pendiente'}",
+                "conflicto_identidad": result.get("conflicto_identidad", False),
+                "destino": None if fulfilled else "#actores",
+            })
+        composition_ready = all(item["cumplido"] for item in requirements)
+
+        anticipation = self.evento_policy.get_precondiciones_programacion(
+            "DEFENSA_PUBLICA",
+        ).get("anticipacion_minima_horas")
+        if anticipation is not None:
+            requirements.append({
+                "tipo": "ANTICIPACION",
+                "codigo": "ANTICIPACION_MINIMA",
+                "nombre": "Anticipación mínima",
+                "valor": anticipation,
+                "unidad": "HORAS",
+                "cumplido": None,
+                "estado": "INFORMATIVO",
+                "estado_display": f"{anticipation} h",
+                "destino": None,
+            })
+        requirements.extend(self._orientar_documentos_defensa_publica(
+            postulacion,
+            seguimiento,
+        ))
+        conflicts = composition.get("conflictos", [])
+        event = seguimiento.eventos_defensa.filter(
+            tipo_evento=EventoDefensa.Tipo.DEFENSA_PUBLICA,
+            numero_intento=seguimiento.numero_intento,
+            activo=True,
+        ).order_by("-pk").first()
+
+        if event is None:
+            authorities_missing = any(
+                item["codigo"] in {"PRESIDENTE", "SECRETARIO"}
+                and item["cumplido"] is False
+                for item in requirements
+            )
+            if authorities_missing and not conflicts:
+                action = self._accion_orientacion(
+                    "GESTIONAR_ACTORES",
+                    "Completar autoridades",
+                    "Asigna el Presidente y el Secretario de esta Defensa Pública.",
+                    None,
+                    "Completar autoridades",
+                )
+                action["capacidades"] = {"modal": "PUBLIC_AUTHORITIES"}
+                message = "La programación requiere completar las autoridades de la Defensa Pública."
+            elif not composition_ready or conflicts:
+                action = self._accion_orientacion(
+                    "GESTIONAR_ACTORES",
+                    "Revisar composición de actores",
+                    "La composición actual no cumple las condiciones para programar la defensa. El personal responsable debe revisar las asignaciones.",
+                    "#actores",
+                    "Ir a actores",
+                )
+                action["requiere_permiso"] = "GESTIONAR_ASIGNACIONES"
+                message = "La composición de actores aún no habilita la programación de la Defensa Pública."
+            else:
+                action = self._accion_orientacion(
+                    "PROGRAMAR_EVENTO",
+                    "Programar Defensa Pública",
+                    "Las asignaciones requeridas están completas. Programa la defensa respetando la anticipación mínima.",
+                    "#defensas",
+                    "Programar defensa",
+                    disponible=True,
+                )
+                message = "Las precondiciones de asignación están completas para programar la Defensa Pública."
+            return {
+                "operacion": "PROGRAMAR_EVENTO",
+                "tipo_evento": "DEFENSA_PUBLICA",
+                "mensaje": message,
+                "requisitos": requirements,
+                "siguiente_accion": action,
+                "conflictos_identidad": conflicts,
+            }
+
+        requirements.append({
+            "tipo": "EVENTO",
+            "codigo": "DEFENSA_PUBLICA",
+            "nombre": "Defensa Pública",
+            "cumplido": event.estado == EventoDefensa.Estado.FINALIZADA,
+            "estado": event.estado,
+            "estado_display": event.get_estado_display(),
+            "destino": "#defensas",
+        })
+        if event.estado in {
+            EventoDefensa.Estado.PROGRAMADA,
+            EventoDefensa.Estado.EN_CURSO,
+        }:
+            action = self._accion_orientacion(
+                "GESTIONAR_DEFENSA",
+                "Gestionar Defensa Pública",
+                "La defensa está en curso operativo. Revisa en Defensas las acciones permitidas para su estado.",
+                "#defensas",
+                "Ir a defensas",
+            )
+            message = "La Defensa Pública requiere gestión desde la sección de defensas."
+        elif event.estado == EventoDefensa.Estado.FINALIZADA:
+            evaluations = event.evaluaciones.filter(activo=True)
+            public_evaluation = evaluations.filter(
+                tipo_evaluacion=EvaluacionDefensa.Tipo.PUBLICA,
+            ).exists()
+            consolidated = evaluations.filter(
+                tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,
+                es_resultado_final_evento=True,
+            ).exists()
+            if not public_evaluation:
+                action = self._accion_orientacion(
+                    "REGISTRAR_EVALUACION",
+                    "Registrar evaluación de la Defensa Pública",
+                    "La defensa finalizó y todavía falta registrar la evaluación correspondiente.",
+                    "#defensas",
+                    "Ir a registrar evaluación",
+                    disponible=True,
+                )
+                message = "La Defensa Pública finalizó; falta registrar su evaluación."
+            elif not consolidated:
+                action = self._accion_orientacion(
+                    "CONSOLIDAR_RESULTADO",
+                    "Consolidar resultado de la Defensa Pública",
+                    "La evaluación está registrada y requiere consolidación desde la sección de defensas.",
+                    "#defensas",
+                    "Ir a consolidar resultado",
+                    disponible=True,
+                )
+                message = "La evaluación de la Defensa Pública está pendiente de consolidación."
+            elif "aprobar" in WorkflowService.obtener_acciones_permitidas(seguimiento):
+                action = self._accion_orientacion(
+                    "APROBAR_ETAPA",
+                    "Aprobar Defensa Pública",
+                    "El evento y el resultado cumplen las validaciones de aprobación.",
+                    "#resumen",
+                    "Aprobar Defensa Pública",
+                    disponible=True,
+                )
+                message = "El resultado está consolidado y la etapa está habilitada para aprobación administrativa."
+            else:
+                action = self._accion_orientacion(
+                    "GESTIONAR_DEFENSA",
+                    "Revisar resultado de la Defensa Pública",
+                    "El resultado está registrado. Revisa en Defensas el estado y las acciones disponibles.",
+                    "#defensas",
+                    "Ver defensa",
+                )
+                message = "La defensa finalizó y su resultado requiere revisión."
+        else:
+            action = self._accion_orientacion(
+                "GESTIONAR_DEFENSA",
+                "Revisar Defensa Pública",
+                "El evento no está programado ni en curso. Revisa su estado y las acciones disponibles en Defensas.",
+                "#defensas",
+                "Ver defensa",
+            )
+            message = "La Defensa Pública requiere revisión del evento."
+        return {
+            "operacion": "ORIENTAR_ETAPA",
+            "tipo_evento": "DEFENSA_PUBLICA",
+            "mensaje": message,
+            "requisitos": requirements,
+            "siguiente_accion": action,
+            "conflictos_identidad": conflicts,
+        }
+
+    def _orientar_documentos_defensa_publica(self, postulacion, seguimiento):
+        orientation = self.get_orientacion_documental_prioritaria(
+            postulacion=postulacion,
+            seguimiento=seguimiento,
+        )
+        if orientation is not None:
+            return [
+                {**item, "bloquea_siguiente_accion": False}
+                for item in orientation.get("requisitos", [])
+                if item.get("tipo") == "DOCUMENTO"
+            ]
+
+        from apps.documentos.models import DocumentoPostulacion, TipoDocumento, VersionDocumento
+
+        codes = self.get_documentos_requeridos("DEFENSA_PUBLICA")
+        types = {
+            item.codigo: item
+            for item in TipoDocumento.objects.filter(codigo__in=codes, activo=True)
+        }
+        documents = {
+            item.tipo_documento.codigo: item
+            for item in DocumentoPostulacion.objects.filter(
+                postulacion=postulacion,
+                tipo_documento__codigo__in=codes,
+                activo=True,
+            ).select_related("estado", "tipo_documento")
+        }
+        requirements = []
+        for code in codes:
+            document_type = types.get(code)
+            if not document_type:
+                continue
+            document = documents.get(code)
+            has_current_version = bool(
+                document and VersionDocumento.objects.filter(
+                    documento=document,
+                    activo=True,
+                    es_version_actual=True,
+                ).exists()
+            )
+            approved = bool(
+                document
+                and document.estado.codigo == "APR"
+                and not document.requiere_correccion
+                and has_current_version
+            )
+            if approved:
+                state, display = "APROBADO", "Aprobado"
+            elif not document:
+                state, display = "NO_PRESENTADO", "No presentado"
+            elif document.estado.codigo == "REC" or document.requiere_correccion:
+                state, display = "REQUIERE_CORRECCION", "Requiere corrección o reenvío"
+            else:
+                state, display = "PENDIENTE_REVISION", "Pendiente de revisión"
+            requirements.append({
+                "tipo": "DOCUMENTO",
+                "codigo": code,
+                "nombre": document_type.nombre,
+                "cumplido": approved,
+                "estado": state,
+                "estado_display": display,
+                "destino": None if approved else "#documentos",
+                "bloquea_siguiente_accion": False,
+            })
+        return requirements
+
+    def _orientar_desarrollo(self, postulacion, seguimiento):
+        try:
+            expediente = self._validar_institucion(postulacion)
+        except ValidationError:
+            requisito = self._requisito_orientacion(
+                "INSTITUCION",
+                "INSTITUCION_SUPERVISOR_TD",
+                "Institución y supervisor",
+                False,
+                "#trabajo-dirigido",
+                "Pendiente de registro",
+            )
+            return {
+                "operacion": "ORIENTAR_ETAPA",
+                "mensaje": "Falta registrar la institución y el supervisor para iniciar Desarrollo.",
+                "requisitos": [requisito],
+                "requisitos_cumplidos": 0,
+                "requisitos_totales": 1,
+                "permite_aprobar_etapa": False,
+                "siguiente_accion": self._accion_orientacion(
+                    "GESTIONAR_INSTITUCION",
+                    "Registrar institución y supervisor",
+                    "Completa y guarda los datos institucionales necesarios para iniciar Desarrollo",
+                    "#trabajo-dirigido",
+                    "Gestionar institución",
+                ),
+                "conflictos_identidad": [],
+            }
+
+        orientacion = self.get_orientacion_documental_prioritaria(
+            postulacion=postulacion,
+            seguimiento=seguimiento,
+        )
+        if orientacion:
+            accion = orientacion.get("siguiente_accion") or {}
+            informe_pendiente = any(
+                requisito.get("codigo") == "INFORME_SUPERVISION_TD"
+                and requisito.get("cumplido") is False
+                for requisito in orientacion.get("requisitos", [])
+            )
+            if accion.get("codigo") == "COMPLETAR_DOCUMENTOS" and informe_pendiente:
+                orientacion = {
+                    **orientacion,
+                    "siguiente_accion": {
+                        **accion,
+                        "titulo": "Completar documento: Informe periódico de supervisión",
+                        "descripcion": "Presenta el documento requerido para su revisión y aprobación",
+                        "accion_label": "Gestionar documentos",
+                    },
+                }
+            else:
+                convenio = next(
+                    (
+                        requisito for requisito in orientacion.get("requisitos", [])
+                        if requisito.get("codigo") == "CONVENIO_TRABAJO_DIRIGIDO"
+                        and not requisito.get("cumplido")
+                    ),
+                    None,
+                )
+                if convenio:
+                    esperando_revision = convenio.get("estado") == "PENDIENTE_REVISION"
+                    requiere_correccion = convenio.get("estado") == "REQUIERE_CORRECCION"
+                    accion = {
+                        **accion,
+                        "titulo": (
+                            "Convenio de Trabajo Dirigido pendiente de revisión"
+                            if esperando_revision else
+                            "Corregir documento: Convenio de Trabajo Dirigido"
+                            if requiere_correccion else
+                            "Completar documento: Convenio de Trabajo Dirigido"
+                        ),
+                        "descripcion": (
+                            "El convenio ya fue presentado y debe ser revisado antes de completar Desarrollo."
+                            if esperando_revision else
+                            "Presenta una nueva versión del convenio para su revisión y aprobación."
+                            if requiere_correccion else
+                            "La ejecución externa requiere presentar y obtener la aprobación del convenio para completar Desarrollo."
+                        ),
+                        "accion_label": (
+                            "Ver documentos" if esperando_revision else "Gestionar documentos"
+                        ),
+                    }
+                    orientacion = {**orientacion, "siguiente_accion": accion}
+            return orientacion
+
+        if (
+            seguimiento.estado in {"EN_PROCESO", "OBSERVADA"}
+            and not expediente.informes_seguimiento.filter(activo=True).exists()
+        ):
+            requisito = self._requisito_orientacion(
+                "INFORME_SEGUIMIENTO",
+                "INFORME_PERIODICO_TD",
+                "Informe periódico estructurado",
+                False,
+                "#trabajo-dirigido",
+                "Pendiente de registro",
+            )
+            return {
+                "operacion": "ORIENTAR_ETAPA",
+                "mensaje": "Falta registrar el informe periódico estructurado del seguimiento institucional.",
+                "requisitos": [requisito],
+                "requisitos_cumplidos": 0,
+                "requisitos_totales": 1,
+                "permite_aprobar_etapa": False,
+                "siguiente_accion": self._accion_orientacion(
+                    "REGISTRAR_INFORME_PERIODICO",
+                    "Registrar informe periódico de seguimiento",
+                    "Registra la información estructurada del seguimiento realizado por el supervisor institucional.",
+                    "#trabajo-dirigido",
+                    "Gestionar informes",
+                ),
+                "conflictos_identidad": [],
+            }
+        return None
+
 
     def _evaluar_requisitos_inscripcion(self, postulacion):
         from apps.documentos.models import TipoDocumento
@@ -700,9 +1161,11 @@ class TrabajoDirigidoPolicy(BaseModalidadPolicy):
                     "La continuidad histórica no sustituye la decisión académica formal de los tribunales.",
                     "#decisiones-academicas", "Registrar decisión", disponible=True,
                 )
-        return self._respuesta_orientacion(
+        respuesta = self._respuesta_orientacion(
             "Gestiona la Defensa de Perfil para completar esta etapa.", requisitos, accion,
         )
+        respuesta["tipo_evento"] = "DEFENSA_PERFIL"
+        return respuesta
 
     @staticmethod
     def _respuesta_orientacion(mensaje, requisitos, accion):

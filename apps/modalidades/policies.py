@@ -193,6 +193,9 @@ class BaseModalidadPolicy(ABC):
         if self.requisitos_policy:
             return tuple(self.requisitos_policy.get_documentos_requeridos(codigo_etapa))
         return ()
+    def get_documentos_aplicables_para_postulacion(self, postulacion, codigo_etapa: str) -> tuple:
+        """Resuelve documentos aplicables con contexto sin cambiar el contrato por etapa."""
+        return self.get_documentos_aplicables_en_etapa(codigo_etapa)
     def get_actores_carga_documento(self, codigo_etapa: str, codigo_documento: str):
         """Delega la responsabilidad de carga a la configuración documental de la modalidad."""
         if self.requisitos_policy:
@@ -223,7 +226,9 @@ class BaseModalidadPolicy(ABC):
         if not seguimiento:
             return None
         codigos = tuple(
-            codigo for codigo in self.get_documentos_aplicables_en_etapa(seguimiento.etapa.codigo)
+            codigo for codigo in self.get_documentos_aplicables_para_postulacion(
+                postulacion, seguimiento.etapa.codigo,
+            )
             if ActorCargaDocumento.ESTUDIANTE in (
                 self.get_actores_carga_documento(seguimiento.etapa.codigo, codigo)
                 or ActorCargaDocumento.TODOS

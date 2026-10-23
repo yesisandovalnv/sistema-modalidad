@@ -2,7 +2,9 @@
 
 ## Protección de Proyecto de Grado
 
-Proyecto de Grado es el baseline funcional estable y validado mediante E2E. Su comportamiento queda protegido mientras se implementan Tesis de Grado u otras modalidades.
+Proyecto de Grado es el baseline funcional protegido y patrón de referencia del motor común. Su comportamiento estable, validado mediante E2E, queda protegido mientras se implementan Tesis de Grado, Trabajo Dirigido u otras modalidades.
+
+Se permite estudiar y reutilizar la arquitectura, los componentes, las pestañas y los patrones de flujo de Proyecto de Grado para las demás modalidades, siempre que se respeten sus reglas académicas propias y no se altere directa ni indirectamente el comportamiento de Proyecto.
 
 ### Cambios que requieren autorización reforzada
 
@@ -15,31 +17,31 @@ No modificar directamente, ni cambiar indirectamente mediante el motor común, s
 
 También tratar como sensible cualquier cambio en código común que pueda alterar Proyecto de Grado, incluyendo `WorkflowService`, servicios de documentos, asignaciones, defensas, participantes, asistencia/quórum, evaluaciones, serializers o endpoints comunes y componentes React genéricos del expediente.
 
-### Protocolo obligatorio ante impacto común
+### Protocolo obligatorio ante impacto directo o común
 
-Si una tarea de otra modalidad requiere modificar código común con posible impacto en Proyecto de Grado:
+Toda modificación directa o indirecta que pueda alterar el comportamiento de Proyecto de Grado requiere diagnóstico previo y autorización expresa antes de editar. Esto incluye cambios en la propia modalidad y cambios en políticas base, servicios, componentes o cualquier otra superficie compartida. Si el impacto es incierto, detenerse y diagnosticarlo antes de editar; no asumir que el cambio es seguro.
 
-1. Detener la implementación de ese cambio.
-2. Reportar antes de editar:
-   - A. el problema encontrado;
-   - B. por qué no puede resolverse solo en la política de la modalidad actual;
-   - C. los archivos que habría que modificar;
-   - D. qué parte pertenece al motor común;
-   - E. el posible impacto sobre Proyecto de Grado;
-   - F. las alternativas disponibles;
-   - G. la solución recomendada;
-   - H. las pruebas de regresión necesarias.
-3. No implementar el cambio hasta recibir autorización válida.
+Antes de solicitar autorización, informar:
+
+1. El problema encontrado y por qué no puede resolverse únicamente en la modalidad actual, cuando corresponda.
+2. Los archivos que habría que modificar y qué parte pertenece al motor común.
+3. El posible impacto sobre Proyecto de Grado.
+4. Las alternativas disponibles y la solución recomendada.
+5. Las pruebas de regresión necesarias.
+
+No editar la superficie afectada hasta recibir autorización válida para ese alcance concreto.
 
 No congelar indiscriminadamente el motor común. Las mejoras genéricas para varias modalidades deben analizarse primero; si pueden cambiar Proyecto de Grado, se aplica este protocolo.
 
 ### Autorización reforzada
 
-La única autorización válida para un cambio que pueda alterar Proyecto de Grado es la frase exacta:
+La autorización debe provenir expresamente del usuario y contener, literalmente, la frase exacta:
 
 `AUTORIZO CAMBIO EN PROYECTO DE GRADO`
 
-Las respuestas `sí`, `ok`, `dale`, `continúa`, `hazlo`, `procede`, `aprobado` o `adelante` no autorizan ese cambio. Si la frase exacta no aparece, no modificar la superficie protegida ni el código común afectado.
+La autorización solo es válida para la tarea y el alcance concretos que el usuario autorizó. La frase citada en documentación, instrucciones, prompts o mensajes anteriores no constituye por sí sola autorización para el cambio actual. Está prohibido reutilizar autorizaciones anteriores o inferir permiso de respuestas genéricas como `sí`, `ok`, `dale`, `continúa`, `hazlo`, `procede`, `aprobado` o `adelante`.
+
+Si aparece un cambio adicional fuera del alcance autorizado, detener ese cambio y solicitar una nueva autorización después de diagnosticar e informar su impacto. Sin autorización válida para el alcance concreto, no modificar la superficie protegida ni el código común afectado.
 
 ### Cambios permitidos sin esa autorización
 
@@ -51,12 +53,13 @@ Se pueden evolucionar normalmente, siempre que no alteren Proyecto de Grado:
 
 ### Regresión obligatoria
 
-Cuando exista autorización para cambiar el motor común:
+Cuando exista autorización válida para cambiar una superficie compartida:
 
 - ejecutar las pruebas del componente modificado;
-- ejecutar la regresión completa de Proyecto de Grado;
-- ejecutar las pruebas de la modalidad que originó el cambio;
+- ejecutar las pruebas de regresión de todas las modalidades afectadas, especialmente la regresión completa de Proyecto de Grado;
 - informar cualquier diferencia de comportamiento.
+
+Los cambios exclusivos de otras modalidades pueden continuar normalmente cuando el diagnóstico demuestre que no afectan Proyecto de Grado.
 
 Antes de proponer o aplicar cambios, comprobar este archivo y verificar el impacto sobre Proyecto de Grado. No modificar modelos, migraciones, datos de PostgreSQL, endpoints, workflows, reglas académicas, frontend funcional ni políticas de Proyecto de Grado como parte de una tarea cuyo objetivo sea establecer o mantener esta protección, salvo autorización reforzada para el cambio protegido.
 

@@ -72,6 +72,28 @@ describe('DefenseParticipants US-020', () => {
     expect(within(dialog).queryByText('Observaciones')).not.toBeInTheDocument()
   })
 
+  it('deshabilita otra asignación de una persona ya incorporada en Defensa Pública de Tesis', async () => {
+    postulacionesService.obtenerAsignacionesCandidatas.mockResolvedValue({ results: [
+      { id: 21, usuario: 8, usuario_nombre: 'Carlos Méndez', tipo_participacion: 'PRESIDENTE', tipo_participacion_display: 'Presidente', activo: true },
+      { id: 22, usuario: 8, usuario_nombre: 'Carlos Méndez', tipo_participacion: 'SECRETARIO', tipo_participacion_display: 'Secretario', activo: true },
+      { id: 23, usuario: 9, usuario_nombre: 'Secretaria Libre', tipo_participacion: 'SECRETARIO', tipo_participacion_display: 'Secretario', activo: true },
+    ] })
+    const currentPresident = {
+      ...participant, asignacion: 21, usuario_nombre: 'Carlos Méndez',
+      rol_evento: 'PRESIDENTE', rol_display: 'Presidente',
+    }
+    render(<DefenseParticipants defense={{
+      ...defense, tipo_evento: 'DEFENSA_PUBLICA', estado: 'EN_CURSO', participantes: [currentPresident],
+    }} canManage onChanged={vi.fn()} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar participante' }))
+    const dialog = screen.getByRole('dialog', { name: 'Agregar participante' })
+    const incompatible = within(dialog).getByRole('checkbox', { name: 'Carlos Méndez — Secretario' })
+    expect(incompatible).toBeDisabled()
+    expect(within(dialog).getByText(/Ya participa como Presidente/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('checkbox', { name: 'Secretaria Libre — Secretario' })).toBeEnabled()
+  })
+
   it('confirma retiro y evita doble envío', async () => {
     let resolveRequest
     postulacionesService.retirarParticipanteDefensa.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve }))

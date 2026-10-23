@@ -330,7 +330,9 @@ class PostulacionViewSet(viewsets.ModelViewSet):
             policy = ModalidadPolicyRegistry.get(postulacion)
             etapa_codigo = policy.resolver_contexto_documental(postulacion)
             if etapa_codigo:
-                codigos_permitidos = policy.get_documentos_aplicables_en_etapa(etapa_codigo)
+                codigos_permitidos = policy.get_documentos_aplicables_para_postulacion(
+                    postulacion, etapa_codigo,
+                )
                 tipos_aplicables = list(
                     TipoDocumento.objects.filter(codigo__in=codigos_permitidos, activo=True)
                 )

@@ -10,6 +10,25 @@ function normalize(error) {
   return { status, message: 'No se pudo cargar el expediente. Intenta nuevamente.' }
 }
 
+function normalizeStageStartValidationMessage(error) {
+  const data = error?.response?.data
+  const detail = data && typeof data === 'object' && !Array.isArray(data)
+    ? data.detail || data.non_field_errors
+    : data
+  const messages = []
+  const collect = (value) => {
+    if (typeof value === 'string') messages.push(value)
+    else if (Array.isArray(value)) value.forEach(collect)
+  }
+  collect(detail)
+  const message = messages
+    .map((value) => value.trim().replace(/^\[\s*['"]?/, '').replace(/['"]?\s*\]$/, '').trim())
+    .find((value) => value && value.length <= 240
+      && !/[\r\n<>]/.test(value)
+      && !/\b(traceback|exception|stack trace|internal server error)\b/i.test(value))
+  return message || 'No se pudo iniciar la etapa. Revisa las condiciones pendientes e intenta nuevamente.'
+}
+
 function optionalResult(result, unavailableMessage) {
   if (result.status === 'fulfilled') return { data: result.value.data, error: '' }
   if (result.reason?.name === 'CanceledError' || result.reason?.code === 'ERR_CANCELED') throw { canceled: true }
@@ -264,6 +283,7 @@ export const postulacionesService = {
       if (status === 401) throw { status, message: 'Debes iniciar sesión para iniciar la etapa.' }
       if (status === 403) throw { status, message: 'No tienes autorización para iniciar esta etapa.' }
       if (status === 404) throw { status, message: 'El seguimiento o la etapa ya no están disponibles.' }
+      if (status === 400) throw { status, message: normalizeStageStartValidationMessage(error) }
       throw { status, message: 'No se pudo iniciar la etapa. Intenta nuevamente.' }
     }
   },
