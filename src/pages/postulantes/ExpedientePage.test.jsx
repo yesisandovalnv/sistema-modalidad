@@ -1075,11 +1075,11 @@ describe('ExpedientePage US-008', () => {
     selectInitialTab('resumen')
     render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 
-    const notice = await screen.findByText('Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.')
+    const notice = await screen.findByText('Carga el Informe de Evaluación del Tribunal.')
     const summary = document.getElementById('panel-resumen')
     const documents = document.getElementById('panel-documentos')
-    expect(within(summary).getAllByText('Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.')).toHaveLength(1)
-    expect(within(documents).queryByText('Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.')).not.toBeInTheDocument()
+    expect(within(summary).getAllByText('Carga el Informe de Evaluación del Tribunal.')).toHaveLength(1)
+    expect(within(documents).queryByText('Carga el Informe de Evaluación del Tribunal.')).not.toBeInTheDocument()
     expect(notice.closest('[data-expediente-panel]')).toBe(summary)
     const registerButton = await within(summary).findByRole('button', { name: 'Registrar informe del tribunal' })
     expect(notice.compareDocumentPosition(registerButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -1183,7 +1183,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('RU-300 - Ana Pérez')).toBeInTheDocument()
     expect(screen.getByText('Proyecto de Grado')).toBeInTheDocument()
     expect(screen.getByText('Gestión 2026 - Semestre II')).toBeInTheDocument()
-    expect(screen.getByText('En proceso')).toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Estado actual de tu proceso académico' }).parentElement).getByText('En proceso')).toBeInTheDocument()
     expect(within(screen.getByRole('heading', { name: 'Estado actual de tu proceso académico' }).parentElement).getByText('Perfil de Proyecto')).toBeInTheDocument()
     expect(screen.getByRole('progressbar', { name: 'Avance de tu proceso' })).toHaveValue(25)
     expect(screen.getByRole('navigation', { name: 'Secciones del expediente' })).toBeInTheDocument()
@@ -1208,10 +1208,10 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByText(/no equivale a legalización/i)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Cierre técnico' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).toHaveClass('overflow-hidden')
-    expect(screen.getByRole('heading', { name: 'Cierre técnico' }).parentElement).toHaveClass('overflow-hidden')
-    expect(screen.getByText('ACTA')).toBeInTheDocument()
-    expect(screen.getByText('EJEMPLARES')).toBeInTheDocument()
-    expect(screen.getByText('INFORME')).toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Cierre técnico' }).parentElement).getByText('En proceso')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Condiciones pendientes' })).getByText('ACTA')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Entregas pendientes' })).getByText('EJEMPLARES')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Documentos pendientes' })).getByText('INFORME')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Volver a postulaciones' })).toHaveAttribute('href', '/postulantes')
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
   })
@@ -1407,7 +1407,7 @@ describe('ExpedientePage US-008', () => {
     const documents = document.getElementById('panel-documentos')
     expect(within(summary).getByText('Orientación del expediente')).toBeInTheDocument()
     expect(within(summary).queryByRole('heading', { name: 'Revisión de Tribunal Previa', level: 2 })).not.toBeInTheDocument()
-    const evidenceNotice = within(summary).getByText('Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.')
+    const evidenceNotice = within(summary).getByText('Carga el Informe de Evaluación del Tribunal.')
     const reviewBlock = document.getElementById('informes-etapa')
     expect(reviewBlock).not.toBeNull()
     expect(reviewBlock.closest('[data-expediente-panel]')).toHaveAttribute('data-expediente-panel', 'documentos')
@@ -1419,7 +1419,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByRole('heading', { name: 'Revisión de Tribunal Previa' })).toBeVisible()
     const documentsHeading = within(documents).getByRole('heading', { name: 'Documentos' })
     expect(reviewBlock.compareDocumentPosition(documentsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(within(document.getElementById('panel-documentos')).queryByText('Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.')).not.toBeInTheDocument()
+    expect(within(document.getElementById('panel-documentos')).queryByText('Carga el Informe de Evaluación del Tribunal.')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('tab', { name: 'Resultado y cierre' }))
     const future = screen.getByText('Información de etapas posteriores').closest('details')
@@ -2527,6 +2527,147 @@ describe('ExpedientePage US-008', () => {
     }
   }
 
+  const examInscriptionResponse = (completed) => {
+    const source = inscriptionStageResponse(completed)
+    const names = ['Carta de Solicitud de Examen de Grado', 'Comprobante de Matrícula Vigente', 'Historial Académico', 'Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida']
+    const codes = ['CARTA_SOLICITUD_EXAMEN', 'MATRICULA_VIGENTE', 'HISTORIAL_ACADEMICO', 'FOLDER_AMARILLO']
+    return {
+      ...source,
+      detalle: { ...source.detalle, modalidad_detalle: { codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado' } },
+      flujo: {
+        ...source.flujo, modalidad: { codigo: 'EXAMEN_GRADO' },
+        orientacion_etapa_actual: {
+          ...source.flujo.orientacion_etapa_actual,
+          requisitos: source.flujo.orientacion_etapa_actual.requisitos.map((item, index) => ({ ...item, codigo: codes[index], nombre: names[index], ...(index === 3 ? { cantidad: null } : {}) })),
+          siguiente_accion: completed === 3
+            ? { codigo: 'GESTIONAR_ENTREGA_FISICA', titulo: 'Registrar recepción del fólder amarillo', destino: '#inscripcion-entregas', estado: 'PENDIENTE' }
+            : source.flujo.orientacion_etapa_actual.siguiente_accion,
+        },
+      },
+    }
+  }
+
+  const excellenceInscriptionResponse = (completed) => {
+    const source = examInscriptionResponse(completed)
+    const codes = ['CARTA_EXCELENCIA', 'RECIBO_MATRICULA_EXC', 'HISTORIAL_EXCELENCIA', 'FOLDER_AMARILLO']
+    const names = ['Carta de Solicitud de Excelencia Académica', 'Recibo de Matrícula de Excelencia', 'Historial Académico de Excelencia', 'Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida']
+    return {
+      ...source,
+      detalle: { ...source.detalle, modalidad_detalle: { codigo: 'EXCELENCIA_ACADEMICA', nombre: 'Excelencia Académica' } },
+      flujo: {
+        ...source.flujo, modalidad: { codigo: 'EXCELENCIA_ACADEMICA' },
+        orientacion_etapa_actual: {
+          ...source.flujo.orientacion_etapa_actual,
+          requisitos: source.flujo.orientacion_etapa_actual.requisitos.map((item, index) => ({ ...item, codigo: codes[index], nombre: names[index] })),
+        },
+      },
+    }
+  }
+
+  it.each([0, 1, 2, 3, 4])('Inscripción de Excelencia reutiliza la distribución integrada con %s de cuatro', async (completed) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(excellenceInscriptionResponse(completed))
+    renderApplicationManagerPage('resumen')
+    const requirements = (await screen.findByRole('heading', { name: 'Requisitos de Inscripción', level: 3 })).closest('[aria-labelledby="inscription-requirements-title"]')
+    expect(within(requirements).getByText(`${completed} de 4 cumplidos`)).toBeVisible()
+    expect(within(requirements).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(requirements).queryByText(/Fólder/)).not.toBeInTheDocument()
+    const summary = document.getElementById('panel-resumen')
+    expect(within(summary).getByRole('heading', { name: 'Recepción física', level: 3 })).toBeVisible()
+    expect(await within(summary).findByText('Cantidad técnica requerida: No definida')).toBeVisible()
+    expect(within(summary).getAllByText('Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida')).toHaveLength(1)
+    expect(within(summary).queryByRole('heading', { name: 'Requisitos de esta etapa' })).not.toBeInTheDocument()
+    if (completed === 4) expect(within(summary).getByRole('button', { name: 'Aprobar Inscripción' })).toBeEnabled()
+    else expect(within(summary).queryByRole('button', { name: 'Aprobar Inscripción' })).not.toBeInTheDocument()
+  })
+
+  it('Inscripción de Excelencia carga únicamente sus tres documentos digitales', async () => {
+    const source = excellenceInscriptionResponse(0)
+    postulacionesService.obtenerExpediente.mockResolvedValue(source)
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: source.flujo.orientacion_etapa_actual.requisitos.filter((item) => item.tipo === 'DOCUMENTO').map((item, index) => ({ id: index + 101, codigo: item.codigo, nombre: item.nombre, capacidad_carga: { permitida: true } })) })
+    renderApplicationUploadManagerPage('resumen')
+    await userEvent.click(await screen.findByRole('button', { name: 'Gestionar documentos' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Cargar documentos' })
+    expect(dialog.querySelectorAll('input[type="file"]')).toHaveLength(3)
+    for (const item of source.flujo.orientacion_etapa_actual.requisitos.slice(0, 3)) expect(within(dialog).getByLabelText(item.nombre)).toBeVisible()
+    expect(within(dialog).queryByText(/Fólder|FOLDER_EXCELENCIA/i)).not.toBeInTheDocument()
+  })
+
+  it('Inscripción de Excelencia registra recepción sin cantidad institucional y refresca la aprobación', async () => {
+    let created = false
+    let received = false
+    const delivery = { id: 501, codigo: 'FOLDER_AMARILLO', nombre: 'Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida', estado: 'PENDIENTE', cantidad: null, cantidad_recibida: 0 }
+    postulacionesService.obtenerExpediente.mockImplementation(async () => excellenceInscriptionResponse(received ? 4 : 3))
+    postulacionesService.obtenerEntregas.mockImplementation(async () => ({ results: created ? [{ ...delivery, estado: received ? 'COMPLETA' : 'PENDIENTE', cantidad_recibida: received ? 1 : 0 }] : [] }))
+    postulacionesService.crearEntregaFisica.mockImplementation(async () => { created = true; return delivery })
+    postulacionesService.registrarEntrega.mockImplementation(async () => { received = true; return {} })
+    renderApplicationManagerPage('resumen')
+    await userEvent.click(await screen.findByRole('button', { name: 'Registrar recepción' }))
+    expect(postulacionesService.crearEntregaFisica).toHaveBeenCalledWith(7, 'FOLDER_AMARILLO', delivery.nombre, null, expect.any(AbortSignal))
+    const form = await screen.findByRole('form', { name: `Registrar entrega: ${delivery.nombre}` })
+    await userEvent.click(within(form).getByRole('button', { name: 'Guardar' }))
+    expect(postulacionesService.registrarEntrega).toHaveBeenCalledWith(501, 1, '', expect.any(AbortSignal))
+    expect(await screen.findByText('4 de 4 cumplidos')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Aprobar Inscripción' })).toBeEnabled()
+  })
+
+  it('Inscripción de Excelencia conserva los permisos de recepción y aprobación', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(excellenceInscriptionResponse(4))
+    selectInitialTab('resumen')
+    renderStudentPage()
+    expect(await screen.findByRole('heading', { name: 'Excelencia Académica', level: 1 })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Registrar recepción' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Aprobar Inscripción' })).not.toBeInTheDocument()
+  })
+
+  it.each([0, 2, 3, 4])('Inscripción de Examen reutiliza los grupos y cuenta %s de cuatro requisitos', async (completed) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(examInscriptionResponse(completed))
+    renderApplicationManagerPage('resumen')
+    const requirements = (await screen.findByRole('heading', { name: 'Requisitos de Inscripción', level: 3 })).closest('[aria-labelledby="inscription-requirements-title"]')
+    expect(within(requirements).getByText(`${completed} de 4 cumplidos`)).toBeVisible()
+    expect(within(requirements).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(requirements).getByText(/Carta de Solicitud de Examen/)).toBeVisible()
+    expect(within(requirements).queryByText(/Fólder/)).not.toBeInTheDocument()
+    const summary = document.getElementById('panel-resumen')
+    expect(within(summary).getByRole('heading', { name: 'Recepción física', level: 3 })).toBeVisible()
+    expect(await within(summary).findByText('Cantidad técnica requerida: No definida')).toBeVisible()
+    expect(within(summary).getAllByText('Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida')).toHaveLength(1)
+    expect(within(document.getElementById('panel-documentos')).queryByRole('heading', { name: 'Recepción física', hidden: true })).not.toBeInTheDocument()
+    if (completed === 4) expect(within(summary).getByRole('button', { name: 'Aprobar Inscripción' })).toBeEnabled()
+    else expect(within(summary).queryByRole('button', { name: 'Aprobar Inscripción' })).not.toBeInTheDocument()
+  })
+
+  it('Inscripción de Examen carga solo tres documentos digitales y excluye el fólder', async () => {
+    const source = examInscriptionResponse(0)
+    postulacionesService.obtenerExpediente.mockResolvedValue(source)
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: source.flujo.orientacion_etapa_actual.requisitos.filter((item) => item.tipo === 'DOCUMENTO').map((item, index) => ({ id: index + 101, codigo: item.codigo, nombre: item.nombre, capacidad_carga: { permitida: true } })) })
+    renderApplicationUploadManagerPage('resumen')
+    await userEvent.click(await screen.findByRole('button', { name: 'Gestionar documentos' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Cargar documentos' })
+    expect(dialog.querySelectorAll('input[type="file"]')).toHaveLength(3)
+    expect(within(dialog).getByLabelText('Carta de Solicitud de Examen de Grado')).toBeVisible()
+    expect(within(dialog).getByLabelText('Comprobante de Matrícula Vigente')).toBeVisible()
+    expect(within(dialog).getByLabelText('Historial Académico')).toBeVisible()
+    expect(within(dialog).queryByText(/Fólder/i)).not.toBeInTheDocument()
+  })
+
+  it('Inscripción de Examen registra recepción sin fijar cantidad normativa y refresca cuatro de cuatro', async () => {
+    let created = false
+    let received = false
+    const delivery = { id: 501, codigo: 'FOLDER_AMARILLO', nombre: 'Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida', estado: 'PENDIENTE', cantidad: null, cantidad_recibida: 0 }
+    postulacionesService.obtenerExpediente.mockImplementation(async () => examInscriptionResponse(received ? 4 : 3))
+    postulacionesService.obtenerEntregas.mockImplementation(async () => ({ results: created ? [{ ...delivery, estado: received ? 'COMPLETA' : 'PENDIENTE', cantidad_recibida: received ? 1 : 0 }] : [] }))
+    postulacionesService.crearEntregaFisica.mockImplementation(async () => { created = true; return delivery })
+    postulacionesService.registrarEntrega.mockImplementation(async () => { received = true; return {} })
+    renderApplicationManagerPage('resumen')
+    await userEvent.click(await screen.findByRole('button', { name: 'Registrar recepción' }))
+    expect(postulacionesService.crearEntregaFisica).toHaveBeenCalledWith(7, 'FOLDER_AMARILLO', delivery.nombre, null, expect.any(AbortSignal))
+    const form = await screen.findByRole('form', { name: `Registrar entrega: ${delivery.nombre}` })
+    await userEvent.click(within(form).getByRole('button', { name: 'Guardar' }))
+    expect(postulacionesService.registrarEntrega).toHaveBeenCalledWith(501, 1, '', expect.any(AbortSignal))
+    expect(await screen.findByText('4 de 4 cumplidos')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Aprobar Inscripción' })).toBeEnabled()
+  })
+
   it('muestra 0/4 requisitos y oculta Aprobar Inscripción cuando la policy no habilita aprobar', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(inscriptionStageResponse(false))
     renderApplicationManagerPage('resumen')
@@ -3007,6 +3148,44 @@ describe('ExpedientePage US-008', () => {
     confirm.mockRestore()
   })
 
+  it('mantiene orientación y aprobación de Preparación de Examen sin el aviso redundante', async () => {
+    const stage = { id: 130, codigo: 'PREPARACION_EXAMEN', nombre: 'Preparación y habilitación', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 5, codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado' } },
+      flujo: {
+        ...response.flujo,
+        modalidad: { id: 5, codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado' },
+        etapa_actual: stage,
+        etapas: [stage],
+        orientacion_etapa_actual: {
+          mensaje: 'Revisa los requisitos pendientes de preparación.',
+          requisitos: Array.from({ length: 6 }, (_, index) => ({
+            tipo: 'INFORMATIVO',
+            codigo: `PREPARACION_${index + 1}`,
+            nombre: `Requisito de preparación ${index + 1}`,
+            cumplido: false,
+          })),
+          siguiente_accion: null,
+        },
+      },
+    })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderApplicationManagerPage('resumen')
+
+    expect(await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })).toBeVisible()
+    expect(screen.getByText('Revisa los requisitos pendientes de preparación.')).toBeVisible()
+    expect(screen.queryByText(/Puedes intentar la aprobación/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Hay 6 requisitos pendientes/)).not.toBeInTheDocument()
+    const approvalButton = screen.getByRole('button', { name: 'Aprobar Preparación y habilitación' })
+    expect(approvalButton).toBeEnabled()
+
+    await userEvent.click(approvalButton)
+
+    expect(postulacionesService.aprobarEtapa).toHaveBeenCalledWith(130, expect.any(AbortSignal))
+    confirm.mockRestore()
+  })
+
   it('no ofrece aprobar Documento Final al estudiante aunque la orientación esté lista', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue({
       ...response,
@@ -3268,8 +3447,9 @@ describe('ExpedientePage US-008', () => {
     render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 
     expect(await screen.findByText('Cargar documentos', { selector: 'p' })).toBeInTheDocument()
-    const actaRequirement = screen.getByText(/Acta de Defensa/i).closest('li')
-    const tutorReportRequirement = screen.getByText(/Informe Final del Tutor/i).closest('li')
+    const summary = document.getElementById('panel-resumen')
+    const actaRequirement = within(summary).getByText(/Acta de Defensa/i).closest('li')
+    const tutorReportRequirement = within(summary).getByText(/Informe Final del Tutor/i).closest('li')
     expect(actaRequirement).toHaveTextContent('Pendiente')
     expect(tutorReportRequirement).toHaveTextContent('Pendiente')
     await userEvent.click(screen.getByRole('button', { name: 'Gestionar documentos' }))
@@ -3988,6 +4168,152 @@ describe('ExpedientePage US-008', () => {
     expect(within(card).queryByRole('button', { name: /asignar|reemplazar|finalizar|designar/i })).not.toBeInTheDocument()
   })
 
+  const excellenceActorNames = ['Tribunal docente 1', 'Tribunal docente 2', 'Presidente', 'Secretario', 'Director del Instituto de Investigación']
+  const excellenceActorResponse = ({ assigned = {}, modality = 'EXCELENCIA_ACADEMICA', stageCode = 'EVALUACION_TRIBUNAL', id = 7 } = {}) => {
+    const stage = { id: 290, codigo: stageCode, nombre: 'Evaluación del tribunal', estado: 'EN_PROCESO', activo: true }
+    const positions = excellenceActorNames.map((nombre, index) => ({
+      clave: `EXCELENCIA_ACTOR_${index}`, nombre,
+      tipo_participacion: ['TRIBUNAL', 'TRIBUNAL', 'PRESIDENTE', 'SECRETARIO', 'DIRECTOR_INSTITUTO_INVESTIGACION'][index],
+      orden_cargo: index < 2 ? index + 1 : null, ambito: 'POSTULACION', seguimiento_etapa: null,
+      obligatoriedad: true, habilitada: true,
+      restriccion_identidad: index < 2 ? { grupo: 'TRIBUNAL_EXCELENCIA', unica_persona: true } : null,
+      ocupacion_actor: index < 2 ? { aplica: true, relevantes: ['TRIBUNAL'] } : null,
+      estado_ocupacion: assigned[index] ? 'ASIGNADA' : 'VACANTE',
+      asignacion_actual: assigned[index] ? index + 700 : null,
+      asignacion_actual_detalle: assigned[index] ? { id: index + 700, usuario: { id: assigned[index], nombre: 'Raúl' } } : null,
+      acciones_permitidas: assigned[index] ? ['REEMPLAZAR', 'FINALIZAR'] : ['ASIGNAR'],
+    }))
+    return {
+      ...response, detalle: { ...response.detalle, id, modalidad_detalle: { codigo: modality, nombre: 'Excelencia Académica' } },
+      flujo: { ...response.flujo, modalidad: { codigo: modality }, etapa_actual: stage, etapas: [stage],
+        gestion_actores: { contexto: { codigo_etapa: stageCode }, posiciones: positions }, gestion_decisiones_academicas: {}, orientacion_etapa_actual: null },
+    }
+  }
+  const openExcellenceActors = async (options = {}) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(excellenceActorResponse(options))
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 2, results: [
+      { id: 41, nombre_completo: 'Raúl', elegible: true }, { id: 42, nombre_completo: 'Persona libre', elegible: true },
+    ] })
+    const rendered = renderAssignmentManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Gestionar actores' }))
+    const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Evaluación del tribunal' })
+    await within(dialog).findAllByRole('option', { name: 'Persona libre' })
+    return { dialog, ...rendered }
+  }
+
+  describe('Selección operativa de Excelencia', () => {
+    const directions = [[0, 2], [1, 3], [2, 0], [3, 4], [4, 2], [2, 3]]
+    it.each(directions)('bloquea selección pendiente de posición %s en %s y libera al cancelar la selección', async (from, to) => {
+      const { dialog } = await openExcellenceActors()
+      const source = within(dialog).getByLabelText(`Seleccionar candidato para ${excellenceActorNames[from]}`)
+      const target = within(dialog).getByLabelText(`Seleccionar candidato para ${excellenceActorNames[to]}`)
+      await userEvent.selectOptions(source, '41')
+      const occupied = within(target).getByRole('option', { name: new RegExp(`Raúl.*Seleccionado como ${excellenceActorNames[from]}`) })
+      expect(occupied).toBeDisabled()
+      expect(within(target).getByRole('option', { name: 'Persona libre' })).toBeEnabled()
+      await userEvent.selectOptions(source, '')
+      expect(within(target).getByRole('option', { name: 'Raúl' })).toBeEnabled()
+      expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+    })
+
+    it.each(directions)('bloquea asignación guardada de posición %s en %s aunque backend permita acumular', async (from, to) => {
+      const { dialog } = await openExcellenceActors({ assigned: { [from]: 41 } })
+      const target = within(dialog).getByLabelText(`Seleccionar candidato para ${excellenceActorNames[to]}`)
+      expect(within(target).getByRole('option', { name: new RegExp(`Raúl.*Asignación vigente: ${excellenceActorNames[from]}`) })).toBeDisabled()
+      expect(within(target).getByRole('option', { name: 'Persona libre' })).toBeEnabled()
+      expect(within(dialog).getByLabelText(`Seleccionar reemplazo para ${excellenceActorNames[from]}`)).toBeEnabled()
+    })
+
+    it('conserva cargos acumulados, permite reemplazar y no exige corregir otros cargos', async () => {
+      const { dialog } = await openExcellenceActors({ assigned: { 0: 41, 2: 41 } })
+      expect(within(dialog).getAllByText('Raúl', { selector: 'strong' })).toHaveLength(2)
+      const replacement = within(dialog).getByLabelText('Seleccionar reemplazo para Presidente')
+      expect(within(replacement).getByRole('option', { name: /Raúl.*Tribunal docente 1/ })).toBeDisabled()
+      expect(within(replacement).getByRole('option', { name: 'Persona libre' })).toBeEnabled()
+      await userEvent.selectOptions(replacement, '42')
+      postulacionesService.reemplazarActor.mockResolvedValue({ id: 702 })
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar asignaciones' }))
+      await waitFor(() => expect(postulacionesService.reemplazarActor).toHaveBeenCalledWith(702, { nuevo_usuario: 42, observaciones: '' }, expect.any(AbortSignal)))
+      expect(postulacionesService.finalizarAsignacion).not.toHaveBeenCalled()
+      expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+    })
+
+    it('cierra y reabre sin persistir ni conservar selecciones pendientes', async () => {
+      const { dialog } = await openExcellenceActors()
+      await userEvent.selectOptions(within(dialog).getByLabelText('Seleccionar candidato para Presidente'), '41')
+      await userEvent.click(within(dialog).getByLabelText('Cerrar'))
+      await userEvent.click(screen.getByRole('button', { name: 'Gestionar actores' }))
+      const reopened = screen.getByRole('dialog', { name: 'Gestionar actores — Evaluación del tribunal' })
+      const secretary = within(reopened).getByLabelText('Seleccionar candidato para Secretario')
+      expect(await within(secretary).findByRole('option', { name: 'Raúl' })).toBeEnabled()
+      expect(within(reopened).getByLabelText('Seleccionar candidato para Presidente')).toHaveValue('')
+      expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+    })
+
+    it('permite finalizar un cargo acumulado sin finalizar los demás', async () => {
+      const { dialog } = await openExcellenceActors({ assigned: { 0: 41, 2: 41 } })
+      const president = within(dialog).getByRole('heading', { name: 'Presidente *' }).closest('section')
+      await userEvent.click(within(president).getByRole('button', { name: 'Finalizar asignación' }))
+      postulacionesService.finalizarAsignacion.mockResolvedValue({})
+      await userEvent.click(within(president).getByRole('button', { name: 'Confirmar finalización' }))
+      await waitFor(() => expect(postulacionesService.finalizarAsignacion).toHaveBeenCalledWith(702, { observaciones: '' }, expect.any(AbortSignal)))
+      expect(postulacionesService.finalizarAsignacion).toHaveBeenCalledTimes(1)
+      expect(postulacionesService.reemplazarActor).not.toHaveBeenCalled()
+    })
+
+    it('descarta el diálogo y los bloqueos del expediente anterior al cambiar la ruta', async () => {
+      postulacionesService.obtenerExpediente.mockImplementation(async (id) => excellenceActorResponse({ id: Number(id), assigned: id === '7' ? { 0: 41 } : {} }))
+      postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 1, results: [{ id: 41, nombre_completo: 'Raúl', elegible: true }] })
+      const auth = { user: { id: 9 }, hasPermission: (name) => name === 'puede_gestionar_asignaciones' }
+      selectInitialTab('actores')
+      render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<><ExpedientePage /><Link to="/postulaciones/8">Cambiar expediente de actores</Link></>} /></Routes></MemoryRouter></AuthContext.Provider>)
+      await userEvent.click(await screen.findByRole('button', { name: 'Gestionar actores' }))
+      const first = screen.getByRole('dialog', { name: 'Gestionar actores — Evaluación del tribunal' })
+      expect(await within(within(first).getByLabelText('Seleccionar candidato para Presidente')).findByRole('option', { name: /Raúl.*Tribunal docente 1/ })).toBeDisabled()
+      await userEvent.click(screen.getByRole('link', { name: 'Cambiar expediente de actores' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      await userEvent.click(await screen.findByRole('button', { name: 'Gestionar actores' }))
+      const next = screen.getByRole('dialog', { name: 'Gestionar actores — Evaluación del tribunal' })
+      expect(await within(within(next).getByLabelText('Seleccionar candidato para Presidente')).findByRole('option', { name: 'Raúl' })).toBeEnabled()
+      expect(postulacionesService.obtenerCandidatosElegibles).toHaveBeenCalledWith(8, expect.any(Object), expect.any(AbortSignal))
+      expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+    })
+
+    it('conserva bloqueo, búsqueda y paginación sin depender de la lista paginada de actores', async () => {
+      const { dialog } = await openExcellenceActors({ assigned: { 0: 41 } })
+      postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 21, next: '?page=2', previous: null, results: [{ id: 41, nombre_completo: 'Raúl', elegible: true }] })
+      const field = within(dialog).getByLabelText('Buscar candidato para Presidente')
+      await userEvent.type(field, 'Raúl')
+      const section = field.closest('section')
+      await userEvent.click(within(section).getByRole('button', { name: 'Buscar', exact: true }))
+      const selector = within(section).getByLabelText('Seleccionar candidato para Presidente')
+      expect(await within(selector).findByRole('option', { name: /Raúl.*Tribunal docente 1/ })).toBeDisabled()
+      await userEvent.click(within(section).getByRole('button', { name: 'Siguiente' }))
+      await waitFor(() => expect(postulacionesService.obtenerCandidatosElegibles).toHaveBeenCalledWith(7, expect.objectContaining({ posicion: 'EXCELENCIA_ACTOR_2', search: 'Raúl', page: 2 }), expect.any(AbortSignal)))
+      expect(await within(selector).findByRole('option', { name: /Raúl.*Tribunal docente 1/ })).toBeDisabled()
+    })
+
+    it.each(['TESIS_GRADO', 'EXAMEN_GRADO', 'TRABAJO_DIRIGIDO', 'GRADUACION_VIA_DIPLOMADO'])('no añade bloqueo a %s', async (modality) => {
+      const { dialog } = await openExcellenceActors({ modality, assigned: { 0: 41 } })
+      const president = within(dialog).getByLabelText('Seleccionar candidato para Presidente')
+      expect(within(president).getByRole('option', { name: 'Raúl' })).toBeEnabled()
+      await userEvent.selectOptions(president, '41')
+      expect(within(within(dialog).getByLabelText('Seleccionar candidato para Secretario')).getByRole('option', { name: /Raúl.*Seleccionado como Presidente/ })).toBeEnabled()
+    })
+
+    it('no aplica fuera de Evaluación del tribunal y aísla postulaciones al navegar', async () => {
+      const first = await openExcellenceActors({ assigned: { 0: 41 } })
+      expect(within(within(first.dialog).getByLabelText('Seleccionar candidato para Presidente')).getByRole('option', { name: /Raúl/ })).toBeDisabled()
+      first.unmount()
+      const second = await openExcellenceActors({ id: 8 })
+      expect(within(within(second.dialog).getByLabelText('Seleccionar candidato para Presidente')).getByRole('option', { name: 'Raúl' })).toBeEnabled()
+      expect(postulacionesService.obtenerCandidatosElegibles).toHaveBeenCalledWith(8, expect.any(Object), expect.any(AbortSignal))
+      second.unmount()
+      const otherStage = await openExcellenceActors({ stageCode: 'REVISION_REQUISITOS', assigned: { 0: 41 } })
+      expect(within(within(otherStage.dialog).getByLabelText('Seleccionar candidato para Presidente')).getByRole('option', { name: 'Raúl' })).toBeEnabled()
+    })
+  })
+
   it('Gestionar actores consulta candidatos elegibles por posición y busca independientemente', async () => {
     const contracts = profileContracts({ proposalApproved: true })
     postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: contracts.flow })
@@ -4209,6 +4535,71 @@ describe('ExpedientePage US-008', () => {
     await userEvent.selectOptions(replacement, '99')
     expect(within(second).getByRole('option', { name: /Candidata Reemplazo.*Seleccionado como Tribunal 1/ })).toBeDisabled()
     expect(postulacionesService.reemplazarActor).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['Tribunal 1', 'Tutor'],
+    ['Tutor', 'Tribunal 1'],
+  ])('ocupacion_actor bloquea %s → %s y valida antes de guardar', async (source, target) => {
+    const contracts = profileContracts({ proposalApproved: true })
+    contracts.flow.gestion_actores.posiciones.forEach((position) => {
+      position.ocupacion_actor = { aplica: true, ambito: 'POSTULACION', relevantes: ['TUTOR', 'TRIBUNAL'] }
+    })
+    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: contracts.flow })
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 2, next: null, previous: null, results: [
+      { id: 40, nombre_completo: 'Docente Ocupado', elegible: true },
+      { id: 41, nombre_completo: 'Docente Libre', elegible: true },
+    ] })
+    renderAssignmentManagerPage()
+    const actors = (await screen.findByRole('heading', { name: 'Gestión de actores' })).closest('section')
+    await userEvent.click(within(actors).getByRole('button', { name: 'Gestionar actores' }))
+    const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Proyecto' })
+    const sourceSelector = within(dialog).getByLabelText(`Seleccionar candidato para ${source}`)
+    const targetSelector = within(dialog).getByLabelText(`Seleccionar candidato para ${target}`)
+    await Promise.all([sourceSelector, targetSelector].map((selector) => within(selector).findByRole('option', { name: 'Docente Ocupado' })))
+    await userEvent.selectOptions(sourceSelector, '40')
+    expect(within(targetSelector).getByRole('option', { name: `Docente Ocupado — Seleccionado como ${source}` })).toBeDisabled()
+    expect(within(targetSelector).getByRole('option', { name: 'Docente Libre' })).toBeEnabled()
+    if (source === 'Tutor') {
+      for (const order of [2, 3]) {
+        const selector = within(dialog).getByLabelText(`Seleccionar candidato para Tribunal ${order}`)
+        expect(within(selector).getByRole('option', { name: 'Docente Ocupado — Seleccionado como Tutor' })).toBeDisabled()
+      }
+    }
+    fireEvent.change(targetSelector, { target: { value: '40' } })
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/seleccionada en Tribunal 1 y Tutor/i)
+    fireEvent.submit(dialog.querySelector('form'))
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+    await userEvent.selectOptions(targetSelector, '41')
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Guardar asignaciones' })).toBeEnabled()
+    await userEvent.selectOptions(sourceSelector, '')
+    expect(within(targetSelector).getByRole('option', { name: 'Docente Ocupado' })).toBeEnabled()
+  })
+
+  it.each([
+    ['TESIS_GRADO', undefined],
+    ['TRABAJO_DIRIGIDO', undefined],
+    ['PROYECTO_GRADO', { aplica: false, relevantes: ['TUTOR', 'TRIBUNAL'] }],
+    ['PROYECTO_GRADO', { aplica: true, relevantes: ['PRESIDENTE'] }],
+  ])('conserva selecciones entre grupos sin ocupación aplicable en %s (%j)', async (code, rule) => {
+    const contracts = profileContracts({ proposalApproved: true })
+    contracts.flow.modalidad = { codigo: code }
+    contracts.flow.gestion_actores.posiciones.forEach((position) => { position.ocupacion_actor = rule })
+    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, modalidad_detalle: { codigo: code }, flujo: contracts.flow })
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 1, results: [{ id: 40, nombre_completo: 'Docente Disponible' }] })
+    renderAssignmentManagerPage()
+    const actors = (await screen.findByRole('heading', { name: 'Gestión de actores' })).closest('section')
+    await userEvent.click(within(actors).getByRole('button', { name: 'Gestionar actores' }))
+    const tribunal = screen.getByLabelText('Seleccionar candidato para Tribunal 1')
+    const tutor = screen.getByLabelText('Seleccionar candidato para Tutor')
+    await Promise.all([tribunal, tutor].map((selector) => within(selector).findByRole('option', { name: 'Docente Disponible' })))
+    await userEvent.selectOptions(tribunal, '40')
+    expect(within(tutor).getByRole('option', { name: /Docente Disponible.*Seleccionado como Tribunal 1/ })).toBeEnabled()
+    await userEvent.selectOptions(tutor, '40')
+    expect(within(tribunal).getByRole('option', { name: /Docente Disponible.*Seleccionado como Tutor/ })).toBeEnabled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Guardar asignaciones' })).toBeEnabled()
   })
 
   it('rechaza drafts conflictivos localmente antes de crear solicitudes', async () => {
@@ -4457,7 +4848,7 @@ describe('ExpedientePage US-008', () => {
     }, expect.any(AbortSignal))
   })
 
-  it('muestra asignaciones vigentes y bloquea solo cargos incompatibles en Completar autoridades', async () => {
+  it.each(['PROYECTO_GRADO', 'TRABAJO_DIRIGIDO', 'TESIS_GRADO'])('Completar autoridades conserva etiquetas y delimita el bloqueo operativo en %s', async (code) => {
     const publicStage = { id: 13, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
     const candidates = [
       { id: 40, nombre_completo: 'Raúl Marcelo Calderon Fuertes', rol_nombre: 'Docente' },
@@ -4468,6 +4859,7 @@ describe('ExpedientePage US-008', () => {
       { id: 45, nombre_completo: 'Daniel Molina Cordova', rol_nombre: 'Docente' },
       { id: 46, nombre_completo: 'Presidenta vigente', rol_nombre: 'Docente' },
       { id: 47, nombre_completo: 'Secretario vigente', rol_nombre: 'Docente' },
+      { id: 48, nombre_completo: 'Persona de otra postulación', rol_nombre: 'Docente', asignaciones_vigentes: ['Tutor'] },
     ]
     const activeAssignments = [
       { id: 70, usuario: 40, usuario_nombre: candidates[0].nombre_completo, tipo_participacion: 'TRIBUNAL', orden_cargo: 1, seguimiento_etapa: 11, activo: true },
@@ -4477,11 +4869,14 @@ describe('ExpedientePage US-008', () => {
       { id: 74, usuario: 44, usuario_nombre: candidates[4].nombre_completo, tipo_participacion: 'DOCENTE_MODALIDAD', activo: true },
       { id: 75, usuario: 46, usuario_nombre: candidates[6].nombre_completo, tipo_participacion: 'PRESIDENTE', seguimiento_etapa: 12, activo: true },
       { id: 76, usuario: 47, usuario_nombre: candidates[7].nombre_completo, tipo_participacion: 'SECRETARIO', seguimiento_etapa: 12, activo: true },
+      { id: 77, usuario: 45, tipo_participacion: 'TUTOR', activo: false },
     ]
     postulacionesService.obtenerExpediente.mockResolvedValue({
       ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { codigo: code, nombre: code } },
       flujo: {
         ...response.flujo,
+        modalidad: { codigo: code, nombre: code },
         etapa_actual: publicStage,
         etapas: [publicStage],
         orientacion_etapa_actual: {
@@ -4490,7 +4885,7 @@ describe('ExpedientePage US-008', () => {
             { tipo: 'ACTOR', codigo: 'PRESIDENTE', nombre: 'Presidente', cumplido: false, estado_display: 'Pendiente' },
             { tipo: 'ACTOR', codigo: 'SECRETARIO', nombre: 'Secretario', cumplido: false, estado_display: 'Pendiente' },
           ],
-          siguiente_accion: { codigo: 'GESTIONAR_ACTORES', titulo: 'Completar autoridades', estado: 'PENDIENTE', destino: '#actores' },
+          siguiente_accion: { codigo: 'GESTIONAR_ACTORES', titulo: 'Completar autoridades', estado: 'PENDIENTE', destino: '#actores', capacidades: { modal: 'PUBLIC_AUTHORITIES' } },
         },
       },
     })
@@ -4521,9 +4916,13 @@ describe('ExpedientePage US-008', () => {
       expect(within(selector).getByRole('option', { name: /Raúl Marcelo Calderon Fuertes.*Asignación vigente: Tribunal 1/ })).toBeDisabled()
       expect(within(selector).getByRole('option', { name: /Mirna Fernández Rojas.*Asignación vigente: Tribunal 2/ })).toBeDisabled()
       expect(within(selector).getByRole('option', { name: /Carlos Méndez Suárez.*Asignación vigente: Tribunal 3/ })).toBeDisabled()
-      expect(within(selector).getByRole('option', { name: /Willian Chau Rivero.*Asignación vigente: Tutor/ })).toBeEnabled()
-      expect(within(selector).getByRole('option', { name: /Docente Modalidad.*Asignación vigente: Docente de modalidad/ })).toBeEnabled()
+      for (const name of [/Willian Chau Rivero.*Asignación vigente: Tutor/, /Docente Modalidad.*Asignación vigente: Docente de modalidad/]) {
+        const option = within(selector).getByRole('option', { name })
+        if (code === 'PROYECTO_GRADO') expect(option).toBeDisabled()
+        else expect(option).toBeEnabled()
+      }
       expect(within(selector).getByRole('option', { name: 'Daniel Molina Cordova — Docente' })).toBeEnabled()
+      expect(within(selector).getByRole('option', { name: 'Persona de otra postulación — Docente' })).toBeEnabled()
       expect(within(selector).getByRole('option', { name: /Presidenta vigente.*Asignación vigente: Presidente/ })).toBeDisabled()
       expect(within(selector).getByRole('option', { name: /Secretario vigente.*Asignación vigente: Secretario/ })).toBeDisabled()
     }
@@ -4538,8 +4937,15 @@ describe('ExpedientePage US-008', () => {
     const presidentSelector = within(dialog).getByLabelText('Seleccionar persona para Presidente')
     const secretarySelector = within(dialog).getByLabelText('Seleccionar persona para Secretario')
     await within(presidentSelector).findByRole('option', { name: 'Daniel Molina Cordova — Docente' })
-    await userEvent.selectOptions(presidentSelector, '43')
-    expect(within(secretarySelector).getByRole('option', { name: /Willian Chau Rivero.*Asignación vigente: Tutor/ })).toBeDisabled()
+    await userEvent.selectOptions(presidentSelector, '45')
+    expect(within(secretarySelector).getByRole('option', { name: 'Daniel Molina Cordova — Docente' })).toBeDisabled()
+    await userEvent.selectOptions(presidentSelector, '')
+    await userEvent.selectOptions(secretarySelector, '45')
+    expect(within(presidentSelector).getByRole('option', { name: 'Daniel Molina Cordova — Docente' })).toBeDisabled()
+    expect(postulacionesService.obtenerActores).toHaveBeenCalledWith(7, true, 1, expect.any(AbortSignal))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }))
+    expect(screen.queryByRole('dialog', { name: 'Completar autoridades' })).not.toBeInTheDocument()
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
   })
 
   it('refresca autoridades tras respuesta incierta y evita reenviar un cargo ya asignado', async () => {
@@ -5248,6 +5654,12 @@ describe('ExpedientePage US-008', () => {
     for (const name of ['Tribunal Uno', 'Tribunal Dos', 'Tribunal Tres']) {
         expect(within(dialog).getByText((text) => text.includes(name))).toBeInTheDocument()
     }
+    const participants = within(dialog).getAllByRole('listitem')
+    expect(participants.map((row) => row.firstElementChild.textContent)).toEqual(['Tribunal Uno', 'Tribunal Dos', 'Tribunal Tres'])
+    participants.forEach((row, index) => expect(within(row).getByText(`TRIBUNAL ${index + 1}`)).toBeInTheDocument())
+    const cancel = within(dialog).getByRole('button', { name: 'Cancelar' })
+    const confirm = within(dialog).getByRole('button', { name: 'Confirmar autorización' })
+    expect(cancel.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     await userEvent.type(within(dialog).getByLabelText('Observaciones (opcional)'), 'Autorización respaldada por memorándum.')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmar autorización' }))
 
@@ -6950,7 +7362,7 @@ describe('ExpedientePage US-008', () => {
     expect(within(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).getAllByText('28,00').length).toBeGreaterThan(0)
     expect(within(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).getAllByText('/ 30')).toHaveLength(2)
     expect(within(screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement).getByText('Registro con escala anterior')).toBeInTheDocument()
-    expect(within(screen.getByRole('heading', { name: 'Cierre técnico' }).parentElement).getByText('DEFENSA_PUBLICA')).toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Cierre técnico' }).parentElement).getByText('Defensa Pública')).toBeInTheDocument()
     expect(screen.getAllByText('Defensa Pública').length).toBeGreaterThan(0)
   })
 

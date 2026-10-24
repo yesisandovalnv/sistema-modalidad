@@ -130,7 +130,7 @@ describe('ruta de perfil', () => {
 
   it('redirige a inicio de sesión cuando no hay sesión', () => {
     renderRoute(() => false, '/perfil', false)
-    expect(screen.getByText('Inicio de sesión')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Bienvenido', level: 1 })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Mi perfil cargado' })).not.toBeInTheDocument()
   })
 })

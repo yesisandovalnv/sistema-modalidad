@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { vi } from 'vitest'
 import LoginPage from './LoginPage'
+import { AuthLayout } from '../../layouts/AuthLayout'
 import { authService } from '../../services/authService'
 
 vi.mock('../../services/authService', () => ({ authService: { login: vi.fn(), studentLogin: vi.fn() } }))
@@ -16,6 +17,24 @@ async function submit() {
 }
 
 describe('LoginPage', () => {
+  it('presenta el acceso dentro del layout institucional con la imagen estática del campus', () => {
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <Routes>
+          <Route element={<AuthLayout />}>
+            <Route path="/login" element={<LoginPage />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('img', { name: 'Estudiantes recorriendo el campus universitario.' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Bienvenido' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Estudiantes' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Estudiantes')
+    expect(screen.queryByText(/video del campus/i)).not.toBeInTheDocument()
+  })
+
   it('delega la resolución del destino en la ruta inicial centralizada', async () => {
     authService.login.mockResolvedValue({ data: { access: 'access', refresh: 'refresh' } })
     render(<MemoryRouter initialEntries={['/login']}><Routes><Route path="/login" element={<LoginPage />} /><Route path="/" element={<p>Resolver inicial</p>} /></Routes></MemoryRouter>)

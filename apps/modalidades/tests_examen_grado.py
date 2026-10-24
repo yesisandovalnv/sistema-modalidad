@@ -13,7 +13,8 @@ from apps.modalidades.examen_grado_service import ExamenGradoService
 from apps.modalidades.models import ExamenArea, ExamenEvaluacion
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
 from apps.modalidades.policies import ModalidadPolicyRegistry
-from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.models import AsignacionPostulacion, EntregaFisica, EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.complementarios import EntregaFisicaService
 from apps.postulantes.asignaciones import AsignacionService
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import CustomUser, Role
@@ -47,9 +48,88 @@ class ExamenGradoContenidosTest(TestCase):
             AsignacionPostulacion.objects.create(postulacion=self.post, usuario=user, tipo_participacion=role, orden_cargo=index if role == "TRIBUNAL" else None, designado_por=self.admin)
 
     def _approve_stage(self, code):
+        if code == "INSCRIPCION":
+            self._complete_inscription()
         stage = self.follow[code]
         WorkflowService.iniciar_etapa(stage, self.admin)
         return WorkflowService.aprobar_etapa(stage, self.admin)
+
+    def _complete_inscription(self):
+        for code in self.policy.get_documentos_requeridos("INSCRIPCION"):
+            document = DocumentoPostulacion.objects.create(
+                postulacion=self.post, tipo_documento=TipoDocumento.objects.get(codigo=code),
+                estado=EstadoDocumento.objects.get(codigo="APR"),
+            )
+            VersionDocumento.objects.create(
+                documento=document, subido_por=self.admin, numero_version=1,
+                archivo=f"tests/{code}.pdf", nombre_original=f"{code}.pdf", tamano_bytes=3,
+                hash_sha256="a" * 64, es_version_actual=True,
+            )
+        delivery = EntregaFisicaService.crear(self.post, "FOLDER_AMARILLO", "Fólder rotulado", self.admin)
+        return EntregaFisicaService.registrar_entrega(delivery, 1, self.admin)
+
+    def test_inscripcion_separa_tres_documentos_y_entrega_sin_cantidad_inventada(self):
+        stage = self.follow["INSCRIPCION"]
+        orientation = self.policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage)
+        self.assertEqual((orientation["requisitos_cumplidos"], orientation["requisitos_totales"]), (0, 4))
+        self.assertEqual([item["tipo"] for item in orientation["requisitos"]], ["DOCUMENTO"] * 3 + ["ENTREGA_FISICA"])
+        self.assertIsNone(orientation["requisitos"][-1]["cantidad"])
+        self.assertFalse(orientation["permite_aprobar_etapa"])
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        response = client.get(f"/api/v1/postulaciones/{self.post.pk}/documentos-aplicables/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual({item["codigo"] for item in response.data["documentos_aplicables"]}, set(self.policy.get_documentos_requeridos("INSCRIPCION")))
+        self.assertNotIn("FOLDER_AMARILLO", {item["codigo"] for item in response.data["documentos_aplicables"]})
+
+    def test_inscripcion_bloquea_cada_requisito_y_aprueba_solo_con_los_cuatro(self):
+        delivery = self._complete_inscription()
+        stage = self.follow["INSCRIPCION"]
+        WorkflowService.iniciar_etapa(stage, self.admin)
+        for code in self.policy.get_documentos_requeridos("INSCRIPCION"):
+            with self.subTest(code=code):
+                document = self.post.documentos.get(tipo_documento__codigo=code)
+                DocumentoPostulacion.objects.filter(pk=document.pk).update(activo=False)
+                with self.assertRaises(ValidationError):
+                    WorkflowService.aprobar_etapa(stage, self.admin)
+                DocumentoPostulacion.all_objects.filter(pk=document.pk).update(activo=True)
+        EntregaFisica.objects.filter(pk=delivery.pk).update(estado="PENDIENTE", cantidad_recibida=0)
+        orientation = self.policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage)
+        self.assertEqual(orientation["requisitos_cumplidos"], 3)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "GESTIONAR_ENTREGA_FISICA")
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        response = client.post(f"/api/v1/seguimientos-etapa/{stage.pk}/aprobar/", {}, format="json")
+        self.assertEqual(response.status_code, 400, response.data)
+        response = client.post(f"/api/v1/gestion-complementaria/entregas-fisicas/{delivery.pk}/registrar/", {"cantidad_recibida": 1}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["estado"], "COMPLETA")
+        self.assertIsNone(response.data["cantidad"])
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.recibido_por, self.admin)
+        self.assertIsNotNone(delivery.fecha_entrega)
+        orientation = self.policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage)
+        self.assertEqual(orientation["requisitos_cumplidos"], 4)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+        response = client.post(f"/api/v1/seguimientos-etapa/{stage.pk}/aprobar/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_inscripcion_no_admite_documento_sin_aprobar_corregible_o_sin_version_vigente(self):
+        self._complete_inscription()
+        stage = self.follow["INSCRIPCION"]
+        document = self.post.documentos.get(tipo_documento__codigo="CARTA_SOLICITUD_EXAMEN")
+        for state in ("ENV", "OBS", "REC"):
+            with self.subTest(state=state):
+                DocumentoPostulacion.objects.filter(pk=document.pk).update(estado=EstadoDocumento.objects.get(codigo=state))
+                with self.assertRaises(ValidationError):
+                    self.policy.validar_aprobacion_etapa(stage)
+        DocumentoPostulacion.objects.filter(pk=document.pk).update(estado=EstadoDocumento.objects.get(codigo="APR"), requiere_correccion=True)
+        with self.assertRaises(ValidationError):
+            self.policy.validar_aprobacion_etapa(stage)
+        DocumentoPostulacion.objects.filter(pk=document.pk).update(requiere_correccion=False)
+        document.versiones.update(es_version_actual=False)
+        with self.assertRaises(ValidationError):
+            self.policy.validar_aprobacion_etapa(stage)
 
     def _start_area(self, code, attempt=1):
         stage = SeguimientoEtapa.objects.get(postulacion=self.post, etapa__codigo=code, numero_intento=attempt)
@@ -70,7 +150,9 @@ class ExamenGradoContenidosTest(TestCase):
     def test_policy_etapas_documentos_y_capacidades(self):
         self.assertEqual(self.policy.get_etapa_inicial().codigo, "INSCRIPCION")
         self.assertEqual(len(self.policy.etapas), 8)
-        self.assertEqual(self.policy.get_documentos_requeridos("INSCRIPCION"), ("CARTA_SOLICITUD_EXAMEN", "MATRICULA_VIGENTE", "HISTORIAL_ACADEMICO", "FOLDER_AMARILLO"))
+        self.assertEqual(self.policy.get_documentos_requeridos("INSCRIPCION"), ("CARTA_SOLICITUD_EXAMEN", "MATRICULA_VIGENTE", "HISTORIAL_ACADEMICO"))
+        self.assertEqual(self.policy.get_entregas_requeridas("INSCRIPCION"), ("FOLDER_AMARILLO",))
+        self.assertEqual(self.policy.get_entregas_requeridas("DOCUMENTACION_FINAL"), ())
         self.assertEqual(self.policy.get_documentos_requeridos("DOCUMENTACION_FINAL"), ("ACTA_EXAMEN", "HOJA_APROBACION_EXAMEN"))
         capabilities = self.policy.get_capabilities(self.post.modalidad)
         self.assertTrue(capabilities.soportada and capabilities.workflow_configurado)

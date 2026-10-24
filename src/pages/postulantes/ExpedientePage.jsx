@@ -23,6 +23,17 @@ import DocumentDetailDialog, { DownloadVersionButton } from '../../components/do
 import { getActiveTribunalComposition } from './tribunalComposition'
 
 const EMPTY = 'No registrado'
+// Preferencia operativa de selección; no modifica la elegibilidad académica.
+const ACTOR_SELECTION_PRESENTATION = {
+  EXCELENCIA_ACADEMICA: {
+    EVALUACION_TRIBUNAL: { blockOtherPositions: true },
+  },
+}
+const INSCRIPTION_PRESENTATION = {
+  PROYECTO_GRADO: { integrated: true },
+  EXAMEN_GRADO: { integrated: true },
+  EXCELENCIA_ACADEMICA: { integrated: true },
+}
 const EXPEDIENTE_HASH_TABS = {
   resumen: 'resumen',
   documentos: 'documentos',
@@ -634,8 +645,9 @@ export default function ExpedientePage() {
     : !currentOrientation?.siguiente_accion
       || (currentOrientation.siguiente_accion.codigo === 'APROBAR_ETAPA' && currentOrientation.siguiente_accion.estado === 'DISPONIBLE')
   const physicalRequirements = currentRequirements.filter((item) => item.tipo === 'ENTREGA_FISICA')
-  const isProjectInscription = isProjectGrade && currentStage?.codigo === 'INSCRIPCION'
-  const inscriptionDocumentRequirements = isProjectInscription
+  const isIntegratedInscription = INSCRIPTION_PRESENTATION[detalle.modalidad_detalle?.codigo]?.integrated === true
+    && currentStage?.codigo === 'INSCRIPCION'
+  const inscriptionDocumentRequirements = isIntegratedInscription
     ? currentRequirements.filter((item) => item.tipo === 'DOCUMENTO')
     : []
   const isConcluded = detalle.estado_actual_detalle?.codigo === 'CONCLUIDA'
@@ -1796,10 +1808,9 @@ export default function ExpedientePage() {
               )}
               {canManageApplications && stageApprovalAllowed && !orientationApprovalDeclared && currentStage?.id && ['EN_PROCESO', 'OBSERVADA'].includes(currentStage.estado) && !['PERFIL_PROYECTO', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(currentStage.codigo) && !isConcluded && (
                 <div className="mt-5">
-                  <Button variant={pendingCurrentRequirements > 0 ? 'secondary' : 'default'} aria-describedby={pendingCurrentRequirements > 0 ? 'stage-approval-guidance' : undefined} disabled={stageApproval.submitting} onClick={approveCurrentStage}>
+                  <Button variant={pendingCurrentRequirements > 0 ? 'secondary' : 'default'} disabled={stageApproval.submitting} onClick={approveCurrentStage}>
                     {stageApproval.submitting ? 'Procesando...' : `Aprobar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
                   </Button>
-                  {pendingCurrentRequirements > 0 && <p id="stage-approval-guidance" className="mt-2 text-sm text-amber-700 dark:text-amber-300">Hay {pendingCurrentRequirements} {pendingCurrentRequirements === 1 ? 'requisito pendiente' : 'requisitos pendientes'}. Puedes intentar la aprobación; el backend realizará la validación definitiva.</p>}
                   {stageApproval.error && (
                     <>
                       <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>
@@ -1854,8 +1865,8 @@ export default function ExpedientePage() {
             onRegisterAcademicDecision={openAcademicDecision}
             onOpenDocumentUpload={(navigate = false) => { if (navigate) navigateToSection('documentos'); openUpload() }}
             onProgramDefense={openCurrentDefenseProgramming}
-            hideRequirements={isProjectInscription}
-            additionalContent={isProjectInscription ? <>
+            hideRequirements={isIntegratedInscription}
+            additionalContent={isIntegratedInscription ? <>
               <InscriptionDocumentsSection
                 embedded
                 requirements={inscriptionDocumentRequirements}
@@ -1893,7 +1904,7 @@ export default function ExpedientePage() {
 
       <div id="panel-documentos" role="tabpanel" aria-labelledby="expediente-tab-documentos" data-expediente-panel="documentos" hidden={!isHistorical && activeTab !== 'documentos'}>
         {!isHistorical && currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA' && reviewSection}
-        {!isHistorical && !isProjectInscription && physicalRequirements.length > 0 && <div id="inscripcion-entregas" className="scroll-mt-24"><ClosureRequirements postulacion={detalle.id} canManage={canManageApplications} showConditions={false} requiredDeliveries={physicalRequirements} title="Recepción física" description="" titleId="inscripcion-entregas-title" createLabel="Registrar recepción" onChanged={() => { setRevision((value) => value + 1); setStageApproval({ submitting: false, error: '', fields: {} }) }} /></div>}
+        {!isHistorical && !isIntegratedInscription && physicalRequirements.length > 0 && <div id="inscripcion-entregas" className="scroll-mt-24"><ClosureRequirements postulacion={detalle.id} canManage={canManageApplications} showConditions={false} requiredDeliveries={physicalRequirements} title="Recepción física" description="" titleId="inscripcion-entregas-title" createLabel="Registrar recepción" onChanged={() => { setRevision((value) => value + 1); setStageApproval({ submitting: false, error: '', fields: {} }) }} /></div>}
         <div id="documentos" className="scroll-mt-24"><DocumentsCard
           documents={documents}
           page={documentsPage}
@@ -2026,9 +2037,9 @@ export default function ExpedientePage() {
         onSubmit={submitAcademicDecision}
         onClose={() => setAcademicDecision(null)}
       />}
-      {actorManagement && <ActorManagementDialog state={actorManagement} postulacion={detalle.id} management={flujo.gestion_actores} stageName={currentStage?.nombre || currentStage?.codigo} memorandumContract={isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO' ? getMemorandumPublicationContract(data) : null} memorandumSeguimientoEtapa={flujo.gestion_decisiones_academicas?.contexto?.seguimiento_etapa} memorandums={memorandums} canPublishMemorandum={canManageAssignments}       onMemorandumPublished={() => { actorManagementSummaryNavigationPending.current = true; setMemorandumRevision((value) => value + 1) }} onRetryMemorandums={() => setMemorandumRevision((value) => value + 1)} onSubmit={submitActorManagement} onFinalize={(position, observaciones) => submitActorManagement([{ action: 'FINALIZAR', position, payload: { observaciones } }])} onClose={closeActorManagement} />}
+      {actorManagement && <ActorManagementDialog state={actorManagement} postulacion={detalle.id} management={flujo.gestion_actores} selectionPresentation={ACTOR_SELECTION_PRESENTATION[detalle.modalidad_detalle?.codigo]?.[currentStage?.codigo]} stageName={currentStage?.nombre || currentStage?.codigo} memorandumContract={isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO' ? getMemorandumPublicationContract(data) : null} memorandumSeguimientoEtapa={flujo.gestion_decisiones_academicas?.contexto?.seguimiento_etapa} memorandums={memorandums} canPublishMemorandum={canManageAssignments}       onMemorandumPublished={() => { actorManagementSummaryNavigationPending.current = true; setMemorandumRevision((value) => value + 1) }} onRetryMemorandums={() => setMemorandumRevision((value) => value + 1)} onSubmit={submitActorManagement} onFinalize={(position, observaciones) => submitActorManagement([{ action: 'FINALIZAR', position, payload: { observaciones } }])} onClose={closeActorManagement} />}
       {teamAssignment?.mode === 'PUBLIC_AUTHORITIES'
-        ? <PublicAuthoritiesDialog assignment={teamAssignment} postulacion={detalle.id} stage={currentStage} orientation={flujo.orientacion_etapa_actual} allowIdentityReuse={flujo.orientacion_etapa_actual?.siguiente_accion?.capacidades?.permite_identidad_reutilizada === true} onSubmit={submitTeamAssignment} onClose={closeTeamAssignment} />
+        ? <PublicAuthoritiesDialog assignment={teamAssignment} postulacion={detalle.id} stage={currentStage} orientation={flujo.orientacion_etapa_actual} blockOccupiedCandidates={isProjectGrade} allowIdentityReuse={flujo.orientacion_etapa_actual?.siguiente_accion?.capacidades?.permite_identidad_reutilizada === true} onSubmit={submitTeamAssignment} onClose={closeTeamAssignment} />
         : null}
       {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} canUpload={canUpload} canManageAssignments={canManageAssignments} tribunalReviewStage={tribunalReviewStage} activeActors={activeActors.data?.results || []} activeTribunals={activeTribunals} onRetryActiveTribunals={() => setActiveTribunalsRevision((value) => value + 1)} onDraftChange={updateTribunalReportDraft} onAssignMissing={(order) => setTribunalReportDialog((current) => ({ ...current, view: 'ASSIGN_MISSING_TRIBUNAL', assignment: { order, submitting: false, fields: {}, error: '' } }))} onBackToReport={() => setTribunalReportDialog((current) => ({ ...current, view: 'REGISTER_REPORT' }))} onSubmitMissing={submitMissingTribunal} onUploadEvidence={openTribunalEvidenceUpload} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
     </section>
@@ -2547,7 +2558,7 @@ function TribunalReviewActions({ reviewState, orientation, evidenceVersions, can
       {canUpdate && <Button className="mt-3" onClick={() => onUpdate(currentReport)}>Actualizar informe del tribunal</Button>}
     </div>}
     {noEvidence && <div role="status" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:bg-amber-950">
-      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.</p>
+      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Carga el Informe de Evaluación del Tribunal.</p>
       {canUpload && <Button className="mt-3" variant="secondary" onClick={onUploadEvidence}>Cargar Informe de Evaluación</Button>}
     </div>}
     {canRegister && <Button className="mt-4" onClick={onRegister}>Registrar informe del tribunal</Button>}
@@ -2567,7 +2578,7 @@ function TribunalReviewReports({ reviewState, versions, evidenceVersions, showOp
       {canUpdate && <Button className="mt-3" onClick={() => onUpdate(currentReport)}>Actualizar informe del tribunal</Button>}
     </div>}
     {showOperations && evidenceVersions.length === 0 && <div role="status" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:bg-amber-950">
-      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.</p>
+      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Carga el Informe de Evaluación del Tribunal.</p>
       {canUpload && <Button className="mt-3" variant="secondary" onClick={onUploadEvidence}>Cargar Informe de Evaluación</Button>}
     </div>}
     {reports.loading && <p role="status" className="mt-4 text-sm">Cargando informes del tribunal…</p>}
@@ -2635,7 +2646,7 @@ function TribunalReportDialog({ report, finalVersion, evidenceVersions, canUploa
         : <label className="text-sm">Resultado<select name="resultado" value={report.draft.resultado} onChange={(event) => onDraftChange('resultado', event.target.value)} required disabled={report.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione un resultado</option><option value="SUFICIENTE">Suficiente</option><option value="INSUFICIENTE">Insuficiente</option></select>{fieldError('resultado')}</label>}
       <label className="text-sm">{updatingEvidence ? 'Evidencia vigente' : 'Evidencia'}<select name="evidencia_version" value={report.draft.evidencia_version} onChange={(event) => onDraftChange('evidencia_version', event.target.value)} required disabled={report.submitting || evidenceVersions.length === 0} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una evidencia</option>{evidenceVersions.map((version) => <option key={version.id} value={version.id}>{version.nombre_original || 'Archivo sin nombre'} — Versión {version.numero_version}</option>)}</select>{fieldError('evidencia_version')}</label>
       {evidenceVersions.length === 0 && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:bg-amber-950">
-        <p role="status" className="text-sm font-medium text-amber-800 dark:text-amber-200">{updatingEvidence ? 'No hay una versión vigente disponible. Carga el Informe de Evaluación del Tribunal para actualizar el informe existente.' : 'Antes de registrar el resultado, carga el Informe de Evaluación del Tribunal.'}</p>
+        <p role="status" className="text-sm font-medium text-amber-800 dark:text-amber-200">{updatingEvidence ? 'No hay una versión vigente disponible. Carga el Informe de Evaluación del Tribunal para actualizar el informe existente.' : 'Carga el Informe de Evaluación del Tribunal.'}</p>
         {canUpload && <Button type="button" className="mt-3" variant="secondary" disabled={report.submitting} onClick={onUploadEvidence}>Cargar Informe de Evaluación</Button>}
       </div>}
       {!updatingEvidence && <label className="text-sm">Observaciones {report.draft.resultado === 'INSUFICIENTE' ? '(obligatorias)' : '(opcionales)'}<textarea name="observaciones" value={report.draft.observaciones} onChange={(event) => onDraftChange('observaciones', event.target.value)} required={report.draft.resultado === 'INSUFICIENTE'} disabled={report.submitting} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" />{fieldError('observaciones')}</label>}
@@ -2697,12 +2708,15 @@ function AcademicDecisionDialog({ state, isProjectProfileAuthorization = false, 
   const submitLabel = confirmationResult
     ? 'Confirmar autorización'
     : decision.acciones_permitidas.includes('REEMPLAZAR') ? 'Reemplazar decisión' : 'Registrar decisión'
-  return <Modal title={title} onClose={onClose}><div className="mt-4 grid gap-4"><form className="grid gap-4" onSubmit={submit}>
+  return <Modal title={title} onClose={onClose}><div className="mt-3"><form className="grid gap-4" onSubmit={submit}>
     {!confirmationResult && <label className="text-sm">Resultado<select value={result} onChange={(event) => setResult(event.target.value)} disabled={state.submitting} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">{allowedResults.map((value) => <option key={value} value={value}>{formatCode(value)}</option>)}</select></label>}
-    <section><h3 className="text-sm font-semibold">Participantes</h3><ul className="mt-2 space-y-1 text-sm">{decision.participantes_disponibles.map((participant) => <li key={participant.asignacion}>{participant.usuario_nombre} — {formatCode(participant.rol)}{participant.orden ? ` ${participant.orden}` : ''}</li>)}</ul></section>
-    <label className="text-sm">Observaciones (opcional)<textarea name="observaciones" disabled={state.submitting} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>
+    <section><h3 className="text-sm font-semibold">Participantes</h3><ul className="mt-2 divide-y divide-slate-200 border-y border-slate-200 text-sm dark:divide-slate-700 dark:border-slate-700">{decision.participantes_disponibles.map((participant) => <li key={participant.asignacion} className="flex items-start justify-between gap-3 py-2">
+      <span className="min-w-0 flex-1 py-1 font-medium [overflow-wrap:anywhere]">{participant.usuario_nombre}</span>
+      <span className="max-w-[45%] shrink-0"><StatusBadge compact value={`${formatCode(participant.rol)}${participant.orden ? ` ${participant.orden}` : ''}`} /></span>
+    </li>)}</ul></section>
+    <label className="text-sm font-medium">Observaciones (opcional)<textarea name="observaciones" rows={3} disabled={state.submitting} className="mt-1 min-h-20 w-full rounded-lg border p-2 font-normal dark:bg-slate-950" /></label>
     {state.error && <p role="alert" className="text-red-600">{state.error}</p>}
-    <div className="flex gap-3"><Button type="submit" disabled={state.submitting || !submittedResult}>{state.submitting ? 'Registrando…' : submitLabel}</Button><Button type="button" variant="secondary" disabled={state.submitting} onClick={onClose}>Cancelar</Button></div>
+    <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-3 dark:border-slate-700"><Button type="button" variant="secondary" disabled={state.submitting} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={state.submitting || !submittedResult}>{state.submitting ? 'Registrando…' : submitLabel}</Button></div>
   </form></div></Modal>
 }
 
@@ -2789,7 +2803,7 @@ function ActorsCard({ active, historical, activePage, historicalPage, onActivePa
   )
 }
 
-function ActorManagementDialog({ state, postulacion, management, stageName, memorandumContract, memorandumSeguimientoEtapa, memorandums, canPublishMemorandum, onMemorandumPublished, onRetryMemorandums, onSubmit, onFinalize, onClose }) {
+function ActorManagementDialog({ state, postulacion, management, selectionPresentation, stageName, memorandumContract, memorandumSeguimientoEtapa, memorandums, canPublishMemorandum, onMemorandumPublished, onRetryMemorandums, onSubmit, onFinalize, onClose }) {
   const positions = management?.posiciones || []
   const [candidateStatuses, setCandidateStatuses] = useState({})
   const [selections, setSelections] = useState({})
@@ -2806,7 +2820,10 @@ function ActorManagementDialog({ state, postulacion, management, stageName, memo
     })
   }, [])
 
-  const draftConflicts = findIdentityDraftConflicts(positions, selections)
+  const assignedSelections = Object.fromEntries(positions
+    .filter((position) => position.estado_ocupacion === 'ASIGNADA')
+    .map((position) => [position.clave, { candidateId: position.asignacion_actual_detalle?.usuario?.id }]))
+  const draftConflicts = findIdentityDraftConflicts(positions, selections, selectionPresentation)
   const draftError = draftConflicts.length > 0
     ? `La misma persona está seleccionada en ${draftConflicts[0][0].position.nombre} y ${draftConflicts[0][1].position.nombre}. Cambia una selección antes de guardar.`
     : ''
@@ -2891,6 +2908,8 @@ function ActorManagementDialog({ state, postulacion, management, stageName, memo
               position={position}
               positions={positions}
               drafts={selections}
+              assignedSelections={assignedSelections}
+              selectionPresentation={selectionPresentation}
               candidateRevision={candidateRevision}
               action={canReplace ? 'REEMPLAZAR' : 'ASIGNAR'}
               selected={selections[position.clave] || null}
@@ -2959,6 +2978,18 @@ function restrictionsShareIdentityGroup(first, second) {
     && first.restriccion_identidad.grupo === second.restriccion_identidad.grupo
 }
 
+function positionsHaveIdentityConflict(first, second, selectionPresentation) {
+  const blocksOccupation = (position, other) => {
+    const rule = position.ocupacion_actor
+    return rule?.aplica === true
+      && (!rule.relevantes?.length || rule.relevantes.includes(other.tipo_participacion))
+  }
+  return selectionPresentation?.blockOtherPositions === true
+    || restrictionsShareIdentityGroup(first, second)
+    || blocksOccupation(first, second)
+    || blocksOccupation(second, first)
+}
+
 function findSelectedDraft(position, candidateId, positions, drafts) {
   if (!candidateId) return null
   return positions.find((otherPosition) => (
@@ -2967,22 +2998,22 @@ function findSelectedDraft(position, candidateId, positions, drafts) {
   )) || null
 }
 
-function findConflictingDraft(position, candidateId, positions, drafts) {
-  if (!candidateId || !hasUniqueIdentityRestriction(position)) return null
+function findConflictingDraft(position, candidateId, positions, drafts, selectionPresentation) {
+  if (!candidateId) return null
   return positions.find((otherPosition) => (
     otherPosition.clave !== position.clave
-    && restrictionsShareIdentityGroup(position, otherPosition)
+    && positionsHaveIdentityConflict(position, otherPosition, selectionPresentation)
     && String(drafts[otherPosition.clave]?.candidateId || '') === String(candidateId)
   )) || null
 }
 
-function findIdentityDraftConflicts(positions, drafts) {
+function findIdentityDraftConflicts(positions, drafts, selectionPresentation) {
   const conflicts = []
   positions.forEach((position, index) => {
     const draft = drafts[position.clave]
     if (!draft?.candidateId) return
     positions.slice(index + 1).forEach((otherPosition) => {
-      if (restrictionsShareIdentityGroup(position, otherPosition)
+      if (positionsHaveIdentityConflict(position, otherPosition, selectionPresentation)
         && String(drafts[otherPosition.clave]?.candidateId || '') === String(draft.candidateId)) {
         conflicts.push([{ position, draft }, { position: otherPosition, draft: drafts[otherPosition.clave] }])
       }
@@ -2991,7 +3022,7 @@ function findIdentityDraftConflicts(positions, drafts) {
   return conflicts
 }
 
-function EligibleActorCandidates({ postulacion, position, positions, drafts, candidateRevision, action, selected, disabled, onSelect, onStatusChange }) {
+function EligibleActorCandidates({ postulacion, position, positions, drafts, assignedSelections, selectionPresentation, candidateRevision, action, selected, disabled, onSelect, onStatusChange }) {
   const [query, setQuery] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -3041,14 +3072,20 @@ function EligibleActorCandidates({ postulacion, position, positions, drafts, can
           <option value="">Seleccione una persona</option>
           {visibleRows.map((candidate) => {
             const selectedDraft = findSelectedDraft(position, candidate.id, positions, drafts)
-            const conflict = findConflictingDraft(position, candidate.id, positions, drafts)
+            const conflict = findConflictingDraft(position, candidate.id, positions, drafts, selectionPresentation)
+            const assignedPosition = selectionPresentation?.blockOtherPositions
+              ? findSelectedDraft(position, candidate.id, positions, assignedSelections)
+              : null
             const label = candidate.nombre_completo || candidate.username || candidate.label
             const role = candidate.rol_nombre || candidate.rol_codigo
             const identifier = candidate.codigo || candidate.username
-            const activeAssignmentLabels = Array.isArray(candidate.asignaciones_vigentes) && candidate.asignaciones_vigentes.length > 0
+            const backendAssignmentLabels = Array.isArray(candidate.asignaciones_vigentes) && candidate.asignaciones_vigentes.length > 0
               ? candidate.asignaciones_vigentes
               : []
-            const disabled = candidate.elegible === false || Boolean(conflict)
+            const activeAssignmentLabels = assignedPosition
+              ? [...new Set([...backendAssignmentLabels, assignedPosition.nombre])]
+              : backendAssignmentLabels
+            const disabled = candidate.elegible === false || Boolean(conflict) || Boolean(assignedPosition)
             return <option key={candidate.id} value={candidate.id} disabled={disabled}>
               {label}{role ? ` — ${role}` : ''}{identifier ? ` · ${identifier}` : ''}{activeAssignmentLabels.length > 0 ? ` · Asignación vigente: ${activeAssignmentLabels.join(', ')}` : ''}{selectedDraft ? ` — Seleccionado como ${selectedDraft.nombre}` : ''}
             </option>
@@ -3162,7 +3199,7 @@ function getThesisConclusionOrientation({ publicStage, concluded, resultado, doc
   return { operacion: 'ORIENTAR_CONCLUSION_ACADEMICA', mensaje: 'Completa las precondiciones posteriores al macroflujo para concluir académicamente el expediente.', requisitos: requirements, siguiente_accion: action, conflictos_identidad: [], actaValida: validActa }
 }
 
-function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, allowIdentityReuse = false, onSubmit, onClose }) {
+function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, blockOccupiedCandidates = false, allowIdentityReuse = false, onSubmit, onClose }) {
   const [candidateQuery, setCandidateQuery] = useState('')
   const [candidateSearch, setCandidateSearch] = useState('')
   const [candidatePage, setCandidatePage] = useState(1)
@@ -3301,7 +3338,7 @@ function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, 
               ))
               const conflictsWithOtherAuthority = !allowIdentityReuse
                 && ((otherSelection && id === String(otherSelection)) || otherAssignedIds.has(id))
-              const disabled = hasIncompatibleAssignment || conflictsWithOtherAuthority
+              const disabled = (blockOccupiedCandidates && currentAssignments.length > 0) || hasIncompatibleAssignment || conflictsWithOtherAuthority
               const assignmentDescription = currentAssignments.length > 0 ? ` · Asignación vigente: ${currentAssignments.join(', ')}` : ''
               return <option key={candidate.id} value={id} disabled={disabled}>{candidate.nombre_completo || candidate.username} — {candidate.rol_nombre || candidate.rol_codigo}{assignmentDescription}</option>
             })}</select></label>}

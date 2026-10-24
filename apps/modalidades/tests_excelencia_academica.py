@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import RequestFactory, TestCase
+from rest_framework.test import APIClient
 
 from apps.academico.models import Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
@@ -12,7 +13,8 @@ from apps.modalidades.excelencia_academica import ExcelenciaAcademicaPolicy
 from apps.modalidades.excelencia_academica_service import ExcelenciaAcademicaService
 from apps.modalidades.models import ExcelenciaExpediente
 from apps.postulantes.asignaciones import AsignacionService
-from apps.postulantes.models import AsignacionPostulacion, EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.models import AsignacionPostulacion, EntregaFisica, EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.complementarios import EntregaFisicaService
 from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import CustomUser, Role
@@ -76,14 +78,19 @@ class ExcelenciaAcademicaTest(TestCase):
         WorkflowService.iniciar_etapa(stage, self.admin)
         return WorkflowService.aprobar_etapa(stage, self.admin)
 
+    def _receive_folder(self):
+        delivery = EntregaFisicaService.crear(self.post, "FOLDER_AMARILLO", "Fólder amarillo rotulado", self.admin)
+        return EntregaFisicaService.registrar_entrega(delivery, 1, self.admin)
+
     def _prepare_evaluation(self, criterion):
         self._configure(criterion)
         self._documents([
             "CARTA_EXCELENCIA", "RECIBO_MATRICULA_EXC",
-            "HISTORIAL_EXCELENCIA", "FOLDER_EXCELENCIA",
+            "HISTORIAL_EXCELENCIA",
             "CERT_PLANIFICACION", "SOLVENCIA_UNIV",
             "SOLVENCIA_BIBLIO", "TIMBRE_EXCELENCIA",
         ] + (["CERT_DIR_CARRERA", "CERT_INST_INVEST"] if criterion == ExcelenciaExpediente.Criterio.RECONOCIMIENTO_CALIDAD else []))
+        self._receive_folder()
         self._approve("INSCRIPCION")
         self._approve("REVISION_REQUISITOS")
         stage = self.follow["EVALUACION_TRIBUNAL"]
@@ -95,6 +102,133 @@ class ExcelenciaAcademicaTest(TestCase):
         self.assertEqual([stage.codigo for stage in policy.etapas], ["INSCRIPCION", "REVISION_REQUISITOS", "EVALUACION_TRIBUNAL", "REGISTRO_ACTA", "CONCLUSION_ACADEMICA"])
         self.assertEqual(policy.get_reglas_asignacion()["DIRECTOR_INSTITUTO_INVESTIGACION"], 1)
         self.assertEqual(policy.get_documentos_requeridos("REGISTRO_ACTA"), ("ACTA_EXCELENCIA",))
+
+    def test_inscripcion_documentos_aplicables_y_compatibilidad_del_catalogo(self):
+        self._configure(ExcelenciaExpediente.Criterio.RENDIMIENTO_ACADEMICO)
+        policy = ExcelenciaAcademicaPolicy()
+        codes = ("CARTA_EXCELENCIA", "RECIBO_MATRICULA_EXC", "HISTORIAL_EXCELENCIA")
+        self.assertEqual(policy.get_documentos_requeridos("INSCRIPCION"), codes)
+        self.assertEqual(policy.get_entregas_requeridas("INSCRIPCION"), ("FOLDER_AMARILLO",))
+        self.assertEqual(policy.get_entregas_requeridas("REVISION_REQUISITOS"), ())
+        self.assertTrue(TipoDocumento.objects.filter(codigo="FOLDER_EXCELENCIA", activo=True).exists())
+        from apps.academico.models import ModalidadRequisito
+        self.assertFalse(ModalidadRequisito.objects.filter(
+            modalidad=self.post.modalidad, requisito__codigo="FOLDER_EXCELENCIA",
+        ).exists())
+        self._documents(["FOLDER_EXCELENCIA"])
+        legacy = self.post.documentos.get(tipo_documento__codigo="FOLDER_EXCELENCIA")
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        response = client.get(f"/api/v1/postulaciones/{self.post.pk}/documentos-aplicables/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual({item["codigo"] for item in response.data["documentos_aplicables"]}, set(codes))
+        self.assertTrue(legacy.versiones.filter(activo=True, es_version_actual=True).exists())
+        self.assertFalse(self.post.entregas_fisicas.exists())
+        orientation = policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=self.follow["INSCRIPCION"])
+        self.assertEqual(orientation["requisitos_cumplidos"], 0)
+
+    def test_inscripcion_sin_criterio_muestra_cuatro_requisitos_pero_no_habilita_flujo(self):
+        policy = ExcelenciaAcademicaPolicy()
+        stage = self.follow["INSCRIPCION"]
+        orientation = policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage)
+        self.assertEqual((orientation["requisitos_cumplidos"], orientation["requisitos_totales"]), (0, 4))
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "CONFIGURAR_CRITERIO")
+        self.assertFalse(orientation["permite_aprobar_etapa"])
+        with self.assertRaises(ValidationError):
+            WorkflowService.iniciar_etapa(stage, self.admin)
+        with self.assertRaises(ValidationError):
+            policy.validar_aprobacion_etapa(stage)
+
+    def test_inscripcion_contadores_y_orientacion_desde_cero_hasta_cuatro(self):
+        self._configure(ExcelenciaExpediente.Criterio.RENDIMIENTO_ACADEMICO)
+        policy = ExcelenciaAcademicaPolicy()
+        def orientation():
+            return policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=self.follow["INSCRIPCION"])
+        initial = orientation()
+        self.assertEqual([item["tipo"] for item in initial["requisitos"]], ["DOCUMENTO"] * 3 + ["ENTREGA_FISICA"])
+        self.assertIsNone(initial["requisitos"][-1]["cantidad"])
+        for count, code in enumerate(policy.get_documentos_requeridos("INSCRIPCION")):
+            current = orientation()
+            self.assertEqual((current["requisitos_cumplidos"], current["requisitos_totales"]), (count, 4))
+            self.assertEqual(current["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+            self._documents([code])
+        self.assertEqual(orientation()["requisitos_cumplidos"], 3)
+        self.assertEqual(orientation()["siguiente_accion"]["codigo"], "GESTIONAR_ENTREGA_FISICA")
+        document = self.post.documentos.get(tipo_documento__codigo="CARTA_EXCELENCIA")
+        document.estado = EstadoDocumento.objects.get(codigo="ENV")
+        document.save()
+        self.assertEqual(orientation()["siguiente_accion"]["codigo"], "GESTIONAR_DOCUMENTOS")
+        document.estado = EstadoDocumento.objects.get(codigo="APR")
+        document.save()
+        delivery = self._receive_folder()
+        self.assertIsNone(delivery.cantidad)
+        final = orientation()
+        self.assertEqual(final["requisitos_cumplidos"], 4)
+        self.assertTrue(final["permite_aprobar_etapa"])
+        self.assertEqual(final["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+
+    def test_inscripcion_bloquea_documentos_invalidos_y_recepcion_pendiente(self):
+        self._configure(ExcelenciaExpediente.Criterio.RENDIMIENTO_ACADEMICO)
+        policy = ExcelenciaAcademicaPolicy()
+        self._documents(policy.get_documentos_requeridos("INSCRIPCION"))
+        delivery = self._receive_folder()
+        stage = self.follow["INSCRIPCION"]
+        WorkflowService.iniciar_etapa(stage, self.admin)
+        for code in policy.get_documentos_requeridos("INSCRIPCION"):
+            document = self.post.documentos.get(tipo_documento__codigo=code)
+            for invalid in ({"activo": False}, {"estado": EstadoDocumento.objects.get(codigo="ENV")}, {"requiere_correccion": True}):
+                with self.subTest(code=code, invalid=invalid):
+                    original = {field: getattr(document, field) for field in invalid}
+                    for field, value in invalid.items():
+                        setattr(document, field, value)
+                    document.save()
+                    with self.assertRaises(ValidationError):
+                        WorkflowService.aprobar_etapa(stage, self.admin)
+                    for field, value in original.items():
+                        setattr(document, field, value)
+                    document.save()
+            version = document.versiones.get(es_version_actual=True)
+            for invalid in ({"activo": False}, {"es_version_actual": False}):
+                VersionDocumento.objects.filter(pk=version.pk).update(**invalid)
+                with self.subTest(code=code, version=invalid), self.assertRaises(ValidationError):
+                    WorkflowService.aprobar_etapa(stage, self.admin)
+                VersionDocumento.all_objects.filter(pk=version.pk).update(activo=True, es_version_actual=True)
+        for invalid in ({"activo": False}, {"estado": "PENDIENTE"}, {"estado": "PARCIAL"}):
+            EntregaFisica.objects.filter(pk=delivery.pk).update(**invalid)
+            with self.subTest(delivery=invalid), self.assertRaises(ValidationError):
+                WorkflowService.aprobar_etapa(stage, self.admin)
+            EntregaFisica.objects.filter(pk=delivery.pk).update(activo=True, estado="COMPLETA")
+        approved = WorkflowService.aprobar_etapa(stage, self.admin)
+        self.assertEqual(approved.estado, "APROBADA")
+
+    def test_inscripcion_sin_recepcion_no_aprueba_y_api_conserva_permisos_y_auditoria(self):
+        self._configure(ExcelenciaExpediente.Criterio.RENDIMIENTO_ACADEMICO)
+        self._documents(ExcelenciaAcademicaPolicy().get_documentos_requeridos("INSCRIPCION"))
+        stage = self.follow["INSCRIPCION"]
+        WorkflowService.iniciar_etapa(stage, self.admin)
+        with self.assertRaises(ValidationError):
+            WorkflowService.aprobar_etapa(stage, self.admin)
+        client = APIClient()
+        payload = {"postulacion": self.post.pk, "codigo": "FOLDER_AMARILLO", "nombre": "Fólder amarillo rotulado", "cantidad": None}
+        url = "/api/v1/gestion-complementaria/entregas-fisicas/"
+        client.force_authenticate(self.student)
+        self.assertEqual(client.post(url, payload, format="json").status_code, 403)
+        client.force_authenticate(self.admin)
+        response = client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        delivery_id = response.data["id"]
+        client.force_authenticate(self.student)
+        self.assertEqual(client.post(f"{url}{delivery_id}/registrar/", {"cantidad_recibida": 1}).status_code, 403)
+        client.force_authenticate(self.admin)
+        response = client.post(f"{url}{delivery_id}/registrar/", {"cantidad_recibida": 1})
+        self.assertEqual(response.status_code, 200, response.data)
+        delivery = EntregaFisica.objects.get(pk=delivery_id)
+        self.assertIsNone(delivery.cantidad)
+        self.assertEqual((delivery.estado, delivery.recibido_por_id), ("COMPLETA", self.admin.pk))
+        self.assertIsNotNone(delivery.fecha_entrega)
+        from apps.usuarios.models import AuditLog
+        self.assertTrue(AuditLog.objects.filter(accion="REGISTER_PHYSICAL_DELIVERY").exists())
+        self.assertEqual(WorkflowService.aprobar_etapa(stage, self.admin).estado, "APROBADA")
 
     def test_gestion_actores_proyecta_las_cinco_posiciones_canonicas(self):
         gestion = self._gestion_actores()
@@ -436,7 +570,8 @@ class ExcelenciaAcademicaTest(TestCase):
 
     def test_criterio_inmutable_al_iniciar_flujo(self):
         self._configure(ExcelenciaExpediente.Criterio.RENDIMIENTO_ACADEMICO)
-        self._documents(["CARTA_EXCELENCIA", "RECIBO_MATRICULA_EXC", "HISTORIAL_EXCELENCIA", "FOLDER_EXCELENCIA"])
+        self._documents(["CARTA_EXCELENCIA", "RECIBO_MATRICULA_EXC", "HISTORIAL_EXCELENCIA"])
+        self._receive_folder()
         self._approve("INSCRIPCION")
         with self.assertRaises(ValidationError):
             ExcelenciaAcademicaService.configurar_criterio(self.post, ExcelenciaExpediente.Criterio.RECONOCIMIENTO_CALIDAD)
@@ -451,7 +586,8 @@ class ExcelenciaAcademicaTest(TestCase):
 
     def test_calidad_es_cualitativa_y_exige_certificaciones(self):
         self._configure(ExcelenciaExpediente.Criterio.RECONOCIMIENTO_CALIDAD)
-        self._documents(["CARTA_EXCELENCIA", "RECIBO_MATRICULA_EXC", "HISTORIAL_EXCELENCIA", "FOLDER_EXCELENCIA"])
+        self._documents(["CARTA_EXCELENCIA", "RECIBO_MATRICULA_EXC", "HISTORIAL_EXCELENCIA"])
+        self._receive_folder()
         self._approve("INSCRIPCION")
         self._documents(["CERT_PLANIFICACION", "SOLVENCIA_UNIV", "SOLVENCIA_BIBLIO", "TIMBRE_EXCELENCIA"])
         review = self.follow["REVISION_REQUISITOS"]

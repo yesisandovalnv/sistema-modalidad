@@ -6,7 +6,8 @@ describe('formatCodeLabel', () => {
     expect(formatCodeLabel('DEFENSA_PUBLICA')).toBe('Defensa Pública')
     expect(formatCodeLabel('EN_PROCESO')).toBe('En proceso')
     expect(formatCodeLabel('REGISTRADA')).toBe('Registrada')
-    expect(formatCodeLabel('REVISION_FINAL_POST_PUBLICA')).toBe('Revision final post publica')
+    expect(formatCodeLabel('REVISION_FINAL_POST_PUBLICA')).toBe('Revisión final posterior a la Defensa Pública')
+    expect(formatCodeLabel('APROBACION_PLENA_CON_FELICITACION')).toBe('Aprobación plena con felicitación')
   })
 
   it('conserva valores vacíos', () => {

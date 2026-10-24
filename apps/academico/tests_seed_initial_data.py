@@ -445,13 +445,15 @@ class OfficialProyectoGradoDocumentTypesSeedTest(TestCase):
         self.assertFalse(tipos.exclude(tamano_maximo_mb=10).exists())
         self.assertEqual(tipos.get(codigo="OBSERVACIONES_DEFENSA_PERFIL").extensiones_permitidas, "pdf")
         self.assertFalse(tipos.exclude(codigo="OBSERVACIONES_DEFENSA_PERFIL").exclude(extensiones_permitidas="pdf,doc,docx").exists())
-        self.assertIn("Creados: 246", first_stdout)
+        # El tipo histórico del fólder se conserva; Excelencia ya no crea
+        # su requisito digital ni el vínculo ModalidadRequisito.
+        self.assertIn("Creados: 244", first_stdout)
 
         second_stdout = self.run_official_seed()
 
         self.assertEqual(TipoDocumento.objects.filter(codigo__in=self.EXPECTED_CODES).count(), 7)
         self.assertIn("Creados: 0", second_stdout)
-        self.assertIn("Existentes: 277", second_stdout)
+        self.assertIn("Existentes: 274", second_stdout)
 
     def test_selective_document_type_seed_isolated_and_idempotent(self) -> None:
         user = get_user_model().objects.create_user(username="selective-seed-student")

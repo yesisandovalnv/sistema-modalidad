@@ -35,13 +35,17 @@ AREA_DATA = (
 
 
 class ExamenGradoRequisitosPolicy(BaseRequisitosPolicy):
+    INSCRIPTION_DELIVERIES = ("FOLDER_AMARILLO",)
     DOCUMENTS_BY_STAGE = {
-        "INSCRIPCION": ("CARTA_SOLICITUD_EXAMEN", "MATRICULA_VIGENTE", "HISTORIAL_ACADEMICO", "FOLDER_AMARILLO"),
+        "INSCRIPCION": ("CARTA_SOLICITUD_EXAMEN", "MATRICULA_VIGENTE", "HISTORIAL_ACADEMICO"),
         "PREPARACION_EXAMEN": (),
         "AREA_1": (), "AREA_2": (), "AREA_3": (), "AREA_4": (),
         "DOCUMENTACION_FINAL": ("ACTA_EXAMEN", "HOJA_APROBACION_EXAMEN"),
         "CONCLUSION_ACADEMICA": ("ACTA_EXAMEN", "HOJA_APROBACION_EXAMEN"),
     }
+
+    def get_entregas_requeridas(self, fase=None):
+        return self.INSCRIPTION_DELIVERIES if fase in (None, "INSCRIPCION") else ()
 
     def get_documentos_requeridos(self, fase=None):
         if fase is not None:
@@ -177,10 +181,90 @@ class ExamenGradoPolicy(BaseModalidadPolicy):
     def usa_conclusion_academica_propia(self):
         return True
 
+    def _requisitos_inscripcion(self, postulacion):
+        from apps.documentos.models import TipoDocumento
+        from apps.postulantes.models import EntregaFisica
+
+        codes = self.get_documentos_requeridos("INSCRIPCION")
+        names = dict(TipoDocumento.objects.filter(codigo__in=codes).values_list("codigo", "nombre"))
+        documents = {item.tipo_documento.codigo: item for item in postulacion.documentos.filter(
+            activo=True, tipo_documento__codigo__in=codes,
+        ).select_related("estado", "tipo_documento")}
+        requirements = []
+        for code in codes:
+            document = documents.get(code)
+            presented = bool(document and document.versiones.filter(activo=True, es_version_actual=True).exists())
+            approved = bool(presented and document.estado.codigo == "APR" and not document.requiere_correccion)
+            if not document:
+                label = "No presentado"
+            elif document.requiere_correccion or document.estado.codigo in {"OBS", "REC"}:
+                label = "Requiere corrección"
+            elif not presented:
+                label = "Sin versión vigente"
+            else:
+                label = "Aprobado" if approved else "Pendiente de revisión administrativa"
+            requirements.append({
+                "tipo": "DOCUMENTO", "codigo": code, "nombre": names.get(code, code.replace("_", " ").title()),
+                "cumplido": approved, "presentado": presented,
+                "estado": "CUMPLIDO" if approved else "PENDIENTE", "estado_display": label,
+                "destino": "#documentos",
+            })
+        for code in self.get_entregas_requeridas("INSCRIPCION"):
+            delivery = postulacion.entregas_fisicas.filter(codigo=code, activo=True).first()
+            complete = bool(delivery and delivery.estado == EntregaFisica.Estado.COMPLETA)
+            requirements.append({
+                "tipo": "ENTREGA_FISICA", "codigo": code,
+                "nombre": "Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida",
+                "cumplido": complete, "estado": "CUMPLIDO" if complete else "PENDIENTE",
+                "estado_display": "Recepción registrada" if complete else "Pendiente de recepción",
+                "destino": "#inscripcion-entregas", "cantidad": delivery.cantidad if delivery else None,
+            })
+        return requirements
+
+    def _orientar_inscripcion(self, postulacion):
+        requirements = self._requisitos_inscripcion(postulacion)
+        completed = sum(item["cumplido"] for item in requirements)
+        total = len(requirements)
+        documents = [item for item in requirements if item["tipo"] == "DOCUMENTO"]
+        if any(not item["presentado"] or item["estado_display"] == "Requiere corrección" for item in documents):
+            code, title, description, destination = (
+                "COMPLETAR_DOCUMENTOS", "Completar documentos de Inscripción",
+                "Presenta o corrige los documentos obligatorios de Inscripción del Examen de Grado.", "#documentos",
+            )
+        elif any(not item["cumplido"] for item in documents):
+            code, title, description, destination = (
+                "GESTIONAR_DOCUMENTOS", "Revisión administrativa de documentos",
+                "Los documentos presentados deben ser aprobados por personal administrativo.", "#documentos",
+            )
+        elif completed < total:
+            code, title, description, destination = (
+                "GESTIONAR_ENTREGA_FISICA", "Registrar recepción del fólder amarillo",
+                "El personal administrativo debe registrar la recepción del fólder rotulado.", "#inscripcion-entregas",
+            )
+        else:
+            code, title, description, destination = (
+                "APROBAR_ETAPA", "Aprobar Inscripción",
+                "Los requisitos de Inscripción del Examen de Grado están cumplidos.", "#resumen",
+            )
+        complete = completed == total
+        return {
+            "operacion": "ORIENTAR_ETAPA", "mensaje": f"{completed}/{total} requisitos de Inscripción cumplidos. {description}",
+            "requisitos": requirements, "requisitos_cumplidos": completed, "requisitos_totales": total,
+            "permite_aprobar_etapa": complete, "conflictos_identidad": [],
+            "siguiente_accion": {
+                "codigo": code, "titulo": title, "descripcion": description,
+                "estado": "DISPONIBLE" if complete else "PENDIENTE",
+                "estado_display": "Disponible" if complete else "Pendiente", "destino": destination,
+                "accion_label": "Ir a recepción física" if code == "GESTIONAR_ENTREGA_FISICA" else "Ir a documentos" if destination == "#documentos" else title,
+            },
+        }
+
     def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
         if seguimiento is None:
             return None
         stage = seguimiento.etapa.codigo
+        if stage == "INSCRIPCION":
+            return self._orientar_inscripcion(postulacion)
         requirements = []
         if stage in {"INSCRIPCION", "DOCUMENTACION_FINAL"}:
             from apps.documentos.models import DocumentoPostulacion, VersionDocumento
@@ -279,6 +363,10 @@ class ExamenGradoPolicy(BaseModalidadPolicy):
                     raise ValidationError("Las áreas del Examen deben aprobarse secuencialmente.")
 
     def validar_aprobacion_etapa(self, seguimiento):
+        if seguimiento.etapa.codigo == "INSCRIPCION":
+            missing = [f'{item["tipo"]}:{item["codigo"]}' for item in self._requisitos_inscripcion(seguimiento.postulacion) if not item["cumplido"]]
+            if missing:
+                raise ValidationError({"faltantes": missing})
         if seguimiento.etapa.codigo.startswith("AREA_"):
             area = self._area(seguimiento.postulacion, seguimiento.etapa.codigo)
             if not area or area.estado != ExamenArea.Estado.APROBADA:

@@ -205,6 +205,8 @@ OFFICIAL_TIPOS_DOCUMENTO = [
         "obligatorio": True, "permite_multiple_version": False, "tamano_maximo_mb": 10, "extensiones_permitidas": "pdf,doc,docx",
     },
     {
+        # Compatibilidad histórica: se conserva el tipo, pero no se vincula
+        # como requisito digital en la matriz oficial de Excelencia.
         "codigo": "FOLDER_EXCELENCIA",
         "nombre": "Fólder Amarillo de Excelencia Académica",
         "descripcion": "Fólder amarillo rotulado con el nombre del postulante y la modalidad.",

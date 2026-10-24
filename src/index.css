@@ -252,16 +252,6 @@ html.dark body {
   color: var(--text-primary);
 }
 
-.auth-brand-panel {
-  background: linear-gradient(
-    165deg,
-    var(--sidebar-bg) 0%,
-    var(--sidebar-bg-secondary) 32%,
-    var(--sidebar-bg-tertiary) 68%,
-    var(--sidebar-bg-quaternary) 100%
-  );
-}
-
 .app-filter-panel {
   border-color: var(--border);
   background: var(--surface);

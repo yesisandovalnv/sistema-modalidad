@@ -918,6 +918,36 @@ class AsignacionPublicaConcurrencyTest(AssignmentBaseMixin, TransactionTestCase)
 class AsignacionApiTest(AssignmentBaseMixin, APITestCase):
     """Pruebas API y permisos para asignaciones."""
 
+    def test_ocupacion_tutor_tribunal_se_valida_en_ambos_sentidos(self):
+        self.authenticate(self.admin)
+        for origen, destino, posicion in (
+            ("TRIBUNAL", "TUTOR", "TUTOR_PROYECTO_1"),
+            ("TUTOR", "TRIBUNAL", "TRIBUNAL_PERFIL_1"),
+        ):
+            with self.subTest(origen=origen, destino=destino):
+                asignacion = AsignacionService.asignar_actor(
+                    self.postulacion, self.docente_1, origen, self.admin,
+                    **({"orden_cargo": 1, "seguimiento_etapa": self.seguimiento_perfil}
+                       if origen == "TRIBUNAL" else {}),
+                )
+                response = self.obtener_candidatos(posicion=posicion, page_size=20)
+                self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+                rows = {row["id"]: row for row in response.data["results"]}
+                self.assertFalse(rows[self.docente_1.pk]["elegible"])
+                self.assertEqual(rows[self.docente_1.pk]["asignaciones_vigentes"],
+                                 ["Tribunal 1" if origen == "TRIBUNAL" else "Tutor"])
+                self.assertTrue(rows[self.docente_2.pk]["elegible"])
+                payload = {"usuario": self.docente_1.pk, "tipo_participacion": destino}
+                if destino == "TRIBUNAL":
+                    payload.update(orden_cargo=1, seguimiento_etapa=self.seguimiento_perfil.pk)
+                rechazo = self.client.post(
+                    f"/api/v1/postulaciones/{self.postulacion.pk}/asignaciones/asignar/",
+                    payload, format="json",
+                )
+                self.assertEqual(rechazo.status_code, status.HTTP_400_BAD_REQUEST, rechazo.data)
+                self.assertEqual(self.postulacion.asignaciones.filter(activo=True).count(), 1)
+                AsignacionService.finalizar_asignacion(asignacion, self.admin, "Fin del caso")
+
     def authenticate(self, user) -> None:
         token = RefreshToken.for_user(user).access_token
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")

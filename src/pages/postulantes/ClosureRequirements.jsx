@@ -180,7 +180,7 @@ export default function ClosureRequirements({
     controller.current?.abort(); controller.current = new AbortController()
     setDeliveryCreation({ codigo: requirement.codigo, submitting: true, error: '' })
     try {
-      const created = await postulacionesService.crearEntregaFisica(postulacion, requirement.codigo, requirement.nombre, 1, controller.current.signal)
+      const created = await postulacionesService.crearEntregaFisica(postulacion, requirement.codigo, requirement.nombre, requirement.cantidad === null ? null : 1, controller.current.signal)
       setDeliveryCreation({ codigo: '', submitting: false, error: '' })
       await load()
       setAction({ kind: 'entrega', operation: 'registrar', item: created, submitting: false, error: '' })
@@ -203,7 +203,7 @@ export default function ClosureRequirements({
         id: null,
         estado: 'PENDIENTE',
         estado_display: 'Pendiente de recepción',
-        cantidad: 1,
+        cantidad: requirement.cantidad === null ? null : 1,
         cantidad_recibida: 0,
       })
     : Array.isArray(deliveryCodes)
