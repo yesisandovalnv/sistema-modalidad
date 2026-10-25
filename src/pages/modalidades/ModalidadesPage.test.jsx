@@ -5,6 +5,8 @@ import ModalidadesPage from './ModalidadesPage'
 import { crudService, modalidadesService } from '../../services/crudService'
 import { AuthContext } from '../../context/AuthContext'
 
+vi.mock('./PdfThumbnail', () => ({ default: () => null }))
+
 vi.mock('../../services/crudService', () => ({
   endpoints: { modalidades: '/modalidades/' },
   crudService: { list: vi.fn(), update: vi.fn() },
@@ -48,87 +50,66 @@ it('renderiza las seis modalidades y no muestra Nuevo ni Eliminar', async () => 
   expect(screen.queryByRole('button', { name: 'Eliminar' })).not.toBeInTheDocument()
 })
 
-it('estudiante ve lectura de requisitos pero no controles administrativos', async () => {
-  modalidadesService.obtenerDocumentosOficiales.mockResolvedValue([{ id: 8, nombre: 'Reglamento de Tesis', updated_at: '2026-09-16T12:00:00Z' }])
+it('inicia contraído, permite teclado y clic, y mantiene solo una modalidad expandida', async () => {
+  const user = userEvent.setup()
+  modalidadesService.obtenerDocumentosOficiales.mockResolvedValue([
+    { id: 10, nombre: 'Reglamento', updated_at: '2026-09-16T12:00:00Z' },
+    { id: 11, nombre: 'Contenidos' },
+    { id: 12, nombre: 'Formulario' },
+  ])
   renderPage(false)
-  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Ver' })).toHaveLength(6))
-  expect(screen.getAllByRole('button', { name: 'Descargar' })).toHaveLength(6)
-  expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument()
+  const controls = await screen.findAllByRole('button', { name: 'Documentos oficiales (3)' })
+  expect(controls).toHaveLength(6)
+  controls.forEach((control) => {
+    expect(control).toHaveAttribute('aria-expanded', 'false')
+    expect(document.getElementById(control.getAttribute('aria-controls'))).toHaveAttribute('aria-hidden', 'true')
+  })
+  expect(screen.getAllByText('Reglamento').every((node) => node.closest('[aria-hidden="true"]'))).toBe(true)
+  controls[0].focus()
+  await user.keyboard('{Enter}')
+  expect(controls[0]).toHaveAttribute('aria-expanded', 'true')
+  expect(within(screen.getAllByRole('article')[0]).getByText('Formulario')).toBeVisible()
+  expect(screen.getAllByRole('button', { name: /^Ver / })).toHaveLength(3)
+  expect(screen.getAllByRole('button', { name: /^Descargar / })).toHaveLength(3)
+  expect(screen.queryByRole('button', { name: /^Editar / })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Agregar documento' })).not.toBeInTheDocument()
-  expect(screen.queryByRole('button', { name: 'Actualizar' })).not.toBeInTheDocument()
+  await user.click(controls[1])
+  expect(controls[0]).toHaveAttribute('aria-expanded', 'false')
+  expect(controls[1]).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getAllByRole('region')).toHaveLength(1)
+  await user.click(controls[1])
+  expect(screen.getAllByText('Reglamento').every((node) => node.closest('[aria-hidden="true"]'))).toBe(true)
 })
 
-it('muestra estado vacío cuando no existe documento oficial', async () => {
-  renderPage(false)
-  await waitFor(() => expect(screen.getAllByText('Aún no se han publicado documentos oficiales.')).toHaveLength(6))
-})
-
-it('admin muestra dos documentos con nombres y acciones independientes', async () => {
-
+it('expande el estado vacío sin mostrar acciones administrativas al estudiante', async () => {
   const user = userEvent.setup()
-
-  modalidadesService.obtenerDocumentosOficiales.mockResolvedValue([
-    { id: 10, nombre: 'Reglamento de Examen', updated_at: '2026-09-16T12:00:00Z' },
-    { id: 11, nombre: 'Contenidos por áreas', updated_at: '2026-09-16T12:00:00Z' },
-  ])
-
-  renderPage(true)
-
-  await waitFor(() => expect(screen.getAllByText('Reglamento de Examen')).toHaveLength(6))
-  expect(screen.getAllByText('2 documentos disponibles')).toHaveLength(6)
-  expect(screen.queryAllByText('Contenidos por áreas')).toHaveLength(0)
-  expect(screen.getAllByRole('button', { name: 'Ver' })).toHaveLength(6)
-  expect(screen.getAllByRole('button', { name: 'Descargar' })).toHaveLength(6)
-  expect(screen.getAllByRole('button', { name: 'Actualizar' })).toHaveLength(6)
-
-  const firstArticle = within(screen.getAllByRole('article')[0])
-  const expand = firstArticle.getByRole('button', { name: 'Ver otro documento (1)' })
-  expect(expand).toHaveAttribute('aria-expanded', 'false')
-  await user.click(expand)
-  expect(firstArticle.getByText('Contenidos por áreas')).toBeInTheDocument()
-  expect(firstArticle.getByRole('button', { name: 'Mostrar menos' })).toHaveAttribute('aria-expanded', 'true')
-  expect(screen.getAllByRole('button', { name: 'Ver' })).toHaveLength(7)
-  expect(screen.getAllByRole('button', { name: 'Descargar' })).toHaveLength(7)
-  expect(screen.getAllByRole('button', { name: 'Actualizar' })).toHaveLength(7)
-
-  await user.click(screen.getAllByRole('button', { name: 'Actualizar' })[1])
-  expect(screen.getByRole('dialog', { name: 'Actualizar requisitos: Examen de Grado' })).toHaveTextContent('Contenidos por áreas')
-
-  await user.click(firstArticle.getByRole('button', { name: 'Mostrar menos' }))
-  expect(firstArticle.queryByText('Contenidos por áreas')).not.toBeInTheDocument()
+  renderPage(false)
+  const controls = await screen.findAllByRole('button', { name: 'Documentos oficiales (0)' })
+  expect(screen.getAllByText('Aún no se han publicado documentos oficiales.').every((node) => node.closest('[aria-hidden="true"]'))).toBe(true)
+  await user.click(controls[0])
+  expect(within(screen.getAllByRole('article')[0]).getByText('Aún no se han publicado documentos oficiales.')).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'Editar modalidad' })).not.toBeInTheDocument()
 })
 
-it('cada modalidad mantiene de forma independiente su expansión documental', async () => {
+it('conserva Ver y Descargar como iconos con nombres accesibles para cada documento', async () => {
   const user = userEvent.setup()
+  const open = vi.spyOn(window, 'open').mockImplementation(() => null)
   modalidadesService.obtenerDocumentosOficiales.mockResolvedValue([
-    { id: 10, nombre: 'Reglamento de Examen', updated_at: '2026-09-16T12:00:00Z' },
-    { id: 11, nombre: 'Contenidos por áreas', updated_at: '2026-09-16T12:00:00Z' },
+    { id: 10, nombre: 'Reglamento' }, { id: 11, nombre: 'Contenidos' },
   ])
-
   renderPage(false)
-  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Ver otro documento (1)' })).toHaveLength(6))
-  const articles = screen.getAllByRole('article').map((article) => within(article))
-  await user.click(articles[0].getByRole('button', { name: 'Ver otro documento (1)' }))
-  expect(articles[0].getByText('Contenidos por áreas')).toBeInTheDocument()
-  expect(articles[1].queryByText('Contenidos por áreas')).not.toBeInTheDocument()
-  expect(articles[1].getByRole('button', { name: 'Ver otro documento (1)' })).toHaveAttribute('aria-expanded', 'false')
-})
-
-it('estudiante puede expandir documentos y conserva Ver y Descargar por documento', async () => {
-  const user = userEvent.setup()
-  modalidadesService.obtenerDocumentosOficiales.mockResolvedValue([
-    { id: 10, nombre: 'Reglamento de Examen', updated_at: '2026-09-16T12:00:00Z' },
-    { id: 11, nombre: 'Contenidos por áreas', updated_at: '2026-09-16T12:00:00Z' },
-  ])
-
-  renderPage(false)
-  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Ver otro documento (1)' })).toHaveLength(6))
-  const firstArticle = within(screen.getAllByRole('article')[0])
-  await user.click(firstArticle.getByRole('button', { name: 'Ver otro documento (1)' }))
-  expect(firstArticle.getByText('Contenidos por áreas')).toBeInTheDocument()
-  expect(firstArticle.queryByRole('button', { name: 'Actualizar' })).not.toBeInTheDocument()
-  await user.click(firstArticle.getAllByRole('button', { name: 'Descargar' })[1])
-  await waitFor(() => expect(modalidadesService.descargarDocumentoOficial).toHaveBeenCalledWith(1, 11, 'Contenidos por áreas', undefined))
+  await user.click((await screen.findAllByRole('button', { name: 'Documentos oficiales (2)' }))[0])
+  const view = screen.getByRole('button', { name: 'Ver Contenidos' })
+  const download = screen.getByRole('button', { name: 'Descargar Contenidos' })
+  expect(view).toHaveTextContent('')
+  expect(download).toHaveTextContent('')
+  expect(view).toHaveAttribute('title', 'Ver Contenidos')
+  await user.click(view)
+  await waitFor(() => expect(open).toHaveBeenCalled())
+  await user.click(download)
+  await waitFor(() => expect(modalidadesService.descargarDocumentoOficial).toHaveBeenCalledTimes(2))
+  expect(modalidadesService.descargarDocumentoOficial).toHaveBeenLastCalledWith(1, 11, 'Contenidos', undefined)
+  open.mockRestore()
 })
 
 it('administrador ve Editar y Subir requisitos, y edita solo descripción', async () => {
@@ -164,8 +145,8 @@ it('admin muestra Actualizar cuando existe documento y descarga usa endpoint pro
   modalidadesService.obtenerDocumentosOficiales.mockImplementation((id) => String(id) === '1' ? Promise.resolve([{ id: 10, nombre: 'Requisitos PDF', updated_at: '2026-09-16T12:00:00Z' }]) : Promise.resolve([]))
   const open = vi.spyOn(window, 'open').mockImplementation(() => null)
   renderPage(true)
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Actualizar' })).toBeInTheDocument())
-  await user.click(screen.getAllByRole('button', { name: 'Ver' })[0])
+  await user.click((await screen.findAllByRole('button', { name: 'Documentos oficiales (1)' }))[0])
+  await user.click(screen.getAllByRole('button', { name: 'Ver Requisitos PDF' })[0])
   await waitFor(() => expect(modalidadesService.descargarDocumentoOficial).toHaveBeenCalledWith(1, 10, 'Requisitos PDF', undefined))
   expect(open).toHaveBeenCalled()
   open.mockRestore()
@@ -175,8 +156,8 @@ it('el modal de actualización muestra el documento actual y mantiene vacío el 
   const user = userEvent.setup()
   modalidadesService.obtenerDocumentosOficiales.mockResolvedValue([{ id: 10, nombre: 'Reglamento vigente', updated_at: '2026-09-16T12:00:00Z' }])
   renderPage(true)
-  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Actualizar' })).toHaveLength(6))
-  await user.click(screen.getAllByRole('button', { name: 'Actualizar' })[0])
+  await user.click((await screen.findAllByRole('button', { name: 'Documentos oficiales (1)' }))[0])
+  await user.click(screen.getAllByRole('button', { name: /^Editar (Reglamento vigente|Nombre anterior)$/ })[0])
   const dialog = screen.getByRole('dialog', { name: 'Actualizar requisitos: Examen de Grado' })
   expect(within(dialog).getByText('Documento actual')).toBeInTheDocument()
   expect(within(dialog).getByText('Reglamento vigente')).toBeInTheDocument()
@@ -188,8 +169,8 @@ it('admin puede actualizar solo el nombre sin seleccionar otro PDF', async () =>
   const user = userEvent.setup()
   modalidadesService.obtenerDocumentosOficiales.mockResolvedValue([{ id: 10, nombre: 'Nombre anterior', updated_at: '2026-09-16T12:00:00Z' }])
   renderPage(true)
-  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Actualizar' })).toHaveLength(6))
-  await user.click(screen.getAllByRole('button', { name: 'Actualizar' })[0])
+  await user.click((await screen.findAllByRole('button', { name: 'Documentos oficiales (1)' }))[0])
+  await user.click(screen.getAllByRole('button', { name: /^Editar (Reglamento vigente|Nombre anterior)$/ })[0])
   const dialog = screen.getByRole('dialog', { name: 'Actualizar requisitos: Examen de Grado' })
   const name = within(dialog).getByDisplayValue('Nombre anterior')
   await user.clear(name)
