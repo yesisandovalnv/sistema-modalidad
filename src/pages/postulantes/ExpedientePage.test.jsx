@@ -3328,7 +3328,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('link', { name: 'Gestionar documentos' })).not.toBeInTheDocument()
   })
 
-  it('mantiene la navegación documental protegida de Tesis sin abrir el cargador desde Resumen', async () => {
+  it('abre el cargador compartido de Tesis desde Resumen sin navegar', async () => {
     const thesisStage = { id: 31, codigo: 'DICTAMEN_TUTOR', nombre: 'Dictamen de Tutor', estado: 'EN_PROCESO' }
     const orientation = {
       mensaje: 'Carga el documento requerido.',
@@ -3348,8 +3348,625 @@ describe('ExpedientePage US-008', () => {
     })
     renderApplicationUploadManagerPage('resumen')
 
-    expect(await screen.findByRole('link', { name: 'Gestionar documentos' })).toHaveAttribute('href', '#documentos')
+    await userEvent.click(await screen.findByRole('button', { name: 'Gestionar documentos' }))
+    expect(await screen.findByRole('dialog', { name: 'Cargar documentos' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#resumen')
+  })
+
+  const profileThesisApplicable = (codigo = 'SIN_DOCUMENTO', permitida = true) => ({
+    postulacion_id: 53, modalidad: 'TESIS_GRADO', etapa_actual: 'PERFIL_TESIS',
+    documentos_aplicables: [
+      { id: 153, codigo: 'PERFIL_TESIS', nombre: 'Perfil de Tesis', capacidad_carga: { codigo, permitida } },
+      { id: 154, codigo: 'INFORME_TUTOR_TESIS', nombre: 'Informe del tutor de Tesis', capacidad_carga: { codigo, permitida } },
+    ],
+  })
+  const renderProfileThesisAction = ({ tutor = false, complete = false, canUpload = true, canAssign = true, requirements, stageCode = 'PERFIL_TESIS', modality = 'TESIS_GRADO', hash = 'resumen', actorManagement } = {}) => {
+    const stage = { id: 156, codigo: stageCode, nombre: 'Perfil de Tesis', estado: 'EN_PROCESO', activo: true, numero_intento: 1 }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response, detalle: { ...response.detalle, id: 53, codigo: 'TG-2026-02', modalidad_detalle: { codigo: modality, nombre: 'Tesis de Grado' } },
+      flujo: { ...response.flujo, modalidad: { codigo: modality }, etapa_actual: stage, etapas: [stage],
+        gestion_actores: actorManagement ?? response.flujo.gestion_actores,
+        orientacion_etapa_actual: {
+          mensaje: 'Completa el tutor, los documentos y la defensa del perfil según corresponda.',
+          requisitos: requirements || [
+            { tipo: 'OPERATIVO', codigo: 'TUTOR', nombre: 'Tutor', cumplido: tutor, destino: '#actores' },
+            ...['PERFIL_TESIS', 'INFORME_TUTOR_TESIS'].map((codigo) => ({ tipo: 'OPERATIVO', codigo, nombre: codigo, cumplido: complete, destino: '#documentos' })),
+          ],
+          siguiente_accion: { codigo: 'COMPLETAR_PERFIL', titulo: 'Completar perfil de Tesis', descripcion: 'Completa el tutor y los documentos requeridos del perfil.', estado: 'PENDIENTE', destino: '#documentos', accion_label: 'Ir a documentos' },
+        } },
+    })
+    selectInitialTab(hash)
+    const permissions = ['puede_gestionar_postulaciones', ...(canUpload ? ['puede_cargar_documentos'] : []), ...(canAssign ? ['puede_gestionar_asignaciones'] : [])]
+    return render(<AuthContext.Provider value={{ user: { id: 9 }, hasPermission: (name) => permissions.includes(name) }}><MemoryRouter initialEntries={['/postulaciones/53']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+  }
+
+  it.each([
+    ['SIN_DOCUMENTO', false], ['SIN_DOCUMENTO', true], ['RECHAZADO', false],
+    ['CORRECCION_REQUERIDA', true], ['CORRECCION_POST_APROBACION', false],
+  ])('Perfil contextual de Tesis: abre con capacidad %s y tutor asignado %s sin duplicar consultas', async (code, tutor) => {
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue(profileThesisApplicable(code))
+    renderProfileThesisAction({ tutor })
+    const trigger = await screen.findByRole('button', { name: 'Ir a documentos' })
+    await userEvent.click(trigger)
+    const dialog = await screen.findByRole('dialog', { name: 'Cargar documentos' })
+    expect(screen.getAllByRole('dialog', { name: 'Cargar documentos' })).toHaveLength(1)
+    expect(within(dialog).getByText('Informe del tutor de Tesis')).toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledExactlyOnceWith('53', expect.any(AbortSignal))
+    expect(window.location.hash).toBe('#resumen')
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Cargar documentos' })).not.toBeInTheDocument())
+    await waitFor(() => expect(trigger).toHaveFocus())
+    expect(screen.getByText('Completa el tutor y los documentos requeridos del perfil.')).toBeInTheDocument()
+  })
+
+  it.each(['ESPERANDO_REVISION', 'PENDIENTE_REVISION', 'DOCUMENTO_APROBADO', 'ESTADO_NO_CARGABLE'])('Perfil contextual de Tesis: permite consultar %s aunque administración tenga carga permitida', async (code) => {
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue(profileThesisApplicable(code, true))
+    renderProfileThesisAction()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ir a documentos' }))
+    await waitFor(() => expect(window.location.hash).toBe('#documentos'))
     expect(screen.queryByRole('dialog', { name: 'Cargar documentos' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cargar documento' })).toBeVisible()
+  })
+
+  it('Perfil contextual de Tesis: deriva a Actores cuando solo falta tutor, sin consultar tipos ni abrir un formulario', async () => {
+    renderProfileThesisAction({ complete: true })
+    const link = await screen.findByRole('link', { name: 'Ir a actores' })
+    expect(link).toHaveAttribute('href', '#actores')
+    expect(screen.queryByRole('button', { name: 'Ir a documentos' })).not.toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    { canUpload: false }, { complete: true, canAssign: false },
+    { complete: true, tutor: true }, { requirements: [] },
+    { modality: 'TRABAJO_DIRIGIDO' }, { stageCode: 'INSCRIPCION' },
+  ])('Perfil contextual de Tesis: conserva fallback ante contexto o permiso insuficiente %j', async (options) => {
+    renderProfileThesisAction(options)
+    expect(await screen.findByRole('link', { name: 'Ir a documentos' })).toHaveAttribute('href', '#documentos')
+    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog', { name: 'Cargar documentos' })).not.toBeInTheDocument()
+  })
+
+  it.each(['vacio', 'error', 'otro contexto', 'sin capacidad', 'codigo desconocido', 'sin permiso documental'])('Perfil contextual de Tesis: fallback seguro para respuesta %s', async (scenario) => {
+    const applicable = profileThesisApplicable()
+    if (scenario === 'vacio') applicable.documentos_aplicables = []
+    if (scenario === 'otro contexto') applicable.etapa_actual = 'DOCUMENTO_FINAL'
+    if (scenario === 'sin capacidad') applicable.documentos_aplicables.forEach((type) => { delete type.capacidad_carga })
+    if (scenario === 'codigo desconocido') applicable.documentos_aplicables.forEach((type) => { type.capacidad_carga.codigo = 'DESCONOCIDO' })
+    if (scenario === 'sin permiso documental') applicable.documentos_aplicables.forEach((type) => { type.capacidad_carga.permitida = false })
+    if (scenario === 'error') postulacionesService.obtenerDocumentosAplicables.mockRejectedValue({ message: 'Servicio no disponible' })
+    else postulacionesService.obtenerDocumentosAplicables.mockResolvedValue(applicable)
+    renderProfileThesisAction()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ir a documentos' }))
+    await waitFor(() => expect(window.location.hash).toBe('#documentos'))
+    expect(screen.queryByRole('dialog', { name: 'Cargar documentos' })).not.toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledTimes(1)
+  })
+
+  it('Perfil contextual de Tesis: impide doble apertura y permite cerrar y volver a cargar manualmente', async () => {
+    let resolve
+    postulacionesService.obtenerDocumentosAplicables.mockReturnValueOnce(new Promise((done) => { resolve = done }))
+    renderProfileThesisAction()
+    const trigger = await screen.findByRole('button', { name: 'Ir a documentos' })
+    fireEvent.click(trigger)
+    fireEvent.click(trigger)
+    expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledTimes(1)
+    await act(async () => resolve(profileThesisApplicable()))
+    const dialog = await screen.findByRole('dialog', { name: 'Cargar documentos' })
+    expect(screen.getAllByRole('dialog', { name: 'Cargar documentos' })).toHaveLength(1)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cerrar' }))
+    expect(screen.queryByRole('dialog', { name: 'Cargar documentos' })).not.toBeInTheDocument()
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue(profileThesisApplicable())
+    await userEvent.click(screen.getByRole('tab', { name: 'Documentos' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cargar documento' }))
+    expect(await screen.findByRole('dialog', { name: 'Cargar documentos' })).toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledTimes(2)
+  })
+
+  it('Perfil contextual de Tesis: un hash documental no consulta tipos ni abre el cargador automáticamente', async () => {
+    renderProfileThesisAction({ hash: 'documentos' })
+    expect(await screen.findByRole('button', { name: 'Cargar documento' })).toBeVisible()
+    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog', { name: 'Cargar documentos' })).not.toBeInTheDocument()
+  })
+
+  const profileTutorManagement = () => ({
+    contexto: { tipo: 'ETAPA', codigo_etapa: 'PERFIL_TESIS', seguimiento_etapa: 156 },
+    posiciones: [{
+      clave: 'TUTOR_TESIS_1', nombre: 'Tutor de Tesis', tipo_participacion: 'TUTOR', ambito: 'POSTULACION',
+      seguimiento_etapa: null, orden_cargo: null, estado_ocupacion: 'VACANTE', habilitada: true,
+      asignacion_actual: null, asignacion_actual_detalle: null, acciones_permitidas: ['ASIGNAR'], bloqueo: null,
+      precondicion: { codigo: 'TEMATICA_TESIS_APROBADA', enforcement: 'ACTIVO', estado: 'CUMPLIDA' },
+    }],
+  })
+  const profileTutorCandidates = { count: 1, results: [{ id: 81, nombre_completo: 'Tutora elegible', elegible: true }] }
+
+  const privateSecretaryManagement = () => ({
+    contexto: { tipo: 'ETAPA', codigo_etapa: 'DEFENSA_PRIVADA', seguimiento_etapa: 160 },
+    posiciones: [
+      { ...profileTutorManagement().posiciones[0], estado_ocupacion: 'ASIGNADA', asignacion_actual: 59,
+        asignacion_actual_detalle: { id: 59, usuario: { id: 45, nombre: 'Tutor vigente' } }, acciones_permitidas: ['REEMPLAZAR', 'FINALIZAR'] },
+      { clave: 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS_1', nombre: 'Docente de Modalidad', tipo_participacion: 'DOCENTE_MODALIDAD',
+        ambito: 'POSTULACION', seguimiento_etapa: null, orden_cargo: null, estado_ocupacion: 'VACANTE', habilitada: true,
+        asignacion_actual: null, asignacion_actual_detalle: null, acciones_permitidas: ['ASIGNAR'], bloqueo: null, precondicion: null },
+    ],
+  })
+  const renderPrivateSecretary = ({ management = privateSecretaryManagement(), canAssign = true, modality = 'TESIS_GRADO', stageCode = 'DEFENSA_PRIVADA', hash = 'resumen' } = {}) => {
+    const stage = { id: 160, codigo: stageCode, nombre: 'Defensa Privada', estado: 'EN_PROCESO', activo: true, numero_intento: 1 }
+    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response,
+      detalle: { ...response.detalle, id: 53, codigo: 'TG-2026-02', modalidad_detalle: { codigo: modality } },
+      flujo: { ...response.flujo, modalidad: { codigo: modality }, etapa_actual: stage, etapas: [stage], gestion_actores: management,
+        orientacion_etapa_actual: { requisitos: [{ codigo: 'PRECONDICIONES_DEFENSA', cumplido: false, destino: '#actores' }],
+          siguiente_accion: { codigo: 'GESTIONAR_PRECONDICIONES', titulo: 'Completar precondiciones de defensa', descripcion: 'Precondición pendiente', estado: 'PENDIENTE', destino: '#actores', accion_label: 'Ir a precondiciones' } } },
+    })
+    selectInitialTab(hash)
+    const permissions = ['puede_gestionar_postulaciones', ...(canAssign ? ['puede_gestionar_asignaciones'] : [])]
+    return render(<AuthContext.Provider value={{ user: { id: 9 }, hasPermission: (name) => permissions.includes(name) }}><MemoryRouter initialEntries={['/postulaciones/53']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+  }
+
+  it('Secretario contextual de Tesis: abre desde Resumen sin POST y conserva cierre, foco y ambos puestos', async () => {
+    renderPrivateSecretary()
+    const trigger = await screen.findByRole('link', { name: 'Ir a precondiciones' })
+    await userEvent.dblClick(trigger)
+    const dialog = await screen.findByRole('dialog', { name: 'Gestionar actores — Defensa Privada' })
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(window.location.hash).toBe('#resumen')
+    expect(within(dialog).getByText('Tutor vigente')).toBeVisible()
+    expect(within(dialog).getByLabelText('Seleccionar candidato para Docente de Modalidad')).toBeVisible()
+    expect(postulacionesService.obtenerCandidatosElegibles).toHaveBeenCalledWith(53, expect.objectContaining({ posicion: 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS_1', accion: 'ASIGNAR' }), expect.any(AbortSignal))
+    expect(postulacionesService.obtenerCandidatosElegibles.mock.calls.filter(([, params]) => params.posicion === 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS_1')).toHaveLength(1)
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+    expect(postulacionesService.reemplazarActor).not.toHaveBeenCalled()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveFocus())
+    await userEvent.click(trigger)
+    await userEvent.click(within(await screen.findByRole('dialog')).getByText('Cerrar', { selector: 'button' }))
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it.each([
+    { canAssign: false }, { management: null }, { modality: 'PROYECTO_GRADO' }, { modality: 'TRABAJO_DIRIGIDO' },
+    ...[
+      { estado_ocupacion: 'ASIGNADA', asignacion_actual: 80 }, { habilitada: false }, { bloqueo: { codigo: 'BLOQUEO' } },
+      { precondicion: { estado: 'PENDIENTE' } }, { acciones_permitidas: [] }, { ambito: 'ETAPA' }, { seguimiento_etapa: 160 },
+      { tipo_participacion: 'SECRETARIO' }, { clave: 'OTRO_PUESTO' },
+    ].map((changes) => { const management = privateSecretaryManagement(); Object.assign(management.posiciones[1], changes); return { management } }),
+    { management: { ...privateSecretaryManagement(), contexto: { tipo: 'ETAPA', codigo_etapa: 'DEFENSA_PRIVADA', seguimiento_etapa: 999 } } },
+    { management: { ...privateSecretaryManagement(), posiciones: [...privateSecretaryManagement().posiciones, privateSecretaryManagement().posiciones[1]] } },
+  ])('Secretario contextual de Tesis: conserva navegación segura %j', async (options) => {
+    renderPrivateSecretary(options)
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a precondiciones' }))
+    expect(window.location.hash).toBe('#actores')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+  })
+
+  it('Secretario contextual de Tesis: conserva apertura manual sin automatismo por hash', async () => {
+    renderPrivateSecretary({ hash: 'actores' })
+    const trigger = await screen.findByRole('button', { name: 'Gestionar actores' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await userEvent.click(trigger)
+    expect(await screen.findByRole('dialog', { name: 'Gestionar actores — Defensa Privada' })).toBeVisible()
+  })
+
+  it('Secretario contextual de Tesis: conserva candidatos vacíos sin asignaciones automáticas', async () => {
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 0, results: [] })
+    renderPrivateSecretary()
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a precondiciones' }))
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(within(dialog).getAllByText('No se encontraron candidatos elegibles.')).toHaveLength(2))
+    expect(within(dialog).queryByRole('button', { name: 'Guardar asignaciones' })).not.toBeInTheDocument()
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+  })
+
+  it('Ocupaciones informativas: conserva habilitado al Tutor compatible y bloquea candidatos no elegibles incluso al enviar', async () => {
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 2, results: [
+      { id: 45, nombre_completo: 'Tutor compatible', elegible: true, asignaciones_vigentes: ['Tutor', 'Tribunal 1'] },
+      { id: 82, nombre_completo: 'Docente incompatible', elegible: false, motivo_bloqueo: 'OCUPADO', asignaciones_vigentes: ['Docente de modalidad'] },
+    ] })
+    renderPrivateSecretary({ modality: 'TRABAJO_DIRIGIDO' })
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a precondiciones' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Gestionar actores' }))
+    const dialog = await screen.findByRole('dialog')
+    const selector = within(dialog).getByLabelText('Seleccionar candidato para Docente de Modalidad')
+    expect(await within(selector).findByRole('option', { name: /Tutor compatible.*Asignación vigente: Tutor, Tribunal 1/ })).toBeEnabled()
+    expect(within(selector).getByRole('option', { name: /Docente incompatible.*Docente de modalidad/ })).toBeDisabled()
+    fireEvent.change(selector, { target: { value: '82' } })
+    fireEvent.submit(dialog.querySelector('form'))
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+    await userEvent.selectOptions(selector, '45')
+    expect(within(dialog).getByRole('button', { name: 'Guardar asignaciones' })).toBeEnabled()
+  })
+
+  it('Ocupaciones informativas: excluye del payload una selección que deja de ser elegible después de buscar', async () => {
+    let stale = false
+    postulacionesService.obtenerCandidatosElegibles.mockImplementation(async (_id, params) => ({ count: 1, results: [
+      { id: 81, nombre_completo: 'Docente cambiante', elegible: params.posicion === 'TUTOR_TESIS_1' || !stale, asignaciones_vigentes: stale ? ['Tribunal 1'] : [], asignaciones_vigentes_detalle: [] },
+    ] }))
+    renderPrivateSecretary()
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a precondiciones' }))
+    const dialog = await screen.findByRole('dialog')
+    const selector = within(dialog).getByLabelText('Seleccionar candidato para Docente de Modalidad')
+    await within(selector).findByRole('option', { name: /Docente cambiante/ })
+    await userEvent.selectOptions(selector, '81')
+    expect(within(dialog).getByRole('button', { name: 'Guardar asignaciones' })).toBeEnabled()
+    stale = true
+    await userEvent.type(within(dialog).getByLabelText('Buscar candidato para Docente de Modalidad'), 'Docente')
+    await userEvent.click(within(dialog).getAllByRole('button', { name: 'Buscar' }).at(-1))
+    await waitFor(() => expect(within(within(dialog).getByLabelText('Seleccionar candidato para Docente de Modalidad')).getByRole('option', { name: /Docente cambiante.*Tribunal 1/ })).toBeDisabled())
+    fireEvent.submit(dialog.querySelector('form'))
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+    expect(within(dialog).queryByRole('button', { name: 'Guardar asignaciones' })).not.toBeInTheDocument()
+  })
+
+  const secretaryOccupation = (overrides = {}) => ({ id: 59, postulacion: 53, usuario: 81, codigo_posicion: 'TUTOR_TESIS_1',
+    tipo_participacion: 'TUTOR', ambito: 'POSTULACION', seguimiento_etapa: null, activo: true, ...overrides })
+
+  it.each([
+    ['Tutor', [secretaryOccupation()], true],
+    ...[1, 2, 3].map((order) => [`Tribunal ${order}`, [secretaryOccupation({ codigo_posicion: `TRIBUNAL_TEMATICA_TESIS_${order}`, tipo_participacion: 'TRIBUNAL', ambito: 'ETAPA', seguimiento_etapa: 155 })], true]),
+    ['Varias ocupaciones', [secretaryOccupation(), secretaryOccupation({ id: 60, codigo_posicion: 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS_1', tipo_participacion: 'DOCENTE_MODALIDAD' })], true],
+    ['Sin ocupaciones', [], false], ['Inactiva', [secretaryOccupation({ activo: false })], false],
+    ['Otro expediente', [secretaryOccupation({ postulacion: 54 })], false],
+    ['Sin contrato', undefined, true], ['Ambiguo', [secretaryOccupation(), secretaryOccupation()], true],
+    ['Sin posición', [secretaryOccupation({ codigo_posicion: null })], true], ['Otro usuario', [secretaryOccupation({ usuario: 82 })], true],
+  ])('Prevención privada de Tesis: %s se resuelve por datos estructurados', async (label, details, blocked) => {
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 1, results: [
+      { id: 81, nombre_completo: 'Docente candidato', elegible: true, asignaciones_vigentes: [label], asignaciones_vigentes_detalle: details },
+    ] })
+    renderPrivateSecretary()
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a precondiciones' }))
+    const dialog = await screen.findByRole('dialog')
+    const selector = within(dialog).getByLabelText('Seleccionar candidato para Docente de Modalidad')
+    const option = await within(selector).findByRole('option', { name: new RegExp(`Docente candidato.*${label}`) })
+    if (blocked) {
+      expect(option).toBeDisabled()
+      fireEvent.change(selector, { target: { value: '81' } })
+      fireEvent.submit(dialog.querySelector('form'))
+      expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+    } else expect(option).toBeEnabled()
+    const tutor = within(dialog).getByLabelText('Seleccionar reemplazo para Tutor de Tesis')
+    expect(await within(tutor).findByRole('option', { name: /Docente candidato/ })).toBeEnabled()
+  })
+
+  it('Prevención privada de Tesis: una ocupación nueva impide guardar aunque elegible siga siendo true', async () => {
+    let occupied = false
+    postulacionesService.obtenerCandidatosElegibles.mockImplementation(async () => ({ count: 1, results: [
+      { id: 81, nombre_completo: 'Docente candidato', elegible: true, asignaciones_vigentes: occupied ? ['Tutor'] : [], asignaciones_vigentes_detalle: occupied ? [secretaryOccupation()] : [] },
+    ] }))
+    renderPrivateSecretary()
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a precondiciones' }))
+    const dialog = await screen.findByRole('dialog')
+    const selector = within(dialog).getByLabelText('Seleccionar candidato para Docente de Modalidad')
+    await within(selector).findByRole('option', { name: /Docente candidato/ })
+    await userEvent.selectOptions(selector, '81')
+    expect(within(dialog).getByRole('button', { name: 'Guardar asignaciones' })).toBeEnabled()
+    occupied = true
+    await userEvent.click(within(dialog).getAllByRole('button', { name: 'Buscar' }).at(-1))
+    // Cambiar la búsqueda solicita datos nuevos mediante el mecanismo existente.
+    await userEvent.type(within(dialog).getByLabelText('Buscar candidato para Docente de Modalidad'), 'Docente')
+    await userEvent.click(within(dialog).getAllByRole('button', { name: 'Buscar' }).at(-1))
+    await waitFor(() => expect(within(within(dialog).getByLabelText('Seleccionar candidato para Docente de Modalidad')).getByRole('option', { name: /Docente candidato.*Tutor/ })).toBeDisabled())
+    fireEvent.submit(dialog.querySelector('form'))
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+  })
+
+  it('Secretario contextual de Tesis: conserva errores, búsqueda, paginación y payload de postulación', async () => {
+    let failed = false
+    postulacionesService.obtenerCandidatosElegibles.mockImplementation(async (_id, params) => {
+      if (params.posicion === 'TUTOR_TESIS_1') return { count: 0, results: [] }
+      if (!failed) { failed = true; throw { message: 'Error al consultar Secretario.' } }
+      return { count: 21, next: '?page=2', results: [{ id: 81, nombre_completo: 'Docente elegible', elegible: true, asignaciones_vigentes_detalle: [] }] }
+    })
+    postulacionesService.asignarActor.mockRejectedValueOnce({ message: 'Asignación rechazada por backend.' })
+    renderPrivateSecretary()
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a precondiciones' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(await within(dialog).findByText('Error al consultar Secretario.')).toBeVisible()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reintentar candidatos' }))
+    await within(dialog).findByRole('option', { name: /Docente elegible/ })
+    await userEvent.click(within(dialog).getAllByRole('button', { name: 'Siguiente' }).at(-1))
+    await waitFor(() => expect(postulacionesService.obtenerCandidatosElegibles).toHaveBeenLastCalledWith(53, expect.objectContaining({ posicion: 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS_1', page: 2 }), expect.any(AbortSignal)))
+    await within(dialog).findByRole('option', { name: /Docente elegible/ })
+    await userEvent.type(within(dialog).getByLabelText('Buscar candidato para Docente de Modalidad'), 'Docente')
+    await userEvent.click(within(dialog).getAllByRole('button', { name: 'Buscar' }).at(-1))
+    await waitFor(() => expect(postulacionesService.obtenerCandidatosElegibles).toHaveBeenLastCalledWith(53, expect.objectContaining({ posicion: 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS_1', search: 'Docente', page: 1 }), expect.any(AbortSignal)))
+    await within(dialog).findByRole('option', { name: /Docente elegible/ })
+    await userEvent.selectOptions(within(dialog).getByLabelText('Seleccionar candidato para Docente de Modalidad'), '81')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar asignaciones' }))
+    expect(postulacionesService.asignarActor).toHaveBeenCalledExactlyOnceWith(53, { usuario: 81, tipo_participacion: 'DOCENTE_MODALIDAD', observaciones: '' }, expect.any(AbortSignal))
+    expect(await within(dialog).findByText('Asignación rechazada por backend.')).toBeVisible()
+    expect(within(dialog).getByText('Tutor vigente')).toBeVisible()
+    expect(postulacionesService.reemplazarActor).not.toHaveBeenCalled()
+  })
+
+  it.each(['Ir a gestionar', 'Ir a actores'])('Tutor contextual de Tesis: abre desde %s, conserva foco y evita aperturas duplicadas', async (label) => {
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue(profileTutorCandidates)
+    renderProfileThesisAction({ complete: true, actorManagement: profileTutorManagement() })
+    const trigger = await screen.findByRole('link', { name: label })
+    await userEvent.dblClick(trigger)
+    const dialog = await screen.findByRole('dialog', { name: 'Gestionar actores — Perfil de Tesis' })
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(window.location.hash).toBe('#resumen')
+    const selector = within(dialog).getByLabelText('Seleccionar candidato para Tutor de Tesis')
+    expect(await within(selector).findByRole('option', { name: /Tutora elegible/ })).toBeEnabled()
+    expect(postulacionesService.obtenerCandidatosElegibles).toHaveBeenCalledExactlyOnceWith(53, expect.objectContaining({ posicion: 'TUTOR_TESIS_1', accion: 'ASIGNAR' }), expect.any(AbortSignal))
+    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(trigger).toHaveFocus())
+    await userEvent.click(trigger)
+    await userEvent.click(within(await screen.findByRole('dialog')).getByText('Cerrar', { selector: 'button' }))
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it('Tutor contextual de Tesis: usa el payload canónico de postulación y conserva errores backend', async () => {
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue(profileTutorCandidates)
+    postulacionesService.asignarActor.mockRejectedValueOnce({ message: 'La asignación no está permitida.' })
+    renderProfileThesisAction({ actorManagement: profileTutorManagement() })
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a gestionar' }))
+    const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Tesis' })
+    const selector = within(dialog).getByLabelText('Seleccionar candidato para Tutor de Tesis')
+    await within(selector).findByRole('option', { name: /Tutora elegible/ })
+    await userEvent.selectOptions(selector, '81')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar asignaciones' }))
+    expect(postulacionesService.asignarActor).toHaveBeenCalledExactlyOnceWith(53, { usuario: 81, tipo_participacion: 'TUTOR', observaciones: '' }, expect.any(AbortSignal))
+    expect(await within(dialog).findByText('La asignación no está permitida.')).toBeInTheDocument()
+    expect(postulacionesService.reemplazarActor).not.toHaveBeenCalled()
+    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['sin contrato', (contract) => { delete contract.contexto }],
+    ['sin posiciones', (contract) => { contract.posiciones = [] }],
+    ['ambiguo', (contract) => { contract.posiciones.push({ ...contract.posiciones[0], clave: 'OTRO_TUTOR' }) }],
+    ['otra etapa', (contract) => { contract.contexto.codigo_etapa = 'TEMATICA_TESIS' }],
+    ['otro seguimiento', (contract) => { contract.contexto.seguimiento_etapa = 999 }],
+    ['sin seguimiento', (contract) => { delete contract.contexto.seguimiento_etapa }],
+    ['otro puesto', (contract) => { contract.posiciones[0].clave = 'TUTOR_PROYECTO_1' }],
+    ['otro ámbito', (contract) => { contract.posiciones[0].ambito = 'ETAPA' }],
+    ['seguimiento en tutor', (contract) => { contract.posiciones[0].seguimiento_etapa = 156 }],
+    ['asignado', (contract) => { Object.assign(contract.posiciones[0], { estado_ocupacion: 'ASIGNADA', asignacion_actual: 98, acciones_permitidas: ['REEMPLAZAR'] }) }],
+    ['asignación incoherente', (contract) => { contract.posiciones[0].asignacion_actual = 98 }],
+    ['deshabilitado', (contract) => { contract.posiciones[0].habilitada = false }],
+    ['sin ASIGNAR', (contract) => { contract.posiciones[0].acciones_permitidas = [] }],
+    ['bloqueado', (contract) => { contract.posiciones[0].bloqueo = { codigo: 'BLOQUEO', mensaje: 'No permitido' } }],
+    ['precondición pendiente', (contract) => { contract.posiciones[0].precondicion.estado = 'PENDIENTE' }],
+  ])('Tutor contextual de Tesis: conserva navegación ante contrato %s', async (_label, change) => {
+    const contract = profileTutorManagement()
+    change(contract)
+    renderProfileThesisAction({ complete: true, actorManagement: contract })
+    for (const label of ['Ir a gestionar', 'Ir a actores']) {
+      const link = await screen.findByRole('link', { name: label })
+      expect(link).toHaveAttribute('href', '#actores')
+      const click = new MouseEvent('click', { bubbles: true, cancelable: true })
+      fireEvent(link, click)
+      expect(window.location.hash).toBe('#actores')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('tab', { name: 'Resumen' }))
+    }
+    expect(postulacionesService.obtenerCandidatosElegibles).not.toHaveBeenCalled()
+    expect(postulacionesService.reemplazarActor).not.toHaveBeenCalled()
+  })
+
+  it.each([{ canAssign: false }, { tutor: true }, { modality: 'PROYECTO_GRADO' }, { modality: 'TRABAJO_DIRIGIDO' }, { stageCode: 'INSCRIPCION' }])('Tutor contextual de Tesis: no intercepta otros permisos o contextos %j', async (options) => {
+    renderProfileThesisAction({ actorManagement: profileTutorManagement(), ...options })
+    const link = await screen.findByRole('link', { name: 'Ir a gestionar' })
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true })
+    fireEvent(link, click)
+    expect(window.location.hash).toBe('#actores')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(postulacionesService.obtenerCandidatosElegibles).not.toHaveBeenCalled()
+  })
+
+  it('Tutor contextual de Tesis: conserva la apertura manual y no abre por hash', async () => {
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 0, results: [] })
+    renderProfileThesisAction({ actorManagement: profileTutorManagement(), hash: 'actores' })
+    const trigger = await screen.findByRole('button', { name: 'Gestionar actores' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(postulacionesService.obtenerCandidatosElegibles).not.toHaveBeenCalled()
+    await userEvent.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Tesis' })
+    expect(await within(dialog).findByText('No se encontraron candidatos elegibles.')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByText('Cerrar', { selector: 'button' }))
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it('Tutor contextual de Tesis: conserva error, reintento, búsqueda y paginación de candidatos', async () => {
+    postulacionesService.obtenerCandidatosElegibles.mockRejectedValueOnce({ message: 'No fue posible consultar candidatos.' }).mockResolvedValue({ ...profileTutorCandidates, count: 21, next: '?page=2' })
+    renderProfileThesisAction({ actorManagement: profileTutorManagement() })
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a gestionar' }))
+    const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Tesis' })
+    expect(await within(dialog).findByText('No fue posible consultar candidatos.')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reintentar candidatos' }))
+    await within(dialog).findByRole('option', { name: /Tutora elegible/ })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Siguiente' }))
+    await waitFor(() => expect(postulacionesService.obtenerCandidatosElegibles).toHaveBeenLastCalledWith(53, expect.objectContaining({ posicion: 'TUTOR_TESIS_1', page: 2 }), expect.any(AbortSignal)))
+    await within(dialog).findByRole('option', { name: /Tutora elegible/ })
+    await userEvent.type(within(dialog).getByLabelText('Buscar candidato para Tutor de Tesis'), 'Tutora')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Buscar' }))
+    await waitFor(() => expect(postulacionesService.obtenerCandidatosElegibles).toHaveBeenLastCalledWith(53, expect.objectContaining({ posicion: 'TUTOR_TESIS_1', search: 'Tutora', page: 1 }), expect.any(AbortSignal)))
+  })
+
+  const renderTutorDictamenContext = ({ canManage = true, canUpload = false, action = 'REGISTRAR_DICTAMEN', status = 'DISPONIBLE', modality = 'TESIS_GRADO', ambiguous = false, blocked = false, documentError = false, hash = 'resumen', type = 'TUTOR', missingEvidence = false, incompleteTribunal = false, orientation } = {}) => {
+    const stage = { id: type === 'TUTOR' ? 158 : 159, codigo: `REVISION_${type}`, nombre: `Revisión de ${type === 'TUTOR' ? 'Tutor' : 'Tribunal'}`, numero_intento: 1, estado: 'EN_PROCESO', activo: true }
+    postulacionesService.obtenerExpediente.mockResolvedValue({ ...response,
+      detalle: { ...response.detalle, id: 53, codigo: 'TG-2026-02', modalidad_detalle: { codigo: modality, nombre: 'Tesis de Grado' } },
+      flujo: { ...response.flujo, modalidad: { codigo: modality }, etapa_actual: stage, etapas: ambiguous ? [stage, { ...stage, id: 999 }] : [stage],
+        orientacion_etapa_actual: orientation ?? { requisitos: [], siguiente_accion: { codigo: action, estado: status, titulo: `Registrar dictamen del ${type === 'TUTOR' ? 'Tutor' : 'Tribunal'}`, accion_label: 'Ir a registrar dictamen', destino: type === 'TUTOR' ? '#dictamen-tutor' : '#dictamen-tribunal', bloqueo: blocked ? { codigo: 'BLOQUEO' } : null } } },
+    })
+    const docs = { count: 2, results: [
+      { id: 55, postulacion: 53, activo: true, tipo_documento_codigo: 'DOCUMENTO_FINAL', versiones: [{ id: 57, numero_version: 1, activo: true, es_version_actual: true }] },
+      { id: 53, postulacion: 53, activo: true, tipo_documento_codigo: 'INFORME_TUTOR_TESIS', versiones: [{ id: 55, numero_version: 1, activo: true, es_version_actual: true, nombre_original: 'informe-tutor.pdf' }] },
+    ] }
+    if (type === 'TRIBUNAL') docs.results[1] = { ...docs.results[1], tipo_documento_codigo: 'INFORME_TRIB_TESIS' }
+    if (missingEvidence) { docs.results.pop(); docs.count = 1 }
+    if (documentError) postulacionesService.obtenerDocumentos.mockRejectedValue({ message: 'Error documental' })
+    else postulacionesService.obtenerDocumentos.mockResolvedValue(docs)
+    postulacionesService.obtenerActores.mockResolvedValue(type === 'TUTOR'
+      ? { count: 1, results: [{ id: 59, postulacion: 53, tipo_participacion: 'TUTOR', activo: true, usuario_nombre: 'Tutor vigente' }] }
+      : { count: incompleteTribunal ? 2 : 3, results: (incompleteTribunal ? [1, 2] : [1, 2, 3]).map((order) => ({ id: 55 + order, usuario: 100 + order, postulacion: 53, tipo_participacion: 'TRIBUNAL', activo: true, etapa_codigo: 'TEMATICA_TESIS', seguimiento_etapa: 155, orden_cargo: order })) })
+    postulacionesService.obtenerDictamenesRevision.mockResolvedValue([])
+    selectInitialTab(hash)
+    const permissions = ['puede_gestionar_postulaciones', ...(canManage ? ['puede_gestionar_seguimiento'] : []), ...(canUpload ? ['puede_cargar_documentos'] : [])]
+    return render(<AuthContext.Provider value={{ user: { id: 9 }, hasPermission: (name) => permissions.includes(name) }}><MemoryRouter initialEntries={['/postulaciones/53']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
+  }
+
+  const tribunalReportOrientation = {
+    requisitos: [{ tipo: 'OPERATIVO', codigo: 'INFORME_TRIB_TESIS', nombre: 'Informe del Tribunal de Tesis', cumplido: false, estado: 'PENDIENTE', destino: '#documentos' }],
+    siguiente_accion: { codigo: 'COMPLETAR_DOCUMENTOS', titulo: 'Cargar Informe del Tribunal de Tesis', descripcion: 'Adjunta el Informe del Tribunal de Tesis requerido para registrar el dictamen correspondiente.', estado: 'PENDIENTE', estado_display: 'Pendiente', destino: '#documentos', accion_label: 'Gestionar documentos' },
+  }
+
+  it('Prioridad documental del Tribunal: carga el informe y actualiza la orientación para abrir el dictamen sin recargar', async () => {
+    renderTutorDictamenContext({ type: 'TRIBUNAL', canUpload: true, missingEvidence: true, orientation: tribunalReportOrientation })
+    let pendingResponse
+    await act(async () => { pendingResponse = await postulacionesService.obtenerExpediente.mock.results[0].value })
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
+      { id: 154, codigo: 'INFORME_TRIB_TESIS', nombre: 'Informe del Tribunal de Tesis', capacidad_carga: { codigo: 'SIN_DOCUMENTO', permitida: true } },
+    ] })
+    postulacionesService.cargarDocumento.mockImplementation(async () => {
+      postulacionesService.obtenerExpediente.mockResolvedValue({ ...pendingResponse, flujo: { ...pendingResponse.flujo,
+        orientacion_etapa_actual: { requisitos: [], siguiente_accion: { codigo: 'REGISTRAR_DICTAMEN', titulo: 'Registrar nuevo dictamen del Tribunal', estado: 'DISPONIBLE', destino: '#dictamen-tribunal', accion_label: 'Ir a registrar dictamen' } },
+      } })
+      postulacionesService.obtenerDocumentos.mockResolvedValue({ count: 2, results: [
+        { id: 55, postulacion: 53, activo: true, tipo_documento_codigo: 'DOCUMENTO_FINAL', versiones: [{ id: 57, numero_version: 1, activo: true, es_version_actual: true }] },
+        { id: 53, postulacion: 53, activo: true, tipo_documento_codigo: 'INFORME_TRIB_TESIS', versiones: [{ id: 55, numero_version: 1, activo: true, es_version_actual: true }] },
+      ] })
+      return { id: 55, numero_version: 1, es_version_actual: true }
+    })
+    const trigger = await screen.findByRole('button', { name: 'Gestionar documentos' })
+    await userEvent.click(trigger)
+    const upload = await screen.findByRole('dialog', { name: 'Cargar documentos' })
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(window.location.hash).toBe('#resumen')
+    expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledExactlyOnceWith('53', expect.any(AbortSignal))
+    expect(postulacionesService.registrarDictamenRevision).not.toHaveBeenCalled()
+    const file = new File(['informe'], 'informe-tribunal.pdf', { type: 'application/pdf' })
+    await userEvent.upload(within(upload).getByLabelText('Informe del Tribunal de Tesis'), file)
+    await userEvent.click(within(upload).getByRole('button', { name: 'Cargar 1 documento' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Cargar documentos' })).not.toBeInTheDocument())
+    expect(postulacionesService.cargarDocumento).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ postulacionId: 53, tipoDocumentoId: 154, archivo: file }), expect.any(AbortSignal))
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a registrar dictamen' }))
+    const dictamen = await screen.findByRole('dialog', { name: 'Dictamen del Tribunal' })
+    expect(within(dictamen).getByLabelText('Evidencia').options).toHaveLength(2)
+    expect(postulacionesService.registrarDictamenRevision).not.toHaveBeenCalled()
+    expect(window.location.hash).toBe('#resumen')
+  })
+
+  it('Prioridad documental del Tribunal: respeta el permiso de carga sin abrir ni consultar el cargador', async () => {
+    renderTutorDictamenContext({ type: 'TRIBUNAL', missingEvidence: true, orientation: tribunalReportOrientation })
+    expect(await screen.findByText('Cargar Informe del Tribunal de Tesis')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Gestionar documentos' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+    expect(postulacionesService.cargarDocumento).not.toHaveBeenCalled()
+  })
+
+  it('Dictamen contextual de Tesis: abre el formulario existente desde Resumen sin navegar ni registrar', async () => {
+    renderTutorDictamenContext()
+    const trigger = await screen.findByRole('link', { name: 'Ir a registrar dictamen' })
+    await waitFor(() => expect(screen.queryByText('Cargando dictámenes…')).not.toBeInTheDocument())
+    await userEvent.dblClick(trigger)
+    const dialog = await screen.findByRole('dialog', { name: 'Dictamen del Tutor' })
+    expect(dialog).toBeVisible()
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(document.getElementById('panel-documentos')).not.toBeVisible()
+    expect(window.location.hash).toBe('#resumen')
+    expect(postulacionesService.registrarDictamenRevision).not.toHaveBeenCalled()
+    expect(postulacionesService.obtenerDictamenesRevision).toHaveBeenCalledExactlyOnceWith(158, expect.any(AbortSignal))
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveFocus())
+    await userEvent.click(trigger)
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancelar' }))
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it('Dictamen contextual de Tesis: conserva payload y la apertura manual, sin automatismo por hash', async () => {
+    renderTutorDictamenContext({ hash: 'dictamen-tutor' })
+    const trigger = await screen.findByRole('button', { name: 'Registrar dictamen' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await userEvent.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: 'Dictamen del Tutor' })
+    await userEvent.selectOptions(within(dialog).getByLabelText('Tutor'), '59')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Evidencia'), '55')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Registrar' }))
+    expect(postulacionesService.registrarDictamenRevision).toHaveBeenCalledExactlyOnceWith(158, {
+      tipo_revision: 'TUTOR', version_documento_revisada: 57, evidencia_version: 55, asignacion_emisora: 59, resultado: 'SUFICIENTE', observaciones: '',
+    }, expect.any(AbortSignal))
+  })
+
+  it.each([{ canManage: false }, { status: 'PENDIENTE' }, { action: 'CORREGIR_DOCUMENTO_FINAL' }, { modality: 'PROYECTO_GRADO' }, { modality: 'TRABAJO_DIRIGIDO' }, { ambiguous: true }, { blocked: true }, { documentError: true }])('Dictamen contextual de Tesis: mantiene navegación segura para %j', async (options) => {
+    renderTutorDictamenContext(options)
+    const trigger = await screen.findByRole('link', { name: 'Ir a registrar dictamen' })
+    await waitFor(() => expect(screen.queryByText('Cargando dictámenes…')).not.toBeInTheDocument())
+    await userEvent.click(trigger)
+    expect(window.location.hash).toBe('#dictamen-tutor')
+    expect(screen.queryByRole('dialog', { hidden: true })).not.toBeInTheDocument()
+    expect(postulacionesService.registrarDictamenRevision).not.toHaveBeenCalled()
+  })
+
+  it('Tribunal contextual de Tesis: abre desde Resumen sin navegación ni POST y conserva el payload sin emisor', async () => {
+    renderTutorDictamenContext({ type: 'TRIBUNAL' })
+    const trigger = await screen.findByRole('link', { name: 'Ir a registrar dictamen' })
+    await waitFor(() => expect(screen.queryByText('Cargando dictámenes…')).not.toBeInTheDocument())
+    await userEvent.dblClick(trigger)
+    const dialog = await screen.findByRole('dialog', { name: 'Dictamen del Tribunal' })
+    expect(dialog).toBeVisible()
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(window.location.hash).toBe('#resumen')
+    expect(postulacionesService.registrarDictamenRevision).not.toHaveBeenCalled()
+    expect(postulacionesService.obtenerDictamenesRevision).toHaveBeenCalledExactlyOnceWith(159, expect.any(AbortSignal))
+    expect(within(dialog).queryByLabelText('Tutor')).not.toBeInTheDocument()
+    await userEvent.selectOptions(within(dialog).getByLabelText('Evidencia'), '55')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Registrar' }))
+    expect(postulacionesService.registrarDictamenRevision).toHaveBeenCalledExactlyOnceWith(159, {
+      tipo_revision: 'TRIBUNAL', version_documento_revisada: 57, evidencia_version: 55, resultado: 'SUFICIENTE', observaciones: '',
+    }, expect.any(AbortSignal))
+  })
+
+  it('Tribunal contextual de Tesis: abre sin INFORME_TRIB_TESIS y conserva el registro deshabilitado', async () => {
+    renderTutorDictamenContext({ type: 'TRIBUNAL', missingEvidence: true })
+    const trigger = await screen.findByRole('link', { name: 'Ir a registrar dictamen' })
+    await waitFor(() => expect(screen.queryByText('Cargando dictámenes…')).not.toBeInTheDocument())
+    await userEvent.dblClick(trigger)
+    const dialog = await screen.findByRole('dialog', { name: 'Dictamen del Tribunal' })
+    expect(dialog).toBeVisible()
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(window.location.hash).toBe('#resumen')
+    const evidence = within(dialog).getByLabelText('Evidencia')
+    expect(evidence).toHaveValue('')
+    expect(evidence.options).toHaveLength(1)
+    expect(within(dialog).getByRole('button', { name: 'Registrar' })).toBeDisabled()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Registrar' }))
+    expect(postulacionesService.registrarDictamenRevision).not.toHaveBeenCalled()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveFocus())
+    await userEvent.click(trigger)
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancelar' }))
+    await waitFor(() => expect(trigger).toHaveFocus())
+    expect(postulacionesService.registrarDictamenRevision).not.toHaveBeenCalled()
+  })
+
+  it.each([{ incompleteTribunal: true }, { canManage: false }, { ambiguous: true }, { blocked: true }, { documentError: true }, { status: 'PENDIENTE' }, { modality: 'PROYECTO_GRADO' }, { modality: 'TRABAJO_DIRIGIDO' }])('Tribunal contextual de Tesis: conserva navegación segura %j', async (options) => {
+    renderTutorDictamenContext({ type: 'TRIBUNAL', ...options })
+    const trigger = await screen.findByRole('link', { name: 'Ir a registrar dictamen' })
+    await waitFor(() => expect(screen.queryByText('Cargando dictámenes…')).not.toBeInTheDocument())
+    await userEvent.click(trigger)
+    expect(window.location.hash).toBe('#dictamen-tribunal')
+    expect(screen.queryByRole('dialog', { hidden: true })).not.toBeInTheDocument()
+    expect(postulacionesService.registrarDictamenRevision).not.toHaveBeenCalled()
+  })
+
+  it('Tribunal contextual de Tesis: conserva apertura manual sin automatismo por hash', async () => {
+    renderTutorDictamenContext({ type: 'TRIBUNAL', hash: 'dictamen-tribunal' })
+    const trigger = await screen.findByRole('button', { name: 'Registrar dictamen' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await userEvent.click(trigger)
+    expect(screen.getByRole('dialog', { name: 'Dictamen del Tribunal' })).toBeVisible()
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveFocus())
   })
 
   const projectStageResponse = (codigo, orientation = futureProfileOrientation) => {
@@ -3653,7 +4270,7 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('dialog', { name: 'Programar Defensa privada' })).not.toBeInTheDocument()
   })
 
-  it('mantiene la navegación a Defensas para PROGRAMAR_EVENTO de Tesis', async () => {
+  it('abre el modal contextual desde PROGRAMAR_EVENTO de Tesis', async () => {
     const data = programmingStageResponse('DEFENSA_PRIVADA', 'DEFENSA_PRIVADA')
     data.detalle = { ...data.detalle, modalidad_detalle: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } }
     data.flujo = {
@@ -3668,8 +4285,9 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerDefensas.mockResolvedValue(data.defenses)
     renderDefenseManagerPage('resumen')
 
-    expect(await screen.findByRole('link', { name: 'Ir a programar defensa' })).toHaveAttribute('href', '#defensas')
-    expect(screen.queryByRole('dialog', { name: 'Programar Defensa privada' })).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ir a programar defensa' }))
+    const dialog = screen.getByRole('dialog', { name: 'Programar Defensa privada' })
+    expect(within(dialog).queryByLabelText('Tipo de defensa')).not.toBeInTheDocument()
   })
 
   it('muestra Programar defensa cuando no existe evento activo del contexto actual', async () => {
@@ -4166,6 +4784,120 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.obtenerActores).toHaveBeenCalledWith('7', false, 1, expect.any(AbortSignal))
     expect(postulacionesService.obtenerActores).toHaveBeenCalledTimes(2)
     expect(within(card).queryByRole('button', { name: /asignar|reemplazar|finalizar|designar/i })).not.toBeInTheDocument()
+  })
+
+  const thesisTribunalCandidates = [40, 41, 42].map((id) => ({ id, nombre_completo: `Docente ${id}`, elegible: true }))
+  const openThesisTribunal = async ({ assigned = false, configure, candidates } = {}) => {
+    const { flow } = profileContracts({ proposalApproved: true })
+    const stage = { ...flow.etapa_actual, codigo: 'TEMATICA_TESIS', nombre: 'Temática de Tesis' }
+    const positions = flow.gestion_actores.posiciones.map((position) => ({
+      ...position,
+      clave: position.tipo_participacion === 'TRIBUNAL' ? `TRIBUNAL_TEMATICA_TESIS_${position.orden_cargo}` : 'TUTOR_TESIS_1',
+      restriccion_identidad: null,
+    }))
+    if (assigned) Object.assign(positions[0], {
+      estado_ocupacion: 'ASIGNADA', asignacion_actual: 901,
+      asignacion_actual_detalle: { id: 901, usuario: { id: 99, nombre: 'Docente guardado' } },
+      acciones_permitidas: ['REEMPLAZAR', 'FINALIZAR'],
+    })
+    configure?.(positions)
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+      flujo: { ...flow, modalidad: { codigo: 'TESIS_GRADO' }, etapa_actual: stage, etapas: [stage],
+        orientacion_etapa_actual: null, gestion_decisiones_academicas: {},
+        gestion_actores: { contexto: { codigo_etapa: stage.codigo }, posiciones: positions } },
+    })
+    postulacionesService.obtenerCandidatosElegibles.mockImplementation(candidates || (() => Promise.resolve({ count: 3, results: thesisTribunalCandidates })))
+    renderAssignmentManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Gestionar actores' }))
+    const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Temática de Tesis' })
+    const selectors = [1, 2, 3].map((order) => within(dialog).getByLabelText(`${assigned && order === 1 ? 'Seleccionar reemplazo' : 'Seleccionar candidato'} para Tribunal ${order}`))
+    await Promise.all(selectors.map((selector) => within(selector).findByRole('option', { name: /Docente 40/ })))
+    return { dialog, selectors }
+  }
+
+  it('Tesis: bloquea los tres puestos cruzados, conserva etiquetas y libera cambios y limpieza', async () => {
+    const { selectors } = await openThesisTribunal()
+    for (const [index, selector] of selectors.entries()) {
+      await userEvent.selectOptions(selector, String(40 + index))
+      expect(within(selector).getByRole('option', { name: `Docente ${40 + index}` })).toBeEnabled()
+      for (const other of selectors.filter((item) => item !== selector)) {
+        const option = within(other).getByRole('option', { name: new RegExp(`Docente ${40 + index}.*Seleccionado como Tribunal ${index + 1}`) })
+        expect(option).toBeDisabled()
+        const previous = other.value
+        await userEvent.selectOptions(other, String(40 + index))
+        expect(other).toHaveValue(previous)
+      }
+    }
+    await userEvent.selectOptions(selectors[0], '')
+    expect(within(selectors[1]).getByRole('option', { name: 'Docente 40' })).toBeEnabled()
+    await userEvent.selectOptions(selectors[1], '40')
+    expect(within(selectors[0]).getByRole('option', { name: 'Docente 41' })).toBeEnabled()
+    expect(within(selectors[2]).getByRole('option', { name: /Docente 40.*Tribunal 2/ })).toBeDisabled()
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+  })
+
+  it('Tesis: rechaza localmente drafts duplicados incluso ante un cambio sintético', async () => {
+    const { dialog, selectors } = await openThesisTribunal()
+    await userEvent.selectOptions(selectors[0], '40')
+    fireEvent.change(selectors[1], { target: { value: '40' } })
+    expect(within(dialog).getByText(/La misma persona está seleccionada en Tribunal 1 y Tribunal 2/)).toBeInTheDocument()
+    fireEvent.submit(selectors[0].closest('form'))
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+  })
+
+  it('Tesis: mantiene independientes tutor y tribunales de otros contextos', async () => {
+    const { dialog, selectors } = await openThesisTribunal({ configure: (positions) => {
+      positions.push({ ...positions[2], clave: 'OTRO_TRIBUNAL', nombre: 'Otro tribunal', seguimiento_etapa: 999 })
+      positions.push({ ...positions[2], clave: 'SIN_CONTEXTO', nombre: 'Tribunal sin contexto', seguimiento_etapa: null })
+    } })
+    await userEvent.selectOptions(selectors[0], '40')
+    for (const name of ['Tutor', 'Otro tribunal', 'Tribunal sin contexto']) {
+      const selector = within(dialog).getByLabelText(`Seleccionar candidato para ${name}`)
+      expect(await within(selector).findByRole('option', { name: /Docente 40/ })).toBeEnabled()
+      await userEvent.selectOptions(selector, '40')
+    }
+    expect(within(dialog).queryByText(/La misma persona está seleccionada/)).not.toBeInTheDocument()
+    expect(within(selectors[1]).getByRole('option', { name: /Docente 40/ })).toBeDisabled()
+  })
+
+  it('Tesis: conserva asignación guardada, bloqueo de elegibilidad y reemplazo con payload compatible', async () => {
+    postulacionesService.reemplazarActor.mockRejectedValueOnce({ message: 'El usuario ya tiene una asignación activa como TRIBUNAL en el mismo contexto.' })
+    const { dialog, selectors } = await openThesisTribunal({ assigned: true, candidates: () => Promise.resolve({ count: 3, results: [
+      ...thesisTribunalCandidates.slice(0, 2), { id: 42, nombre_completo: 'Docente 42', elegible: false },
+    ] }) })
+    expect(within(dialog).getByText('Docente guardado')).toBeInTheDocument()
+    expect(within(selectors[1]).queryByRole('option', { name: 'Docente guardado' })).not.toBeInTheDocument()
+    expect(within(selectors[1]).getByRole('option', { name: 'Docente 42' })).toBeDisabled()
+    await userEvent.selectOptions(selectors[0], '40')
+    expect(within(selectors[1]).getByRole('option', { name: /Docente 40.*Tribunal 1/ })).toBeDisabled()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar asignaciones' }))
+    expect(postulacionesService.reemplazarActor).toHaveBeenCalledWith(901, {
+      nuevo_usuario: 40, observaciones: '',
+    }, expect.any(AbortSignal))
+    expect(await within(dialog).findByText(/El usuario ya tiene una asignación activa/)).toBeInTheDocument()
+  })
+
+  it('Tesis: conserva bloqueo y selección propia al buscar y paginar sin consultar al cambiar drafts', async () => {
+    const { dialog, selectors } = await openThesisTribunal({ candidates: (_id, filters) => Promise.resolve({
+      count: filters.posicion === 'TRIBUNAL_TEMATICA_TESIS_2' ? 21 : 3,
+      next: filters.posicion === 'TRIBUNAL_TEMATICA_TESIS_2' && filters.page === 1 ? '?page=2' : null,
+      previous: filters.page === 2 ? '?page=1' : null,
+      results: filters.search ? thesisTribunalCandidates.slice(1) : thesisTribunalCandidates,
+    }) })
+    const calls = postulacionesService.obtenerCandidatosElegibles.mock.calls.length
+    await userEvent.selectOptions(selectors[0], '40')
+    expect(postulacionesService.obtenerCandidatosElegibles).toHaveBeenCalledTimes(calls)
+    const secondSection = selectors[1].closest('section')
+    const firstSection = selectors[0].closest('section')
+    await userEvent.click(within(secondSection).getByRole('button', { name: 'Siguiente' }))
+    expect(await within(secondSection).findByRole('option', { name: /Docente 40.*Tribunal 1/ })).toBeDisabled()
+    await userEvent.type(within(dialog).getByLabelText('Buscar candidato para Tribunal 1'), 'Docente 41')
+    await userEvent.click(within(firstSection).getByRole('button', { name: 'Buscar' }))
+    const own = await within(firstSection).findByRole('option', { name: 'Docente 40' })
+    expect(own).toBeEnabled()
+    expect(within(firstSection).getByLabelText('Seleccionar candidato para Tribunal 1')).toHaveValue('40')
   })
 
   const excellenceActorNames = ['Tribunal docente 1', 'Tribunal docente 2', 'Presidente', 'Secretario', 'Director del Instituto de Investigación']
@@ -7184,7 +7916,9 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerExpediente.mockResolvedValue({
       ...response,
       detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
-      flujo: { ...response.flujo, modalidad: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
+      flujo: { ...response.flujo, modalidad: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' }, orientacion_etapa_actual: {
+        siguiente_accion: { codigo: 'PROGRAMAR_EVENTO', estado: 'DISPONIBLE', destino: '#defensas' },
+      } },
     })
     renderDefenseManagerPage()
     await userEvent.click(await screen.findByRole('button', { name: 'Programar defensa' }))
@@ -8182,7 +8916,7 @@ describe('ExpedientePage US-008', () => {
       ...overrides,
     })
 
-    const renderThesis = (hash = 'resumen', permissions = ['puede_cargar_documentos', 'puede_gestionar_asignaciones', 'puede_gestionar_defensas', 'puede_gestionar_evaluaciones', 'puede_gestionar_seguimiento', 'puede_gestionar_cierre']) => {
+    const renderThesis = (hash = 'resumen', permissions = ['puede_cargar_documentos', 'puede_gestionar_asignaciones', 'puede_gestionar_defensas', 'puede_gestionar_evaluaciones', 'puede_gestionar_seguimiento', 'puede_gestionar_cierre'], postulacionId = 7) => {
       const auth = {
         user: { id: 9, rol: { codigo: 'ADM' } },
         roleCode: 'ADM',
@@ -8191,7 +8925,7 @@ describe('ExpedientePage US-008', () => {
       selectInitialTab(hash)
       return render(
         <AuthContext.Provider value={auth}>
-          <MemoryRouter initialEntries={['/postulaciones/7']}>
+          <MemoryRouter initialEntries={['/postulaciones/' + postulacionId]}>
             <Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes>
           </MemoryRouter>
         </AuthContext.Provider>,
@@ -8259,7 +8993,7 @@ describe('ExpedientePage US-008', () => {
       expect(screen.queryByRole('button', { name: 'Aprobar etapa' })).not.toBeInTheDocument()
     })
 
-    it('navega de Inscripción a Documentos, abre el cargador múltiple y conserva el contexto al cerrar', async () => {
+    it('abre directamente documentos dinámicos de TG-2026-02 sin navegar y conserva el contexto al cerrar', async () => {
       const orientation = {
         mensaje: 'Carga los documentos de inscripción pendientes.',
         requisitos: [{ tipo: 'DOCUMENTO', codigo: 'CARTA_SOLICITUD', nombre: 'Carta de solicitud', cumplido: false, estado_display: 'Pendiente', destino: '#documentos' }],
@@ -8272,24 +9006,97 @@ describe('ExpedientePage US-008', () => {
           accion_label: 'Gestionar documentos',
         },
       }
-      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('INSCRIPCION', orientation))
-      postulacionesService.obtenerTiposDocumento.mockResolvedValue([
-        { id: 101, codigo: 'CARTA_SOLICITUD', nombre: 'Carta de solicitud', activo: true, capacidad_carga: { permitida: true, codigo: 'SIN_DOCUMENTO' } },
-      ])
-      renderThesis()
+      const thesis = thesisResponseFor('INSCRIPCION', orientation)
+      thesis.detalle = { ...thesis.detalle, id: 53, codigo: 'TG-2026-02' }
+      thesis.flujo.id = 53
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesis)
+      postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
+        { id: 10, codigo: 'CARTA_SOLICITUD', nombre: 'Carta de Solicitud para Tesis', capacidad_carga: { permitida: true, codigo: 'SIN_DOCUMENTO' } },
+        { id: 11, codigo: 'MATRICULA_VIGENTE', nombre: 'Comprobante de Matrícula Vigente', capacidad_carga: { permitida: true, codigo: 'SIN_DOCUMENTO' } },
+        { id: 12, codigo: 'HISTORIAL_PRERREQ', nombre: 'Historial Académico de Prerrequisitos', capacidad_carga: { permitida: true, codigo: 'SIN_DOCUMENTO' } },
+      ] })
+      renderThesis('resumen', undefined, 53)
 
-      await userEvent.click(await screen.findByRole('link', { name: 'Gestionar documentos' }))
-      expect(window.location.hash).toBe('#documentos')
-      expect(screen.getByRole('tab', { name: 'Documentos' })).toHaveAttribute('aria-selected', 'true')
-      expect(document.getElementById('panel-documentos')).toBeVisible()
-
-      await userEvent.click(screen.getByRole('button', { name: 'Cargar documento' }))
+      await userEvent.click(await screen.findByRole('button', { name: 'Gestionar documentos' }))
       const dialog = await screen.findByRole('dialog', { name: 'Cargar documentos' })
-      expect(within(dialog).getByLabelText('Informe final')).toBeInTheDocument()
+      expect(await within(dialog).findByLabelText('Carta de Solicitud para Tesis')).toBeInTheDocument()
+      expect(within(dialog).getByLabelText('Comprobante de Matrícula Vigente')).toBeInTheDocument()
+      expect(within(dialog).getByLabelText('Historial Académico de Prerrequisitos')).toBeInTheDocument()
+      expect(screen.getAllByRole('dialog')).toHaveLength(1)
+      expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledTimes(1)
+      expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledWith('53', expect.any(AbortSignal))
       await userEvent.click(within(dialog).getByRole('button', { name: 'Cerrar' }))
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Cargar documentos' })).not.toBeInTheDocument())
+      expect(window.location.hash).toBe('#resumen')
+      expect(screen.getByRole('tab', { name: 'Resumen' })).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it.each(['vacía', 'completos', 'error'])('presenta respuesta documental %s al abrir directamente desde Tesis', async (mode) => {
+      const orientation = {
+        requisitos: [], siguiente_accion: { codigo: 'COMPLETAR_DOCUMENTOS', titulo: 'Completar documentos', estado: 'PENDIENTE', destino: '#documentos' },
+      }
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('INSCRIPCION', orientation))
+      if (mode === 'error') postulacionesService.obtenerDocumentosAplicables.mockRejectedValue({ message: 'No se pudieron consultar los documentos aplicables.' })
+      else postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: mode === 'vacía' ? [] : [
+        { id: 10, codigo: 'CARTA_SOLICITUD', nombre: 'Carta aprobada', capacidad_carga: { permitida: false, codigo: 'DOCUMENTO_APROBADO' } },
+      ] })
+      renderThesis()
+      await userEvent.click(await screen.findByRole('button', { name: 'Gestionar documentos' }))
+      const dialog = screen.getByRole('dialog', { name: 'Cargar documentos' })
+      if (mode === 'vacía') expect(await within(dialog).findByText('No hay tipos documentales activos disponibles.')).toBeInTheDocument()
+      if (mode === 'error') expect(await within(dialog).findByRole('alert')).toHaveTextContent('No se pudieron consultar los documentos aplicables.')
+      if (mode === 'completos') {
+        expect(await within(dialog).findByText('No hay documentos pendientes de carga o corrección permitida.')).toBeInTheDocument()
+        expect(within(dialog).queryByLabelText('Carta aprobada')).not.toBeInTheDocument()
+        expect(within(dialog).getByText('Aprobados (1)')).toBeInTheDocument()
+      }
+      expect(screen.getAllByRole('dialog')).toHaveLength(1)
+      expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledTimes(1)
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('mantiene Cargar documento y no abre el modal automáticamente por hash en Tesis', async () => {
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('INSCRIPCION', {
+        requisitos: [], siguiente_accion: { codigo: 'COMPLETAR_DOCUMENTOS', estado: 'PENDIENTE', destino: '#documentos' },
+      }))
+      renderThesis('documentos')
+      const button = await screen.findByRole('button', { name: 'Cargar documento' })
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+      await userEvent.click(button)
+      await screen.findByRole('dialog', { name: 'Cargar documentos' })
+      await userEvent.keyboard('{Escape}')
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(document.activeElement).toBe(button)
+      expect(window.location.hash).toBe('#documentos')
+      expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledTimes(1)
+      await userEvent.click(screen.getByRole('tab', { name: 'Resumen' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(postulacionesService.obtenerDocumentosAplicables).toHaveBeenCalledTimes(1)
+    })
+
+    it.each(['sin permiso', 'otra acción'])('no abre la carga documental de Tesis con %s', async (mode) => {
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('INSCRIPCION', {
+        requisitos: [], siguiente_accion: { codigo: mode === 'otra acción' ? 'APROBAR_ETAPA' : 'COMPLETAR_DOCUMENTOS', titulo: 'Siguiente paso', estado: 'DISPONIBLE', destino: '#documentos' },
+      }))
+      renderThesis('resumen', mode === 'sin permiso' ? [] : undefined)
+      await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })
+      expect(screen.queryByRole('button', { name: 'Gestionar documentos' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
+    })
+
+    it('conserva la navegación documental de Tesis para acciones sin apertura directa', async () => {
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('DOCUMENTO_FINAL', {
+        requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DOCUMENTOS', titulo: 'Consultar documentos', estado: 'PENDIENTE', destino: '#documentos', accion_label: 'Ir a documentos' },
+      }))
+      renderThesis()
+      await userEvent.click(await screen.findByRole('link', { name: 'Ir a documentos' }))
       expect(window.location.hash).toBe('#documentos')
       expect(screen.getByRole('tab', { name: 'Documentos' })).toHaveAttribute('aria-selected', 'true')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(postulacionesService.obtenerDocumentosAplicables).not.toHaveBeenCalled()
     })
 
     it('abre y cierra la gestión de tribunales de Temática desde la orientación', async () => {
@@ -8641,9 +9448,82 @@ describe('ExpedientePage US-008', () => {
       expect(screen.getByText('Programar Defensa Privada')).toBeInTheDocument()
     })
 
+    it.each([
+      ['TEMATICA_TESIS', 'DEFENSA_TEMATICA', 'resumen', 1],
+      ['PERFIL_TESIS', 'DEFENSA_PERFIL', 'defensas', 2],
+      ['DEFENSA_PRIVADA', 'DEFENSA_PRIVADA', 'resumen', 2],
+      ['DEFENSA_PUBLICA', 'DEFENSA_PUBLICA', 'defensas', 1],
+    ])('programa Tesis contextual %s desde %s con intento correcto', async (stageCode, eventType, origin, attempt) => {
+      const orientation = {
+        tipo_evento: eventType, requisitos: [],
+        siguiente_accion: { codigo: 'PROGRAMAR_EVENTO', titulo: 'Programar defensa', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Abrir programación contextual' },
+      }
+      const thesis = thesisResponseFor(stageCode, orientation)
+      thesis.flujo.etapa_actual.numero_intento = attempt
+      thesis.flujo.etapas.find((s) => s.codigo === stageCode).numero_intento = attempt
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesis)
+      let rejectRequest
+      postulacionesService.programarDefensa.mockImplementation(() => new Promise((resolve, reject) => { rejectRequest = reject }))
+      renderThesis(origin)
+      const button = origin === 'resumen'
+        ? await screen.findByRole('button', { name: 'Abrir programación contextual' })
+        : await screen.findByRole('button', { name: /^Programar Defensa/i })
+      await userEvent.click(button)
+      const dialog = screen.getByRole('dialog')
+      expect(within(dialog).getByText(new RegExp('Intento ' + attempt))).toBeInTheDocument()
+      expect(within(dialog).queryByLabelText('Tipo de defensa')).not.toBeInTheDocument()
+      fireEvent.change(within(dialog).getByLabelText('Fecha y hora programada'), { target: { value: '2026-10-26T14:00' } })
+      fireEvent.change(within(dialog).getByLabelText('Lugar'), { target: { value: 'Sala de Tesis' } })
+      const submit = within(dialog).getByRole('button', { name: /^Programar Defensa/i })
+      fireEvent.click(submit)
+      fireEvent.click(submit)
+      expect(postulacionesService.programarDefensa).toHaveBeenCalledTimes(1)
+      expect(submit).toBeDisabled()
+      expect(postulacionesService.programarDefensa).toHaveBeenCalledWith(7, {
+        seguimiento_etapa: thesis.flujo.etapa_actual.id, tipo_evento: eventType,
+        fecha_programada: '2026-10-26T14:00', lugar: 'Sala de Tesis', modalidad_evento: 'PRESENCIAL', enlace_virtual: '', observaciones: '',
+      }, expect.any(AbortSignal))
+      await act(async () => { rejectRequest({ message: 'Gate académico pendiente.', fields: { fecha_programada: ['Fecha no permitida.'] } }) })
+      expect(within(dialog).getByText('Gate académico pendiente.')).toBeInTheDocument()
+      expect(within(dialog).getByText('Fecha no permitida.')).toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it.each(['incompleto', 'ambiguo', 'incompatible'])('conserva fallback genérico de Tesis con contexto %s', async (mode) => {
+      const orientation = {
+        ...(mode === 'incompleto' ? {} : { tipo_evento: mode === 'incompatible' ? 'DEFENSA_PUBLICA' : 'DEFENSA_PRIVADA' }),
+        requisitos: [], siguiente_accion: { codigo: 'PROGRAMAR_EVENTO', titulo: 'Programar defensa', estado: 'DISPONIBLE', destino: '#defensas' },
+      }
+      const thesis = thesisResponseFor('DEFENSA_PRIVADA', orientation)
+      if (mode === 'ambiguo') thesis.flujo.etapas.push({ ...thesis.flujo.etapa_actual, id: 999, numero_intento: 2 })
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesis)
+      renderThesis('defensas')
+      await userEvent.click(await screen.findByRole('button', { name: 'Programar defensa' }))
+      const dialog = screen.getByRole('dialog', { name: 'Programar defensa' })
+      expect(within(dialog).getByLabelText('Tipo de defensa')).toBeInTheDocument()
+      expect(within(dialog).getByLabelText('Etapa compatible')).toBeInTheDocument()
+    })
+
+    it.each(['permiso', 'gate', 'defensa existente'])('no permite programar Tesis con %s', async (reason) => {
+      const orientation = {
+        tipo_evento: 'DEFENSA_PRIVADA', requisitos: [],
+        siguiente_accion: { codigo: 'PROGRAMAR_EVENTO', titulo: 'Programar defensa', estado: reason === 'gate' ? 'PENDIENTE' : 'DISPONIBLE', destino: '#defensas' },
+      }
+      const thesis = thesisResponseFor('DEFENSA_PRIVADA', orientation)
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesis)
+      if (reason === 'defensa existente') postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, results: [{ id: 99, seguimiento_etapa: thesis.flujo.etapa_actual.id, tipo_evento: 'DEFENSA_PRIVADA', estado: 'PROGRAMADA', numero_intento: 1, activo: true }] })
+      renderThesis('defensas', reason === 'permiso' ? [] : undefined)
+      await screen.findByRole('tab', { name: 'Defensas' })
+      await waitFor(() => expect(document.getElementById('panel-defensas')).toBeVisible())
+      expect(within(document.getElementById('panel-defensas')).queryByRole('button', { name: /^Programar/i })).not.toBeInTheDocument()
+      expect(postulacionesService.programarDefensa).not.toHaveBeenCalled()
+    })
+
     it('integra la programación de Defensa Privada de Tesis y conserva el contexto de Defensas', async () => {
       const privateStage = { id: 213, codigo: 'DEFENSA_PRIVADA', nombre: 'Defensa Privada', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
       const orientation = {
+        tipo_evento: 'DEFENSA_PRIVADA',
         mensaje: 'La Defensa Privada está lista para programarse.',
         requisitos: [
           { tipo: 'ACTOR', codigo: 'TRIBUNAL', actual: 2, minimo: 2, cumplido: true, estado_display: '2/2 cumplido' },
@@ -8676,20 +9556,20 @@ describe('ExpedientePage US-008', () => {
       expect(screen.getByRole('tab', { name: 'Defensas' })).toHaveAttribute('aria-selected', 'true')
       expect(document.getElementById('panel-defensas')).toBeVisible()
       await userEvent.click(screen.getByRole('button', { name: /Programar defensa/i }))
-      const dialog = screen.getByRole('dialog', { name: 'Programar defensa' })
-      await userEvent.selectOptions(within(dialog).getByLabelText('Tipo de defensa'), 'DEFENSA_PRIVADA')
-      await userEvent.selectOptions(within(dialog).getByLabelText('Etapa compatible'), '213')
+      const dialog = screen.getByRole('dialog', { name: 'Programar Defensa Privada' })
+      expect(within(dialog).queryByLabelText('Tipo de defensa')).not.toBeInTheDocument()
+      expect(within(dialog).queryByLabelText('Etapa compatible')).not.toBeInTheDocument()
       await userEvent.clear(within(dialog).getByLabelText('Fecha y hora programada'))
       await userEvent.type(within(dialog).getByLabelText('Fecha y hora programada'), '2026-10-22T14:00')
       await userEvent.type(within(dialog).getByLabelText('Lugar'), 'Sala privada')
-      await userEvent.click(within(dialog).getByRole('button', { name: 'Programar defensa' }))
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Programar Defensa Privada' }))
 
       await waitFor(() => expect(postulacionesService.programarDefensa).toHaveBeenCalledWith(7, {
         seguimiento_etapa: 213, tipo_evento: 'DEFENSA_PRIVADA', fecha_programada: '2026-10-22T14:00',
         lugar: 'Sala privada', modalidad_evento: 'PRESENCIAL', enlace_virtual: '', observaciones: '',
       }, expect.any(AbortSignal)))
       await waitFor(() => expect(postulacionesService.obtenerDefensas).toHaveBeenCalled())
-      expect(screen.queryByRole('dialog', { name: 'Programar defensa' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Programar Defensa Privada' })).not.toBeInTheDocument()
       expect(window.location.hash).toBe('#defensas')
       expect(document.getElementById('panel-defensas')).toBeVisible()
       expect(await screen.findByText('Programada')).toBeInTheDocument()
@@ -8889,8 +9769,7 @@ describe('ExpedientePage US-008', () => {
         { id: 102, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final', activo: true, capacidad_carga: { permitida: true, codigo: 'SIN_DOCUMENTO' } },
       ])
       renderThesis()
-      await userEvent.click(await screen.findByRole('link', { name: 'Gestionar documentos' }))
-      const openButton = await screen.findByRole('button', { name: 'Cargar documento' })
+      const openButton = await screen.findByRole('button', { name: 'Gestionar documentos' })
       openButton.focus()
       await userEvent.click(openButton)
       const dialog = await screen.findByRole('dialog', { name: 'Cargar documentos' })
@@ -8914,8 +9793,7 @@ describe('ExpedientePage US-008', () => {
         { id: 102, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final', activo: true, capacidad_carga: { permitida: true, codigo: 'SIN_DOCUMENTO' } },
       ])
       renderThesis()
-      await userEvent.click(await screen.findByRole('link', { name: 'Gestionar documentos' }))
-      const openButton = await screen.findByRole('button', { name: 'Cargar documento' })
+      const openButton = await screen.findByRole('button', { name: 'Gestionar documentos' })
       await userEvent.click(openButton)
       const dialog = await screen.findByRole('dialog', { name: 'Cargar documentos' })
       invalidateOpener(openButton)

@@ -97,6 +97,23 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
     etapa_codigo = serializers.CharField(source="seguimiento_etapa.etapa.codigo", read_only=True)
     etapa_nombre = serializers.CharField(source="seguimiento_etapa.etapa.nombre", read_only=True)
     hoja_observaciones = serializers.SerializerMethodField()
+    configuracion_numerica = serializers.SerializerMethodField()
+
+    def get_configuracion_numerica(self, obj) -> dict | None:
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+        tipo = {"DEFENSA_PRIVADA": "PRIVADA", "DEFENSA_PUBLICA": "PUBLICA"}.get(obj.tipo_evento)
+        if not tipo:
+            return None
+        policy = ModalidadPolicyRegistry.get(obj.postulacion).evaluacion_policy
+        config = policy.get_configuracion_numerica(tipo) if policy else None
+        if not config:
+            return None
+        semantics = {item.semantica_nota for item in obj.evaluaciones.all() if item.tipo_evaluacion == tipo and item.activo}
+        if len(semantics) > 1:
+            return {"bloqueada": True}
+        if semantics == {"MODALIDAD_ESPECIFICA"} and obj.postulacion.modalidad.codigo == "TESIS_GRADO":
+            return {**config, "maximo": 30 if tipo == "PRIVADA" else 100, "semantica_nota": "MODALIDAD_ESPECIFICA", "aporte_directo": tipo == "PRIVADA"}
+        return config
 
     def get_hoja_observaciones(self, obj):
         documento = next((item for item in obj.documentos_vinculados.all() if item.tipo_documento.codigo == "OBSERVACIONES_DEFENSA_PERFIL" and item.activo), None)
@@ -119,6 +136,7 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
             "modalidad_evento", "modalidad_display", "enlace_virtual", "observaciones", "activo",
             "participantes", "evaluaciones", "resultado_consolidado",
             "hoja_observaciones",
+            "configuracion_numerica",
         )
         read_only_fields = fields
 
@@ -148,6 +166,7 @@ class IniciarEventoPayload(serializers.Serializer):
 class MotivoPayload(serializers.Serializer): motivo=serializers.CharField()
 class ReprogramarPayload(MotivoPayload): nueva_fecha=serializers.DateTimeField()
 class EvaluarPayload(serializers.Serializer):
+    semantica_nota=serializers.ChoiceField(choices=("BRUTA_100", "MODALIDAD_ESPECIFICA"),required=False)
     resultado=serializers.ChoiceField(choices=("SUFICIENTE","INSUFICIENTE"),required=False)
     nota_privada=serializers.DecimalField(max_digits=5,decimal_places=2,min_value=0,max_value=100,required=False)
     nota=serializers.DecimalField(max_digits=5,decimal_places=2,required=False)
@@ -270,6 +289,8 @@ class EventoDefensaViewSet(viewsets.ReadOnlyModelViewSet):
         if tipo in ("tematica","perfil","privada"): kwargs["resultado"]=s.validated_data.get("resultado")
         if tipo=="privada": kwargs["nota"]=s.validated_data.get("nota", s.validated_data.get("nota_privada"))
         if tipo=="publica": kwargs["nota"]=s.validated_data.get("nota", s.validated_data.get("nota_publica"))
+        if tipo in ("privada", "publica") and "semantica_nota" in s.validated_data:
+            kwargs["semantica_nota"] = s.validated_data["semantica_nota"]
         return Response(EvaluacionDefensaSerializer(self._call(fn,**kwargs)).data,status=201)
     @action(detail=True,methods=["post"],url_path="evaluaciones/consolidar")
     def consolidar(self,r,pk=None): self._admin(); return Response(EvaluacionDefensaSerializer(self._call(EvaluacionDefensaService.consolidar_evaluacion_evento,self.get_object(),r.user)).data)

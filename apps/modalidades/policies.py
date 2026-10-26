@@ -107,6 +107,28 @@ class BaseEventoPolicy(ABC):
 
 
 class BaseEvaluacionPolicy(ABC):
+    def get_configuracion_numerica(self, tipo):
+        return None
+
+    @staticmethod
+    def calcular_aporte(nota, ponderacion):
+        from decimal import Decimal, ROUND_HALF_UP
+        return (Decimal(str(nota)) * Decimal(str(ponderacion)) / Decimal("100")).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP,
+        )
+
+    def get_valores_para_semantica(self, *, evento, tipo, nota, semantica):
+        """La escala bruta requiere semántica explícita; conserva el hook histórico."""
+        config = self.get_configuracion_numerica(tipo)
+        if semantica == "BRUTA_100" and config:
+            from decimal import Decimal
+            return {"ponderacion": Decimal(str(config["ponderacion"])),
+                    "aporte_ponderado": self.calcular_aporte(nota, config["ponderacion"]) if nota is not None else None}
+        return self.get_valores_registro(evento=evento, tipo=tipo, nota=nota)
+
+    def admite_semantica_entrada(self, *, evento, tipo, semantica):
+        return semantica == self.get_semantica_nota(evento=evento, tipo=tipo)
+
     def get_tipos_evaluacion(self): return ()
     def validar_evaluacion(self, **kwargs): return None
     def consolidar(self, **kwargs): raise NotImplementedError

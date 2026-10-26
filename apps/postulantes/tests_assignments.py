@@ -244,6 +244,63 @@ class AsignacionPostulacionModelTest(AssignmentBaseMixin, TestCase):
 class AsignacionServiceTest(AssignmentBaseMixin, TestCase):
     """Pruebas del servicio de asignaciones."""
 
+    def test_ocupaciones_informativas_no_cambian_elegibilidad_y_excluyen_historia_y_otro_expediente(self):
+        tutor = AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion, usuario=self.docente_1, tipo_participacion="TUTOR",
+            designado_por=self.admin, fecha_designacion=timezone.now(),
+        )
+        AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion, usuario=self.docente_1, tipo_participacion="TRIBUNAL",
+            orden_cargo=1, seguimiento_etapa=self.seguimiento_perfil,
+            designado_por=self.admin, fecha_designacion=timezone.now(),
+        )
+        for post, active in ((self.postulacion, False), (self.other_postulacion, True)):
+            AsignacionPostulacion.all_objects.create(
+                postulacion=post, usuario=self.docente_1, tipo_participacion="SECRETARIO",
+                activo=active, designado_por=self.admin, fecha_designacion=timezone.now(),
+            )
+        for rule in (None, {"aplica": False}, {"aplica": True, "relevantes": ["PRESIDENTE"]}):
+            with self.subTest(rule=rule):
+                result = AsignacionService._evaluar_ocupacion_vigente(
+                    self.postulacion, self.docente_1, regla_ocupacion=rule,
+                )
+                self.assertTrue(result["elegible"])
+                self.assertIsNone(result["motivo_bloqueo"])
+                self.assertEqual(result["asignaciones_vigentes"], ["Tribunal 1", "Tutor"])
+        blocked = AsignacionService._evaluar_ocupacion_vigente(
+            self.postulacion, self.docente_1,
+            regla_ocupacion={"aplica": True, "relevantes": ["TUTOR"], "motivo": "OCUPADO"},
+        )
+        self.assertFalse(blocked["elegible"])
+        self.assertEqual(blocked["motivo_bloqueo"], "OCUPADO")
+        self.assertEqual(blocked["asignaciones_vigentes"], ["Tribunal 1", "Tutor"])
+        replacement = AsignacionService._evaluar_ocupacion_vigente(
+            self.postulacion, self.docente_1, asignacion_actual=tutor,
+        )
+        self.assertEqual(replacement["asignaciones_vigentes"], ["Tribunal 1"])
+        empty = AsignacionService._evaluar_ocupacion_vigente(self.postulacion, self.docente_2)
+        self.assertEqual(empty, {"elegible": True, "motivo_bloqueo": None, "asignaciones_vigentes": []})
+        AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion, usuario=self.docente_2, tipo_participacion="DOCENTE_MODALIDAD",
+            designado_por=self.admin, fecha_designacion=timezone.now(),
+        )
+        secretary = AsignacionService._evaluar_ocupacion_vigente(self.postulacion, self.docente_2)
+        self.assertTrue(secretary["elegible"])
+        self.assertEqual(secretary["asignaciones_vigentes"], ["Docente de modalidad"])
+        occupations = list(AsignacionPostulacion.all_objects.order_by("tipo_participacion", "orden_cargo", "pk"))
+        with self.assertNumQueries(0):
+            cached = AsignacionService._evaluar_ocupacion_vigente(
+                self.postulacion, self.docente_1, queryset_activas=occupations,
+            )
+        self.assertEqual(cached["asignaciones_vigentes"], ["Tribunal 1", "Tutor"])
+        details = AsignacionService._detallar_ocupaciones(self.postulacion, occupations)
+        self.assertEqual(len(details[self.docente_1.pk]), 2)
+        for item in details[self.docente_1.pk]:
+            self.assertEqual(item["postulacion"], self.postulacion.pk)
+            self.assertTrue(item["activo"])
+            self.assertIsNotNone(item["codigo_posicion"])
+        self.assertEqual(details[self.docente_2.pk][0]["tipo_participacion"], "DOCENTE_MODALIDAD")
+
     def _seguimiento_publico(self, intento=1):
         etapa, _ = EtapaModalidad.objects.get_or_create(
             modalidad=self.modalidad, codigo="DEFENSA_PUBLICA",
@@ -916,6 +973,31 @@ class AsignacionPublicaConcurrencyTest(AssignmentBaseMixin, TransactionTestCase)
 
 
 class AsignacionApiTest(AssignmentBaseMixin, APITestCase):
+    def test_candidatos_con_ocupacion_compatible_conservan_etiqueta_en_respuesta_api(self):
+        AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion, usuario=self.docente_1, tipo_participacion="TUTOR",
+            designado_por=self.admin, fecha_designacion=timezone.now(),
+        )
+        config = ProyectoGradoPolicy().get_configuracion_actores(self.postulacion, self.seguimiento_perfil)
+        for group in config["grupos"]:
+            group.pop("ocupacion_actor", None)
+        self.authenticate(self.admin)
+        with patch.object(ProyectoGradoPolicy, "get_configuracion_actores", return_value=config):
+            response = self.obtener_candidatos()
+        self.assertEqual(response.status_code, 200, response.data)
+        candidate = next(row for row in response.data["results"] if row["id"] == self.docente_1.pk)
+        self.assertTrue(candidate["elegible"])
+        self.assertIsNone(candidate["motivo_bloqueo"])
+        self.assertEqual(candidate["asignaciones_vigentes"], ["Tutor"])
+        detail, = candidate["asignaciones_vigentes_detalle"]
+        self.assertEqual(detail["postulacion"], self.postulacion.pk)
+        self.assertEqual(detail["usuario"], self.docente_1.pk)
+        self.assertEqual(detail["codigo_posicion"], "TUTOR_PROYECTO_1")
+        self.assertEqual(detail["tipo_participacion"], "TUTOR")
+        self.assertEqual(detail["ambito"], "POSTULACION")
+        self.assertIsNone(detail["seguimiento_etapa"])
+        self.assertTrue(detail["activo"])
+
     """Pruebas API y permisos para asignaciones."""
 
     def test_ocupacion_tutor_tribunal_se_valida_en_ambos_sentidos(self):

@@ -160,6 +160,15 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
     def get_tipos_evaluacion(self):
         return ("TEMATICA", "PERFIL", "PRIVADA", "PUBLICA")
 
+    def get_configuracion_numerica(self, tipo):
+        if tipo not in ("PRIVADA", "PUBLICA"):
+            return None
+        return {"minimo": 0 if tipo == "PRIVADA" else 1, "maximo": 100,
+                "ponderacion": 30 if tipo == "PRIVADA" else 70, "semantica_nota": "BRUTA_100"}
+
+    def admite_semantica_entrada(self, *, evento, tipo, semantica):
+        return (tipo in ("PRIVADA", "PUBLICA") and semantica in ("BRUTA_100", "MODALIDAD_ESPECIFICA")) or super().admite_semantica_entrada(evento=evento, tipo=tipo, semantica=semantica)
+
     def get_modalidad_registro_por_defecto(self, *, evento, tipo):
         return "CONSENSO"
 
@@ -199,6 +208,13 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
             raise ValidationError({"resultado_cualitativo": "La evaluación de Tesis debe ser SUFICIENTE o INSUFICIENTE."})
         if evaluacion.tipo_evaluacion not in {"PRIVADA", "PUBLICA"} and any(value is not None for value in (evaluacion.nota_numerica, evaluacion.ponderacion, evaluacion.aporte_ponderado)):
             raise ValidationError({"nota_numerica": "Esta evaluación cualitativa no admite nota ni ponderación."})
+        if evaluacion.semantica_nota == "BRUTA_100":
+            config = self.get_configuracion_numerica(evaluacion.tipo_evaluacion)
+            if not config or evaluacion.nota_numerica is None or not Decimal(str(config["minimo"])) <= evaluacion.nota_numerica <= Decimal("100"):
+                raise ValidationError({"nota_numerica": "La nota bruta está fuera de la escala de esta defensa."})
+            if evaluacion.ponderacion != Decimal(str(config["ponderacion"])) or evaluacion.aporte_ponderado != self.calcular_aporte(evaluacion.nota_numerica, config["ponderacion"]):
+                raise ValidationError({"aporte_ponderado": "El aporte debe corresponder a la nota bruta y su ponderación."})
+            return
         if evaluacion.tipo_evaluacion == "PRIVADA" and (evaluacion.nota_numerica is None or not Decimal("0") <= evaluacion.nota_numerica <= Decimal("30")):
             raise ValidationError({"nota_numerica": "La escala numérica provisional de la Defensa Privada es 0 a 30; la normativa no la define expresamente."})
         if evaluacion.tipo_evaluacion == "PUBLICA":
@@ -219,6 +235,8 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
             return consenso.first()
         individuales = list(evaluaciones.filter(modalidad_registro="INDIVIDUAL").select_related("evaluador__asignacion"))
         if len(individuales) != 3: raise ValidationError("La consolidación individual requiere las tres evaluaciones del tribunal.")
+        if len({item.semantica_nota for item in individuales}) != 1:
+            raise ValidationError("No se pueden consolidar evaluaciones con escalas diferentes.")
         evaluadores = {item.evaluador_id for item in individuales}
         if len(evaluadores) != 3 or any(item.evaluador.rol_evento != "TRIBUNAL" or not item.evaluador.activo or not item.evaluador.asignacion.activo or item.nota_numerica is None for item in individuales): raise ValidationError("Las evaluaciones individuales no corresponden a tres tribunales válidos.")
         individuales[0]._tesis_promedio = sum(item.nota_numerica for item in individuales) / Decimal("3")
@@ -229,12 +247,17 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
         es_publica = evaluacion.tipo_evaluacion == "PUBLICA"
         promedio = getattr(evaluacion, "_tesis_promedio", None)
         nota = promedio if promedio is not None else evaluacion.nota_numerica
+        if promedio is not None and evaluacion.semantica_nota == "BRUTA_100":
+            from decimal import ROUND_HALF_UP
+            nota = nota.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        valores = self.get_valores_para_semantica(evento=evaluacion.evento, tipo=evaluacion.tipo_evaluacion,
+                                                  nota=nota, semantica=evaluacion.semantica_nota)
         return EvaluacionDefensa(
             evento=evaluacion.evento, tipo_evaluacion="RESULTADO_FINAL",
             modalidad_registro="CONSENSO", resultado_cualitativo=evaluacion.resultado_cualitativo,
             nota_numerica=nota,
             ponderacion=Decimal("70.00") if es_publica else (Decimal("30.00") if evaluacion.tipo_evaluacion == "PRIVADA" else None),
-            aporte_ponderado=(nota * Decimal("0.70")).quantize(Decimal("0.01")) if es_publica else nota,
+            aporte_ponderado=valores["aporte_ponderado"],
             semantica_nota=evaluacion.semantica_nota,
             es_resultado_final_evento=True, registrado_por=usuario,
         )
@@ -268,13 +291,15 @@ class TesisGradoEvaluacionPolicy(BaseEvaluacionPolicy):
         publica = results.filter(evento__tipo_evento="DEFENSA_PUBLICA").order_by("-created_at").first()
         private_note = privada.nota_numerica if privada else None
         public_note = publica.nota_numerica if publica else None
-        # La nota privada conserva provisionalmente la escala 0-30; la pública
-        # se registra sobre 100 y aporta el 70% mediante esta conversión.
-        private_contribution = private_note
-        public_contribution = (public_note * Decimal("0.70")).quantize(Decimal("0.01")) if public_note is not None else None
+        # Los históricos conservan su interpretación original. Los registros
+        # BRUTA_100 ya contienen el aporte calculado y no se ponderan otra vez.
+        private_contribution = privada.aporte_ponderado if privada and privada.semantica_nota == "BRUTA_100" else private_note
+        public_contribution = (publica.aporte_ponderado if publica.semantica_nota == "BRUTA_100" else (public_note * Decimal("0.70")).quantize(Decimal("0.01"))) if publica and public_note is not None else None
         final = (private_contribution + public_contribution).quantize(Decimal("0.01")) if private_contribution is not None and public_contribution is not None else None
         classification = self.clasificar_nota_final(final) if final is not None else None
-        return {"nota_privada": private_note, "nota_publica": public_note, "aporte_privada": private_contribution, "aporte_publica": public_contribution, "nota_final": final, "clasificacion": classification, "resultado": classification, "limitacion_normativa": "El artículo 42 contiene la referencia contradictoria a 61; se aplica 51 conforme a los artículos 37–41 y Reglamento General."}
+        return {"nota_privada": private_note, "nota_publica": public_note, "aporte_privada": private_contribution, "aporte_publica": public_contribution,
+                "semantica_privada": privada.semantica_nota if privada else None, "semantica_publica": publica.semantica_nota if publica else None,
+                "nota_final": final, "clasificacion": classification, "resultado": classification, "limitacion_normativa": "El artículo 42 contiene la referencia contradictoria a 61; se aplica 51 conforme a los artículos 37–41 y Reglamento General."}
 
 
 class TesisGradoRequisitosPolicy(BaseRequisitosPolicy):
@@ -534,6 +559,22 @@ class TesisGradoPolicy(BaseModalidadPolicy):
                 requirements = [self._orientation_requirement(
                     "DICTAMEN", title, True, "#resumen", "Suficiente sobre la versión vigente",
                 )]
+            elif review_type == "TRIBUNAL" and VersionDocumento.objects.filter(
+                documento__postulacion=postulacion,
+                documento__tipo_documento__codigo="INFORME_TRIB_TESIS",
+                documento__activo=True, activo=True, es_version_actual=True,
+            ).count() != 1:
+                # La evidencia debe ser inequívoca y vigente; su estado de revisión
+                # no es una condición de registro del dictamen.
+                action = self._orientation_action(
+                    "COMPLETAR_DOCUMENTOS", "Cargar Informe del Tribunal de Tesis",
+                    "Adjunta el Informe del Tribunal de Tesis requerido para registrar el dictamen correspondiente.",
+                    "PENDIENTE", "#documentos", "Gestionar documentos",
+                )
+                requirements = [self._orientation_requirement(
+                    "INFORME_TRIB_TESIS", "Informe del Tribunal de Tesis", False,
+                    "#documentos", "Sin evidencia vigente inequívoca",
+                )]
             else:
                 action = self._orientation_action(
                     "REGISTRAR_DICTAMEN", "Registrar nuevo dictamen del Tribunal" if review_type == "TRIBUNAL" else title,
@@ -550,7 +591,22 @@ class TesisGradoPolicy(BaseModalidadPolicy):
             message = f"Completa las precondiciones y gestiona la {stage.replace('_', ' ').title()}."
         else:
             return None
-        return {"operacion": "ORIENTAR_ETAPA", "mensaje": message, "requisitos": requirements, "siguiente_accion": action, "conflictos_identidad": []}
+        orientation = {"operacion": "ORIENTAR_ETAPA", "mensaje": message, "requisitos": requirements, "siguiente_accion": action, "conflictos_identidad": []}
+        if (
+            action["codigo"] == "PROGRAMAR_EVENTO" and action["estado"] == "DISPONIBLE"
+            and seguimiento.activo and seguimiento.postulacion_id == postulacion.pk
+            and seguimiento.estado in {"EN_PROCESO", "OBSERVADA"}
+        ):
+            events = [
+                event for event in self.evento_policy.get_tipos_evento()
+                if self.evento_policy.get_etapa_asociada(event) == stage
+            ]
+            candidates = postulacion.seguimientos_etapa.filter(
+                etapa=seguimiento.etapa, activo=True, estado__in=("EN_PROCESO", "OBSERVADA"),
+            )
+            if len(events) == 1 and list(candidates.values_list("pk", flat=True)) == [seguimiento.pk]:
+                orientation["tipo_evento"] = events[0]
+        return orientation
 
     def get_reglas_asignacion(self):
         return {"TEMATICA_TESIS": {"TRIBUNAL": 3}, "TUTOR": {"precondicion": "TEMATICA_TESIS_APROBADA"}}

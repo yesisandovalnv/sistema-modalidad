@@ -1,9 +1,10 @@
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient, APIRequestFactory
 
@@ -22,6 +23,65 @@ from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.workflow import WorkflowService
 from apps.postulantes.defensas_api import EvaluarPayload
 from apps.usuarios.models import CustomUser, Role
+
+
+class TesisProgrammingOrientationContractTest(SimpleTestCase):
+    def test_configuracion_bruta_y_limites_sin_cambiar_payload_historico(self):
+        policy = TesisGradoEvaluacionPolicy()
+        for tipo, note, aporte in (("PRIVADA", "95", "28.50"), ("PRIVADA", "0", "0"), ("PRIVADA", "100", "30"), ("PUBLICA", "95", "66.50")):
+            with self.subTest(tipo=tipo, note=note):
+                values = policy.get_valores_para_semantica(evento=None, tipo=tipo, nota=Decimal(note), semantica="BRUTA_100")
+                self.assertEqual(values["aporte_ponderado"], Decimal(aporte))
+                item = SimpleNamespace(tipo_evaluacion=tipo, evento=SimpleNamespace(tipo_evento=f"DEFENSA_{tipo}"),
+                                       resultado_cualitativo="SUFICIENTE", nota_numerica=Decimal(note), semantica_nota="BRUTA_100", **values)
+                policy.validar_registro(item)
+        item.nota_numerica = Decimal("0")
+        with self.assertRaises(ValidationError):
+            policy.validar_registro(item)
+        self.assertEqual(policy.get_valores_registro(evento=None, tipo="PRIVADA", nota=Decimal("25"))["aporte_ponderado"], Decimal("25"))
+        self.assertEqual(policy.get_semantica_nota(evento=None, tipo="PRIVADA"), "MODALIDAD_ESPECIFICA")
+
+    def orientation(self, stage="DEFENSA_PRIVADA", **overrides):
+        policy = TesisGradoPolicy()
+        post = Mock(pk=7)
+        post.asignaciones.filter.return_value.count.return_value = 3
+        post.asignaciones.filter.return_value.exists.return_value = True
+        post.seguimientos_etapa.filter.return_value.values_list.return_value = overrides.pop("candidates", [21])
+        seguimiento = SimpleNamespace(
+            pk=21, postulacion_id=7, activo=True, estado="EN_PROCESO",
+            etapa=SimpleNamespace(codigo=stage), numero_intento=2,
+        )
+        for key, value in overrides.items():
+            setattr(seguimiento, key, value)
+        action = policy._orientation_action("PROGRAMAR_EVENTO", "Programar defensa", "Programa", "DISPONIBLE", "#defensas", "Programar")
+        with patch.object(policy, "_event_orientation", return_value=(action, [])), patch.object(policy, "_document_orientation", return_value=[]):
+            return policy.get_orientacion_etapa_actual(postulacion=post, seguimiento=seguimiento)
+
+    def test_expone_evento_de_la_policy_para_las_cuatro_defensas(self):
+        for stage, event in (("TEMATICA_TESIS", "DEFENSA_TEMATICA"), ("PERFIL_TESIS", "DEFENSA_PERFIL"), ("DEFENSA_PRIVADA", "DEFENSA_PRIVADA"), ("DEFENSA_PUBLICA", "DEFENSA_PUBLICA")):
+            with self.subTest(stage=stage):
+                result = self.orientation(stage)
+                self.assertEqual(result["tipo_evento"], event)
+                self.assertEqual(result["siguiente_accion"]["codigo"], "PROGRAMAR_EVENTO")
+
+    def test_omite_evento_si_seguimiento_no_es_inequivoco_o_editable(self):
+        for overrides in ({"activo": False}, {"postulacion_id": 8}, {"candidates": [21, 22]}, {"candidates": []}, {"estado": "PENDIENTE"}):
+            with self.subTest(overrides=overrides):
+                self.assertNotIn("tipo_evento", self.orientation(**overrides))
+
+    def test_omite_evento_si_la_policy_declara_varios_tipos_para_la_etapa(self):
+        with patch("apps.modalidades.tesis_grado.TesisGradoEventoPolicy.get_tipos_evento", return_value=("DEFENSA_PRIVADA", "OTRO")), patch("apps.modalidades.tesis_grado.TesisGradoEventoPolicy.get_etapa_asociada", return_value="DEFENSA_PRIVADA"):
+            self.assertNotIn("tipo_evento", self.orientation())
+
+    def test_gate_pendiente_no_expone_evento(self):
+        policy = TesisGradoPolicy()
+        post = Mock(pk=7)
+        seguimiento = SimpleNamespace(pk=21, postulacion_id=7, activo=True, estado="EN_PROCESO", etapa=SimpleNamespace(codigo="DEFENSA_PUBLICA"))
+        action = policy._orientation_action("GESTIONAR_PRECONDICIONES", "Completar", "Gate pendiente", "PENDIENTE", "#actores", "Completar")
+        with patch.object(policy, "_event_orientation", return_value=(action, [])):
+            result = policy.get_orientacion_etapa_actual(postulacion=post, seguimiento=seguimiento)
+        self.assertNotIn("tipo_evento", result)
+        self.assertEqual(result["siguiente_accion"], action)
 
 
 class TesisGradoPolicyTest(TestCase):
@@ -833,6 +893,94 @@ class TesisGradoPolicyTest(TestCase):
             self.postulacion, context={"request": request},
         ).data["orientacion_etapa_actual"]
 
+    def test_orientacion_revision_tribunal_sin_informe_prioriza_carga(self):
+        seguimiento = self._activar_etapa("REVISION_TRIBUNAL")
+        self._crear_documento_version("DOCUMENTO_FINAL")
+        orientation = TesisGradoPolicy().get_orientacion_etapa_actual(
+            postulacion=self.postulacion, seguimiento=seguimiento,
+        )
+        self.assertEqual(orientation["siguiente_accion"], {
+            "codigo": "COMPLETAR_DOCUMENTOS", "titulo": "Cargar Informe del Tribunal de Tesis",
+            "descripcion": "Adjunta el Informe del Tribunal de Tesis requerido para registrar el dictamen correspondiente.",
+            "estado": "PENDIENTE", "estado_display": "Pendiente",
+            "destino": "#documentos", "accion_label": "Gestionar documentos",
+        })
+        requirement, = orientation["requisitos"]
+        self.assertEqual(requirement["codigo"], "INFORME_TRIB_TESIS")
+        self.assertFalse(requirement["cumplido"])
+        self.assertEqual(requirement["destino"], "#documentos")
+
+    def test_orientacion_revision_tribunal_evidencia_vigente_no_exige_aprobacion(self):
+        seguimiento = self._activar_etapa("REVISION_TRIBUNAL")
+        self._crear_documento_version("DOCUMENTO_FINAL")
+        evidence = self._crear_documento_version("INFORME_TRIB_TESIS")
+        for state in EstadoDocumento.objects.all():
+            with self.subTest(estado=state.codigo):
+                DocumentoPostulacion.objects.filter(pk=evidence.documento_id).update(
+                    estado=state, requiere_correccion=True,
+                )
+                orientation = TesisGradoPolicy().get_orientacion_etapa_actual(
+                    postulacion=self.postulacion, seguimiento=seguimiento,
+                )
+                self.assertEqual(orientation["siguiente_accion"]["codigo"], "REGISTRAR_DICTAMEN")
+                self.assertEqual(orientation["siguiente_accion"]["estado"], "DISPONIBLE")
+
+    def test_orientacion_revision_tribunal_descarta_evidencia_no_vigente_o_ambigua(self):
+        seguimiento = self._activar_etapa("REVISION_TRIBUNAL")
+        self._crear_documento_version("DOCUMENTO_FINAL")
+        evidence = self._crear_documento_version("INFORME_TRIB_TESIS")
+        for changes in ({"activo": False}, {"es_version_actual": False}):
+            with self.subTest(changes=changes):
+                VersionDocumento.all_objects.filter(pk=evidence.pk).update(**changes)
+                orientation = TesisGradoPolicy().get_orientacion_etapa_actual(
+                    postulacion=self.postulacion, seguimiento=seguimiento,
+                )
+                self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+                VersionDocumento.all_objects.filter(pk=evidence.pk).update(activo=True, es_version_actual=True)
+        duplicate = VersionDocumento.objects.create(
+            documento=evidence.documento, subido_por=self.admin, numero_version=2,
+            archivo="informe-2.pdf", nombre_original="informe-2.pdf", tamano_bytes=3,
+            hash_sha256="2" * 64, es_version_actual=True,
+        )
+        orientation = TesisGradoPolicy().get_orientacion_etapa_actual(postulacion=self.postulacion, seguimiento=seguimiento)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        duplicate.activo = False
+        duplicate.save(update_fields=["activo"])
+        DocumentoPostulacion.objects.filter(pk=evidence.documento_id).update(activo=False)
+        orientation = TesisGradoPolicy().get_orientacion_etapa_actual(postulacion=self.postulacion, seguimiento=seguimiento)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+
+    def test_orientacion_revision_tutor_sin_informe_conserva_contrato(self):
+        seguimiento = self._activar_etapa("REVISION_TUTOR")
+        self._crear_documento_version("DOCUMENTO_FINAL")
+        orientation = TesisGradoPolicy().get_orientacion_etapa_actual(postulacion=self.postulacion, seguimiento=seguimiento)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "REGISTRAR_DICTAMEN")
+        self.assertEqual(orientation["siguiente_accion"]["destino"], "#dictamen-tutor")
+
+    def test_orientacion_revision_tribunal_informe_sin_version_prioriza_carga(self):
+        seguimiento = self._activar_etapa("REVISION_TRIBUNAL")
+        DocumentoPostulacion.objects.create(
+            postulacion=self.postulacion,
+            tipo_documento=TipoDocumento.objects.get(codigo="INFORME_TRIB_TESIS"),
+            estado=EstadoDocumento.objects.get(codigo="ENV"),
+        )
+        orientation = TesisGradoPolicy().get_orientacion_etapa_actual(postulacion=self.postulacion, seguimiento=seguimiento)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+
+    def test_orientacion_revision_tribunal_dictamen_actual_prevalece_sin_evidencia_utilizable(self):
+        seguimiento = self._activar_etapa("REVISION_TRIBUNAL")
+        final = self._crear_documento_version("DOCUMENTO_FINAL")
+        evidence = self._crear_documento_version("INFORME_TRIB_TESIS", actual=False)
+        dictamen = DictamenRevisionDocumento.objects.create(
+            seguimiento_etapa=seguimiento, version_documento_revisada=final,
+            tipo_revision="TRIBUNAL", resultado="SUFICIENTE", evidencia_version=evidence,
+        )
+        for result, action in (("SUFICIENTE", "APROBAR_ETAPA"), ("INSUFICIENTE", "CORREGIR_DOCUMENTO_FINAL")):
+            with self.subTest(resultado=result):
+                DictamenRevisionDocumento.objects.filter(pk=dictamen.pk).update(resultado=result)
+                orientation = TesisGradoPolicy().get_orientacion_etapa_actual(postulacion=self.postulacion, seguimiento=seguimiento)
+                self.assertEqual(orientation["siguiente_accion"]["codigo"], action)
+
     def test_orientacion_revision_tribunal_insuficiente_pide_corregir_documento(self):
         seguimiento = self.seguimientos["REVISION_TRIBUNAL"]
         SeguimientoEtapa.objects.filter(pk=seguimiento.pk).update(estado="OBSERVADA")
@@ -1088,3 +1236,48 @@ class TesisGradoPolicyTest(TestCase):
         self.assertEqual(result["aporte_publica"], Decimal("49.00"))
         self.assertEqual(result["nota_final"], Decimal("79.00"))
         self.assertEqual(result["clasificacion"], "APROBACION_PLENA")
+        # Un nuevo resultado explícito usa aportes, no vuelve a ponderar el bruto.
+        private.evaluaciones.update(nota_numerica=Decimal("95"), aporte_ponderado=Decimal("28.50"), semantica_nota="BRUTA_100")
+        public.evaluaciones.update(nota_numerica=Decimal("95"), aporte_ponderado=Decimal("66.50"), semantica_nota="BRUTA_100")
+        result = TesisGradoEvaluacionPolicy().calcular_resultado_final(self.postulacion)
+        self.assertEqual(result["nota_final"], Decimal("95.00"))
+        self.assertEqual(result["semantica_privada"], "BRUTA_100")
+        from apps.reportes.resultados import ResultadoAcademicoReportService
+        report = ResultadoAcademicoReportService.resolver(self.postulacion)
+        self.assertEqual(report.nota_final, Decimal("95.00"))
+
+    def test_publica_bruta_api_persiste_ponderacion_y_rechaza_cero(self):
+        from apps.postulantes.defensas import EvaluacionDefensaService
+        public = self.seguimientos["DEFENSA_PUBLICA"]
+        event = EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=public,
+            tipo_evento="DEFENSA_PUBLICA", estado="EN_CURSO",
+            fecha_programada="2026-08-02T10:00:00Z", lugar="Aula", programado_por=self.admin,
+        )
+        roles = ("TRIBUNAL", "TRIBUNAL", "PRESIDENTE", "SECRETARIO")
+        for role, teacher in zip(roles, self.docentes):
+            assignment = AsignacionPostulacion.objects.create(
+                postulacion=self.postulacion, usuario=teacher, tipo_participacion=role, designado_por=self.admin,
+            )
+            ParticipanteEvento.objects.create(evento=event, asignacion=assignment, rol_evento=role, presente=True)
+        event.estado = "FINALIZADA"
+        event.save()
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        url = f"/api/v1/eventos-defensa/{event.pk}/evaluaciones/publica/"
+        payload = {"nota": "0", "semantica_nota": "BRUTA_100"}
+        response = client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(event.evaluaciones.exists())
+        payload["nota"] = "95"
+        response = client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        evaluation = event.evaluaciones.get()
+        self.assertEqual(evaluation.semantica_nota, "BRUTA_100")
+        self.assertEqual(evaluation.aporte_ponderado, Decimal("66.50"))
+        policy = TesisGradoEvaluacionPolicy()
+        consolidated = policy.construir_consolidado(evaluation, self.admin)
+        consolidated.save()
+        self.assertEqual(consolidated.aporte_ponderado, Decimal("66.50"))
+        result = EvaluacionDefensaService.calcular_resultado_final(self.postulacion, None, auditar=False)
+        self.assertEqual(result["aporte_publica"], Decimal("66.50"))

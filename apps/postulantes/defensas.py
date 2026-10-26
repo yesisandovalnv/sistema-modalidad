@@ -199,7 +199,7 @@ class EventoDefensaService:
 class EvaluacionDefensaService:
     @staticmethod
     @transaction.atomic
-    def _registrar(evento,usuario,tipo,resultado="",nota=None,evaluador=None,modalidad_registro=None,observaciones=""):
+    def _registrar(evento,usuario,tipo,resultado="",nota=None,evaluador=None,modalidad_registro=None,observaciones="",semantica_nota=None):
         evento=EventoDefensa.objects.select_for_update().select_related("postulacion").get(pk=evento.pk)
         EventoDefensaService._validar_postulacion_editable(evento.postulacion)
         policy=ModalidadPolicyRegistry.get(evento.postulacion)
@@ -210,13 +210,17 @@ class EvaluacionDefensaService:
         policy.evaluacion_policy.validar_solicitud_registro(modalidad_registro=modalidad_registro, evaluador=evaluador, evento=evento, tipo=tipo)
         existentes = evento.evaluaciones.filter(tipo_evaluacion=tipo)
         if existentes.exists() and not (modalidad_registro == EvaluacionDefensa.ModalidadRegistro.INDIVIDUAL and not existentes.exclude(modalidad_registro=EvaluacionDefensa.ModalidadRegistro.INDIVIDUAL).exists()): raise ValidationError("El evento ya tiene una evaluación registrada de este tipo.")
-        valores = policy.evaluacion_policy.get_valores_registro(evento=evento, tipo=tipo, nota=nota)
-        semantica_nota=policy.evaluacion_policy.get_semantica_nota(evento=evento,tipo=tipo)
+        semantica_nota = semantica_nota or policy.evaluacion_policy.get_semantica_nota(evento=evento,tipo=tipo)
+        if not policy.evaluacion_policy.admite_semantica_entrada(evento=evento, tipo=tipo, semantica=semantica_nota):
+            raise ValidationError("La semántica de entrada no está habilitada para esta evaluación.")
+        if existentes.exclude(semantica_nota=semantica_nota).exists():
+            raise ValidationError("No se pueden mezclar escalas en las evaluaciones del mismo evento.")
+        valores = policy.evaluacion_policy.get_valores_para_semantica(evento=evento, tipo=tipo, nota=nota, semantica=semantica_nota)
         e=EvaluacionDefensa(evento=evento,evaluador=evaluador,tipo_evaluacion=tipo,modalidad_registro=modalidad_registro,resultado_cualitativo=resultado,nota_numerica=nota,ponderacion=valores["ponderacion"],aporte_ponderado=valores["aporte_ponderado"],semantica_nota=semantica_nota,observaciones=observaciones,registrado_por=usuario); e.save(); _audit(usuario,"EVALUATE",f"Evaluación {tipo} registrada en evento {evento.pk}."); return e
     registrar_evaluacion_perfil=staticmethod(lambda evento,usuario,resultado,evaluador=None,modalidad_registro=None,observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PERFIL,resultado,None,evaluador,modalidad_registro,observaciones))
     registrar_evaluacion_tematica=staticmethod(lambda evento,usuario,resultado,evaluador=None,modalidad_registro=None,observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.TEMATICA,resultado,None,evaluador,modalidad_registro,observaciones))
-    registrar_evaluacion_privada=staticmethod(lambda evento,usuario,resultado,nota=None,evaluador=None,modalidad_registro=None,observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PRIVADA,resultado,nota,evaluador,modalidad_registro,observaciones))
-    registrar_evaluacion_publica=staticmethod(lambda evento,usuario,nota,evaluador=None,modalidad_registro=None,observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PUBLICA,"",nota,evaluador,modalidad_registro,observaciones))
+    registrar_evaluacion_privada=staticmethod(lambda evento,usuario,resultado,nota=None,evaluador=None,modalidad_registro=None,observaciones="",semantica_nota=None: EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PRIVADA,resultado,nota,evaluador,modalidad_registro,observaciones,semantica_nota))
+    registrar_evaluacion_publica=staticmethod(lambda evento,usuario,nota,evaluador=None,modalidad_registro=None,observaciones="",semantica_nota=None: EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PUBLICA,"",nota,evaluador,modalidad_registro,observaciones,semantica_nota))
 
     @staticmethod
     @transaction.atomic

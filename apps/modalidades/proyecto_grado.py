@@ -271,6 +271,12 @@ class ProyectoGradoLegacyEvaluacionPolicy(BaseEvaluacionPolicy):
 
 
 class ProyectoGradoEvaluacionPolicy(ProyectoGradoLegacyEvaluacionPolicy):
+    def get_configuracion_numerica(self, tipo):
+        if tipo not in ("PRIVADA", "PUBLICA"):
+            return None
+        return {"minimo": 0, "maximo": 100, "ponderacion": 30 if tipo == "PRIVADA" else 70,
+                "semantica_nota": "BRUTA_100"}
+
     def get_semantica_nota(self, *, evento, tipo):
         from apps.postulantes.models import EvaluacionDefensa
         if tipo in ("PRIVADA", "PUBLICA"):
@@ -284,9 +290,7 @@ class ProyectoGradoEvaluacionPolicy(ProyectoGradoLegacyEvaluacionPolicy):
         ponderacion = Decimal("30.00") if tipo == "PRIVADA" else Decimal("70.00")
         if nota is None:
             return {"ponderacion": ponderacion, "aporte_ponderado": None}
-        aporte = (Decimal(str(nota)) * ponderacion / Decimal("100")).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP,
-        )
+        aporte = self.calcular_aporte(nota, ponderacion)
         return {"ponderacion": ponderacion, "aporte_ponderado": aporte}
 
     def validar_registro(self, evaluacion):

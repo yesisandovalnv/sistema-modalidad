@@ -31,6 +31,70 @@ class TesisDefensaPrivadaTest(TestCase):
     def event(self):
         return EventoDefensaService.programar_evento(self.post, self.private, 'DEFENSA_PRIVADA', timezone.now()-timedelta(minutes=1), self.admin, lugar='Aula')
 
+    def _numeric_event(self):
+        event = self.event()
+        EventoDefensaService.iniciar_evento(event, self.admin)
+        participants = []
+        for assignment in self.trib + [self.secretary]:
+            participant = EventoDefensaService.agregar_participante(event, assignment, assignment.tipo_participacion, self.admin)
+            EventoDefensaService.registrar_asistencia(participant, True, self.admin)
+            participants.append(participant)
+        EventoDefensaService.finalizar_evento(event, self.admin)
+        return event, participants
+
+    def test_nueva_privada_bruta_persiste_y_consolida_sin_doble_ponderacion(self):
+        from apps.postulantes.defensas_api import EventoDefensaSerializer
+        event, _ = self._numeric_event()
+        config = EventoDefensaSerializer(event).data['configuracion_numerica']
+        self.assertEqual(config, {'minimo': 0, 'maximo': 100, 'ponderacion': 30, 'semantica_nota': 'BRUTA_100'})
+        evaluation = EvaluacionDefensaService.registrar_evaluacion_privada(
+            event, self.admin, 'SUFICIENTE', nota=Decimal('95'), semantica_nota='BRUTA_100',
+        )
+        self.assertEqual(evaluation.nota_numerica, Decimal('95'))
+        self.assertEqual(evaluation.aporte_ponderado, Decimal('28.50'))
+        result = EvaluacionDefensaService.consolidar_evaluacion_evento(event, self.admin)
+        self.assertEqual(result.nota_numerica, Decimal('95'))
+        self.assertEqual(result.aporte_ponderado, Decimal('28.50'))
+        self.assertEqual(result.semantica_nota, 'BRUTA_100')
+        self.assertEqual(EvaluacionDefensaService.calcular_resultado_final(self.post, None, auditar=False)['aporte_privada'], Decimal('28.50'))
+
+    def test_api_privada_con_semantica_explicita(self):
+        from rest_framework.test import APIClient
+        event, _ = self._numeric_event()
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        url = f'/api/v1/eventos-defensa/{event.pk}/evaluaciones/privada/'
+        response = client.post(url, {'resultado': 'SUFICIENTE', 'nota': '95', 'semantica_nota': 'BRUTA_100'}, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data['semantica_nota'], 'BRUTA_100')
+        self.assertEqual(Decimal(response.data['aporte_ponderado']), Decimal('28.50'))
+
+    def test_individual_bruta_redondea_promedio_antes_de_aporte(self):
+        event, participants = self._numeric_event()
+        for note, participant in zip(('20','20','21'), participants[:3]):
+            EvaluacionDefensaService.registrar_evaluacion_privada(
+                event, self.admin, 'SUFICIENTE', nota=Decimal(note), evaluador=participant,
+                modalidad_registro='INDIVIDUAL', semantica_nota='BRUTA_100',
+            )
+        result = EvaluacionDefensaService.consolidar_evaluacion_evento(event, self.admin)
+        self.assertEqual(result.nota_numerica, Decimal('20.33'))
+        self.assertEqual(result.aporte_ponderado, Decimal('6.10'))
+        self.assertEqual(list(event.evaluaciones.filter(tipo_evaluacion='PRIVADA').order_by('id').values_list('nota_numerica',flat=True)), [Decimal('20'),Decimal('20'),Decimal('21')])
+
+    def test_payload_antiguo_no_se_reinterpreta_y_no_se_mezclan_escalas(self):
+        event, participants = self._numeric_event()
+        old = EvaluacionDefensaService.registrar_evaluacion_privada(
+            event, self.admin, 'SUFICIENTE', nota=Decimal('25'), evaluador=participants[0], modalidad_registro='INDIVIDUAL',
+        )
+        self.assertEqual(old.semantica_nota, 'MODALIDAD_ESPECIFICA')
+        self.assertEqual(old.aporte_ponderado, Decimal('25'))
+        from apps.postulantes.defensas_api import EventoDefensaSerializer
+        config = EventoDefensaSerializer(event).data['configuracion_numerica']
+        self.assertEqual(config['maximo'], 30)
+        self.assertEqual(config['semantica_nota'], 'MODALIDAD_ESPECIFICA')
+        with self.assertRaises(ValidationError):
+            EvaluacionDefensaService.registrar_evaluacion_privada(event, self.admin, 'SUFICIENTE', nota=Decimal('95'), evaluador=participants[1], modalidad_registro='INDIVIDUAL', semantica_nota='BRUTA_100')
+
     def test_programacion_y_quorum_especifico(self):
         event = self.event()
         with self.assertRaises(ValidationError): EventoDefensaService.finalizar_evento(event, self.admin)

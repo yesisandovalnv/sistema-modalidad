@@ -174,17 +174,20 @@ class AsignacionService:
         ):
             return candidatos.none()
 
+        ocupaciones_vigentes = list(asignaciones_activas.select_related("seguimiento_etapa__etapa").order_by("tipo_participacion", "orden_cargo", "pk"))
+        detalles = AsignacionService._detallar_ocupaciones(postulacion, ocupaciones_vigentes)
         for candidato in candidatos:
             estado = AsignacionService._evaluar_ocupacion_vigente(
                 postulacion=postulacion,
                 usuario=candidato,
                 asignacion_actual=asignacion_actual,
-                queryset_activas=asignaciones_activas,
+                queryset_activas=ocupaciones_vigentes,
                 regla_ocupacion=regla_ocupacion,
             )
             candidato.elegible = estado["elegible"]
             candidato.motivo_bloqueo = estado["motivo_bloqueo"]
             candidato.asignaciones_vigentes = estado["asignaciones_vigentes"]
+            candidato.asignaciones_vigentes_detalle = detalles.get(candidato.pk, [])
 
         return candidatos
 
@@ -384,6 +387,36 @@ class AsignacionService:
         return asignacion.get_tipo_participacion_display() or asignacion.tipo_participacion.title()
 
     @staticmethod
+    def _detallar_ocupaciones(postulacion, asignaciones):
+        """Identifica posiciones desde la configuración vigente, sin decidir elegibilidad."""
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+
+        seguimiento = postulacion.seguimientos_etapa.filter(
+            activo=True, estado__in=("EN_PROCESO", "OBSERVADA"),
+        ).select_related("etapa").order_by("etapa__orden", "pk").first()
+        config = ModalidadPolicyRegistry.get(postulacion).get_configuracion_actores(postulacion, seguimiento) or {}
+        detalles = {}
+        for item in asignaciones:
+            if not item.activo or item.postulacion_id != postulacion.pk:
+                continue
+            ambito = "ETAPA" if item.seguimiento_etapa_id is not None else "POSTULACION"
+            posiciones = [
+                position for group in config.get("grupos", [])
+                if group.get("tipo_participacion") == item.tipo_participacion and group.get("ambito") == ambito
+                and (ambito == "POSTULACION" or group.get("codigo_etapa") == item.seguimiento_etapa.etapa.codigo)
+                for position in group.get("posiciones", [])
+                if position.get("orden_cargo") == item.orden_cargo
+            ]
+            detalles.setdefault(item.usuario_id, []).append({
+                "id": item.pk, "postulacion": item.postulacion_id, "usuario": item.usuario_id,
+                "codigo_posicion": posiciones[0].get("clave") if len(posiciones) == 1 else None,
+                "tipo_participacion": item.tipo_participacion, "ambito": ambito,
+                "seguimiento_etapa": item.seguimiento_etapa_id, "orden_cargo": item.orden_cargo,
+                "activo": item.activo,
+            })
+        return detalles
+
+    @staticmethod
     def _evaluar_ocupacion_vigente(
         postulacion: Postulacion,
         usuario: CustomUser | int,
@@ -392,31 +425,33 @@ class AsignacionService:
         regla_ocupacion: dict | None = None,
     ) -> dict:
         usuario_id = usuario.pk if isinstance(usuario, CustomUser) else int(usuario)
+        if queryset_activas is None or hasattr(queryset_activas, "filter"):
+            queryset = queryset_activas if queryset_activas is not None else AsignacionPostulacion.objects.all()
+            queryset = queryset.filter(postulacion=postulacion, activo=True, usuario_id=usuario_id)
+            if asignacion_actual is not None:
+                queryset = queryset.exclude(pk=asignacion_actual.pk)
+            asignaciones = list(queryset.order_by("tipo_participacion", "orden_cargo", "pk"))
+        else:
+            asignaciones = [
+                item for item in queryset_activas
+                if item.postulacion_id == postulacion.pk and item.activo and item.usuario_id == usuario_id
+                and item.pk != getattr(asignacion_actual, "pk", None)
+            ]
+        ocupaciones = [AsignacionService._describir_asignacion_vigente(item) for item in asignaciones]
         if not AsignacionService._ocupacion_actor_aplica(regla_ocupacion):
-            return {"elegible": True, "motivo_bloqueo": None, "asignaciones_vigentes": []}
-        queryset = queryset_activas or AsignacionPostulacion.objects.filter(postulacion=postulacion, activo=True)
-        if asignacion_actual is not None:
-            queryset = queryset.exclude(pk=asignacion_actual.pk)
+            return {"elegible": True, "motivo_bloqueo": None, "asignaciones_vigentes": ocupaciones}
         relevantes = regla_ocupacion.get("relevantes") or tuple(
             choice for choice, _label in AsignacionPostulacion.TipoParticipacionChoices.choices
         )
-        asignaciones = list(
-            queryset.filter(usuario_id=usuario_id, tipo_participacion__in=relevantes)
-            .select_related("seguimiento_etapa")
-            .order_by("tipo_participacion", "orden_cargo", "pk")
-        )
-        if not asignaciones:
-            return {"elegible": True, "motivo_bloqueo": None, "asignaciones_vigentes": []}
+        if not any(item.tipo_participacion in relevantes for item in asignaciones):
+            return {"elegible": True, "motivo_bloqueo": None, "asignaciones_vigentes": ocupaciones}
         return {
             "elegible": False,
             "motivo_bloqueo": regla_ocupacion.get(
                 "motivo",
                 "YA_TIENE_ASIGNACION_VIGENTE_EN_POSTULACION",
             ),
-            "asignaciones_vigentes": [
-                AsignacionService._describir_asignacion_vigente(asignacion)
-                for asignacion in asignaciones
-            ],
+            "asignaciones_vigentes": ocupaciones,
         }
 
     @staticmethod

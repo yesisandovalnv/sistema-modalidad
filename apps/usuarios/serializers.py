@@ -135,6 +135,10 @@ class AssignmentCandidateSerializer(serializers.ModelSerializer):
     elegible = serializers.SerializerMethodField()
     motivo_bloqueo = serializers.SerializerMethodField()
     asignaciones_vigentes = serializers.SerializerMethodField()
+    asignaciones_vigentes_detalle = serializers.SerializerMethodField()
+
+    def get_asignaciones_vigentes_detalle(self, obj):
+        return getattr(obj, "asignaciones_vigentes_detalle", [])
 
     def get_codigo(self, obj) -> str:
         return obj.ru or obj.username
@@ -166,6 +170,7 @@ class AssignmentCandidateSerializer(serializers.ModelSerializer):
             "elegible",
             "motivo_bloqueo",
             "asignaciones_vigentes",
+            "asignaciones_vigentes_detalle",
         )
         read_only_fields = fields
 

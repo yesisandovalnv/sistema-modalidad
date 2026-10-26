@@ -613,12 +613,19 @@ class PostulacionViewSet(viewsets.ModelViewSet):
         queryset = AssignmentCandidateViewSet.apply_catalog_filters(queryset, request)
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(queryset, request, view=self)
+        ocupaciones_vigentes = list(AsignacionPostulacion.objects.filter(
+            postulacion=postulacion, activo=True,
+        ).select_related("seguimiento_etapa__etapa").order_by("tipo_participacion", "orden_cargo", "pk"))
+        detalles = AsignacionService._detallar_ocupaciones(postulacion, ocupaciones_vigentes)
         for usuario in page or []:
+            usuario.asignaciones_vigentes_detalle = detalles.get(usuario.pk, [])
+            if all(hasattr(usuario, field) for field in ("elegible", "motivo_bloqueo", "asignaciones_vigentes")):
+                continue
             estado = AsignacionService._evaluar_ocupacion_vigente(
                 postulacion=postulacion,
                 usuario=usuario,
                 asignacion_actual=asignacion_actual,
-                queryset_activas=AsignacionPostulacion.objects.filter(postulacion=postulacion, activo=True),
+                queryset_activas=ocupaciones_vigentes,
                 regla_ocupacion=position.get("ocupacion_actor"),
             )
             usuario.elegible = estado["elegible"]
