@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ExcelenciaAcademica from './ExcelenciaAcademica'
 import { postulacionesService } from '../../services/postulacionesService'
@@ -23,6 +23,29 @@ const base = {
 }
 
 describe('ExcelenciaAcademica', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('formaliza solo tras pulsar la operación existente y refleja el estado concluido', async () => {
+    const onChanged = vi.fn()
+    const excellence = { ...base, criterio: 'RENDIMIENTO_ACADEMICO', resultado: { estado: 'FAVORABLE', promedio_general: '100.00' } }
+    postulacionesService.concluirExcelenciaAcademica.mockResolvedValue({})
+    const { rerender } = render(<ExcelenciaAcademica postulacion="7" excelencia={excellence} etapaCodigo="CONCLUSION_ACADEMICA" conclusionAprobada canManage resultView onChanged={onChanged} />)
+    expect(screen.getByText(/Falta formalizar/)).toBeVisible()
+    expect(postulacionesService.concluirExcelenciaAcademica).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Concluir académicamente' }))
+    expect(postulacionesService.concluirExcelenciaAcademica).toHaveBeenCalledExactlyOnceWith('7')
+    expect(onChanged).toHaveBeenCalledTimes(1)
+    rerender(<ExcelenciaAcademica postulacion="7" excelencia={excellence} etapaCodigo="CONCLUSION_ACADEMICA" conclusionAprobada concluida canManage resultView onChanged={onChanged} />)
+    expect(screen.getByText('La conclusión de la postulación está formalizada.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Concluir académicamente' })).not.toBeInTheDocument()
+  })
+
+  it('conserva el resultado visible sin permitir formalización a quien no administra', () => {
+    render(<ExcelenciaAcademica postulacion="7" excelencia={{ ...base, criterio: 'RENDIMIENTO_ACADEMICO', resultado: { estado: 'FAVORABLE', promedio_general: '100.00' } }} etapaCodigo="CONCLUSION_ACADEMICA" conclusionAprobada resultView onChanged={vi.fn()} />)
+    expect(screen.getByText('100.00')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Concluir académicamente' })).not.toBeInTheDocument()
+    expect(postulacionesService.concluirExcelenciaAcademica).not.toHaveBeenCalled()
+  })
   it('selecciona y persiste el criterio normativo', async () => {
     postulacionesService.configurarExcelenciaAcademica.mockResolvedValue({})
     const onChanged = vi.fn()

@@ -40,6 +40,39 @@ async function completeInternalInstitution() {
 describe('TrabajoDirigido', () => {
   beforeEach(() => vi.resetAllMocks())
 
+  it('conclusión: conserva el botón original y delega al controlador compartido', async () => {
+    const onConclude = vi.fn()
+    const { rerender } = render(<TrabajoDirigido postulacion="9" trabajo={trabajo} etapaCodigo="CIERRE_DOCUMENTAL" canManage conclusion={{ allowed: true }} onConclude={onConclude} />)
+    expect(postulacionesService.concluirTrabajoDirigido).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Concluir académicamente' }))
+    expect(onConclude).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.concluirTrabajoDirigido).not.toHaveBeenCalled()
+    rerender(<TrabajoDirigido postulacion="9" trabajo={trabajo} etapaCodigo="CIERRE_DOCUMENTAL" canManage conclusion={{ allowed: true, submitting: true }} onConclude={onConclude} />)
+    expect(screen.getByRole('button', { name: 'Concluyendo…' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Concluyendo…' }))
+    expect(onConclude).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([{ allowed: false }, { allowed: true, done: true }])('conclusión: respeta el bloqueo compartido %j', async (conclusion) => {
+    const onConclude = vi.fn()
+    render(<TrabajoDirigido postulacion="9" trabajo={trabajo} etapaCodigo="CIERRE_DOCUMENTAL" canManage conclusion={conclusion} onConclude={onConclude} />)
+    const button = screen.getByRole('button', { name: 'Concluir académicamente' })
+    expect(button).toBeDisabled()
+    await userEvent.click(button)
+    expect(onConclude).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])('conclusión: no ofrece repetir una conclusión ni operar sin permiso, permiso %s', (canManage) => {
+    render(<TrabajoDirigido postulacion="9" trabajo={trabajo} etapaCodigo="CIERRE_DOCUMENTAL" canManage={canManage} conclusion={{ allowed: false, concluded: true }} onConclude={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: 'Concluir académicamente' })).not.toBeInTheDocument()
+  })
+
+  it('conclusión: presenta el error recibido del controlador sin mostrar éxito', () => {
+    render(<TrabajoDirigido postulacion="9" trabajo={trabajo} etapaCodigo="CIERRE_DOCUMENTAL" canManage conclusion={{ allowed: true, error: 'El cierre fue rechazado.' }} onConclude={vi.fn()} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('El cierre fue rechazado.')
+    expect(screen.getByRole('button', { name: 'Concluir académicamente' })).toBeEnabled()
+  })
+
   it('registra una institución interna válida sin exigir convenio y confirma después de sincronizar', async () => {
     let resolveRefresh
     postulacionesService.configurarInstitucionTrabajoDirigido.mockResolvedValue({ id: 3 })

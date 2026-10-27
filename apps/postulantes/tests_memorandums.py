@@ -156,6 +156,36 @@ class MemorandumDesignacionTests(TestCase):
                 usuario=self.student,
             )
 
+    def test_rechaza_publicacion_si_falta_tipo_documental(self):
+        TipoDocumento.all_objects.filter(
+            codigo=MemorandumDesignacionService.TIPO_DOCUMENTO,
+        ).delete()
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "El tipo documental del memorándum no está configurado.",
+        ):
+            self._publicar()
+
+        self.assertFalse(PublicacionMemorandumDesignacion.all_objects.exists())
+        self.assertFalse(DocumentoPostulacion.all_objects.exists())
+
+    def test_rechaza_publicacion_si_tipo_documental_esta_inactivo(self):
+        tipo = TipoDocumento.all_objects.get(
+            codigo=MemorandumDesignacionService.TIPO_DOCUMENTO,
+        )
+        tipo.activo = False
+        tipo.save(update_fields=["activo"])
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "El tipo documental del memorándum no está configurado.",
+        ):
+            self._publicar()
+
+        self.assertFalse(PublicacionMemorandumDesignacion.all_objects.exists())
+        self.assertFalse(DocumentoPostulacion.all_objects.exists())
+
     def test_rechaza_tribunales_duplicados_y_archivo_no_pdf(self):
         AsignacionPostulacion.objects.filter(pk=self.tribunales[1].pk).update(
             usuario=self.docentes[1],
@@ -224,3 +254,21 @@ class MemorandumDesignacionTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
         self.assertFalse(PublicacionMemorandumDesignacion.objects.exists())
+
+    def test_endpoint_administrativo_publica_con_tipo_documental_configurado(self):
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        response = client.post(
+            f"/api/v1/postulaciones/{self.postulacion.pk}/memorandums-designacion/",
+            {"seguimiento_etapa": self.seguimiento.pk, "archivo": self._archivo()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, getattr(response, "data", None))
+        self.assertTrue(PublicacionMemorandumDesignacion.objects.filter(
+            postulacion=self.postulacion,
+        ).exists())
+        self.assertTrue(DocumentoPostulacion.objects.filter(
+            postulacion=self.postulacion,
+            tipo_documento__codigo=MemorandumDesignacionService.TIPO_DOCUMENTO,
+        ).exists())

@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { PageHeader, DataState, Modal } from '../../components/crud/CrudShell'
 import { Card } from '../../components/ui/card'
@@ -25,8 +25,11 @@ import { getActiveTribunalComposition } from './tribunalComposition'
 const EMPTY = 'No registrado'
 // Preferencia operativa de selección; no modifica la elegibilidad académica.
 const ACTOR_SELECTION_PRESENTATION = {
+  TRABAJO_DIRIGIDO: {
+    PERFIL_TRABAJO_DIRIGIDO: { preventTribunalForTutor: true },
+    DEFENSA_PRIVADA: { preventOccupiedDirectedSecretary: true },
+  },
   TESIS_GRADO: {
-    TEMATICA_TESIS: { blockSameTribunalContext: true },
     DEFENSA_PRIVADA: { preventOccupiedPrivateSecretary: true },
   },
   EXCELENCIA_ACADEMICA: {
@@ -213,6 +216,8 @@ export default function ExpedientePage() {
   const uploadOpener = useRef(null)
   const uploadController = useRef(null)
   const contextualUploadPending = useRef(false)
+  const contextualUploadSubmitting = useRef(false)
+  const [contextualUploadMessage, setContextualUploadMessage] = useState('')
   const [review, setReview] = useState(null)
   const reviewController = useRef(null)
   const [defenses, setDefenses] = useState({ data: null, loading: true, error: '' })
@@ -251,6 +256,14 @@ export default function ExpedientePage() {
   const [trabajoDirigido, setTrabajoDirigido] = useState(null)
   const [trabajoDirigidoRevision, setTrabajoDirigidoRevision] = useState(0)
   const [trabajoDirigidoReportSuccess, setTrabajoDirigidoReportSuccess] = useState('')
+  const [directedConclusion, setDirectedConclusion] = useState({ submitting: false, error: '', done: false })
+  const directedConclusionRequest = useRef(null)
+
+  useEffect(() => {
+    setDirectedConclusion({ submitting: false, error: '', done: false })
+    directedConclusionRequest.current = null
+    return () => directedConclusionRequest.current?.abort()
+  }, [id])
 
   useEffect(() => {
     uploadController.current?.abort()
@@ -552,6 +565,16 @@ export default function ExpedientePage() {
     return () => controller.abort()
   }, [data, tribunalReportsRevision])
 
+  const actorSelectionPresentation = useMemo(() => {
+    const stage = data?.flujo?.etapa_actual
+    const presentation = ACTOR_SELECTION_PRESENTATION[data?.detalle?.modalidad_detalle?.codigo]?.[stage?.codigo]
+    if (!presentation?.preventOccupiedDirectedSecretary) return presentation
+    const profile = (data?.flujo?.etapas || [])
+      .filter((item) => item.codigo === 'PERFIL_TRABAJO_DIRIGIDO' && item.activo !== false)
+      .sort((first, second) => Number(second.numero_intento) - Number(first.numero_intento))[0]
+    return { ...presentation, profileSeguimiento: profile?.id ?? null, seguimientoEtapa: stage?.id }
+  }, [data?.detalle?.modalidad_detalle?.codigo, data?.flujo?.etapa_actual, data?.flujo?.etapas])
+
   if (loading || error || !data) {
     const modalityName = data?.detalle?.modalidad_detalle?.nombre || data?.flujo?.modalidad?.nombre
     return (
@@ -688,11 +711,44 @@ export default function ExpedientePage() {
     && stageApprovalAllowed
   const canApproveStage = canManageApplications && orientationApprovalAvailable
   const isTrabajoDirigido = modalityCode === 'TRABAJO_DIRIGIDO'
+  const directedConclusionOrientation = isTrabajoDirigido && currentOrientation?.operacion === 'ORIENTAR_CONCLUSION_ACADEMICA'
+    ? currentOrientation : null
+  const canConcludeDirected = isTrabajoDirigido && canManageApplications && !isConcluded
+    && currentStage?.codigo === 'CIERRE_DOCUMENTAL'
+    && (!directedConclusionOrientation || (directedConclusionOrientation.siguiente_accion?.codigo === 'CONCLUIR_ACADEMICAMENTE'
+      && directedConclusionOrientation.siguiente_accion.estado === 'DISPONIBLE'))
+  const directedConclusionState = { ...directedConclusion, allowed: canConcludeDirected, concluded: isConcluded }
+  const concludeDirected = async () => {
+    if (!canConcludeDirected || directedConclusionRequest.current || directedConclusion.done) return
+    const controller = new AbortController()
+    directedConclusionRequest.current = controller
+    setDirectedConclusion({ submitting: true, error: '', done: false })
+    try {
+      await postulacionesService.concluirTrabajoDirigido(detalle.id, controller.signal)
+      if (controller.signal.aborted) return
+      setDirectedConclusion({ submitting: false, error: '', done: true })
+      setTrabajoDirigidoRevision((value) => value + 1)
+      setRevision((value) => value + 1)
+      setHistoryRevision((value) => value + 1)
+    } catch (requestError) {
+      if (controller.signal.aborted) return
+      directedConclusionRequest.current = null
+      setDirectedConclusion({ submitting: false, error: requestError.message || 'No se pudo concluir académicamente el Trabajo Dirigido.', done: false })
+    }
+  }
   const activeCurrentDefense = hasActiveCurrentDefense({
     defenses: defenses.data?.results || [],
     orientation: actionOrientation,
     currentStage,
   })
+  const thesisPublicCandidates = stages.filter((stage) => stage.codigo === 'DEFENSA_PUBLICA'
+    && stage.activo !== false && ['EN_PROCESO', 'OBSERVADA'].includes(stage.estado))
+  const canOpenThesisAuthorities = canManageAssignments && isThesisPublicStage
+    && currentStage?.id && currentStage.activo !== false
+    && ['EN_PROCESO', 'OBSERVADA'].includes(currentStage.estado) && !activeCurrentDefense
+    && thesisPublicCandidates.length === 1
+    && String(thesisPublicCandidates[0].id) === String(currentStage.id)
+    && thesisPublicCandidates[0].numero_intento === currentStage.numero_intento
   const defenseProgrammingContext = getDefenseProgrammingContext({
     stages,
     currentStage,
@@ -720,16 +776,12 @@ export default function ExpedientePage() {
   const examConclusionPending = Boolean(
     isExamGrade
     && examResult?.completo === true
-    && !isConcluded
-    && currentStage == null
+    && detalle.estado_actual_detalle?.codigo === 'EN_PROCESO'
+    && (currentStage == null || (currentStage.codigo === 'CONCLUSION_ACADEMICA' && currentStage.estado === 'APROBADA'))
     && stages.length > 0
     && completedStages === stages.length
   )
   const isStudentView = auth?.roleCode === 'ESTUDIANTE'
-
-  if (isStudentView) {
-    return <StudentProcessView detalle={detalle} flujo={flujo} cierre={cierre} cierreSoportado={cierreSoportado} progress={safeProgress} canViewDocuments={auth?.hasPermission?.('puede_ver_documentos') === true} canUploadDocuments={canUpload} memorandumContract={getMemorandumPublicationContract(data)} memorandums={memorandums} onRetryMemorandums={() => setMemorandumRevision((value) => value + 1)} />
-  }
 
   const initializeFlow = async () => {
     if (flowInitializationSubmitting.current) return
@@ -1071,6 +1123,7 @@ export default function ExpedientePage() {
   }
 
   const closeTeamAssignment = () => {
+    if (teamAssignmentSubmitting.current) return
     teamAssignmentController.current?.abort()
     teamAssignmentController.current = null
     teamAssignmentSubmitting.current = false
@@ -1139,7 +1192,7 @@ export default function ExpedientePage() {
     }
   }
 
-  const openUpload = async (document = null, { typesLoaded = false, opener = globalThis.document.activeElement } = {}) => {
+  const openUpload = async (document = null, { typesLoaded = false, opener = globalThis.document.activeElement, context = null } = {}) => {
     if (document && !isHistorical && document.capacidad_carga?.permitida !== true) return
     uploadOpener.current = opener
     uploadController.current?.abort()
@@ -1148,7 +1201,7 @@ export default function ExpedientePage() {
     const eventoDefensaId = document?.tipo_documento_codigo === 'OBSERVACIONES_DEFENSA_PERFIL'
       ? document.evento_defensa
       : undefined
-    setUpload({ document, eventoDefensaId, multiple: !document, title: document || isHistorical ? undefined : 'Cargar documentos', submitting: false, fields: {}, error: '', success: '' })
+    setUpload({ document, context, eventoDefensaId, multiple: !document && !context, title: context ? 'Cargar Acta de Defensa' : document || isHistorical ? undefined : 'Cargar documentos', submitting: false, fields: {}, error: '', success: '' })
     if (document || typesLoaded) return
     setDocumentTypes((current) => ({ ...current, loading: true, error: '' }))
     try {
@@ -1169,6 +1222,82 @@ export default function ExpedientePage() {
   }
 
   const openContextualDocumentUpload = async (navigate = false, pendingCodes = null) => {
+    if (pendingCodes === 'ACTA_DEFENSA') {
+      if (!canUpload || !isThesisGrade || actionOrientation?.siguiente_accion?.codigo !== 'CARGAR_ACTA_DEFENSA'
+        || contextualUploadPending.current || upload) return
+      contextualUploadPending.current = true
+      setContextualUploadMessage('')
+      const opener = globalThis.document.activeElement
+      const controller = new AbortController()
+      uploadController.current?.abort()
+      uploadController.current = controller
+      const readAll = async (reader) => {
+        const rows = []
+        const seen = new Set()
+        for (let page = 1; !controller.signal.aborted; page += 1) {
+          const result = await reader(id, page, controller.signal)
+          rows.push(...(Array.isArray(result) ? result : result?.results || []))
+          if (Array.isArray(result) || !result?.next) return rows
+          if (seen.has(result.next)) throw new Error('No se pudo verificar toda la documentación del expediente.')
+          seen.add(result.next)
+        }
+        return rows
+      }
+      try {
+        const [fresh, applicable, existing, events] = await Promise.all([
+          postulacionesService.obtenerExpediente(id, controller.signal),
+          loadApplicableDocumentTypes(controller.signal),
+          readAll(postulacionesService.obtenerDocumentos),
+          readAll(postulacionesService.obtenerDefensas),
+        ])
+        if (controller.signal.aborted) return
+        if (String(fresh.detalle?.id) !== String(id) || fresh.detalle?.modalidad_detalle?.codigo !== 'TESIS_GRADO'
+          || fresh.detalle?.estado_actual_detalle?.codigo === 'CONCLUIDA'
+          || String(applicable?.postulacion_id) !== String(id) || applicable?.modalidad !== 'TESIS_GRADO'
+          || applicable?.etapa_actual !== 'DEFENSA_PUBLICA') throw new Error('El contexto documental cambió. Revisa el expediente actualizado.')
+        const stages = (fresh.flujo?.etapas || []).filter((stage) => stage.codigo === 'DEFENSA_PUBLICA' && stage.activo !== false)
+        const latest = Math.max(...stages.map((stage) => Number(stage.numero_intento)))
+        const candidates = stages.filter((stage) => Number(stage.numero_intento) === latest)
+        const stage = candidates[0]
+        if (candidates.length !== 1 || !stage?.id || stage.estado !== 'APROBADA'
+          || String(stage.id) !== String(latestPublicStage?.id) || Number(stage.numero_intento) !== Number(latestPublicStage?.numero_intento)) {
+          throw new Error('No se pudo verificar el seguimiento aprobado vigente de Defensa Pública.')
+        }
+        const actas = existing.filter((document) => document.tipo_documento_codigo === 'ACTA_DEFENSA')
+        if (actas.length > 1) throw new Error('Existen registros de Acta que requieren revisión documental.')
+        if (actas.length) {
+          setContextualUploadMessage('El Acta ya está registrada. Revisa su estado, vínculo y versiones antes de cargar otro archivo.')
+          const page = await postulacionesService.obtenerDocumentos(id, documentsPage, controller.signal)
+          if (controller.signal.aborted) return
+          setDocuments({ data: page, loading: false, error: '' })
+          setRevision((value) => value + 1)
+          await openDocumentDetail(actas[0])
+          return
+        }
+        const verifiedOrientation = getThesisConclusionOrientation({ publicStage: stage, concluded: false, resultado: fresh.resultado,
+          documents: { data: { results: existing } }, defenses: { data: { results: events } } })
+        if (verifiedOrientation?.siguiente_accion?.codigo !== 'CARGAR_ACTA_DEFENSA') throw new Error('Las condiciones académicas cambiaron. Revisa el expediente actualizado.')
+        const types = applicable.documentos_aplicables.filter((type) => type.codigo === 'ACTA_DEFENSA')
+        const type = types[0]
+        if (types.length !== 1 || !type?.id || type.capacidad_carga?.permitida !== true || type.capacidad_carga.codigo !== 'SIN_DOCUMENTO') {
+          throw new Error('La carga del Acta no está disponible. Consulta su estado y los permisos documentales.')
+        }
+        const valid = events.filter((event) => String(event.postulacion) === String(id)
+          && event.tipo_evento === 'DEFENSA_PUBLICA' && event.estado === 'FINALIZADA' && event.activo !== false
+          && String(event.seguimiento_etapa) === String(stage.id) && Number(event.numero_intento) === Number(stage.numero_intento))
+        const unique = [...new Map(valid.map((event) => [event.id, event])).values()]
+        if (unique.length !== 1 || !unique[0].id) throw new Error('No se pudo identificar una única Defensa Pública finalizada del intento vigente.')
+        await openUpload(null, { typesLoaded: true, opener, context: { typeId: type.id, eventId: unique[0].id, stageId: stage.id, attempt: stage.numero_intento } })
+      } catch (error) {
+        if (!error.canceled && !controller.signal.aborted) {
+          setDocumentTypes((current) => ({ ...current, loading: false }))
+          setContextualUploadMessage(error.message || 'No se pudo verificar el contexto del Acta de Defensa.')
+        }
+      } finally {
+        contextualUploadPending.current = false
+      }
+      return
+    }
     if (!pendingCodes) {
       if (navigate) navigateToSection('documentos')
       return openUpload()
@@ -1247,6 +1376,7 @@ export default function ExpedientePage() {
   }
 
   const closeUpload = ({ restoreDocumentDetail = true } = {}) => {
+    if (contextualUploadSubmitting.current) return
     const document = upload?.document
     const profileDefenseId = upload?.profileDefenseId
     const refreshedDefense = upload?.refreshedDefense
@@ -1321,18 +1451,19 @@ export default function ExpedientePage() {
 
   const submitUpload = async (event) => {
     event.preventDefault()
-    if (!upload || upload.submitting) return
+    if (!upload || upload.submitting || contextualUploadSubmitting.current) return
     const form = event.currentTarget.elements
     const file = form.archivo?.files?.[0]
-    const typeId = upload.document?.tipo_documento || form.tipo_documento_id?.value
+    const typeId = upload.context?.typeId || upload.document?.tipo_documento || form.tipo_documento_id?.value
     const selectedType = upload.document || documentTypes.data.find((type) => String(type.id) === String(typeId))
     const isDefenseRecord = selectedType?.codigo === 'ACTA_DEFENSA' || selectedType?.tipo_documento_codigo === 'ACTA_DEFENSA'
-    const eventoDefensaId = upload.eventoDefensaId || form.evento_defensa_id?.value
+    const eventoDefensaId = upload.context?.eventId || upload.eventoDefensaId || form.evento_defensa_id?.value
     if (!file || typeof file.size !== 'number' || file.size === 0 || !file.name) {
       setUpload((current) => ({ ...current, fields: { archivo: ['Selecciona un archivo no vacío.'] }, error: '' }))
       return
     }
     const controller = new AbortController()
+    if (upload.context) contextualUploadSubmitting.current = true
     uploadController.current?.abort()
     uploadController.current = controller
     setUpload((current) => ({ ...current, submitting: true, fields: {}, error: '' }))
@@ -1362,9 +1493,12 @@ export default function ExpedientePage() {
       setRevision((value) => value + 1)
       if (upload.profileDefenseId) setDefensesRevision((value) => value + 1)
       if (upload.document) setVersionsRevision((value) => value + 1)
+      contextualUploadSubmitting.current = false
       if (!isHistorical && !upload.profileDefenseId && uploadOrigin !== 'TRIBUNAL_REVIEW_EVIDENCE') closeSuccessfulUpload()
     } catch (requestError) {
       if (!requestError.canceled) setUpload((current) => ({ ...current, submitting: false, fields: requestError.fields || {}, error: requestError.message }))
+    } finally {
+      contextualUploadSubmitting.current = false
     }
   }
 
@@ -1772,7 +1906,10 @@ export default function ExpedientePage() {
     onUploadEvidence={openTribunalEvidenceUpload}
   />
   const correctionSection = <CorrectionConfirmations postulacion={id} modalidadCodigo={detalle.modalidad_detalle?.codigo} defenses={defenses} assignments={activeActors} canManage={canManageTribunalReports} onChanged={() => { setDocumentsRevision((value) => value + 1); setDefensesRevision((value) => value + 1); setRevision((value) => value + 1) }} />
-  const academicResultSection = <>
+  const academicResultSection = isAcademicExcellence ? (
+    excelencia ? <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} concluida={isConcluded} conclusionAprobada={Boolean(academicExcellenceResult)} resultView onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1); setHistoryRevision((value) => value + 1) }} />
+      : <Card><p role="status">El resultado de Excelencia Académica todavía no está disponible. Consulta la sección de modalidad.</p></Card>
+  ) : <>
     <Card className="overflow-hidden" aria-labelledby="resultado-academico-title">
       <h2 id="resultado-academico-title" className="text-xl font-bold">Resultado académico técnico</h2>
       {effectiveResult.error ? <PartialState message={effectiveResult.error} onRetry={() => setRevision((value) => value + 1)} /> : (
@@ -1849,10 +1986,17 @@ export default function ExpedientePage() {
     stageUi.academicResult || stageUi.closure || futureSections,
   )
 
+  const uploadDialog = upload && <UploadDialog upload={upload} types={documentTypes} postulacion={detalle.id} isHistorical={isHistorical} onSubmit={submitUpload} onMultipleSubmit={submitMultipleUpload} onClose={closeUpload} />
+  const documentDetailDialog = selectedDocument && <DocumentDetailDialog document={selectedDocument} onClose={() => setSelectedDocument(null)} canUpload={canUpload && (isHistorical || selectedDocument.capacidad_carga?.permitida === true) && (selectedDocument.tipo_documento_codigo !== 'OBSERVACIONES_DEFENSA_PERFIL' || canReview)} onUpload={() => openUploadFromDetail(selectedDocument)} canReview={canReview} onReview={openReview} refreshKey={`${versionsRevision}:${observationsRevision}`} />
+  const contextualNotice = contextualUploadMessage && <p role="alert" className="rounded-lg border border-amber-300 p-3">{contextualUploadMessage} {isStudentView ? <Link to="/documentos" className="font-semibold underline">Ir a documentos</Link> : <button type="button" className="font-semibold underline" onClick={scrollToDocuments}>Ir a documentos</button>}</p>
+  if (isStudentView) {
+    return <><StudentProcessView detalle={detalle} flujo={flujo} cierre={cierre} cierreSoportado={cierreSoportado} progress={safeProgress} canViewDocuments={auth?.hasPermission?.('puede_ver_documentos') === true} canUploadDocuments={canUpload} orientationOverride={thesisConclusionOrientation} onLoadDefenseRecord={() => openContextualDocumentUpload(false, 'ACTA_DEFENSA')} memorandumContract={getMemorandumPublicationContract(data)} memorandums={memorandums} onRetryMemorandums={() => setMemorandumRevision((value) => value + 1)} />{contextualNotice}{uploadDialog}{documentDetailDialog}</>
+  }
   return (
     <section className="mx-auto max-w-6xl" onClick={handleSectionClick}>
       <div className="space-y-5">
       <BackLink />
+      {contextualNotice}
 
       <Card className="overflow-hidden border-slate-300 dark:border-slate-700">
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
@@ -1974,6 +2118,13 @@ export default function ExpedientePage() {
             onOpenDocumentUpload={openContextualDocumentUpload}
             documentActionPending={documentTypes.loading}
             onProgramDefense={openCurrentDefenseProgramming}
+            directedConclusion={isTrabajoDirigido ? directedConclusionState : null}
+            onConcludeDirected={concludeDirected}
+            onRegisterTribunalReport={isTrabajoDirigido && currentStage?.codigo === 'REVISION_TRIBUNAL_PREVIA'
+              && String(tribunalReviewStage?.id) === String(currentStage.id)
+              && (stages.filter((stage) => stage.codigo === 'REVISION_TRIBUNAL_PREVIA' && stage.activo !== false).length === 1)
+              && tribunalReviewState?.canRegister && currentFinalVersion && currentEvidenceVersions.length > 0
+              ? onRegisterTribunalReport : null}
             hideRequirements={isIntegratedInscription}
             additionalContent={isIntegratedInscription ? <>
               <InscriptionDocumentsSection
@@ -2005,10 +2156,15 @@ export default function ExpedientePage() {
             canOpenProfileTutor={canOpenProfileTutor}
             canOpenPrivateSecretary={canOpenPrivateSecretary}
             onOpenDictamen={supportsContextualDictamen ? openContextualDictamen : undefined}
-            onManageMissingActors={() => {
+            onManageMissingActors={canOpenThesisAuthorities ? () => {
+              if (publicDefenseMissingRoles.length === 0) return
+              if (flujo.orientacion_etapa_actual?.requisitos?.some((item) => PUBLIC_DEFENSE_AUTHORITY_ROLES.includes(item.codigo))) {
+                setTeamAssignment({ mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '' })
+                return
+              }
               assignmentSubmitting.current = false
               setAssignment({ submitting: false, fields: {}, error: '', context: 'TESIS_DEFENSA_PUBLICA' })
-            }}
+            } : undefined}
           />
         </div>}
         {!isHistorical && isCurrentProjectTribunalReview && reviewActions}
@@ -2104,9 +2260,9 @@ export default function ExpedientePage() {
 
       {hasModalityTab && <div id="modalidad" role="tabpanel" aria-labelledby="expediente-tab-modalidad" data-expediente-panel="modalidad" hidden={activeTab !== 'modalidad'}>
         {modalityCode === 'EXAMEN_GRADO' && <ExamenGradoAreas postulacion={detalle.id} examen={examen} etapaCodigo={currentStage?.codigo} postulacionConcluida={isConcluded} canManage={canManageEvaluations} onChanged={() => { setExamenRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
-        {modalityCode === 'EXCELENCIA_ACADEMICA' && <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+        {modalityCode === 'EXCELENCIA_ACADEMICA' && <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} concluida={isConcluded} conclusionAprobada={Boolean(academicExcellenceResult)} onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1); setHistoryRevision((value) => value + 1) }} />}
         {modalityCode === 'GRADUACION_VIA_DIPLOMADO' && <Diplomado postulacion={detalle.id} diplomado={diplomado} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} onChanged={() => { setDiplomadoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
-        {modalityCode === 'TRABAJO_DIRIGIDO' && <TrabajoDirigido postulacion={detalle.id} trabajo={trabajoDirigido} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} reportSuccess={trabajoDirigidoReportSuccess} onReportSuccess={setTrabajoDirigidoReportSuccess} onChanged={() => { setTrabajoDirigidoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
+        {modalityCode === 'TRABAJO_DIRIGIDO' && <TrabajoDirigido postulacion={detalle.id} trabajo={trabajoDirigido} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} conclusion={directedConclusionState} onConclude={concludeDirected} reportSuccess={trabajoDirigidoReportSuccess} onReportSuccess={setTrabajoDirigidoReportSuccess} onChanged={() => { setTrabajoDirigidoRevision((value) => value + 1); setRevision((value) => value + 1) }} />}
       </div>}
 
       {hasOutcomeTab && <div id="resultado-y-cierre" role="tabpanel" aria-labelledby="expediente-tab-resultado-cierre" data-expediente-panel="resultado-cierre" hidden={activeTab !== 'resultado-cierre'}>
@@ -2124,19 +2280,9 @@ export default function ExpedientePage() {
 
       </div>
 
-      {upload && <UploadDialog upload={upload} types={documentTypes} postulacion={detalle.id} isHistorical={isHistorical} onSubmit={submitUpload} onMultipleSubmit={submitMultipleUpload} onClose={closeUpload} />}
+      {uploadDialog}
 
-      {selectedDocument && (
-        <DocumentDetailDialog
-          document={selectedDocument}
-          onClose={() => setSelectedDocument(null)}
-          canUpload={canUpload && (isHistorical || selectedDocument.capacidad_carga?.permitida === true) && (selectedDocument.tipo_documento_codigo !== 'OBSERVACIONES_DEFENSA_PERFIL' || canReview)}
-          onUpload={() => openUploadFromDetail(selectedDocument)}
-          canReview={canReview}
-          onReview={openReview}
-          refreshKey={`${versionsRevision}:${observationsRevision}`}
-        />
-      )}
+      {documentDetailDialog}
       {selectedDefense && <DefenseDetail defense={selectedDefense} quorum={quorum} nextAction={flujo.orientacion_etapa_actual?.siguiente_accion} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} onDefenseCompleted={() => { defenseCompletionPendingNavigation.current = true }} canManage={canManageDefenses} canEvaluate={canManageEvaluations} canManageDocuments={canReview} isProjectGrade={isProjectGrade} onParticipantsChanged={refreshSelectedDefense} onUploadProfileObservations={openProfileObservationUpload} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
@@ -2149,18 +2295,18 @@ export default function ExpedientePage() {
         onSubmit={submitAcademicDecision}
         onClose={() => setAcademicDecision(null)}
       />}
-      {actorManagement && <ActorManagementDialog state={actorManagement} postulacion={detalle.id} management={flujo.gestion_actores} selectionPresentation={ACTOR_SELECTION_PRESENTATION[detalle.modalidad_detalle?.codigo]?.[currentStage?.codigo]} stageName={currentStage?.nombre || currentStage?.codigo} memorandumContract={isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO' ? getMemorandumPublicationContract(data) : null} memorandumSeguimientoEtapa={flujo.gestion_decisiones_academicas?.contexto?.seguimiento_etapa} memorandums={memorandums} canPublishMemorandum={canManageAssignments}       onMemorandumPublished={() => { actorManagementSummaryNavigationPending.current = true; setMemorandumRevision((value) => value + 1) }} onRetryMemorandums={() => setMemorandumRevision((value) => value + 1)} onSubmit={submitActorManagement} onFinalize={(position, observaciones) => submitActorManagement([{ action: 'FINALIZAR', position, payload: { observaciones } }])} onClose={closeActorManagement} />}
+      {actorManagement && <ActorManagementDialog state={actorManagement} postulacion={detalle.id} management={flujo.gestion_actores} selectionPresentation={actorSelectionPresentation} stageName={currentStage?.nombre || currentStage?.codigo} memorandumContract={isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO' ? getMemorandumPublicationContract(data) : null} memorandumSeguimientoEtapa={flujo.gestion_decisiones_academicas?.contexto?.seguimiento_etapa} memorandums={memorandums} canPublishMemorandum={canManageAssignments}       onMemorandumPublished={() => { actorManagementSummaryNavigationPending.current = true; setMemorandumRevision((value) => value + 1) }} onRetryMemorandums={() => setMemorandumRevision((value) => value + 1)} onSubmit={submitActorManagement} onFinalize={(position, observaciones) => submitActorManagement([{ action: 'FINALIZAR', position, payload: { observaciones } }])} onClose={closeActorManagement} />}
       {teamAssignment?.mode === 'PUBLIC_AUTHORITIES'
-        ? <PublicAuthoritiesDialog assignment={teamAssignment} postulacion={detalle.id} stage={currentStage} orientation={flujo.orientacion_etapa_actual} blockOccupiedCandidates={isProjectGrade} allowIdentityReuse={flujo.orientacion_etapa_actual?.siguiente_accion?.capacidades?.permite_identidad_reutilizada === true} onSubmit={submitTeamAssignment} onClose={closeTeamAssignment} />
+        ? <PublicAuthoritiesDialog assignment={teamAssignment} postulacion={detalle.id} stage={currentStage} orientation={flujo.orientacion_etapa_actual} blockOccupiedCandidates={isProjectGrade} allowIdentityReuse={isThesisGrade || flujo.orientacion_etapa_actual?.siguiente_accion?.capacidades?.permite_identidad_reutilizada === true} authoritiesAcrossStages={isThesisGrade} onSelectCandidate={(role, candidate) => setTeamAssignment((current) => ({ ...current, selections: { ...current.selections, [role]: candidate } }))} onSubmit={submitTeamAssignment} onClose={closeTeamAssignment} />
         : null}
       {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} canUpload={canUpload} canManageAssignments={canManageAssignments} tribunalReviewStage={tribunalReviewStage} activeActors={activeActors.data?.results || []} activeTribunals={activeTribunals} onRetryActiveTribunals={() => setActiveTribunalsRevision((value) => value + 1)} onDraftChange={updateTribunalReportDraft} onAssignMissing={(order) => setTribunalReportDialog((current) => ({ ...current, view: 'ASSIGN_MISSING_TRIBUNAL', assignment: { order, submitting: false, fields: {}, error: '' } }))} onBackToReport={() => setTribunalReportDialog((current) => ({ ...current, view: 'REGISTER_REPORT' }))} onSubmitMissing={submitMissingTribunal} onUploadEvidence={openTribunalEvidenceUpload} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
     </section>
   )
 }
 
-function StudentProcessView({ detalle, flujo, cierre, cierreSoportado, progress, canViewDocuments = false, canUploadDocuments = false, memorandumContract, memorandums, onRetryMemorandums }) {
+function StudentProcessView({ detalle, flujo, cierre, cierreSoportado, progress, canViewDocuments = false, canUploadDocuments = false, orientationOverride, onLoadDefenseRecord, memorandumContract, memorandums, onRetryMemorandums }) {
   const currentStage = flujo.etapa_actual
-  const orientation = flujo.orientacion_etapa_actual
+  const orientation = orientationOverride || flujo.orientacion_etapa_actual
   const requirements = orientation?.requisitos || []
   const stageRequirements = requirements.filter((item) => item.bloquea_siguiente_accion !== false)
   const documentaryChecklist = requirements.filter((item) => item.bloquea_siguiente_accion === false)
@@ -2200,12 +2346,18 @@ function StudentProcessView({ detalle, flujo, cierre, cierreSoportado, progress,
       <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="student-orientation-title">
         <h3 id="student-orientation-title" className="text-lg font-bold">Qué debes hacer ahora</h3>
         <p className="mt-2 text-sm">{orientation?.mensaje || 'No hay una orientación pendiente para esta etapa.'}</p>
+        {detalle.modalidad_detalle?.codigo === 'TRABAJO_DIRIGIDO' && orientation?.operacion === 'ORIENTAR_CONCLUSION_ACADEMICA' && <>
+          {detalle.estado_actual_detalle?.codigo !== 'CONCLUIDA' && <p className="mt-2 text-sm">La formalización corresponde al personal administrativo autorizado.</p>}
+          {orientation.resultado_final?.nota_final != null && <p className="mt-2 font-semibold">Nota final: {String(orientation.resultado_final.nota_final).replace('.', ',')}/100 — {formatAcademicClassification(orientation.resultado_final.clasificacion)}</p>}
+        </>}
         {institutionManagementPending && <p className="mt-2 text-sm">Solicita al personal responsable que registre la institución y el supervisor.</p>}
         {nextAction && !institutionManagementPending && <div className="mt-4 rounded-lg border border-sky-200 bg-white/70 p-4 dark:border-sky-800 dark:bg-slate-900/60">
           <p className="font-semibold">{nextAction.titulo}</p>
           {nextAction.descripcion && <p className="mt-1 text-sm">{nextAction.descripcion}</p>}
           {nextAction.estado && <p className="mt-2 text-sm font-medium">{nextAction.estado_display || formatStatus(nextAction.estado)}</p>}
-          {canNavigateToDocuments && <Link className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" to="/documentos">{nextAction.accion_label || 'Ir a documentos'}</Link>}
+          {canUploadDocuments && nextAction.codigo === 'CARGAR_ACTA_DEFENSA' && detalle.modalidad_detalle?.codigo === 'TESIS_GRADO'
+            ? <Button type="button" className="mt-3" onClick={onLoadDefenseRecord}>Cargar Acta de Defensa</Button>
+            : canNavigateToDocuments && <Link className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" to="/documentos">{nextAction.accion_label || 'Ir a documentos'}</Link>}
         </div>}
         {stageRequirements.length > 0 && <div className="mt-5"><h4 className="font-semibold">Requisitos relevantes</h4><ul className="mt-3 space-y-2">{stageRequirements.map((requirement) => <li key={`${requirement.tipo}-${requirement.codigo}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 text-sm dark:border-sky-800 dark:bg-slate-900/60"><span className="font-medium">{requirement.nombre}</span><span>{requirement.estado_display || formatStatus(requirement.estado)}</span></li>)}</ul></div>}
         {documentaryChecklist.length > 0 && <div className="mt-5"><h4 className="font-semibold">Checklist documental</h4><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Estos documentos se muestran para seguimiento y no bloquean la siguiente acción académica.</p>{canViewDocuments && canUploadDocuments && <Link className="mt-2 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" to="/documentos">Gestionar documentos</Link>}<ul className="mt-3 space-y-2">{documentaryChecklist.map((requirement) => <li key={`${requirement.tipo}-${requirement.codigo}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 text-sm dark:border-sky-800 dark:bg-slate-900/60"><span className="font-medium">{requirement.nombre}</span><span>{requirement.estado_display || formatStatus(requirement.estado)}</span></li>)}</ul></div>}
@@ -2310,7 +2462,23 @@ function clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, cur
   }
 }
 
-function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, onOpenDocumentUpload, documentActionPending = false, onProgramDefense, programmingContext, canProgramDefense = false, orientationAcademicDecision, onRegisterAcademicDecision, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, examConclusionPending = false, academicExcellenceResult = null, resultado, concluded, defenses = [], isProjectGrade = false, isExamGrade = false, isAcademicExcellence = false, isThesisGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, additionalContent = null, onCompleteAuthorities, onManageActors, onManageMissingActors, canOpenProfileTutor = false, canOpenPrivateSecretary = false, onOpenDictamen }) {
+function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, onOpenDocumentUpload, documentActionPending = false, onProgramDefense, programmingContext, canProgramDefense = false, orientationAcademicDecision, onRegisterAcademicDecision, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, examConclusionPending = false, academicExcellenceResult = null, resultado, concluded, defenses = [], isProjectGrade = false, isExamGrade = false, isAcademicExcellence = false, isThesisGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, additionalContent = null, onCompleteAuthorities, onManageActors, onManageMissingActors, canOpenProfileTutor = false, canOpenPrivateSecretary = false, onOpenDictamen, onRegisterTribunalReport }) {
+  if (directedConclusion && (concluded || orientation?.operacion === 'ORIENTAR_CONCLUSION_ACADEMICA')) {
+    const action = orientation?.siguiente_accion
+    const canConclude = !concluded && action?.codigo === 'CONCLUIR_ACADEMICAMENTE' && action.estado === 'DISPONIBLE'
+    const finalResult = orientation?.resultado_final || resultado?.data
+    return <Card className="overflow-hidden border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950" aria-labelledby="directed-conclusion-title">
+      <p className="text-xs font-bold uppercase tracking-[0.16em]">Orientación del expediente</p>
+      <h2 id="directed-conclusion-title" className="mt-2 text-xl font-bold">{concluded ? 'Proceso académico concluido' : action?.titulo}</h2>
+      <p className="mt-3 text-sm">{orientation?.mensaje || 'La conclusión académica está formalizada. Puedes consultar el resultado final de la postulación.'}</p>
+      {finalResult?.nota_final != null && <p className="mt-3 font-semibold">Nota final: {String(finalResult.nota_final).replace('.', ',')}/100 — {formatAcademicClassification(finalResult.clasificacion)}</p>}
+      {!concluded && !canManageApplications && <p className="mt-3 text-sm">La formalización corresponde al personal administrativo autorizado.</p>}
+      {canConclude && directedConclusion.allowed && <Button className="mt-4" type="button" disabled={directedConclusion.submitting || directedConclusion.done} onClick={onConcludeDirected}>{directedConclusion.submitting ? 'Concluyendo…' : directedConclusion.done ? 'Actualizando expediente…' : 'Concluir académicamente'}</Button>}
+      {!concluded && !canConclude && action?.destino && <a className="mt-4 mr-4 inline-block font-semibold text-sky-700 hover:underline dark:text-sky-300" href={action.destino}>{action.accion_label || 'Revisar bloqueo'}</a>}
+      <a className="mt-4 ml-4 inline-block font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#resultado-y-cierre">Consultar resultado</a>
+      {directedConclusion.error && <p role="alert" className="mt-3 text-sm text-red-600">{directedConclusion.error}</p>}
+    </Card>
+  }
   if (isAcademicExcellence && academicExcellenceResult) {
     const favorable = academicExcellenceResult.estado === 'FAVORABLE'
     const showAverage = academicExcellenceResult.criterio === 'RENDIMIENTO_ACADEMICO'
@@ -2326,6 +2494,7 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
         {showAverage && <div><dt className="text-xs uppercase text-slate-500">Promedio académico</dt><dd className="font-semibold">{academicExcellenceResult.promedioGeneral}</dd></div>}
       </dl>
       <p className="mt-4 text-sm">La conclusión académica está registrada independientemente del estado administrativo general de la postulación.</p>
+      <p className="mt-2 text-sm">{concluded ? 'La conclusión de la postulación está formalizada.' : 'Falta formalizar la conclusión de la postulación.'}</p>
     </Card>
   }
   if (concluded) return <Card className="overflow-hidden border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
@@ -2446,6 +2615,8 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
   const administrativeActionPending = Boolean(profileDefenseAction?.requiredCapability && !profileActionAvailable)
   const personalDocumentAction = !profileDefenseAction && nextAction?.destino === '#documentos' && canUpload
   const managesMissingPublicActors = publicDefenseMissingRoles.length > 0 && nextAction?.destino === '#actores'
+  const thesisAuthoritiesAction = isThesisPublicStage && managesMissingPublicActors
+    && nextAction?.accion_label === 'Completar autoridades'
   const nextActionTitle = isThesisPublicStage && publicDefenseMissingRoles.length === 0 && nextAction?.codigo === 'PROGRAMAR_EVENTO'
     ? 'Programar Defensa Pública'
     : nextAction?.titulo
@@ -2481,6 +2652,7 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
     && stageRequirements.some((item) => item.codigo === 'TUTOR' && item.cumplido === false && item.destino === '#actores')
     && stageRequirements.filter((item) => item.cumplido === false).every((item) => item.codigo === 'TUTOR')
   const isDocumentUploadAction = ['COMPLETAR_DOCUMENTOS', 'CARGAR_HOJA_APROBACION'].includes(visibleOrientationAction?.codigo)
+  const isThesisActaUpload = isThesisGrade && visibleOrientationAction?.codigo === 'CARGAR_ACTA_DEFENSA'
   const navigatesToDocumentUpload = visibleOrientationAction?.codigo === 'CARGAR_HOJA_APROBACION'
     || pendingClosureTrackingDocuments.length > 0
   const canNavigateToDocumentUpload = isDocumentUploadAction && canUpload
@@ -2526,11 +2698,15 @@ function OperationalSummary({ cierre, cierreSoportado, currentStage, orientation
       </> : null
         : onlyProfileTutorPending && canManageAssignments ? <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#actores" onClick={canOpenProfileTutor ? (event) => { event.preventDefault(); event.stopPropagation(); onManageActors(event) } : undefined}>Ir a actores</a>
           : canResolveProfileDocuments ? <button type="button" disabled={documentActionPending} className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={() => onOpenDocumentUpload(false, pendingProfileDocumentCodes)}>{nextAction.accion_label || 'Ir a documentos'}</button>
+          : isThesisActaUpload ? canUpload && <Button type="button" disabled={documentActionPending} className="mt-3" onClick={() => onOpenDocumentUpload(false, 'ACTA_DEFENSA')}>Cargar Acta de Defensa</Button>
           : canOpenDocumentUpload ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={() => onOpenDocumentUpload(navigatesToDocumentUpload)}>Gestionar documentos</button>
           : canNavigateToDocumentUpload ? <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#documentos" onClick={(event) => { event.preventDefault(); onGoToDocuments() }}>Gestionar documentos</a>
             : canOpenAcademicDecision ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={() => onRegisterAcademicDecision(orientationAcademicDecision)}>{nextAction.accion_label || 'Ir a gestionar'}</button>
+            : nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' && nextAction.estado === 'DISPONIBLE' && onRegisterTribunalReport
+              ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onRegisterTribunalReport}>{nextAction.accion_label}</button>
+            : thesisAuthoritiesAction && onManageMissingActors ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onManageMissingActors}>Completar autoridades</button>
             : canOpenDefenseProgramming ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onProgramDefense}>{nextAction.accion_label || 'Ir a gestionar'}</button>
-          : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'REGISTRAR_DICTAMEN' && onOpenDictamen ? onOpenDictamen : (nextAction.codigo === 'GESTIONAR_ACTORES' || canOpenPrivateSecretary) ? (event) => { event.preventDefault(); if (canOpenPrivateSecretary) event.stopPropagation(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.accion_label || 'Ir a gestionar'}</a>}
+          : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'REGISTRAR_DICTAMEN' && onOpenDictamen ? onOpenDictamen : (nextAction.codigo === 'GESTIONAR_ACTORES' || canOpenPrivateSecretary) ? (event) => { event.preventDefault(); if (canOpenPrivateSecretary) event.stopPropagation(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' ? 'Consultar revisión del Tribunal' : nextAction.accion_label || 'Ir a gestionar'}</a>}
       {nextAction.codigo === 'APROBAR_ETAPA' && stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
     </section>}
     {!hideRequirements && stageRequirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">
@@ -2966,6 +3142,7 @@ function ActorManagementDialog({ state, postulacion, management, selectionPresen
     const selected = selections[position.clave]
     if (!selected?.candidateId || result?.state === 'SUCCESS' || position.habilitada === false
       || selected.eligible === false || selected.selectable === false || candidateStatuses[position.clave]?.invalidSelection
+      || findConflictingDraft(position, selected.candidateId, positions.filter((other) => positionsShareTribunalContext(position, other) || isPreventiveActorConflict(position, other, selectionPresentation)), assignedSelections, selectionPresentation)
       || !position.acciones_permitidas?.includes(action)) return []
     const payload = {
       usuario: Number(selected.candidateId),
@@ -3114,6 +3291,32 @@ function restrictionsShareIdentityGroup(first, second) {
     && first.restriccion_identidad.grupo === second.restriccion_identidad.grupo
 }
 
+function positionsShareTribunalContext(first, second) {
+  return first.tipo_participacion === 'TRIBUNAL' && second.tipo_participacion === 'TRIBUNAL'
+    && first.ambito === second.ambito
+    && ((first.ambito === 'ETAPA' && first.seguimiento_etapa != null && second.seguimiento_etapa != null
+      && String(first.seguimiento_etapa) === String(second.seguimiento_etapa))
+      || (first.ambito === 'POSTULACION' && first.seguimiento_etapa === null && second.seguimiento_etapa === null))
+}
+
+function isPreventiveActorConflict(position, other, presentation) {
+  if (presentation?.preventOccupiedDirectedSecretary && position.clave === 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TD_1'
+    && position.tipo_participacion === 'DOCENTE_MODALIDAD' && position.ambito === 'ETAPA'
+    && String(position.seguimiento_etapa) === String(presentation.seguimientoEtapa)) {
+    return (other.clave === 'TUTOR_TRABAJO_DIRIGIDO_1' && other.tipo_participacion === 'TUTOR'
+      && other.ambito === 'POSTULACION' && other.seguimiento_etapa === null)
+      || (other.tipo_participacion === 'TRIBUNAL' && /^TRIBUNAL_PROPUESTA_TD_[123]$/.test(other.clave)
+        && other.ambito === 'ETAPA' && presentation.profileSeguimiento != null
+        && String(other.seguimiento_etapa) === String(presentation.profileSeguimiento))
+  }
+  return presentation?.preventTribunalForTutor === true
+    && position.clave === 'TUTOR_TRABAJO_DIRIGIDO_1'
+    && position.tipo_participacion === 'TUTOR' && position.ambito === 'POSTULACION'
+    && position.seguimiento_etapa === null
+    && other.tipo_participacion === 'TRIBUNAL' && other.ambito === 'ETAPA'
+    && other.seguimiento_etapa != null
+}
+
 function positionsHaveIdentityConflict(first, second, selectionPresentation) {
   const blocksOccupation = (position, other) => {
     const rule = position.ocupacion_actor
@@ -3121,11 +3324,8 @@ function positionsHaveIdentityConflict(first, second, selectionPresentation) {
       && (!rule.relevantes?.length || rule.relevantes.includes(other.tipo_participacion))
   }
   return selectionPresentation?.blockOtherPositions === true
-    || (selectionPresentation?.blockSameTribunalContext === true
-      && first.tipo_participacion === 'TRIBUNAL' && second.tipo_participacion === 'TRIBUNAL'
-      && first.ambito === 'ETAPA' && second.ambito === 'ETAPA'
-      && first.seguimiento_etapa != null && second.seguimiento_etapa != null
-      && String(first.seguimiento_etapa) === String(second.seguimiento_etapa))
+    || positionsShareTribunalContext(first, second)
+    || isPreventiveActorConflict(first, second, selectionPresentation)
     || restrictionsShareIdentityGroup(first, second)
     || blocksOccupation(first, second)
     || blocksOccupation(second, first)
@@ -3141,6 +3341,9 @@ function findSelectedDraft(position, candidateId, positions, drafts) {
 
 function findConflictingDraft(position, candidateId, positions, drafts, selectionPresentation) {
   if (!candidateId) return null
+  if (((selectionPresentation?.preventTribunalForTutor && position.clave === 'TUTOR_TRABAJO_DIRIGIDO_1')
+    || (selectionPresentation?.preventOccupiedDirectedSecretary && position.clave === 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TD_1'))
+    && String(position.asignacion_actual_detalle?.usuario?.id) === String(candidateId)) return null
   return positions.find((otherPosition) => (
     otherPosition.clave !== position.clave
     && positionsHaveIdentityConflict(position, otherPosition, selectionPresentation)
@@ -3154,7 +3357,8 @@ function findIdentityDraftConflicts(positions, drafts, selectionPresentation) {
     const draft = drafts[position.clave]
     if (!draft?.candidateId) return
     positions.slice(index + 1).forEach((otherPosition) => {
-      if (positionsHaveIdentityConflict(position, otherPosition, selectionPresentation)
+      if ((positionsHaveIdentityConflict(position, otherPosition, selectionPresentation)
+        || positionsHaveIdentityConflict(otherPosition, position, selectionPresentation))
         && String(drafts[otherPosition.clave]?.candidateId || '') === String(draft.candidateId)) {
         conflicts.push([{ position, draft }, { position: otherPosition, draft: drafts[otherPosition.clave] }])
       }
@@ -3164,10 +3368,15 @@ function findIdentityDraftConflicts(positions, drafts, selectionPresentation) {
 }
 
 function privateSecretaryAvailability(candidate, postulacion, position, presentation, action) {
-  if (!presentation?.preventOccupiedPrivateSecretary || action !== 'ASIGNAR'
-    || position.clave !== 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS_1') return 'NOT_APPLICABLE'
-  if (position.tipo_participacion !== 'DOCENTE_MODALIDAD' || position.ambito !== 'POSTULACION'
-    || position.seguimiento_etapa !== null || !Array.isArray(candidate.asignaciones_vigentes_detalle)) return 'UNKNOWN'
+  const directed = presentation?.preventOccupiedDirectedSecretary === true
+    && position.clave === 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TD_1'
+  if (!directed && (!presentation?.preventOccupiedPrivateSecretary || action !== 'ASIGNAR'
+    || position.clave !== 'DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS_1')) return 'NOT_APPLICABLE'
+  if (directed && String(position.asignacion_actual_detalle?.usuario?.id) === String(candidate.id)) return 'NOT_APPLICABLE'
+  if (position.tipo_participacion !== 'DOCENTE_MODALIDAD' || !Array.isArray(candidate.asignaciones_vigentes_detalle)
+    || (directed ? position.ambito !== 'ETAPA' || presentation.profileSeguimiento == null
+      || String(position.seguimiento_etapa) !== String(presentation.seguimientoEtapa)
+      : position.ambito !== 'POSTULACION' || position.seguimiento_etapa !== null)) return 'UNKNOWN'
   const details = candidate.asignaciones_vigentes_detalle
   const ids = new Set()
   let occupied = false
@@ -3180,7 +3389,10 @@ function privateSecretaryAvailability(candidate, postulacion, position, presenta
       || !['POSTULACION', 'ETAPA'].includes(item.ambito)
       || (item.ambito === 'POSTULACION' ? item.seguimiento_etapa !== null : !Number.isInteger(item.seguimiento_etapa))) return 'UNKNOWN'
     ids.add(item.id)
-    occupied = true
+    if (!directed || (item.tipo_participacion === 'TUTOR' && item.codigo_posicion === 'TUTOR_TRABAJO_DIRIGIDO_1'
+      && item.ambito === 'POSTULACION' && item.seguimiento_etapa === null)
+      || (item.tipo_participacion === 'TRIBUNAL' && /^TRIBUNAL_PROPUESTA_TD_[123]$/.test(item.codigo_posicion)
+        && item.ambito === 'ETAPA' && String(item.seguimiento_etapa) === String(presentation.profileSeguimiento))) occupied = true
   }
   return occupied ? 'OCCUPIED' : candidate.elegible === true ? 'AVAILABLE' : 'UNKNOWN'
 }
@@ -3256,9 +3468,10 @@ function EligibleActorCandidates({ postulacion, position, positions, drafts, ass
           {visibleRows.map((candidate) => {
             const selectedDraft = findSelectedDraft(position, candidate.id, positions, drafts)
             const conflict = findConflictingDraft(position, candidate.id, positions, drafts, selectionPresentation)
-            const assignedPosition = selectionPresentation?.blockOtherPositions
-              ? findSelectedDraft(position, candidate.id, positions, assignedSelections)
-              : null
+            const assignedPosition = findConflictingDraft(position, candidate.id, positions.filter((other) => (
+              selectionPresentation?.blockOtherPositions || positionsShareTribunalContext(position, other)
+              || isPreventiveActorConflict(position, other, selectionPresentation)
+            )), assignedSelections, selectionPresentation)
             const label = candidate.nombre_completo || candidate.username || candidate.label
             const role = candidate.rol_nombre || candidate.rol_codigo
             const identifier = candidate.codigo || candidate.username
@@ -3270,7 +3483,7 @@ function EligibleActorCandidates({ postulacion, position, positions, drafts, ass
               : backendAssignmentLabels
             const disabled = candidate.elegible === false || candidate.preventiveSelectionAllowed === false || knownEligibility[candidate.id] === false || Boolean(conflict) || Boolean(assignedPosition)
             return <option key={candidate.id} value={candidate.id} disabled={disabled}>
-              {label}{role ? ` — ${role}` : ''}{identifier ? ` · ${identifier}` : ''}{activeAssignmentLabels.length > 0 ? ` · Asignación vigente: ${activeAssignmentLabels.join(', ')}` : ''}{selectedDraft ? ` — Seleccionado como ${selectedDraft.nombre}` : ''}
+              {label}{role ? ` — ${role}` : ''}{identifier ? ` · ${identifier}` : ''}{activeAssignmentLabels.length > 0 ? ` · Asignación vigente: ${activeAssignmentLabels.join(', ')}` : ''}{selectedDraft || assignedPosition ? ` — Seleccionado como ${(selectedDraft || assignedPosition).nombre}` : ''}
             </option>
           })}
         </select>
@@ -3382,7 +3595,11 @@ function getThesisConclusionOrientation({ publicStage, concluded, resultado, doc
   return { operacion: 'ORIENTAR_CONCLUSION_ACADEMICA', mensaje: 'Completa las precondiciones posteriores al macroflujo para concluir académicamente el expediente.', requisitos: requirements, siguiente_accion: action, conflictos_identidad: [], actaValida: validActa }
 }
 
-function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, blockOccupiedCandidates = false, allowIdentityReuse = false, onSubmit, onClose }) {
+function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, blockOccupiedCandidates = false, allowIdentityReuse = false, authoritiesAcrossStages = false, onSelectCandidate, onSubmit, onClose }) {
+  useEffect(() => {
+    const opener = document.activeElement
+    return () => { if (opener?.isConnected) opener.focus() }
+  }, [])
   const [candidateQuery, setCandidateQuery] = useState('')
   const [candidateSearch, setCandidateSearch] = useState('')
   const [candidatePage, setCandidatePage] = useState(1)
@@ -3390,7 +3607,7 @@ function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, 
   const [candidates, setCandidates] = useState({ data: null, loading: true, error: '' })
   const [existingAuthorityRevision, setExistingAuthorityRevision] = useState(0)
   const [existingAuthorities, setExistingAuthorities] = useState({ data: null, loading: true, error: '' })
-  const [selections, setSelections] = useState({ PRESIDENTE: '', SECRETARIO: '' })
+  const selections = assignment.selections || {}
   const [validationError, setValidationError] = useState('')
   const roles = ['PRESIDENTE', 'SECRETARIO']
   const roleRequirements = new Map((orientation?.requisitos || [])
@@ -3403,7 +3620,7 @@ function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, 
   const roleAssignments = (role) => (existingAuthorities.data || []).filter((actor) => (
     actor.activo !== false
     && actor.tipo_participacion === role
-    && (!actor.seguimiento_etapa || String(actor.seguimiento_etapa) === String(stage?.id))
+    && (authoritiesAcrossStages || !actor.seguimiento_etapa || String(actor.seguimiento_etapa) === String(stage?.id))
   ))
   const roleIsAssigned = (role) => roleRequirements.get(role)?.cumplido === true
     || roleAssignments(role).length > 0
@@ -3454,13 +3671,13 @@ function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, 
 
   const submit = async (event) => {
     event.preventDefault()
-    if (assignment.submitting) return
+    if (assignment.submitting || existingAuthorities.loading || existingAuthorities.error || candidates.loading || candidates.error) return
     if (stage?.codigo !== 'DEFENSA_PUBLICA' || !stage?.id) {
       setValidationError('No se pudo identificar la etapa actual de Defensa Pública.')
       return
     }
     const jobs = pendingRoles.map((role) => {
-      const candidate = candidateRows.find((item) => String(item.id) === String(selections[role]))
+      const candidate = selections[role]
       if (!candidate) return null
       return {
         key: role,
@@ -3483,12 +3700,13 @@ function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, 
     }
     setValidationError('')
     await onSubmit(jobs)
+    setExistingAuthorities({ data: null, loading: true, error: '' })
     setExistingAuthorityRevision((value) => value + 1)
   }
 
   const retryCandidates = () => setCandidateRevision((value) => value + 1)
 
-  return <Modal title="Completar autoridades" onClose={onClose}>
+  return <Modal title="Completar autoridades" onClose={() => { if (!assignment.submitting) onClose() }}>
     <form className="mt-4 grid gap-4" onSubmit={submit} noValidate>
       <p className="text-sm text-slate-600 dark:text-slate-300">Asigna las autoridades que faltan para esta Defensa Pública.</p>
       {stage?.codigo !== 'DEFENSA_PUBLICA' && <p role="alert" className="text-sm text-red-600">La etapa actual no corresponde a Defensa Pública.</p>}
@@ -3504,14 +3722,17 @@ function PublicAuthoritiesDialog({ assignment, postulacion, stage, orientation, 
         const completed = roleIsAssigned(role)
         const otherRole = role === 'PRESIDENTE' ? 'SECRETARIO' : 'PRESIDENTE'
         const otherAssignedIds = new Set(roleAssignments(otherRole).map((actor) => String(actor.usuario)))
-        const otherSelection = selections[otherRole]
-        const selectedValue = selections[role] || ''
+        const otherSelection = selections[otherRole]?.id
+        const selectedCandidate = selections[role]
+        const selectedValue = selectedCandidate?.id ? String(selectedCandidate.id) : ''
+        const visibleCandidates = selectedCandidate && !candidateRows.some((candidate) => String(candidate.id) === selectedValue)
+          ? [selectedCandidate, ...candidateRows] : candidateRows
         return <section key={role} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
           <h3 className="font-semibold">{label}{!completed && <span aria-hidden="true"> *</span>}</h3>
           {completed ? <div className="mt-2"><p className="font-medium text-emerald-700 dark:text-emerald-300">✓ Asignado</p>{assigned.length > 0
             ? assigned.map((actor) => <p key={actor.id} className="mt-1 text-sm">{actor.usuario_nombre || actor.usuario_nombre_completo || 'Persona asignada'}</p>)
             : <p className="mt-1 text-sm">{result?.name || 'Asignación registrada'}</p>}</div>
-            : <label className="mt-2 block text-sm">Seleccionar persona<select aria-label={`Seleccionar persona para ${label}`} value={selectedValue} onChange={(event) => { setSelections((current) => ({ ...current, [role]: event.target.value })); setValidationError('') }} disabled={assignment.submitting || candidateRows.length === 0} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una persona</option>{candidateRows.map((candidate) => {
+            : <label className="mt-2 block text-sm">Seleccionar persona<select aria-label={`Seleccionar persona para ${label}`} value={selectedValue} onChange={(event) => { onSelectCandidate(role, visibleCandidates.find((candidate) => String(candidate.id) === event.target.value) || null); setValidationError('') }} disabled={assignment.submitting || visibleCandidates.length === 0} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una persona</option>{visibleCandidates.map((candidate) => {
               const id = String(candidate.id)
               const currentAssignments = getActiveAssignmentLabels(candidate.id, activeAssignmentRows)
               const hasIncompatibleAssignment = !allowIdentityReuse && activeAssignmentRows.some((actor) => (
@@ -3830,7 +4051,7 @@ function ProfileObservationsSection({ document, canManageDocuments, onUpload }) 
 
 const DEFENSE_TYPES = [
   ['DEFENSA_TEMATICA', 'Defensa de temática', 'TEMATICA_TESIS'],
-  ['DEFENSA_PERFIL', 'Defensa de perfil', ['PERFIL_PROYECTO', 'PERFIL_TESIS']],
+  ['DEFENSA_PERFIL', 'Defensa de perfil', ['PERFIL_PROYECTO', 'PERFIL_TESIS', 'PERFIL_TRABAJO_DIRIGIDO']],
   ['DEFENSA_PRIVADA', 'Defensa privada', 'DEFENSA_PRIVADA'],
   ['DEFENSA_PUBLICA', 'Defensa pública', 'DEFENSA_PUBLICA'],
 ]

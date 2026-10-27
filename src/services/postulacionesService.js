@@ -346,19 +346,22 @@ export const postulacionesService = {
   },
   async obtenerExpediente(id, signal) {
     try {
-      const [detalle, flujo, resultado, cierre] = await Promise.allSettled([
+      const [detalle, flujo] = await Promise.allSettled([
         apiClient.get(`/api/v1/postulaciones/${id}/`, { signal }),
         apiClient.get(`/api/v1/postulaciones/${id}/flujo/`, { signal }),
-        apiClient.get(`/api/v1/postulaciones/${id}/resultado-final/`, { signal }),
-        apiClient.get(`/api/v1/postulaciones/${id}/cierre/`, { signal }),
       ])
       if (detalle.status === 'rejected') throw detalle.reason
       if (flujo.status === 'rejected') throw flujo.reason
+      const isExcellence = detalle.value.data?.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA'
+      const [resultado, cierre] = isExcellence ? [] : await Promise.allSettled([
+        apiClient.get(`/api/v1/postulaciones/${id}/resultado-final/`, { signal }),
+        apiClient.get(`/api/v1/postulaciones/${id}/cierre/`, { signal }),
+      ])
       return {
         detalle: detalle.value.data,
         flujo: flujo.value.data,
-        resultado: optionalResult(resultado, 'Resultado final todavía no disponible'),
-        cierre: optionalResult(cierre, 'Estado de cierre técnico todavía no disponible'),
+        resultado: isExcellence ? { data: null, error: '' } : optionalResult(resultado, 'Resultado final todavía no disponible'),
+        cierre: isExcellence ? { data: null, error: '' } : optionalResult(cierre, 'Estado de cierre técnico todavía no disponible'),
       }
     } catch (error) {
       throw normalize(error)

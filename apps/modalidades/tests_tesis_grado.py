@@ -136,6 +136,106 @@ class TesisGradoPolicyTest(TestCase):
         )
         return private
 
+    def _orientacion_publica(self):
+        return TesisGradoPolicy().get_orientacion_etapa_actual(
+            postulacion=self.postulacion, seguimiento=self.seguimientos["DEFENSA_PUBLICA"],
+        )
+
+    def _asignacion_publica(self, role, *, activo=True, seguimiento=None, usuario=None, orden=None):
+        return AsignacionPostulacion.objects.create(
+            postulacion=self.postulacion, usuario=usuario or self.docentes[0],
+            tipo_participacion=role, activo=activo, designado_por=self.admin,
+            seguimiento_etapa=seguimiento or self.seguimientos["TEMATICA_TESIS"],
+            orden_cargo=orden,
+        )
+
+    def test_orientacion_publica_desglosa_conteo_vigente_entre_seguimientos(self):
+        self._activar_etapa("DEFENSA_PUBLICA")
+        self._preparar_gate_publica_valido()
+        for teacher in self.docentes[:3]:
+            self._asignacion_publica("TRIBUNAL", usuario=teacher)
+        self._asignacion_publica("PRESIDENTE", activo=False)
+        self._asignacion_publica("SECRETARIO", activo=False)
+        orientation = self._orientacion_publica()
+        self.assertEqual([(r["codigo"], r["actual"], r["minimo"], r["cumplido"]) for r in orientation["requisitos"]], [
+            ("TRIBUNAL", 3, 3, True), ("PRESIDENTE", 0, 1, False), ("SECRETARIO", 0, 1, False),
+        ])
+        action = orientation["siguiente_accion"]
+        self.assertEqual(action["titulo"], "Actores de la postulación")
+        self.assertEqual(action["accion_label"], "Completar autoridades")
+        self.assertEqual(action["requiere_permiso"], "GESTIONAR_ASIGNACIONES")
+        self.assertNotIn("{'", action["descripcion"])
+        self._asignacion_publica("PRESIDENTE", seguimiento=self.seguimientos["DEFENSA_PUBLICA"])
+        self.assertEqual(self._orientacion_publica()["requisitos"][1]["actual"], 1)
+        self._asignacion_publica("SECRETARIO", seguimiento=self.seguimientos["DEFENSA_PRIVADA"])
+        ready = self._orientacion_publica()
+        self.assertEqual(ready["siguiente_accion"]["codigo"], "PROGRAMAR_EVENTO")
+        self.assertEqual(ready["tipo_evento"], "DEFENSA_PUBLICA")
+        self.assertTrue(all(r["cumplido"] for r in ready["requisitos"]))
+        self.assertFalse(any(r["codigo"] == "ANTICIPACION_MINIMA" for r in ready["requisitos"]))
+
+    def test_orientacion_publica_preserva_count_no_distinct_y_minimo_programacion(self):
+        public = self._activar_etapa("DEFENSA_PUBLICA")
+        self._preparar_gate_publica_valido()
+        # La semántica histórica cuenta asignaciones, incluso con usuario repetido.
+        for order, stage in enumerate(("TEMATICA_TESIS", "DEFENSA_PRIVADA"), start=1):
+            self._asignacion_publica("TRIBUNAL", seguimiento=self.seguimientos[stage], orden=order)
+        self._asignacion_publica("PRESIDENTE")
+        self._asignacion_publica("SECRETARIO")
+        orientation = self._orientacion_publica()
+        self.assertEqual(orientation["requisitos"][0]["actual"], 2)
+        self.assertFalse(orientation["requisitos"][0]["cumplido"])
+        self.assertEqual(orientation["siguiente_accion"]["accion_label"], "Ir a actores")
+        policy = TesisGradoPolicy().evento_policy
+        with self.assertRaisesMessage(ValidationError, "Tribunales: 2 de 3"):
+            policy.validar_programacion(tipo_evento="DEFENSA_PUBLICA", seguimiento=public,
+                                       asignaciones=self.postulacion.asignaciones.filter(activo=True))
+        self._asignacion_publica("TRIBUNAL", seguimiento=public, orden=3)
+        policy.validar_programacion(tipo_evento="DEFENSA_PUBLICA", seguimiento=public,
+                                   asignaciones=self.postulacion.asignaciones.filter(activo=True))
+        self.assertEqual(self._orientacion_publica()["siguiente_accion"]["codigo"], "PROGRAMAR_EVENTO")
+
+    def test_orientacion_publica_separa_gate_academico_y_documental(self):
+        self._activar_etapa("DEFENSA_PUBLICA")
+        academic = self._orientacion_publica()
+        self.assertEqual(academic["siguiente_accion"]["destino"], "#defensas")
+        self.assertIn("SUFICIENTE", academic["siguiente_accion"]["descripcion"])
+        self._preparar_gate_publica_valido()
+        DocumentoPostulacion.objects.filter(postulacion=self.postulacion).update(activo=False)
+        documentary = self._orientacion_publica()
+        self.assertEqual(documentary["siguiente_accion"]["destino"], "#documentos")
+        self.assertNotEqual(documentary["siguiente_accion"]["accion_label"], "Completar autoridades")
+
+    def test_orientacion_publica_no_reabre_autoridades_con_evento_existente(self):
+        public = self._activar_etapa("DEFENSA_PUBLICA")
+        event = self._crear_evento_publico_consolidado(public)
+        for state, code in (("PROGRAMADA", "GESTIONAR_DEFENSA"), ("EN_CURSO", "GESTIONAR_DEFENSA"), ("FINALIZADA", "APROBAR_ETAPA")):
+            with self.subTest(state=state):
+                event.estado = state
+                event.save(update_fields=["estado"])
+                self.assertEqual(self._orientacion_publica()["siguiente_accion"]["codigo"], code)
+
+    def test_orientacion_publica_conserva_bloqueo_de_correcciones(self):
+        self._activar_etapa("DEFENSA_PUBLICA")
+        self._preparar_gate_publica_valido()
+        document = DocumentoPostulacion.objects.get(postulacion=self.postulacion)
+        version = VersionDocumento.objects.create(
+            documento=document, subido_por=self.student, numero_version=1,
+            archivo="tests/final.pdf", nombre_original="final.pdf", tamano_bytes=3,
+            hash_sha256="a" * 64, es_version_actual=True,
+        )
+        observation = ObservacionDocumento.objects.create(
+            version_documento=version, usuario=self.admin, comentario="Corrección de forma", corregida=False,
+        )
+        for corrected, expected in ((False, "observaciones de forma pendientes"), (True, "falta confirmación técnica")):
+            with self.subTest(corrected=corrected):
+                observation.corregida = corrected
+                observation.save(update_fields=["corregida"])
+                action = self._orientacion_publica()["siguiente_accion"]
+                self.assertEqual(action["destino"], "#documentos")
+                self.assertIn(expected, action["descripcion"])
+                self.assertNotEqual(action["accion_label"], "Completar autoridades")
+
     def _crear_evento_publico_consolidado(self, seguimiento, *, nota=Decimal("70")):
         event = EventoDefensa.objects.create(
             postulacion=self.postulacion, seguimiento_etapa=seguimiento,
@@ -610,6 +710,45 @@ class TesisGradoPolicyTest(TestCase):
 
         with self.assertRaises(ValidationError):
             WorkflowService.aprobar_etapa(current, self.admin)
+
+    @override_settings(STORAGES={"default": {"BACKEND": "django.core.files.storage.InMemoryStorage"}})
+    def test_autoaprobacion_acta_reutiliza_gate_real_y_no_concluye(self):
+        self._preparar_gate_publica_valido()
+        public = self._activar_etapa("DEFENSA_PUBLICA")
+        event = self._crear_evento_publico_consolidado(public)
+        public.estado = "APROBADA"
+        public.save(update_fields=["estado"])
+        version = DocumentoService().subir_documento(
+            self.postulacion, TipoDocumento.objects.get(codigo="ACTA_DEFENSA"),
+            SimpleUploadedFile("acta.pdf", b"%PDF-1.4", content_type="application/pdf"),
+            self.admin, evento_defensa=event,
+        )
+        version.documento.refresh_from_db()
+        self.assertEqual(version.documento.estado.codigo, "APR")
+        self.postulacion.refresh_from_db()
+        self.assertNotEqual(self.postulacion.estado_actual.codigo, "CONCLUIDA")
+        TesisGradoPolicy().validar_conclusion_academica(self.postulacion)
+
+    @override_settings(STORAGES={"default": {"BACKEND": "django.core.files.storage.InMemoryStorage"}})
+    def test_autoaprobacion_acta_no_omite_gates_ni_resultado(self):
+        self._preparar_gate_publica_valido()
+        public = self._activar_etapa("DEFENSA_PUBLICA")
+        event = self._crear_evento_publico_consolidado(public, nota=Decimal("20"))
+        public.estado = "APROBADA"
+        public.save(update_fields=["estado"])
+        service = DocumentoService()
+        policy = TesisGradoPolicy()
+        self.assertFalse(service._puede_autoaprobar_acta_tesis(self.postulacion, event, policy))
+        event.evaluaciones.update(nota_numerica=Decimal("70"))
+        self.assertTrue(service._puede_autoaprobar_acta_tesis(self.postulacion, event, policy))
+        DocumentoPostulacion.objects.filter(postulacion=self.postulacion,
+            tipo_documento__codigo="DOCUMENTO_FINAL").update(activo=False)
+        self.assertFalse(service._puede_autoaprobar_acta_tesis(self.postulacion, event, policy))
+        version = service.subir_documento(self.postulacion,
+            TipoDocumento.objects.get(codigo="ACTA_DEFENSA"),
+            SimpleUploadedFile("acta.pdf", b"%PDF-1.4", content_type="application/pdf"),
+            self.admin, evento_defensa=event)
+        self.assertEqual(version.documento.estado.codigo, "ENV")
 
     def test_conclusion_requiere_defensa_publica_aprobada(self):
         self._preparar_conclusion_valida(estado_publico="EN_PROCESO")

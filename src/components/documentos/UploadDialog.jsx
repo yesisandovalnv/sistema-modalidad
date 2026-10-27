@@ -35,8 +35,9 @@ function formatDefenseDate(value) {
 
 export default function UploadDialog({ upload, types, postulacion, isHistorical, beforeFields = null, onSubmit, onMultipleSubmit, onClose }) {
   const fixedType = upload.document
+  const context = upload.context
   const multiple = isHistorical || upload.multiple === true
-  const [selectedTypeId, setSelectedTypeId] = useState('')
+  const [selectedTypeId, setSelectedTypeId] = useState(context ? String(context.typeId) : '')
   const [selectedEventId, setSelectedEventId] = useState('')
   const [publicDefenses, setPublicDefenses] = useState({ data: [], loading: false, error: '' })
   const [historicalSelections, setHistoricalSelections] = useState([])
@@ -100,6 +101,18 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
     const load = async () => {
       try {
         let currentPublicStage = null
+        if (context) {
+          const fresh = await postulacionesService.obtenerExpediente(postulacion, controller.signal)
+          const stages = (fresh.flujo?.etapas || []).filter((stage) => stage.codigo === 'DEFENSA_PUBLICA' && stage.activo !== false)
+          const latest = Math.max(...stages.map((stage) => Number(stage.numero_intento)))
+          const latestStages = stages.filter((stage) => Number(stage.numero_intento) === latest)
+          currentPublicStage = latestStages[0]
+          if (String(fresh.detalle?.id) !== String(postulacion) || fresh.detalle?.modalidad_detalle?.codigo !== 'TESIS_GRADO'
+            || latestStages.length !== 1 || currentPublicStage?.estado !== 'APROBADA'
+            || String(currentPublicStage.id) !== String(context.stageId) || Number(currentPublicStage.numero_intento) !== Number(context.attempt)) {
+            throw new Error('El contexto de Defensa Pública cambió. Cierra el formulario y revisa el expediente.')
+          }
+        }
         if (isTrabajoDirigidoActa || hasTrabajoDirigidoActa) {
           const expediente = await postulacionesService.obtenerExpediente(postulacion, controller.signal)
           currentPublicStage = [...(expediente.flujo?.etapas || [])]
@@ -119,6 +132,7 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
           const result = await postulacionesService.obtenerDefensas(postulacion, page, controller.signal)
           const items = result?.results || result || []
           items.filter((item) => item.tipo_evento === 'DEFENSA_PUBLICA' && item.estado === 'FINALIZADA' && item.activo !== false).forEach((item) => {
+            if (context && (String(item.postulacion) !== String(postulacion) || String(item.id) !== String(context.eventId))) return
             if (currentPublicStage && (
               String(item.seguimiento_etapa) !== String(currentPublicStage.id)
               || Number(item.numero_intento) !== Number(currentPublicStage.numero_intento)
@@ -140,7 +154,7 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
     }
     load()
     return () => controller.abort()
-  }, [hasDefenseRecord, hasTrabajoDirigidoActa, isDefenseRecord, isTrabajoDirigidoActa, postulacion])
+  }, [context, hasDefenseRecord, hasTrabajoDirigidoActa, isDefenseRecord, isTrabajoDirigidoActa, postulacion])
 
   const fieldMessage = (name) => {
     const value = upload.fields?.[name]
@@ -326,11 +340,11 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
   }
 
   return <Modal title={upload.title || (fixedType ? 'Cargar nueva versión' : isHistorical ? 'Cargar documentación histórica' : 'Cargar documento')} onClose={closeSafely}>
-    {upload.success && !multiple ? <div className="mt-4"><p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-800">{upload.success}</p><Button className="mt-4" onClick={closeSafely}>Cerrar</Button></div> : <form className="mt-4 grid gap-4" onSubmit={multiple ? handleHistoricalSubmit : onSubmit} noValidate>
+    {upload.success && !multiple ? <div className="mt-4"><p role="status" className="rounded-lg bg-emerald-50 p-3 text-emerald-800">{upload.success}</p><Button className="mt-4" onClick={closeSafely}>Cerrar</Button></div> : <form className="mt-4 grid gap-4" onSubmit={multiple ? handleHistoricalSubmit : (event) => { if (context && (publicDefenses.loading || publicDefenses.error || !selectedEventId || String(selectedEventId) !== String(context.eventId))) { event.preventDefault(); return }; onSubmit(event) }} noValidate>
       {beforeFields}
       {fixedType ? <div><p className="text-sm text-slate-500">Tipo documental</p><p className="break-words font-medium">{fixedType.tipo_documento_nombre}</p></div> : !multiple && <label className="text-sm">Tipo documental
-        <select name="tipo_documento_id" required disabled={types.loading || upload.submitting} onChange={(event) => setSelectedTypeId(event.target.value)} aria-describedby={fieldMessage('tipo_documento_id') ? 'tipo-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
-          <option value="">Seleccione un tipo documental</option>{types.data.map((type) => <option key={type.id} value={type.id}>{type.nombre}</option>)}
+        <select name="tipo_documento_id" required value={selectedTypeId} disabled={types.loading || upload.submitting || Boolean(context)} onChange={(event) => setSelectedTypeId(event.target.value)} aria-describedby={fieldMessage('tipo_documento_id') ? 'tipo-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
+          <option value="">Seleccione un tipo documental</option>{types.data.filter((type) => !context || String(type.id) === String(context.typeId)).map((type) => <option key={type.id} value={type.id}>{type.nombre}</option>)}
         </select>{fieldMessage('tipo_documento_id') && <span id="tipo-error" className="mt-1 block text-red-600">{fieldMessage('tipo_documento_id')}</span>}
       </label>}
       {types.loading && <p role="status">Cargando tipos documentales…</p>}
@@ -343,7 +357,7 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
       {isDefenseRecord && publicDefenses.error && <p role="alert" className="text-red-600">{publicDefenses.error}</p>}
       {isDefenseRecord && !publicDefenses.loading && !publicDefenses.error && publicDefenses.data.length === 0 && <p role="alert" className="text-amber-700">No existen Defensas Públicas finalizadas disponibles para vincular el Acta de Defensa.</p>}
       {isDefenseRecord && publicDefenses.data.length > 0 && <label className="text-sm">Defensa Pública finalizada
-        <select name="evento_defensa_id" required value={selectedEventId} disabled={upload.submitting} onChange={(event) => setSelectedEventId(event.target.value)} aria-describedby={fieldMessage('evento_defensa_id') ? 'defensa-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
+        <select name="evento_defensa_id" required value={selectedEventId} disabled={upload.submitting || Boolean(context)} onChange={(event) => setSelectedEventId(event.target.value)} aria-describedby={fieldMessage('evento_defensa_id') ? 'defensa-error' : undefined} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
           <option value="">Seleccione la Defensa Pública</option>{publicDefenses.data.map((defense) => <option key={defense.id} value={defense.id}>{formatDefenseDate(defense.fecha_fin_real || defense.fecha_programada)} — {defense.lugar || 'Sin lugar'}</option>)}
         </select>{fieldMessage('evento_defensa_id') && <span id="defensa-error" className="mt-1 block text-red-600">{fieldMessage('evento_defensa_id')}</span>}
       </label>}

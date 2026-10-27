@@ -149,7 +149,11 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         self.assertEqual(result["nota_final"], Decimal("55.00"))
         self.assertEqual(result["clasificacion"], "APROBADO")
         acta = self.docs.subir_documento(self.post, TipoDocumento.objects.get(codigo="ACTA_DEFENSA"), SimpleUploadedFile("acta.pdf", b"%PDF-1.4\nacta"), self.admin, evento_defensa=public_event)
-        self.docs.aprobar_documento(DocumentoPostulacion.objects.get(pk=acta.documento_id), self.admin)
+        documento_acta = DocumentoPostulacion.objects.get(pk=acta.documento_id)
+        self.assertEqual(documento_acta.estado.codigo, "APR")
+        self.assertIsNotNone(documento_acta.fecha_revision)
+        self.post.refresh_from_db()
+        self.assertNotEqual(self.post.estado_actual.codigo, "CONCLUIDA")
         concluded = WorkflowService.concluir_postulacion(self.post, self.admin)
         self.assertEqual(concluded.estado_actual.codigo, "CONCLUIDA")
         history_count = HistorialEstado.objects.filter(

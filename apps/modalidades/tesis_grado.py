@@ -42,6 +42,24 @@ ETAPAS = tuple(
 class TesisGradoEventoPolicy(BaseEventoPolicy):
     """Solo habilita la defensa cualitativa del perfil en este bloque."""
 
+    PUBLIC_REQUIRED_ACTORS = {"TRIBUNAL": 3, "PRESIDENTE": 1, "SECRETARIO": 1}
+
+    @classmethod
+    def public_actor_requirements(cls, asignaciones):
+        names = {"TRIBUNAL": "Tribunales", "PRESIDENTE": "Presidente", "SECRETARIO": "Secretario"}
+        requirements = []
+        for role, minimum in cls.PUBLIC_REQUIRED_ACTORS.items():
+            actual = asignaciones.filter(tipo_participacion=role).count()
+            complete = actual >= minimum
+            requirements.append({
+                "tipo": "ACTOR", "codigo": role, "nombre": names[role],
+                "actual": actual, "minimo": minimum, "cumplido": complete,
+                "estado": "CUMPLIDO" if complete else "PENDIENTE",
+                "estado_display": "Cumplido" if complete else "Pendiente",
+                "destino": "#actores",
+            })
+        return requirements
+
     EVENT_STAGE = {
         "DEFENSA_TEMATICA": "TEMATICA_TESIS",
         "DEFENSA_PERFIL": "PERFIL_TESIS",
@@ -70,12 +88,10 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
         if tipo_evento == "DEFENSA_PUBLICA":
             TesisGradoPolicy.validar_gate_publica(seguimiento.postulacion)
             asignaciones = kwargs.get("asignaciones")
-            required = {"TRIBUNAL": 3, "PRESIDENTE": 1, "SECRETARIO": 1}
-            missing = {role: count - asignaciones.filter(tipo_participacion=role).count()
-                       for role, count in required.items()
-                       if asignaciones.filter(tipo_participacion=role).count() < count}
+            missing = [item for item in self.public_actor_requirements(asignaciones) if not item["cumplido"]]
             if missing:
-                raise ValidationError({"asignaciones": f"La Defensa Pública de Tesis requiere: {missing}."})
+                detail = ", ".join(f'{item["nombre"]}: {item["actual"]} de {item["minimo"]}' for item in missing)
+                raise ValidationError({"asignaciones": f"Completa las asignaciones de Defensa Pública de Tesis: {detail}."})
             return
         from apps.postulantes.models import AsignacionPostulacion
         tribunales = AsignacionPostulacion.objects.filter(
@@ -385,6 +401,39 @@ class TesisGradoPolicy(BaseModalidadPolicy):
 
         destination = "#defensas"
         assignments = postulacion.asignaciones.filter(activo=True)
+        if event_type == "DEFENSA_PUBLICA" and not EventoDefensa.objects.filter(
+            postulacion=postulacion, seguimiento_etapa=seguimiento,
+            tipo_evento=event_type, activo=True,
+        ).exists():
+            requirements = self.evento_policy.public_actor_requirements(assignments)
+            try:
+                self.validar_gate_publica(postulacion)
+            except ValidationError as error:
+                message = error.messages[0]
+                # El gate conserva la autoridad sobre la habilitación académica/documental.
+                destination = "#defensas" if error.error_list[0].code == "defensa_privada_pendiente" else "#documentos"
+                return self._orientation_action(
+                    "GESTIONAR_PRECONDICIONES", "Completar precondiciones de defensa",
+                    message, "PENDIENTE", destination,
+                    "Ir a defensas" if destination == "#defensas" else "Ir a documentos",
+                ), requirements + [self._orientation_requirement(
+                    "HABILITACION_PUBLICA", "Habilitación de Defensa Pública", False, destination,
+                )]
+            if any(not item["cumplido"] for item in requirements):
+                action = self._orientation_action(
+                    "GESTIONAR_PRECONDICIONES", "Actores de la postulación",
+                    "Completa las asignaciones requeridas antes de programar la Defensa Pública",
+                    "PENDIENTE", "#actores", "Completar autoridades",
+                )
+                action["requiere_permiso"] = "GESTIONAR_ASIGNACIONES"
+                if not any(item["codigo"] in ("PRESIDENTE", "SECRETARIO") and not item["cumplido"] for item in requirements):
+                    action["accion_label"] = "Ir a actores"
+                return action, requirements
+            return self._orientation_action(
+                "PROGRAMAR_EVENTO", "Programar Defensa Pública",
+                "Programa la defensa correspondiente a esta etapa.",
+                "DISPONIBLE", destination, "Ir a programar defensa",
+            ), requirements
         try:
             self.evento_policy.validar_programacion(
                 tipo_evento=event_type, seguimiento=seguimiento,
@@ -718,7 +767,10 @@ class TesisGradoPolicy(BaseModalidadPolicy):
 
         private = EventoDefensa.objects.filter(postulacion=postulacion, tipo_evento="DEFENSA_PRIVADA", estado="FINALIZADA", activo=True).order_by("-numero_intento").first()
         if not private or not private.evaluaciones.filter(tipo_evaluacion="RESULTADO_FINAL", resultado_cualitativo="SUFICIENTE", activo=True).exists():
-            raise ValidationError("La Defensa Pública requiere una Defensa Privada finalizada con resultado SUFICIENTE.")
+            raise ValidationError(
+                "La Defensa Pública requiere una Defensa Privada finalizada con resultado SUFICIENTE.",
+                code="defensa_privada_pendiente",
+            )
         document = DocumentoPostulacion.objects.filter(postulacion=postulacion, tipo_documento__codigo="DOCUMENTO_FINAL", activo=True).first()
         if not document:
             raise ValidationError("La Defensa Pública requiere Documento Final vigente.")

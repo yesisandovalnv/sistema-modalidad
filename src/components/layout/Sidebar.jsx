@@ -3,6 +3,7 @@ import { LayoutDashboard, FileText, Users, FolderKanban, MonitorPlay, Settings, 
 import { Button } from '../ui/button'
 import { useAuth } from '../../hooks/useAuth'
 import { useNotifications } from '../../hooks/useNotifications'
+import careerLogo from '../../../uab/logo/Logo-ac.png'
 
 const links = [
   { to: '/dashboard', label: 'Inicio', icon: LayoutDashboard, permission: 'puede_ver_dashboard' },
@@ -34,7 +35,7 @@ export function Sidebar({ open, collapsed = false, onMobileToggle }) {
     <aside id="main-sidebar" data-collapsed={collapsed} className={`sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r p-3 ${collapsed ? 'sidebar--collapsed' : ''} ${open ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
       <div className="sidebar-brand flex min-h-12 items-center justify-between">
         <div className="flex min-w-0 items-center gap-3 px-1">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--sidebar-active)] text-[var(--sidebar-text-active)]"><GraduationCap className="h-5 w-5" aria-hidden="true" /></span>
+          <img src={careerLogo} alt="Logo del sistema" width={41} height={41} className="h-[41px] w-[41px] shrink-0 object-contain" />
           <div className="sidebar-label min-w-0">
             <p className="truncate text-xs font-semibold uppercase tracking-wide text-[var(--sidebar-text-secondary)]">Sistema de modalidad</p>
             <h2 className="truncate text-base font-semibold text-[var(--sidebar-text-active)]">Gestión académica</h2>

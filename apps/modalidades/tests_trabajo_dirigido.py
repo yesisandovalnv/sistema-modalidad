@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.academico.models import Modalidad, Periodo
+from apps.academico.models import Modalidad, ModalidadRequisito, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
 from apps.documentos.services import DocumentoService
 from apps.modalidades.models import TrabajoDirigidoExpediente
@@ -25,6 +25,7 @@ from apps.postulantes.models import (
     AsignacionPostulacion,
     DecisionAcademicaEtapa,
     EstadoPostulacion,
+    EntregaFisica,
     EvaluacionDefensa,
     EventoDefensa,
     ParticipanteEvento,
@@ -33,7 +34,7 @@ from apps.postulantes.models import (
 )
 from apps.postulantes.defensas import EvaluacionDefensaService
 from apps.postulantes.workflow import WorkflowService
-from apps.usuarios.models import CustomUser, Role
+from apps.usuarios.models import AuditLog, CustomUser, Role
 
 
 class TrabajoDirigidoTest(TestCase):
@@ -990,9 +991,15 @@ class TrabajoDirigidoTest(TestCase):
         ]
         self.assertEqual(
             {item["codigo"] for item in document_requirements},
-            set(TrabajoDirigidoPolicy.requisitos_policy.get_documentos_requeridos("INSCRIPCION")),
+            {"CARTA_SOLICITUD_TD", "MATRICULA_VIGENTE_TD", "HISTORIAL_PRERREQ_TD"},
         )
         self.assertTrue(all(item["nombre"] for item in document_requirements))
+        self.assertEqual(len(requirements), 4)
+        folder = next(item for item in requirements if item["tipo"] == "ENTREGA_FISICA")
+        self.assertEqual(folder["nombre"], "Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida")
+        serialized_response = response.content.decode("utf-8", errors="strict")
+        self.assertIn("Fólder amarillo", serialized_response)
+        self.assertNotIn("F├│lder", serialized_response)
         self.assertTrue(all(item["estado_display"] == "No presentado" for item in document_requirements))
         self.assertEqual(
             [item["codigo"] for item in requirements if item["tipo"] == "ENTREGA_FISICA"],
@@ -1002,6 +1009,92 @@ class TrabajoDirigidoTest(TestCase):
         self.assertEqual(orientation["requisitos_totales"], len(requirements))
         self.assertFalse(orientation["permite_aprobar_etapa"])
         self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+
+    def _inscription_delivery(self, *, estado="COMPLETA", activo=True, cantidad=1, recibida=1):
+        delivery, _ = EntregaFisica.objects.update_or_create(
+            postulacion=self.post, codigo="FOLDER_AMARILLO",
+            defaults={"nombre": "Fólder amarillo", "estado": estado, "activo": activo,
+                      "cantidad": cantidad, "cantidad_recibida": recibida,
+                      "fecha_entrega": timezone.now(), "recibido_por": self.admin},
+        )
+        return delivery
+
+    def test_inscripcion_recepcion_completa_y_documentos_pendientes_cuenta_uno_de_cuatro(self):
+        self.follow["INSCRIPCION"] = WorkflowService.iniciar_etapa(self.follow["INSCRIPCION"], self.admin)
+        self._inscription_delivery()
+        orientation = TrabajoDirigidoPolicy()._orientar_inscripcion(self.post)
+        self.assertEqual((orientation["requisitos_cumplidos"], orientation["requisitos_totales"]), (1, 4))
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        with self.assertRaises(ValidationError) as error:
+            WorkflowService._validar_aprobacion_etapa(self.follow["INSCRIPCION"])
+        self.assertEqual(set(error.exception.message_dict["faltantes"]), {
+            "CARTA_SOLICITUD_TD", "MATRICULA_VIGENTE_TD", "HISTORIAL_PRERREQ_TD",
+        })
+
+    def test_inscripcion_aprueba_con_tres_documentos_y_recepcion_sin_archivo_del_folder(self):
+        self.follow["INSCRIPCION"] = WorkflowService.iniciar_etapa(self.follow["INSCRIPCION"], self.admin)
+        for code in ("CARTA_SOLICITUD_TD", "MATRICULA_VIGENTE_TD", "HISTORIAL_PRERREQ_TD"):
+            self.create_closure_document(code)
+        self._inscription_delivery()
+        stage = self.follow["INSCRIPCION"]
+        orientation = TrabajoDirigidoPolicy()._orientar_inscripcion(self.post)
+        self.assertEqual((orientation["requisitos_cumplidos"], orientation["requisitos_totales"]), (4, 4))
+        self.assertTrue(orientation["permite_aprobar_etapa"])
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+        self.assertIn("aprobar", WorkflowService.obtener_acciones_permitidas(stage))
+        self.assertFalse(self.post.documentos.filter(tipo_documento__codigo="FOLDER_AMARILLO_TD").exists())
+        WorkflowService.aprobar_etapa(stage, self.admin)
+        stage.refresh_from_db()
+        self.assertEqual(stage.estado, "APROBADA")
+
+    def test_inscripcion_orientacion_y_gate_rechazan_recepciones_invalidas(self):
+        self.follow["INSCRIPCION"] = WorkflowService.iniciar_etapa(self.follow["INSCRIPCION"], self.admin)
+        for code in ("CARTA_SOLICITUD_TD", "MATRICULA_VIGENTE_TD", "HISTORIAL_PRERREQ_TD"):
+            self.create_closure_document(code)
+        scenarios = (
+            None, {"estado": "PARCIAL", "cantidad": 2}, {"activo": False},
+            {"cantidad": 2}, {"recibida": 0},
+        )
+        for scenario in scenarios:
+            with self.subTest(recepcion=scenario):
+                delivery = self._inscription_delivery(**scenario) if scenario is not None else None
+                orientation = TrabajoDirigidoPolicy()._orientar_inscripcion(self.post)
+                self.assertEqual((orientation["requisitos_cumplidos"], orientation["requisitos_totales"]), (3, 4))
+                self.assertFalse(orientation["permite_aprobar_etapa"])
+                self.assertEqual(orientation["siguiente_accion"]["codigo"], "GESTIONAR_ENTREGA_FISICA")
+                with self.assertRaises(ValidationError) as error:
+                    WorkflowService._validar_aprobacion_etapa(self.follow["INSCRIPCION"])
+                self.assertEqual(error.exception.message_dict["faltantes"], ["FOLDER_AMARILLO"])
+                if delivery:
+                    delivery.delete()
+
+    def test_inscripcion_conserva_recepcion_explicita_sin_cantidad_y_no_admite_cantidad_insuficiente(self):
+        self._inscription_delivery(cantidad=None)
+        requirements = TrabajoDirigidoPolicy()._evaluar_requisitos_inscripcion(self.post)
+        self.assertTrue(requirements[-1]["cumplido"])
+        self.assertEqual(TrabajoDirigidoPolicy().get_entregas_requeridas("INSCRIPCION"), ("FOLDER_AMARILLO",))
+        self.assertEqual(TrabajoDirigidoPolicy().get_entregas_requeridas("DEFENSA_PUBLICA"), ())
+
+    def test_inscripcion_documentos_aplicables_excluyen_folder_y_conservan_catalogo_e_historia(self):
+        historical = self.create_closure_document("FOLDER_AMARILLO_TD")
+        before_document = DocumentoPostulacion.all_objects.filter(pk=historical.pk).values().get()
+        before_versions = list(historical.versiones.values())
+        tipo = TipoDocumento.objects.get(codigo="FOLDER_AMARILLO_TD")
+        before_type = TipoDocumento.objects.filter(pk=tipo.pk).values().get()
+        relation = ModalidadRequisito.objects.get(modalidad=self.post.modalidad, requisito__codigo=tipo.codigo)
+        before_relation = ModalidadRequisito.objects.filter(pk=relation.pk).values().get()
+        client = APIClient()
+        client.force_authenticate(self.admin)
+        response = client.get(f"/api/v1/postulaciones/{self.post.pk}/documentos-aplicables/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual({item["codigo"] for item in response.data["documentos_aplicables"]}, {
+            "CARTA_SOLICITUD_TD", "MATRICULA_VIGENTE_TD", "HISTORIAL_PRERREQ_TD",
+        })
+        self.assertIn(tipo.pk, [item.pk for item in DocumentoService.obtener_tipos_documentales_historicos(self.post.modalidad)])
+        self.assertEqual(DocumentoPostulacion.all_objects.filter(pk=historical.pk).values().get(), before_document)
+        self.assertEqual(list(historical.versiones.values()), before_versions)
+        self.assertEqual(TipoDocumento.objects.filter(pk=tipo.pk).values().get(), before_type)
+        self.assertEqual(ModalidadRequisito.objects.filter(pk=relation.pk).values().get(), before_relation)
 
     def test_etapas_normativas_y_reintentos(self):
         policy = ModalidadPolicyRegistry.get(self.post)
@@ -1444,6 +1537,76 @@ class TrabajoDirigidoTest(TestCase):
         client.force_authenticate(self.other)
         self.assertEqual(client.get(f"/api/v1/postulaciones/{self.post.id}/trabajo-dirigido/").status_code, 404)
 
+    def _prepare_pre_review(self, *, evidence=True, final_state="APR", tribunal_count=3):
+        self.assign_tribunals(tribunal_count)
+        stage = self.follow["REVISION_TRIBUNAL_PREVIA"]
+        stage.estado = "EN_PROCESO"
+        stage.save(update_fields=["estado"])
+        final = self.create_closure_document("DOCUMENTO_FINAL_TD", estado=final_state)
+        evidence_doc = self.create_closure_document("INFORME_REVISION_TRIBUNAL_TD", estado="ENV") if evidence else None
+        return stage, final.versiones.get(), evidence_doc.versiones.get() if evidence_doc else None
+
+    def _pre_review_orientation(self, stage):
+        return TrabajoDirigidoPolicy().get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage)
+
+    def test_revision_previa_orienta_registro_sin_exigir_aprobacion_administrativa_de_evidencia(self):
+        stage, version, evidence = self._prepare_pre_review()
+        orientation = self._pre_review_orientation(stage)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "REGISTRAR_INFORME_TRIBUNAL")
+        self.assertEqual(orientation["siguiente_accion"]["estado"], "DISPONIBLE")
+        self.assertEqual((orientation["requisitos_cumplidos"], orientation["requisitos_totales"]), (3, 4))
+        self.assertFalse(orientation["permite_aprobar_etapa"])
+        from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService
+        RevisionTribunalPreviaService._validar_evidencia(stage, evidence)
+        with self.assertRaisesMessage(ValidationError, "No existe un informe activo"):
+            RevisionTribunalPreviaService.validar_aprobacion(stage)
+
+    def test_revision_previa_orienta_tribunal_documento_y_evidencia_pendientes(self):
+        stage, version, evidence = self._prepare_pre_review(tribunal_count=2, final_state="ENV", evidence=False)
+        self.assertEqual(self._pre_review_orientation(stage)["siguiente_accion"]["codigo"], "GESTIONAR_DOCUMENTOS")
+        version.documento.estado = EstadoDocumento.objects.get(codigo="APR")
+        version.documento.save(update_fields=["estado"])
+        self.assertEqual(self._pre_review_orientation(stage)["siguiente_accion"]["codigo"], "GESTIONAR_ACTORES")
+        from apps.postulantes.models import AsignacionPostulacion
+        AsignacionPostulacion.objects.create(postulacion=self.post, usuario=self.teachers[2], tipo_participacion="TRIBUNAL", orden_cargo=3, designado_por=self.admin)
+        self.assertEqual(self._pre_review_orientation(stage)["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+
+    def test_revision_previa_distingue_insuficiente_suficiente_evidencia_desactualizada_e_historia(self):
+        from apps.postulantes.models import InformeRevisionTribunalPrevia
+        stage, version, evidence = self._prepare_pre_review()
+        report = InformeRevisionTribunalPrevia.objects.create(seguimiento_etapa=stage, version_documento_revisada=version,
+            evidencia_version=evidence, resultado="INSUFICIENTE", observaciones="Corregir contenido", registrado_por=self.admin)
+        self.assertEqual(self._pre_review_orientation(stage)["siguiente_accion"]["codigo"], "CONSULTAR_REVISION_TRIBUNAL")
+        report.resultado = "SUFICIENTE"
+        report.save(update_fields=["resultado"])
+        orientation = self._pre_review_orientation(stage)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+        self.assertTrue(orientation["permite_aprobar_etapa"])
+        stage.refresh_from_db()
+        self.assertEqual(stage.estado, "EN_PROCESO")
+        evidence.es_version_actual = False
+        evidence.save(update_fields=["es_version_actual"])
+        self.assertEqual(self._pre_review_orientation(stage)["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        VersionDocumento.objects.create(documento=evidence.documento, numero_version=2, archivo=evidence.archivo.name,
+            es_version_actual=True, activo=True, subido_por=self.admin, nombre_original="evidencia.pdf", tamano_bytes=13, hash_sha256="b" * 64)
+        self.assertEqual(self._pre_review_orientation(stage)["siguiente_accion"]["codigo"], "ACTUALIZAR_INFORME_TRIBUNAL")
+        version.es_version_actual = False
+        version.save(update_fields=["es_version_actual"])
+        VersionDocumento.objects.create(documento=version.documento, numero_version=2, archivo=version.archivo.name,
+            es_version_actual=True, activo=True, subido_por=self.admin, nombre_original="final.pdf", tamano_bytes=13, hash_sha256="c" * 64)
+        self.assertEqual(self._pre_review_orientation(stage)["siguiente_accion"]["codigo"], "REGISTRAR_INFORME_TRIBUNAL")
+
+    def test_revision_previa_no_reutiliza_informe_de_otro_seguimiento(self):
+        from apps.postulantes.models import InformeRevisionTribunalPrevia
+        stage, version, evidence = self._prepare_pre_review()
+        previous_stage = SeguimientoEtapa.objects.create(postulacion=self.post, etapa=stage.etapa,
+            numero_intento=2, estado="OBSERVADA", activo=True)
+        InformeRevisionTribunalPrevia.objects.create(seguimiento_etapa=previous_stage,
+            version_documento_revisada=version, evidencia_version=evidence, resultado="SUFICIENTE", registrado_por=self.admin)
+        self.assertEqual(self._pre_review_orientation(stage)["siguiente_accion"]["codigo"], "REGISTRAR_INFORME_TRIBUNAL")
+        stage.activo = False
+        self.assertIsNone(self._pre_review_orientation(stage))
+
     def test_modelo_no_admite_otra_modalidad(self):
         project_post = Postulacion.objects.create(
             codigo="TD-ISO-PG", estudiante=self.other,
@@ -1473,6 +1636,36 @@ class TrabajoDirigidoTest(TestCase):
         )
 
         self.assertEqual(version.documento.evento_defensa_id, evento.pk)
+        version.documento.refresh_from_db()
+        self.assertEqual(version.documento.estado.codigo, "APR")
+        self.assertIsNotNone(version.documento.fecha_revision)
+        self.assertEqual(
+            list(AuditLog.objects.filter(modulo="DOCUMENTOS", usuario=self.admin)
+                 .order_by("id").values_list("accion", flat=True)),
+            ["UPLOAD", "APPROVE"],
+        )
+        seguimiento.refresh_from_db()
+        evento.refresh_from_db()
+        self.assertEqual(seguimiento.estado, "APROBADA")
+        self.assertEqual(evento.estado, "FINALIZADA")
+        self.assertFalse(EvaluacionDefensa.objects.filter(evento=evento).exists())
+
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_acta_td_no_autoaprueba_con_seguimiento_publico_sin_aprobar(self):
+        seguimiento = self.follow["DEFENSA_PUBLICA"]
+        evento = self.create_public_event(seguimiento)
+        with self.assertRaisesMessage(ValidationError, "intento vigente"):
+            DocumentoService().subir_documento(
+                self.post, TipoDocumento.objects.get(codigo="ACTA_DEFENSA_TD"),
+                SimpleUploadedFile("acta-pendiente.pdf", b"%PDF-1.4 acta TD"),
+                self.admin, evento_defensa=evento,
+            )
+        self.assertFalse(DocumentoPostulacion.objects.filter(
+            postulacion=self.post, tipo_documento__codigo="ACTA_DEFENSA_TD",
+        ).exists())
+        self.assertFalse(AuditLog.objects.filter(modulo="DOCUMENTOS").exists())
 
     @override_settings(STORAGES={
         "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
@@ -1657,6 +1850,88 @@ class TrabajoDirigidoTest(TestCase):
             self.post.seguimientos_etapa.get(etapa__codigo="CIERRE_DOCUMENTAL").estado,
             SeguimientoEtapa.EstadoChoices.APROBADA,
         )
+
+    def _prepare_conclusion_orientation(self):
+        self.prepare_conclusion_documents()
+        self.post.seguimientos_etapa.update(estado="APROBADA")
+        self.follow["CIERRE_DOCUMENTAL"].refresh_from_db()
+        return self.follow["CIERRE_DOCUMENTAL"]
+
+    def test_orientacion_conclusion_td_disponible_usa_resultado_oficial_sin_escribir(self):
+        stage = self._prepare_conclusion_orientation()
+        before = AuditLog.objects.count()
+        orientation = TrabajoDirigidoPolicy().get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage)
+        self.assertEqual(orientation["operacion"], "ORIENTAR_CONCLUSION_ACADEMICA")
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "CONCLUIR_ACADEMICAMENTE")
+        self.assertEqual(orientation["siguiente_accion"]["estado"], "DISPONIBLE")
+        self.assertEqual(orientation["resultado_final"], TrabajoDirigidoPolicy().evaluacion_policy.calcular_resultado_final(self.post))
+        self.assertIn("Las 8 etapas están aprobadas", orientation["mensaje"])
+        self.post.refresh_from_db()
+        self.assertNotEqual(self.post.estado_actual.codigo, "CONCLUIDA")
+        self.assertEqual(AuditLog.objects.count(), before)
+
+    def test_orientacion_conclusion_td_bloqueada_reutiliza_validacion_y_destino(self):
+        stage = self._prepare_conclusion_orientation()
+        policy = TrabajoDirigidoPolicy()
+        for error, destino in (
+            (ValidationError("La conclusión requiere ACTA_DEFENSA_TD aprobada."), "#documentos"),
+            (ValidationError("La conclusión requiere la Defensa Pública aprobada."), "#defensas"),
+            (ValidationError("Trabajo Dirigido requiere una nota final mínima de 51 puntos."), "#resultado-y-cierre"),
+            (ValidationError({"faltantes": ["DOCUMENTO_FINAL_TD"]}), "#documentos"),
+        ):
+            with self.subTest(destino=destino), patch.object(policy, "validar_conclusion_academica", side_effect=error):
+                orientation = policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage)
+                self.assertEqual(orientation["mensaje"], " ".join(error.messages))
+                self.assertEqual(orientation["siguiente_accion"]["estado"], "PENDIENTE")
+                self.assertEqual(orientation["siguiente_accion"]["destino"], destino)
+
+    def test_orientacion_conclusion_td_detecta_acta_real_no_aprobada(self):
+        stage = self._prepare_conclusion_orientation()
+        DocumentoPostulacion.objects.filter(postulacion=self.post, tipo_documento__codigo="ACTA_DEFENSA_TD").update(
+            estado=EstadoDocumento.objects.get(codigo="ENV"),
+        )
+        orientation = TrabajoDirigidoPolicy().get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage)
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "REVISAR_BLOQUEO_CONCLUSION")
+        self.assertEqual(orientation["siguiente_accion"]["destino"], "#documentos")
+
+    def test_orientacion_conclusion_td_concluida_solo_consulta(self):
+        stage = self._prepare_conclusion_orientation()
+        self.post.estado_actual = EstadoPostulacion.objects.get(codigo="CONCLUIDA")
+        self.post.save(update_fields=["estado_actual"])
+        policy = TrabajoDirigidoPolicy()
+        with patch.object(policy, "validar_conclusion_academica") as validate:
+            orientation = policy.get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage)
+        validate.assert_not_called()
+        self.assertEqual(orientation["siguiente_accion"]["titulo"], "Proceso académico concluido")
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "CONSULTAR_RESULTADO")
+
+    def test_orientacion_conclusion_td_no_ignora_intento_pendiente(self):
+        stage = self._prepare_conclusion_orientation()
+        previous = self.follow["PERFIL_TRABAJO_DIRIGIDO"]
+        SeguimientoEtapa.objects.create(postulacion=self.post, etapa=previous.etapa, numero_intento=2, estado="PENDIENTE")
+        self.assertIsNone(TrabajoDirigidoPolicy().get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage))
+
+    def test_orientacion_conclusion_td_sin_resultado_no_ofrece_concluir(self):
+        stage = self._prepare_conclusion_orientation()
+        EvaluacionDefensa.objects.filter(evento__postulacion=self.post, evento__tipo_evento="DEFENSA_PUBLICA").update(activo=False)
+        orientation = TrabajoDirigidoPolicy().get_orientacion_etapa_actual(postulacion=self.post, seguimiento=stage)
+        self.assertIsNone(orientation["resultado_final"]["nota_final"])
+        self.assertEqual(orientation["siguiente_accion"]["codigo"], "REVISAR_BLOQUEO_CONCLUSION")
+        self.assertEqual(orientation["siguiente_accion"]["destino"], "#resultado-y-cierre")
+
+    def test_orientacion_conclusion_td_consulta_flujo_admin_y_estudiante_sin_mutar(self):
+        self._prepare_conclusion_orientation()
+        before = AuditLog.objects.count()
+        client = APIClient()
+        for user in (self.admin, self.student):
+            with self.subTest(usuario=user.username):
+                client.force_authenticate(user)
+                response = client.get(f"/api/v1/postulaciones/{self.post.pk}/flujo/")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.data["orientacion_etapa_actual"]["siguiente_accion"]["codigo"], "CONCLUIR_ACADEMICAMENTE")
+        self.post.refresh_from_db()
+        self.assertNotEqual(self.post.estado_actual.codigo, "CONCLUIDA")
+        self.assertEqual(AuditLog.objects.count(), before)
 
     @override_settings(STORAGES={
         "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},

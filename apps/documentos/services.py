@@ -2,6 +2,7 @@ import hashlib
 import os
 from typing import Any, Dict, Optional
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Max, QuerySet
 from django.utils import timezone
@@ -274,9 +275,58 @@ class DocumentoService:
                             and es_carga_especial
                             and evento_defensa is not None
                         )
+                        or (
+                            tipo_documento.codigo == "ACTA_DEFENSA_TD"
+                            and postulacion.modalidad.codigo == "TRABAJO_DIRIGIDO"
+                            and es_carga_especial
+                            and evento_defensa is not None
+                        )
+                        or (
+                            tipo_documento.codigo == "ACTA_DEFENSA"
+                            and postulacion.modalidad.codigo == "TESIS_GRADO"
+                            and self._puede_autoaprobar_acta_tesis(
+                                postulacion, evento_defensa, policy,
+                            )
+                        )
                     )
                 ),
             )
+
+    def _puede_autoaprobar_acta_tesis(self, postulacion, evento_defensa, policy):
+        """Elegibilidad adicional; no restringe las cargas admitidas por la policy."""
+        if postulacion.tipo_registro == Postulacion.TipoRegistroChoices.HISTORICO:
+            return False
+        if evento_defensa is None:
+            return False
+        seguimientos = list(postulacion.seguimientos_etapa.select_for_update().filter(
+            activo=True, etapa__codigo="DEFENSA_PUBLICA",
+        ).order_by("-numero_intento", "-pk"))
+        if not seguimientos:
+            return False
+        seguimiento = seguimientos[0]
+        if (
+            seguimiento.estado != "APROBADA"
+            or sum(s.numero_intento == seguimiento.numero_intento for s in seguimientos) != 1
+        ):
+            return False
+        eventos = list(postulacion.eventos_defensa.select_for_update().filter(
+            activo=True, tipo_evento="DEFENSA_PUBLICA",
+            numero_intento=seguimiento.numero_intento,
+        ))
+        if len(eventos) != 1:
+            return False
+        evento = eventos[0]
+        if (
+            evento.pk != evento_defensa.pk
+            or evento.seguimiento_etapa_id != seguimiento.pk
+            or evento.estado != "FINALIZADA"
+        ):
+            return False
+        try:
+            policy.validar_aprobacion_etapa(seguimiento)
+        except (DjangoValidationError, ValidationError):
+            return False
+        return True
 
     def subir_documento_historico(
         self,

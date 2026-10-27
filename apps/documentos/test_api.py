@@ -743,6 +743,256 @@ class TestPerfilObservationDocument(DocumentoAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
+@override_settings(STORAGES={
+    "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+})
+class TestActaTrabajoDirigidoAutoApproval(DocumentoAPITestCase):
+    def setUp(self):
+        super().setUp()
+        self.test_follow.activo = False
+        self.test_follow.save(update_fields=["activo"])
+        self.modalidad = Modalidad.objects.create(codigo="TRABAJO_DIRIGIDO", nombre="Trabajo Dirigido")
+        self.postulacion.modalidad = self.modalidad
+        self.postulacion.save(update_fields=["modalidad"])
+        stage = EtapaModalidad.objects.create(
+            modalidad=self.modalidad, codigo="DEFENSA_PUBLICA", nombre="Defensa Pública",
+            orden=1, origen_normativo="Prueba",
+        )
+        self.public_follow = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion, etapa=stage, estado="APROBADA",
+        )
+        self.public_event = EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=self.public_follow,
+            tipo_evento="DEFENSA_PUBLICA", estado="FINALIZADA",
+            fecha_programada="2026-06-01T10:00:00Z", fecha_fin_real="2026-06-01T11:00:00Z",
+            lugar="Sala", programado_por=self.admin_user,
+        )
+        self.acta_type = TipoDocumento.objects.create(
+            codigo="ACTA_DEFENSA_TD", nombre="Acta de Defensa de Trabajo Dirigido",
+            permite_multiple_version=True,
+        )
+        # La autorización proviene del rol, no de los flags de Django Admin.
+        self.admin_user.is_superuser = False
+        self.admin_user.is_staff = False
+        self.admin_user.save(update_fields=["is_superuser", "is_staff"])
+
+    def upload_acta(self, user=None):
+        self.authenticate_user(user or self.admin_user)
+        return self.client.post("/api/v1/documentos/documentos/subir/", {
+            "postulacion_id": self.postulacion.pk,
+            "tipo_documento_id": self.acta_type.pk,
+            "evento_defensa_id": self.public_event.pk,
+            "archivo": self.create_pdf_file("acta-td.pdf"),
+        }, format="multipart")
+
+    def test_primera_carga_autoaprueba_con_auditoria_sin_cambiar_defensa(self):
+        with patch("apps.documentos.services.publish_domain_event") as publish:
+            response = self.upload_acta()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(tipo_documento=self.acta_type)
+        self.assertEqual(documento.estado.codigo, "APR")
+        self.assertIsNotNone(documento.fecha_revision)
+        self.assertEqual(documento.evento_defensa_id, self.public_event.pk)
+        self.assertEqual(list(AuditLog.objects.filter(modulo="DOCUMENTOS").order_by("id")
+                              .values_list("accion", flat=True)), ["UPLOAD", "APPROVE"])
+        self.assertEqual([call.args[0] for call in publish.call_args_list],
+                         ["DOCUMENTO_SUBIDO", "DOCUMENTO_APROBADO"])
+        self.public_event.refresh_from_db()
+        self.public_follow.refresh_from_db()
+        self.assertEqual(self.public_event.estado, "FINALIZADA")
+        self.assertEqual(self.public_follow.estado, "APROBADA")
+        self.assertFalse(EvaluacionDefensa.objects.filter(evento=self.public_event).exists())
+
+    def test_segunda_version_requiere_aprobacion_manual(self):
+        self.assertEqual(self.upload_acta().status_code, status.HTTP_201_CREATED)
+        self.assertEqual(self.upload_acta().status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(tipo_documento=self.acta_type)
+        self.assertEqual(documento.estado.codigo, "ENV")
+        self.assertIsNone(documento.fecha_revision)
+        self.assertEqual(documento.versiones.count(), 2)
+        self.assertEqual(documento.versiones.filter(es_version_actual=True).count(), 1)
+        self.assertEqual(AuditLog.objects.filter(modulo="DOCUMENTOS", accion="APPROVE").count(), 1)
+        response = self.client.post(f"/api/v1/documentos/documentos/{documento.pk}/aprobar/",
+                                    {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        documento.refresh_from_db()
+        self.assertEqual(documento.estado.codigo, "APR")
+
+    def test_is_staff_sin_rol_administrativo_no_autoaprueba(self):
+        self.student_user.is_staff = True
+        self.student_user.save(update_fields=["is_staff"])
+        response = self.upload_acta(self.student_user)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(tipo_documento=self.acta_type)
+        self.assertEqual(documento.estado.codigo, "ENV")
+        self.assertIsNone(documento.fecha_revision)
+        self.assertFalse(AuditLog.objects.filter(modulo="DOCUMENTOS", accion="APPROVE").exists())
+        response = self.client.post(f"/api/v1/documentos/documentos/{documento.pk}/aprobar/",
+                                    {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_fallo_de_aprobacion_revierte_carga_auditoria_y_archivo(self):
+        from django.core.files.storage import default_storage
+
+        approve = DocumentoService.aprobar_documento
+
+        def fail_after_approval(service, *args, **kwargs):
+            approve(service, *args, **kwargs)
+            raise RuntimeError("fallo después de aprobar acta")
+
+        with patch.object(DocumentoService, "aprobar_documento", fail_after_approval), \
+                self.assertRaisesMessage(RuntimeError, "fallo después de aprobar acta"):
+            self.upload_acta()
+        self.assertFalse(DocumentoPostulacion.objects.filter(tipo_documento=self.acta_type).exists())
+        self.assertFalse(VersionDocumento.objects.exists())
+        self.assertFalse(AuditLog.objects.filter(modulo="DOCUMENTOS").exists())
+        self.assertEqual(default_storage.listdir("documentos/versiones")[1], [])
+
+    def test_otras_actas_especiales_conservan_aprobacion_manual(self):
+        self.acta_type.codigo = "ACTA_DEFENSA"
+        self.acta_type.save(update_fields=["codigo"])
+        self.assertEqual(self.upload_acta().status_code, status.HTTP_201_CREATED)
+        documento = DocumentoPostulacion.objects.get(tipo_documento=self.acta_type)
+        self.assertEqual(documento.estado.codigo, "ENV")
+        self.assertIsNone(documento.fecha_revision)
+        response = self.client.post(f"/api/v1/documentos/documentos/{documento.pk}/aprobar/",
+                                    {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_acta_td_no_se_habilita_en_proyecto_ni_tesis(self):
+        for codigo in ("PROYECTO_GRADO", "TESIS_GRADO"):
+            with self.subTest(modalidad=codigo):
+                self.modalidad.codigo = codigo
+                self.modalidad.save(update_fields=["codigo"])
+                response = self.upload_acta()
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertFalse(DocumentoPostulacion.objects.filter(tipo_documento=self.acta_type).exists())
+                self.assertFalse(AuditLog.objects.filter(modulo="DOCUMENTOS").exists())
+
+
+class TestActaTesisAutoApproval(DocumentoAPITestCase):
+    def setUp(self):
+        super().setUp()
+        self.test_follow.activo = False
+        self.test_follow.save(update_fields=["activo"])
+        self.modalidad = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis")
+        self.postulacion.modalidad = self.modalidad
+        self.postulacion.save(update_fields=["modalidad"])
+        stage = EtapaModalidad.objects.create(modalidad=self.modalidad, codigo="DEFENSA_PUBLICA",
+            nombre="Defensa Pública", orden=1, origen_normativo="Prueba")
+        self.public_follow = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion, etapa=stage, estado="APROBADA")
+        self.public_event = EventoDefensa.objects.create(
+            postulacion=self.postulacion, seguimiento_etapa=self.public_follow,
+            tipo_evento="DEFENSA_PUBLICA", estado="FINALIZADA",
+            fecha_programada="2026-06-01T10:00:00Z", fecha_fin_real="2026-06-01T11:00:00Z",
+            lugar="Sala", programado_por=self.admin_user)
+        self.acta_type = TipoDocumento.objects.create(
+            codigo="ACTA_DEFENSA", nombre="Acta Tesis", permite_multiple_version=True)
+        self.admin_user.is_superuser = False
+        self.admin_user.is_staff = False
+        self.admin_user.save(update_fields=["is_superuser", "is_staff"])
+        # Los gates reales se cubren en tests_tesis_grado.
+        gate = patch("apps.modalidades.tesis_grado.TesisGradoPolicy.validar_aprobacion_etapa")
+        self.validate = gate.start()
+        self.addCleanup(gate.stop)
+
+    upload_acta = TestActaTrabajoDirigidoAutoApproval.upload_acta
+    test_version_posterior = TestActaTrabajoDirigidoAutoApproval.test_segunda_version_requiere_aprobacion_manual
+    test_estudiante = TestActaTrabajoDirigidoAutoApproval.test_is_staff_sin_rol_administrativo_no_autoaprueba
+    test_rollback = TestActaTrabajoDirigidoAutoApproval.test_fallo_de_aprobacion_revierte_carga_auditoria_y_archivo
+
+    def assert_enviado(self):
+        self.assertEqual(self.upload_acta().status_code, 201)
+        doc = DocumentoPostulacion.objects.get(tipo_documento=self.acta_type)
+        self.assertEqual(doc.estado.codigo, "ENV")
+        self.assertIsNone(doc.fecha_revision)
+        self.assertFalse(AuditLog.objects.filter(accion="APPROVE").exists())
+
+    def test_admin_autoaprueba_con_auditoria_y_notificaciones(self):
+        with patch("apps.documentos.services.publish_domain_event") as publish:
+            self.assertEqual(self.upload_acta().status_code, 201)
+        doc = DocumentoPostulacion.objects.get(tipo_documento=self.acta_type)
+        self.assertEqual(doc.estado.codigo, "APR")
+        self.assertIsNotNone(doc.fecha_revision)
+        self.assertEqual(doc.versiones.get().subido_por, self.admin_user)
+        audits = AuditLog.objects.filter(modulo="DOCUMENTOS").order_by("pk")
+        self.assertEqual(list(audits.values_list("accion", flat=True)), ["UPLOAD", "APPROVE"])
+        self.assertEqual(list(audits.values_list("usuario_id", flat=True)), [self.admin_user.pk] * 2)
+        self.assertEqual([c.args[0] for c in publish.call_args_list], ["DOCUMENTO_SUBIDO", "DOCUMENTO_APROBADO"])
+        self.validate.assert_called_once()
+        self.public_follow.refresh_from_db()
+        self.public_event.refresh_from_db()
+        self.postulacion.refresh_from_db()
+        self.assertEqual(self.public_follow.estado, "APROBADA")
+        self.assertEqual(self.public_event.estado, "FINALIZADA")
+        self.assertNotEqual(self.postulacion.estado_actual.codigo, "CONCLUIDA")
+
+    def test_seguimiento_no_aprobado(self):
+        for estado in ("PENDIENTE", "RECHAZADA"):
+            with self.subTest(estado=estado):
+                self.public_follow.estado = estado
+                self.public_follow.save(update_fields=["estado"])
+                self.assert_enviado()
+
+    def test_intento_anterior(self):
+        SeguimientoEtapa.objects.create(postulacion=self.postulacion, etapa=self.public_follow.etapa,
+                                       numero_intento=2, estado="APROBADA")
+        self.assert_enviado()
+
+    def test_intento_incompatible(self):
+        self.public_event.numero_intento = 2
+        self.public_event.save(update_fields=["numero_intento"])
+        self.assert_enviado()
+
+    def test_seguimiento_ambiguo(self):
+        other = Modalidad.objects.create(codigo="AMBIGUA", nombre="Ambigua")
+        stage = EtapaModalidad.objects.create(modalidad=other, codigo="DEFENSA_PUBLICA",
+                                             nombre="Duplicada", orden=1, origen_normativo="Prueba")
+        # Datos inconsistentes heredados: el guard debe ser conservador aun
+        # cuando una importación haya omitido la validación del modelo.
+        SeguimientoEtapa.objects.bulk_create([
+            SeguimientoEtapa(postulacion=self.postulacion, etapa=stage, estado="APROBADA")])
+        self.assert_enviado()
+
+    def test_historico(self):
+        self.postulacion.tipo_registro = "HISTORICO"
+        self.postulacion.save(update_fields=["tipo_registro"])
+        self.assert_enviado()
+
+    def test_vinculos_invalidos_conservan_rechazo(self):
+        self.other_postulacion.modalidad = self.modalidad
+        self.other_postulacion.save(update_fields=["modalidad"])
+        other_public = SeguimientoEtapa.objects.create(postulacion=self.other_postulacion,
+            etapa=self.public_follow.etapa, estado="APROBADA")
+        for field, value in (("estado", "PROGRAMADA"), ("activo", False),
+                             ("postulacion", self.other_postulacion)):
+            with self.subTest(field=field):
+                previous = getattr(self.public_event, field)
+                if field == "postulacion":
+                    self.public_event.seguimiento_etapa = other_public
+                setattr(self.public_event, field, value)
+                self.public_event.save(update_fields=[field, "seguimiento_etapa"])
+                self.assertEqual(self.upload_acta().status_code, 400)
+                self.assertFalse(DocumentoPostulacion.objects.filter(tipo_documento=self.acta_type).exists())
+                setattr(self.public_event, field, previous)
+                self.public_event.seguimiento_etapa = self.public_follow
+                self.public_event.save(update_fields=[field, "seguimiento_etapa"])
+
+    def test_usuario_ajeno(self):
+        self.assertEqual(self.upload_acta(self.other_student).status_code, 403)
+
+    def test_proyecto_conserva_aprobacion_manual(self):
+        self.modalidad.codigo = "PROYECTO_GRADO"
+        self.modalidad.save(update_fields=["codigo"])
+        self.assert_enviado()
+
+    def test_documento_existente_sin_version_no_autoaprueba(self):
+        DocumentoPostulacion.objects.create(postulacion=self.postulacion,
+            tipo_documento=self.acta_type, estado=self.estado_env, evento_defensa=self.public_event)
+        self.assert_enviado()
+
+
 class TestVersionDocumentoDownload(DocumentoAPITestCase):
     def _create_version(self, content=b"%PDF-1.4 contenido protegido") -> VersionDocumento:
         response = self.upload_document(

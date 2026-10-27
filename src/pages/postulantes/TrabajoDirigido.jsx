@@ -41,16 +41,14 @@ function backendFieldErrors(requestError) {
   return Object.fromEntries(Object.entries(fields).map(([name, value]) => [name, firstMessage(value)]).filter(([, value]) => value))
 }
 
-export default function TrabajoDirigido({ postulacion, trabajo, etapaCodigo, canManage, onChanged, reportSuccess: controlledReportSuccess, onReportSuccess }) {
+export default function TrabajoDirigido({ postulacion, trabajo, etapaCodigo, canManage, onChanged, reportSuccess: controlledReportSuccess, onReportSuccess, conclusion, onConclude }) {
   const [institution, setInstitution] = useState(() => asInstitution(trabajo?.institucion))
   const [report, setReport] = useState(EMPTY_REPORT)
   const [institutionSubmitting, setInstitutionSubmitting] = useState(false)
   const [reportSubmitting, setReportSubmitting] = useState(false)
-  const [conclusionSubmitting, setConclusionSubmitting] = useState(false)
   const [institutionFeedback, setInstitutionFeedback] = useState({ error: '', success: '', fields: {} })
   const [reportError, setReportError] = useState('')
   const [localReportSuccess, setLocalReportSuccess] = useState('')
-  const [conclusionError, setConclusionError] = useState('')
   const reportSubmittingRef = useRef(false)
   const reportSuccess = controlledReportSuccess ?? localReportSuccess
   const setReportSuccess = onReportSuccess ?? setLocalReportSuccess
@@ -118,20 +116,6 @@ export default function TrabajoDirigido({ postulacion, trabajo, etapaCodigo, can
     }
   }
 
-  const conclude = async () => {
-    if (conclusionSubmitting) return
-    setConclusionSubmitting(true)
-    setConclusionError('')
-    try {
-      await postulacionesService.concluirTrabajoDirigido(postulacion)
-      await onChanged()
-    } catch (requestError) {
-      setConclusionError(requestError.message || 'No se pudo concluir académicamente el Trabajo Dirigido.')
-    } finally {
-      setConclusionSubmitting(false)
-    }
-  }
-
   return <Card id="trabajo-dirigido" className="overflow-hidden border-cyan-300 bg-cyan-50 dark:border-cyan-800 dark:bg-cyan-950">
     <h2 className="text-xl font-bold">Trabajo Dirigido</h2>
     <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Práctica académico-laboral con institución, supervisión, perfil, documento final y defensas privada y pública.</p>
@@ -179,7 +163,7 @@ export default function TrabajoDirigido({ postulacion, trabajo, etapaCodigo, can
         {reportSuccess && <p role="status" className="text-sm font-medium text-emerald-700 dark:text-emerald-300">{reportSuccess}</p>}
       </form>}
     </section>
-    {canManage && etapaCodigo === 'CIERRE_DOCUMENTAL' && <div className="mt-4"><Button onClick={conclude} disabled={conclusionSubmitting} type="button">{conclusionSubmitting ? 'Concluyendo…' : 'Concluir académicamente'}</Button>{conclusionError && <p role="alert" className="mt-3 text-sm text-red-600">{conclusionError}</p>}</div>}
+    {canManage && etapaCodigo === 'CIERRE_DOCUMENTAL' && !conclusion?.concluded && <div className="mt-4"><Button onClick={onConclude} disabled={!onConclude || !conclusion?.allowed || conclusion.submitting || conclusion.done} type="button">{conclusion?.submitting ? 'Concluyendo…' : 'Concluir académicamente'}</Button>{conclusion?.error && <p role="alert" className="mt-3 text-sm text-red-600">{conclusion.error}</p>}</div>}
   </Card>
 }
 

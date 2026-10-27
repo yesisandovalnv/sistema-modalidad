@@ -156,7 +156,7 @@ class TrabajoDirigidoRevisionPolicy(ProyectoGradoRevisionTribunalPreviaPolicy):
 
 class TrabajoDirigidoRequisitosPolicy(BaseRequisitosPolicy):
     DOCUMENTS_BY_STAGE = {
-        "INSCRIPCION": ("CARTA_SOLICITUD_TD", "MATRICULA_VIGENTE_TD", "HISTORIAL_PRERREQ_TD", "FOLDER_AMARILLO_TD"),
+        "INSCRIPCION": ("CARTA_SOLICITUD_TD", "MATRICULA_VIGENTE_TD", "HISTORIAL_PRERREQ_TD"),
         "PERFIL_TRABAJO_DIRIGIDO": ("PERFIL_TRABAJO_DIRIGIDO", "INFORME_TUTOR_PERFIL_TD"),
         "DESARROLLO_TRABAJO_DIRIGIDO": ("INFORME_SUPERVISION_TD",),
         "DOCUMENTO_FINAL": ("DOCUMENTO_FINAL_TD", "INFORME_FINAL_TUTOR_TD"),
@@ -174,6 +174,9 @@ class TrabajoDirigidoRequisitosPolicy(BaseRequisitosPolicy):
         if fase is not None:
             return tuple(self.DOCUMENTS_BY_STAGE.get(fase, ()))
         return tuple(dict.fromkeys(code for values in self.DOCUMENTS_BY_STAGE.values() for code in values))
+
+    def get_entregas_requeridas(self, fase=None):
+        return ("FOLDER_AMARILLO",) if fase in (None, "INSCRIPCION") else ()
 
 
 class TrabajoDirigidoEvaluacionPolicy(ProyectoGradoLegacyEvaluacionPolicy):
@@ -473,18 +476,176 @@ class TrabajoDirigidoPolicy(BaseModalidadPolicy):
     def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
         if not seguimiento:
             return None
+        if seguimiento.etapa.codigo == "CIERRE_DOCUMENTAL" and seguimiento.estado == "APROBADA":
+            return self._orientar_conclusion(postulacion, seguimiento)
         if seguimiento.etapa.codigo == "INSCRIPCION":
             return self._orientar_inscripcion(postulacion)
         if seguimiento.etapa.codigo == "PERFIL_TRABAJO_DIRIGIDO":
             return self._orientar_perfil(postulacion, seguimiento)
         if seguimiento.etapa.codigo == "DESARROLLO_TRABAJO_DIRIGIDO":
             return self._orientar_desarrollo(postulacion, seguimiento)
+        if seguimiento.etapa.codigo == "REVISION_TRIBUNAL_PREVIA":
+            return self._orientar_revision_previa(postulacion, seguimiento)
         if seguimiento.etapa.codigo == "DEFENSA_PUBLICA":
             return self._orientar_defensa_publica(postulacion, seguimiento)
         return self.get_orientacion_documental_prioritaria(
             postulacion=postulacion,
             seguimiento=seguimiento,
         )
+
+    def _orientar_conclusion(self, postulacion, seguimiento):
+        from apps.postulantes.models import EvaluacionDefensa
+
+        if seguimiento.postulacion_id != postulacion.pk or not seguimiento.activo:
+            return None
+        ultimos = {}
+        for item in postulacion.seguimientos_etapa.filter(
+            activo=True, etapa__activo=True,
+        ).select_related("etapa").order_by("-numero_intento", "-pk"):
+            ultimos.setdefault(item.etapa.codigo, item.estado)
+        codigos = [etapa.codigo for etapa in self.get_etapas_configuradas()]
+        if not all(ultimos.get(codigo) == "APROBADA" for codigo in codigos):
+            return None
+
+        resultado = self.evaluacion_policy.calcular_resultado_final(postulacion)
+        concluida = getattr(postulacion.estado_actual, "codigo", None) == "CONCLUIDA"
+        destino = "#resultado-y-cierre"
+        if concluida:
+            titulo = "Proceso académico concluido"
+            mensaje = "La conclusión académica está formalizada. Puedes consultar el resultado final de la postulación."
+            accion = "CONSULTAR_RESULTADO"
+        else:
+            try:
+                self.validar_conclusion_academica(postulacion)
+            except ValidationError as error:
+                titulo = "Etapas completadas. Conclusión académica bloqueada"
+                mensaje = " ".join(error.messages)
+                accion = "REVISAR_BLOQUEO_CONCLUSION"
+                if hasattr(error, "message_dict") or "ACTA_DEFENSA_TD" in mensaje:
+                    destino = "#documentos"
+                elif "Defensa Pública" in mensaje:
+                    destino = "#defensas"
+            else:
+                titulo = "Etapas completadas. Conclusión académica pendiente"
+                nota = format(resultado["nota_final"], ".2f").replace(".", ",")
+                clasificacion = dict(EvaluacionDefensa.Resultado.choices).get(
+                    resultado["clasificacion"], resultado["clasificacion"],
+                )
+                mensaje = (
+                    f"Las {len(codigos)} etapas están aprobadas y el resultado final es {nota}/100 — {clasificacion}. "
+                    "Falta formalizar la conclusión académica de la postulación."
+                )
+                accion = "CONCLUIR_ACADEMICAMENTE"
+                destino = "#modalidad"
+        orientacion = self._respuesta_orientacion(mensaje, [], self._accion_orientacion(
+            accion, titulo, mensaje, destino,
+            "Concluir académicamente" if accion == "CONCLUIR_ACADEMICAMENTE" else "Consultar resultado" if concluida else "Revisar bloqueo",
+            disponible=accion == "CONCLUIR_ACADEMICAMENTE" or concluida,
+        ))
+        orientacion.update(
+            operacion="ORIENTAR_CONCLUSION_ACADEMICA", resultado_final=resultado,
+            etapas_completadas=len(codigos),
+        )
+        return orientacion
+
+    def _orientar_revision_previa(self, postulacion, seguimiento):
+        from apps.documentos.models import VersionDocumento
+        from apps.postulantes.models import InformeRevisionTribunalPrevia
+        from apps.postulantes.revision_tribunal import RevisionTribunalPreviaService as revision
+
+        if seguimiento.postulacion_id != postulacion.pk or not seguimiento.activo or seguimiento.estado not in {"EN_PROCESO", "OBSERVADA"}:
+            return None
+        requisitos = []
+
+        def respuesta(codigo, titulo, descripcion, destino, etiqueta, disponible=False):
+            result = self._respuesta_orientacion(descripcion, requisitos, self._accion_orientacion(
+                codigo, titulo, descripcion, destino, etiqueta, disponible=disponible,
+            ))
+            result.update(
+                requisitos_cumplidos=sum(item["cumplido"] for item in requisitos),
+                requisitos_totales=len(requisitos),
+                permite_aprobar_etapa=codigo == "APROBAR_ETAPA" and disponible,
+            )
+            return result
+
+        try:
+            revision._validar_tribunales(seguimiento)
+            tribunal_valido, tribunal_estado = True, "Tres integrantes activos y distintos"
+        except ValidationError as error:
+            tribunal_valido, tribunal_estado = False, " ".join(error.messages)
+        requisitos.append(self._requisito_orientacion(
+            "ACTOR", "TRIBUNAL", "Tribunal de revisión", tribunal_valido, "#actores", tribunal_estado,
+        ))
+        try:
+            _documento, version = revision._documento_final_actual(seguimiento)
+            documento_estado = f"Versión vigente {version.numero_version}, aprobada y sin correcciones"
+        except ValidationError as error:
+            version, documento_estado = None, " ".join(error.messages)
+        requisitos.append(self._requisito_orientacion(
+            "DOCUMENTO", "DOCUMENTO_FINAL_TD", "Documento Final de Trabajo Dirigido", version is not None,
+            "#documentos", documento_estado,
+        ))
+        evidencias = VersionDocumento.objects.filter(
+            documento__postulacion=postulacion,
+            documento__tipo_documento__codigo="INFORME_REVISION_TRIBUNAL_TD",
+            documento__activo=True, activo=True, es_version_actual=True,
+        ).select_related("documento__tipo_documento")
+        evidencia_disponible = False
+        for evidencia in evidencias:
+            try:
+                revision._validar_evidencia(seguimiento, evidencia)
+                evidencia_disponible = True
+                break
+            except ValidationError:
+                continue
+        requisitos.append(self._requisito_orientacion(
+            "DOCUMENTO", "INFORME_REVISION_TRIBUNAL_TD", "Informe de revisión del Tribunal",
+            evidencia_disponible, "#documentos", "Evidencia vigente disponible" if evidencia_disponible else "Evidencia vigente no disponible",
+        ))
+        informes = list(InformeRevisionTribunalPrevia.objects.filter(
+            seguimiento_etapa=seguimiento, version_documento_revisada=version, activo=True,
+        ).select_related("evidencia_version__documento__tipo_documento")) if version else []
+        informe = informes[0] if len(informes) == 1 else None
+        suficiente_valido = False
+        if informe:
+            try:
+                revision.validar_aprobacion(seguimiento)
+                suficiente_valido = True
+            except ValidationError:
+                pass
+        requisitos.append(self._requisito_orientacion(
+            "INFORME_TRIBUNAL", "RESULTADO_REVISION_TRIBUNAL", "Resultado académico de la versión vigente",
+            suficiente_valido, "#informes-etapa", informe.resultado if informe else "Pendiente de registro",
+        ))
+        if not version:
+            return respuesta("GESTIONAR_DOCUMENTOS", "Completar Documento Final vigente",
+                             "El personal responsable debe completar la revisión del Documento Final: se requiere una versión activa, aprobada y sin correcciones.",
+                             "#documentos", "Consultar Documento Final")
+        if not tribunal_valido:
+            return respuesta("GESTIONAR_ACTORES", "Revisar la composición del Tribunal",
+                             tribunal_estado, "#actores", "Gestionar actores")
+        if len(informes) > 1:
+            return respuesta("CONSULTAR_REVISION_TRIBUNAL", "Revisar los informes de la versión vigente",
+                             "El contexto de informes es ambiguo. Consulta los registros antes de continuar.", "#informes-etapa", "Consultar informes")
+        if not evidencia_disponible:
+            return respuesta("COMPLETAR_DOCUMENTOS", "Cargar evidencia de revisión del Tribunal",
+                             "Adjunta una versión vigente y disponible del Informe de revisión del Tribunal. La evidencia documental no sustituye el registro del resultado académico.",
+                             "#documentos", "Gestionar documentos")
+        if informe and revision.evidencia_requiere_actualizacion(seguimiento, informe):
+            return respuesta("ACTUALIZAR_INFORME_TRIBUNAL", "Actualizar evidencia del informe del Tribunal",
+                             "El personal administrativo debe vincular la evidencia vigente al resultado ya registrado, conservando su resultado y versión revisada.",
+                             "#informes-etapa", "Actualizar informe del Tribunal", disponible=True)
+        if not informe:
+            return respuesta("REGISTRAR_INFORME_TRIBUNAL", "Registrar resultado de revisión del Tribunal",
+                             "El Documento Final y la evidencia de revisión están disponibles. Falta registrar el resultado emitido por el Tribunal sobre la versión vigente del Documento Final",
+                             "#informes-etapa", "Registrar informe del Tribunal", disponible=True)
+        if not suficiente_valido:
+            return respuesta("CONSULTAR_REVISION_TRIBUNAL", "Atender observaciones del Tribunal",
+                             "El resultado de la versión vigente es INSUFICIENTE. Consulta las observaciones y gestiona las correcciones y la nueva revisión mediante las operaciones existentes.",
+                             "#informes-etapa", "Consultar observaciones")
+        return respuesta("APROBAR_ETAPA", "Aprobar Revisión de Tribunal Previa",
+                         "El resultado SUFICIENTE de la versión vigente tiene evidencia válida. El personal administrativo puede aprobar explícitamente la etapa.",
+                         "#resumen", "Aprobar etapa", disponible=True)
 
     def _orientar_defensa_publica(self, postulacion, seguimiento):
         from apps.documentos.models import DocumentoPostulacion, TipoDocumento, VersionDocumento
@@ -915,11 +1076,13 @@ class TrabajoDirigidoPolicy(BaseModalidadPolicy):
         ).first()
         delivery_complete = bool(
             delivery and delivery.estado == EntregaFisica.Estado.COMPLETA
+            and delivery.cantidad_recibida > 0
+            and (delivery.cantidad is None or delivery.cantidad_recibida >= delivery.cantidad)
         )
         requirements.append({
             "tipo": "ENTREGA_FISICA",
             "codigo": EntregaFisica.Tipo.FOLDER_AMARILLO,
-            "nombre": "Fólder amarillo rotulado con nombre y modalidad",
+            "nombre": "Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida",
             "cumplido": delivery_complete,
             "estado": "CUMPLIDO" if delivery_complete else "PENDIENTE",
             "estado_display": "Recepción registrada" if delivery_complete else "Pendiente de recepción",
@@ -1207,6 +1370,12 @@ class TrabajoDirigidoPolicy(BaseModalidadPolicy):
 
     def validar_aprobacion_etapa(self, seguimiento):
         stage = seguimiento.etapa.codigo
+        if stage == "INSCRIPCION":
+            requirements = self._evaluar_requisitos_inscripcion(seguimiento.postulacion)
+            missing = [item["codigo"] for item in requirements if not item["cumplido"]]
+            if missing:
+                raise ValidationError({"faltantes": missing})
+            return
         if stage == "DESARROLLO_TRABAJO_DIRIGIDO":
             expediente = self._validar_institucion(seguimiento.postulacion)
             if not expediente.informes_seguimiento.filter(activo=True).exists():

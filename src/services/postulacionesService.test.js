@@ -7,6 +7,33 @@ vi.mock('./api', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 describe('postulacionesService', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it.each(['EN_PROCESO', 'CONCLUIDA'])('Excelencia %s no consulta resultado ni cierre genéricos', async (state) => {
+    apiClient.get.mockImplementation(async (url) => {
+      if (url.endsWith('/flujo/')) return { data: { etapas: [] } }
+      if (url === '/api/v1/postulaciones/7/') return { data: {
+        id: 7, modalidad_detalle: { codigo: 'EXCELENCIA_ACADEMICA' }, estado_actual_detalle: { codigo: state },
+      } }
+      throw new Error(`Consulta incompatible: ${url}`)
+    })
+    const result = await postulacionesService.obtenerExpediente(7)
+    expect(apiClient.get.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v1/postulaciones/7/', '/api/v1/postulaciones/7/flujo/',
+    ])
+    expect(result.resultado).toEqual({ data: null, error: '' })
+    expect(result.cierre).toEqual({ data: null, error: '' })
+    expect(apiClient.post).not.toHaveBeenCalled()
+  })
+
+  it.each(['PROYECTO_GRADO', 'TESIS_GRADO', 'EXAMEN_GRADO', 'TRABAJO_DIRIGIDO', 'GRADUACION_VIA_DIPLOMADO'])('conserva las consultas existentes de %s', async (code) => {
+    apiClient.get.mockImplementation(async (url) => ({ data: url === '/api/v1/postulaciones/7/'
+      ? { modalidad_detalle: { codigo: code } } : {} }))
+    await postulacionesService.obtenerExpediente(7)
+    expect(apiClient.get.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v1/postulaciones/7/', '/api/v1/postulaciones/7/flujo/',
+      '/api/v1/postulaciones/7/resultado-final/', '/api/v1/postulaciones/7/cierre/',
+    ])
+  })
+
   it('verifica varias condiciones mediante el endpoint batch autorizado', async () => {
     const signal = new AbortController().signal
     const result = [{ id: 11, estado: 'CUMPLE' }, { id: 12, estado: 'CUMPLE' }]
