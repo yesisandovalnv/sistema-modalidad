@@ -211,6 +211,7 @@ export default function DefenseEvaluation({ defense, quorum, canManage, onChange
   const tesis = defense.postulacion_modalidad_codigo === 'TESIS_GRADO'
   const proyectoGrado = defense.postulacion_modalidad_codigo === 'PROYECTO_GRADO'
   const trabajoDirigido = defense.postulacion_modalidad_codigo === 'TRABAJO_DIRIGIDO'
+  const diplomadoPublica = defense.postulacion_modalidad_codigo === 'GRADUACION_VIA_DIPLOMADO' && type === 'publica'
   const tesisPrivada = tesis && type === 'privada'
   const tesisPublica = tesis && type === 'publica'
   const thesisModeEvaluation = tesisPrivada || tesisPublica
@@ -572,7 +573,9 @@ export default function DefenseEvaluation({ defense, quorum, canManage, onChange
           <p className="mt-2 text-sm text-slate-600">Ponderación en la nota final: 70%</p>
           <p className="text-sm font-medium" aria-live="polite">Aporte ponderado: {weightedNotePreview(projectPublicNote, 70) || '—'} / 70</p>
         </div>
-          : <label className="block text-sm font-medium">Nota pública (0–70)<input name="nota_publica" type="number" min="0" max="70" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label>)}
+          : diplomadoPublica
+            ? <label className="block text-sm font-medium">Nota pública (1–100)<input name="nota_publica" type="number" min="1" max="100" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label>
+            : <label className="block text-sm font-medium">Nota pública (0–70)<input name="nota_publica" type="number" min="0" max="70" step="0.01" required className="mt-1 w-full rounded-md border p-2" /></label>)}
       <label className="block text-sm font-medium">Observaciones<textarea name="observaciones" className="mt-1 w-full rounded-md border p-2" /></label>
       {form.error && recovery?.action !== 'evaluar' && <p role="alert" className="text-sm text-red-600">{form.error}</p>}
       <div className="flex gap-2"><Button type="submit" disabled={form.submitting || form.uncertain}>{form.submitting ? 'Procesando…' : 'Registrar'}</Button><Button type="button" variant="secondary" disabled={form.submitting} onClick={() => setForm(null)}>Cancelar</Button></div>

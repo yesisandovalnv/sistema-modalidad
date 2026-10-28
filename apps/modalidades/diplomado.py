@@ -296,6 +296,95 @@ class DiplomadoPolicy(BaseModalidadPolicy):
     def get_orientacion_etapa_actual(self, *, postulacion, seguimiento):
         if seguimiento is None:
             return None
+        if seguimiento.etapa.codigo in {"CIERRE_DOCUMENTAL", "CONCLUSION_ACADEMICA"}:
+            from apps.documentos.models import TipoDocumento
+            from apps.postulantes.workflow import WorkflowService
+
+            stage_code = seguimiento.etapa.codigo
+            codigos = self.get_documentos_requeridos(stage_code)
+            documental = self.get_orientacion_documental_prioritaria(
+                postulacion=postulacion, seguimiento=seguimiento,
+            )
+            proyectados = {item["codigo"]: item for item in (documental or {}).get("requisitos", [])}
+            sin_proyeccion = [codigo for codigo in codigos if codigo not in proyectados]
+            nombres = dict(TipoDocumento.objects.filter(codigo__in=sin_proyeccion, activo=True)
+                           .values_list("codigo", "nombre"))
+            faltantes = set(missing_documents(postulacion, sin_proyeccion)) if sin_proyeccion else set()
+            documentos = {
+                item.tipo_documento.codigo: item
+                for item in postulacion.documentos.filter(activo=True, tipo_documento__codigo__in=codigos)
+                .select_related("tipo_documento").prefetch_related("versiones")
+            }
+            requisitos = []
+            for codigo in codigos:
+                cumplido = codigo not in faltantes
+                item = dict(proyectados.get(codigo) or {
+                    "tipo": "DOCUMENTO", "codigo": codigo,
+                    "nombre": nombres.get(codigo, codigo.replace("_", " ").title()),
+                    "cumplido": cumplido, "estado": "APROBADO" if cumplido else "PENDIENTE",
+                    "estado_display": "Aprobado" if cumplido else "Pendiente de documentación",
+                    "destino": None if cumplido else "#documentos",
+                })
+                documento = documentos.get(codigo)
+                if documento and not any(v.activo and v.es_version_actual for v in documento.versiones.all()):
+                    item.update(cumplido=False, estado="SIN_VERSION_VIGENTE", estado_display="Sin versión vigente", destino="#documentos")
+                elif documento and documento.requiere_correccion and item["cumplido"] is True:
+                    item.update(cumplido=False, estado="REQUIERE_CORRECCION", estado_display="Requiere revisión administrativa", destino="#documentos")
+                requisitos.append(item)
+
+            if stage_code == "CONCLUSION_ACADEMICA":
+                anteriores = STAGE_DATA[:-1]
+                aprobadas = set(postulacion.seguimientos_etapa.filter(
+                    etapa__codigo__in=[code for code, _name in anteriores], estado="APROBADA",
+                ).values_list("etapa__codigo", flat=True))
+                requisitos.extend({
+                    "tipo": "ETAPA_ACADEMICA", "codigo": code, "nombre": f"Etapa aprobada: {nombre}",
+                    "cumplido": code in aprobadas,
+                    "estado": "APROBADA" if code in aprobadas else "PENDIENTE",
+                    "estado_display": "Aprobada" if code in aprobadas else "Pendiente de aprobación",
+                    "destino": None if code in aprobadas else "#resumen",
+                } for code, nombre in anteriores)
+
+            completos = all(item["cumplido"] is True for item in requisitos)
+            if documental is not None:
+                mensaje = documental["mensaje"]
+                accion = documental["siguiente_accion"]
+            elif any(item["tipo"] == "DOCUMENTO" and item["cumplido"] is not True for item in requisitos):
+                mensaje = "Existen requisitos documentales pendientes. Revisa la documentación y su configuración activa."
+                accion = {
+                    "codigo": "GESTIONAR_ETAPA", "titulo": "Consultar documentos pendientes",
+                    "descripcion": "Consulta los requisitos documentales antes de continuar.",
+                    "estado": "PENDIENTE", "estado_display": "Pendiente",
+                    "destino": "#documentos", "accion_label": "Consultar documentos",
+                }
+            elif stage_code == "CONCLUSION_ACADEMICA":
+                mensaje = (
+                    "Los requisitos están cumplidos. Falta formalizar la conclusión académica mediante la operación administrativa existente."
+                    if completos else "Los documentos finales están aprobados, pero faltan etapas académicas anteriores por aprobar."
+                )
+                accion = {
+                    "codigo": "GESTIONAR_ETAPA", "titulo": "Consultar conclusión académica" if completos else "Revisar etapas pendientes",
+                    "descripcion": "La conclusión corresponde al personal administrativo autorizado y requiere una operación explícita." if completos else "Completa las etapas anteriores mediante sus operaciones existentes.",
+                    "estado": "DISPONIBLE" if completos else "PENDIENTE",
+                    "estado_display": "Disponible" if completos else "Pendiente",
+                    "destino": "#diplomado" if completos else "#resumen",
+                    "accion_label": "Consultar conclusión en Modalidad" if completos else "Revisar etapas pendientes",
+                }
+            else:
+                mensaje = "Los documentos de Cierre documental están aprobados. La aprobación de la etapa es explícita."
+                accion = {
+                    "codigo": "APROBAR_ETAPA", "titulo": "Aprobar Cierre documental",
+                    "descripcion": "El backend verificará los requisitos al aprobar la etapa.",
+                    "estado": "DISPONIBLE", "estado_display": "Disponible", "destino": "#resumen",
+                    "accion_label": "Aprobar Cierre documental",
+                } if completos and "aprobar" in WorkflowService.obtener_acciones_permitidas(seguimiento) else None
+            return {
+                "operacion": "ORIENTAR_CONCLUSION_ACADEMICA" if stage_code == "CONCLUSION_ACADEMICA" else "ORIENTAR_ETAPA",
+                "mensaje": mensaje, "requisitos": requisitos,
+                "requisitos_cumplidos": sum(item["cumplido"] is True for item in requisitos),
+                "requisitos_totales": len(requisitos), "siguiente_accion": accion,
+                "conflictos_identidad": [],
+            }
         if seguimiento.etapa.codigo in {"INSCRIPCION", "REVISION_MONOGRAFIA", "DEFENSA_PUBLICA"}:
             stage_code = seguimiento.etapa.codigo
             stage_name = seguimiento.etapa.nombre

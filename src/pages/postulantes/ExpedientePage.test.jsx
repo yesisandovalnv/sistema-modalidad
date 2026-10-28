@@ -1531,6 +1531,53 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByRole('tab', { name: 'Resumen' })).toHaveFocus()
   })
 
+  it.each(['CIERRE_DOCUMENTAL', 'CONCLUSION_ACADEMICA'])('presenta documentos y etapas reales de Diplomado en %s sin ejecutar operaciones', async (codigo) => {
+    const conclusion = codigo === 'CONCLUSION_ACADEMICA'
+    const stage = { id: 90, codigo, nombre: conclusion ? 'Conclusión académica' : 'Cierre documental', estado: conclusion ? 'PENDIENTE' : 'EN_PROCESO', activo: true, numero_intento: 1 }
+    const requisitos = [
+      { tipo: 'DOCUMENTO', codigo: 'ACTA_DEFENSA_DIPL', nombre: 'Acta de Defensa de Diplomado', cumplido: false, estado: 'NO_PRESENTADO', estado_display: 'No presentado', destino: '#documentos' },
+      { tipo: 'DOCUMENTO', codigo: 'MONOGRAFIA_EMPAST_D', nombre: 'Monografía empastada de Diplomado', cumplido: true, estado: 'APROBADO', estado_display: 'Aprobado', destino: null },
+      ...(conclusion ? [{ tipo: 'ETAPA_ACADEMICA', codigo: 'CIERRE_DOCUMENTAL', nombre: 'Etapa aprobada: Cierre documental', cumplido: false, estado: 'PENDIENTE', estado_display: 'Pendiente de aprobación', destino: '#resumen' }] : []),
+    ]
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response, detalle: { ...response.detalle, modalidad_detalle: { codigo: 'GRADUACION_VIA_DIPLOMADO', nombre: 'Graduación Vía Diplomado' } },
+      cierre: { data: null, error: '' }, flujo: { ...response.flujo, etapa_actual: stage, etapas: [stage], etapas_completadas: 8, etapas_totales: 10, porcentaje_avance: 80,
+        orientacion_etapa_actual: { operacion: conclusion ? 'ORIENTAR_CONCLUSION_ACADEMICA' : 'ORIENTAR_ETAPA', mensaje: 'Completa los documentos requeridos de esta etapa antes de continuar con el siguiente paso académico.', requisitos, requisitos_cumplidos: 1, requisitos_totales: requisitos.length,
+          siguiente_accion: { codigo: 'COMPLETAR_DOCUMENTOS', titulo: 'Cargar documentos', descripcion: 'Carga los documentos no presentados para que puedan ser revisados.', estado: 'PENDIENTE', destino: '#documentos', accion_label: 'Cargar documentos' } },
+      },
+    })
+    postulacionesService.obtenerDiplomado.mockResolvedValue({ modulos: [] })
+    renderApplicationManagerPage()
+    const list = await screen.findByRole('heading', { name: 'Requisitos de esta etapa' })
+    const section = list.closest('section')
+    expect(within(section).getByText(/Acta de Defensa de Diplomado/)).toBeVisible()
+    expect(within(section).getByText('No presentado')).toBeVisible()
+    expect(within(section).getByText(/Monografía empastada de Diplomado/)).toBeVisible()
+    expect(within(section).getByText(`1 de ${requisitos.length} cumplidos`)).toBeVisible()
+    if (conclusion) expect(within(section).getByText(/Etapa aprobada: Cierre documental/)).toBeVisible()
+    expect(postulacionesService.aprobarEtapa).not.toHaveBeenCalled()
+    expect(postulacionesService.concluirAcademicamente).not.toHaveBeenCalled()
+    expect(postulacionesService.cargarDocumento).not.toHaveBeenCalled()
+  })
+
+  it('orienta a consultar la conclusion explicita de Diplomado sin ofrecer aprobacion al estudiante', async () => {
+    const stage = { id: 90, codigo: 'CONCLUSION_ACADEMICA', nombre: 'Conclusión académica', estado: 'PENDIENTE', activo: true, numero_intento: 1 }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response, detalle: { ...response.detalle, modalidad_detalle: { codigo: 'GRADUACION_VIA_DIPLOMADO', nombre: 'Graduación Vía Diplomado' } }, cierre: { data: null, error: '' },
+      flujo: { ...response.flujo, etapa_actual: stage, etapas: [stage],
+        orientacion_etapa_actual: { operacion: 'ORIENTAR_CONCLUSION_ACADEMICA', mensaje: 'Los requisitos están cumplidos. Falta formalizar la conclusión académica mediante la operación administrativa existente.', requisitos: [],
+          siguiente_accion: { codigo: 'GESTIONAR_ETAPA', titulo: 'Consultar conclusión académica', descripcion: 'La conclusión corresponde al personal administrativo autorizado y requiere una operación explícita.', estado: 'DISPONIBLE', destino: '#diplomado', accion_label: 'Consultar conclusión en Modalidad' } },
+      },
+    })
+    postulacionesService.obtenerDiplomado.mockResolvedValue({ modulos: [] })
+    renderOwnerPage('resumen')
+    const link = await screen.findByRole('link', { name: 'Consultar conclusión en Modalidad' })
+    expect(link).toHaveAttribute('href', '#diplomado')
+    expect(screen.queryByRole('button', { name: 'Concluir académicamente' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Aprobar etapa/ })).not.toBeInTheDocument()
+    expect(postulacionesService.concluirAcademicamente).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['PROYECTO_GRADO', 'Proyecto de Grado', null, null],
     ['TESIS_GRADO', 'Tesis de Grado', null, null],

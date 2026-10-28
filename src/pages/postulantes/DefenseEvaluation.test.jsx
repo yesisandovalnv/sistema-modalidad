@@ -38,6 +38,37 @@ const profileDefense = (modalidad = 'PROYECTO_GRADO') => ({
 describe('DefenseEvaluation por modalidad', () => {
   beforeEach(() => vi.resetAllMocks())
 
+  it.each(['66', '70', '71', '80', '90', '95', '100', '95.25'])('envia nota integra %s de Diplomado por consenso sobre cien', async (nota) => {
+    postulacionesService.registrarEvaluacionDefensa.mockResolvedValue({})
+    render(<DefenseEvaluation defense={{ ...defense('GRADUACION_VIA_DIPLOMADO'), estado: 'FINALIZADA', configuracion_numerica: null }} quorum={quorum} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    const input = screen.getByLabelText('Nota pública (1–100)')
+    expect(input).toHaveAttribute('min', '1')
+    expect(input).toHaveAttribute('max', '100')
+    expect(input).toHaveAttribute('step', '0.01')
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(1)
+    expect(screen.queryByText(/Nota privada|Nota de Defensa Privada/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Ponderación|Aporte ponderado/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Modo')).not.toBeInTheDocument()
+    await userEvent.type(input, nota)
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar', exact: true }))
+    await waitFor(() => expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(9, 'publica', {
+      observaciones: '', modalidad_registro: 'CONSENSO', nota_publica: nota,
+    }, expect.any(AbortSignal)))
+    expect(postulacionesService.finalizarDefensa).not.toHaveBeenCalled()
+    expect(postulacionesService.consolidarEvaluacionDefensa).not.toHaveBeenCalled()
+  })
+
+  it.each(['0', '100.01'])('bloquea en el formulario la nota %s fuera del rango de Diplomado', async (nota) => {
+    render(<DefenseEvaluation defense={defense('GRADUACION_VIA_DIPLOMADO')} quorum={quorum} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: /registrar evaluación/i }))
+    const input = screen.getByLabelText('Nota pública (1–100)')
+    await userEvent.type(input, nota)
+    expect(input).toBeInvalid()
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar', exact: true }))
+    expect(postulacionesService.registrarEvaluacionDefensa).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['DEFENSA_PRIVADA', 0, 30, '28,50'], ['DEFENSA_PUBLICA', 1, 70, '66,50'],
   ])('usa configuración numérica compartida de Tesis para %s y declara la semántica', async (type, min, weight, preview) => {

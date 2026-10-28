@@ -209,6 +209,26 @@ class PostulacionViewSet(viewsets.ModelViewSet):
 
                     TesisGradoWorkflowOrchestrator.inicializar_proceso(postulacion, request.user)
                     postulacion.refresh_from_db()
+                elif (
+                    postulacion.modalidad.codigo in {
+                        "EXAMEN_GRADO", "TRABAJO_DIRIGIDO", "GRADUACION_VIA_DIPLOMADO",
+                    }
+                    and postulacion.tipo_registro == Postulacion.TipoRegistroChoices.SEGUIMIENTO
+                ):
+                    policy = ModalidadPolicyRegistry.get(postulacion)
+                    etapa_inicial = policy.get_etapa_inicial()
+                    seguimientos = WorkflowService.inicializar_flujo(postulacion, request.user)
+                    if (
+                        etapa_inicial is None
+                        or etapa_inicial.codigo != "INSCRIPCION"
+                        or not seguimientos
+                        or seguimientos[0].etapa.codigo != etapa_inicial.codigo
+                    ):
+                        raise DjangoValidationError(
+                            "La primera etapa activa debe corresponder a la Inscripción oficial de la modalidad."
+                        )
+                    WorkflowService.iniciar_etapa(seguimientos[0], request.user)
+                    postulacion.refresh_from_db()
         except DjangoValidationError as exc:
             raise DRFValidationError(str(exc)) from exc
 

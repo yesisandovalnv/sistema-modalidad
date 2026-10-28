@@ -6,6 +6,8 @@ from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -236,6 +238,95 @@ class DiplomadoTest(TestCase):
             postulacion=self.post,
             seguimiento=self.follow["INSCRIPCION"],
         )
+
+    def test_orientacion_cierre_y_conclusion_documentos_no_presentados_sin_escrituras(self):
+        for codigo in ("CIERRE_DOCUMENTAL", "CONCLUSION_ACADEMICA"):
+            with self.subTest(etapa=codigo), CaptureQueriesContext(connection) as queries:
+                orientacion = self._orientacion(self.follow[codigo])
+            self.assertTrue(all(query["sql"].lstrip().upper().startswith("SELECT") for query in queries))
+            documentos = [item for item in orientacion["requisitos"] if item["tipo"] == "DOCUMENTO"]
+            self.assertEqual(len(documentos), 2)
+            self.assertEqual([item["nombre"] for item in documentos], [
+                TipoDocumento.objects.get(codigo=code).nombre for code in DOCUMENTS_BY_STAGE[codigo]
+            ])
+            self.assertTrue(all(item["cumplido"] is False and item["estado"] == "NO_PRESENTADO" for item in documentos))
+            self.assertEqual(orientacion["requisitos_cumplidos"], 0)
+            self.assertEqual(orientacion["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+            self.assertEqual(orientacion["siguiente_accion"]["destino"], "#documentos")
+
+    def test_orientacion_final_refleja_revision_correccion_y_cumplimiento_parcial(self):
+        documento = self._crear_documento_inscripcion("ACTA_DEFENSA_DIPL", estado="ENV")
+        segundo = self._crear_documento_inscripcion("MONOGRAFIA_EMPAST_D")
+        for estado, correccion, esperado in (("ENV", False, "PENDIENTE_REVISION"), ("OBS", True, "REQUIERE_CORRECCION"), ("REC", False, "REQUIERE_CORRECCION"), ("APR", True, "REQUIERE_CORRECCION")):
+            documento.estado = EstadoDocumento.objects.get(codigo=estado)
+            documento.requiere_correccion = correccion
+            documento.save()
+            for codigo in ("CIERRE_DOCUMENTAL", "CONCLUSION_ACADEMICA"):
+                with self.subTest(estado=estado, correccion=correccion, etapa=codigo):
+                    orientacion = self._orientacion(self.follow[codigo])
+                    requisitos = {item["codigo"]: item for item in orientacion["requisitos"]}
+                    self.assertEqual(requisitos["ACTA_DEFENSA_DIPL"]["estado"], esperado)
+                    self.assertFalse(requisitos["ACTA_DEFENSA_DIPL"]["cumplido"])
+                    self.assertTrue(requisitos[segundo.tipo_documento.codigo]["cumplido"])
+                    self.assertEqual(orientacion["requisitos_cumplidos"], 1)
+                    accion = "ESPERAR_REVISION_DOCUMENTOS" if estado == "ENV" else "GESTIONAR_ETAPA" if estado == "APR" else "COMPLETAR_DOCUMENTOS"
+                    self.assertEqual(orientacion["siguiente_accion"]["codigo"], accion)
+
+    def test_orientacion_final_sin_version_vigente_no_cuenta_documento_como_cumplido(self):
+        documento = self._crear_documento_inscripcion("ACTA_DEFENSA_DIPL")
+        documento.versiones.update(es_version_actual=False)
+        self._crear_documento_inscripcion("MONOGRAFIA_EMPAST_D")
+        for codigo in ("CIERRE_DOCUMENTAL", "CONCLUSION_ACADEMICA"):
+            orientacion = self._orientacion(self.follow[codigo])
+            item = next(item for item in orientacion["requisitos"] if item["codigo"] == "ACTA_DEFENSA_DIPL")
+            self.assertEqual(item["estado_display"], "Sin versión vigente")
+            self.assertFalse(item["cumplido"])
+            self.assertEqual(orientacion["requisitos_cumplidos"], 1)
+
+    def test_cierre_completo_orienta_aprobacion_explicita_y_filtra_permiso(self):
+        stage = self.follow["CIERRE_DOCUMENTAL"]
+        self.post.seguimientos_etapa.filter(etapa__orden__lt=stage.etapa.orden).update(estado="APROBADA")
+        WorkflowService.iniciar_etapa(stage, self.admin)
+        stage.refresh_from_db()
+        for code in DOCUMENTS_BY_STAGE["CIERRE_DOCUMENTAL"]:
+            self._crear_documento_inscripcion(code)
+        with CaptureQueriesContext(connection) as queries:
+            orientacion = self._orientacion(stage)
+        self.assertTrue(all(query["sql"].lstrip().upper().startswith("SELECT") for query in queries))
+        self.assertEqual(orientacion["requisitos_cumplidos"], 2)
+        self.assertEqual(orientacion["requisitos_totales"], 2)
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
+        request = APIRequestFactory().get("/")
+        request.user = self.student
+        alumno = FlujoPostulacionSerializer(self.post, context={"request": request}).data["orientacion_etapa_actual"]
+        self.assertIsNone(alumno["siguiente_accion"])
+        stage.refresh_from_db()
+        self.assertEqual(stage.estado, "EN_PROCESO")
+        self.post.refresh_from_db()
+        self.assertNotEqual(self.post.estado_actual.codigo, "CONCLUIDA")
+
+    def test_conclusion_distingue_etapas_pendientes_y_no_concluye_por_consulta(self):
+        for code in DOCUMENTS_BY_STAGE["CONCLUSION_ACADEMICA"]:
+            self._crear_documento_inscripcion(code)
+        stage = self.follow["CONCLUSION_ACADEMICA"]
+        pendiente = self._orientacion(stage)
+        self.assertEqual(pendiente["requisitos_totales"], 11)
+        self.assertEqual(pendiente["requisitos_cumplidos"], 2)
+        self.assertEqual(pendiente["siguiente_accion"]["destino"], "#resumen")
+        self.assertEqual(len([item for item in pendiente["requisitos"] if item["tipo"] == "ETAPA_ACADEMICA" and not item["cumplido"]]), 9)
+        with self.assertRaises(ValidationError):
+            DiplomadoPolicy().validar_conclusion_academica(self.post)
+        self.post.seguimientos_etapa.exclude(pk=stage.pk).update(estado="APROBADA")
+        with CaptureQueriesContext(connection) as queries:
+            lista = self._orientacion(stage)
+        self.assertTrue(all(query["sql"].lstrip().upper().startswith("SELECT") for query in queries))
+        self.assertEqual(lista["requisitos_cumplidos"], 11)
+        self.assertEqual(lista["siguiente_accion"]["destino"], "#diplomado")
+        self.assertEqual(lista["siguiente_accion"]["accion_label"], "Consultar conclusión en Modalidad")
+        stage.refresh_from_db()
+        self.assertEqual(stage.estado, "PENDIENTE")
+        self.post.refresh_from_db()
+        self.assertNotEqual(self.post.estado_actual.codigo, "CONCLUIDA")
 
     def _iniciar_etapa_modulo(self, codigo="MODULO_1"):
         target = self.follow[codigo]

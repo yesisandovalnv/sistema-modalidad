@@ -94,6 +94,83 @@ describe('DefenseParticipants US-020', () => {
     expect(within(dialog).getByRole('checkbox', { name: 'Secretaria Libre — Secretario' })).toBeEnabled()
   })
 
+  it('muestra solo designaciones permitidas de Diplomado sin incorporar ni registrar asistencia automaticamente', async () => {
+    postulacionesService.obtenerAsignacionesCandidatas.mockResolvedValue({ results: [
+      ...candidateRows,
+      { id: 31, usuario: 31, usuario_nombre: 'Decano designado', tipo_participacion: 'DECANO_FACULTAD', activo: true },
+      { id: 32, usuario: 32, usuario_nombre: 'Vicerrector designado', tipo_participacion: 'VICERRECTOR_POSGRADO', activo: true },
+      { id: 33, usuario: 33, usuario_nombre: 'Director designado', tipo_participacion: 'DIRECTOR_CARRERA', activo: true },
+      { id: 34, usuario: 34, usuario_nombre: 'Tribunal disponible', tipo_participacion: 'TRIBUNAL', activo: true },
+      { id: 35, usuario_nombre: 'Decano inactivo', tipo_participacion: 'DECANO_FACULTAD', activo: false },
+      { id: 36, usuario_nombre: 'Supervisor no permitido', tipo_participacion: 'SUPERVISOR_INSTITUCIONAL', activo: true },
+    ] })
+    const onChanged = vi.fn()
+    render(<DefenseParticipants defense={{ ...defense, postulacion_modalidad_codigo: 'GRADUACION_VIA_DIPLOMADO', tipo_evento: 'DEFENSA_PUBLICA', estado: 'EN_CURSO' }} canManage onChanged={onChanged} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar participante' }))
+    const dialog = screen.getByRole('dialog', { name: 'Agregar participante' })
+    expect(await within(dialog).findByRole('checkbox', { name: /Decano designado/ })).toBeEnabled()
+    for (const name of ['Vicerrector designado', 'Director designado', 'Tribunal disponible']) {
+      expect(within(dialog).getByRole('checkbox', { name: new RegExp(name) })).toBeEnabled()
+    }
+    for (const name of ['Ana Tribunal', 'Decano inactivo', 'Supervisor no permitido', 'Pablo Presidente', 'Sara Secretaria', 'Diana Modalidad']) {
+      expect(within(dialog).queryByRole('checkbox', { name: new RegExp(name) })).not.toBeInTheDocument()
+    }
+    expect(within(dialog).queryByText('Persona sin designacion')).not.toBeInTheDocument()
+    expect(postulacionesService.obtenerAsignacionesCandidatas).toHaveBeenCalledWith(7, expect.any(AbortSignal))
+    expect(postulacionesService.agregarParticipanteDefensa).not.toHaveBeenCalled()
+    expect(postulacionesService.registrarAsistenciaDefensa).not.toHaveBeenCalled()
+    expect(onChanged).not.toHaveBeenCalled()
+  })
+
+  it.each(['DECANO_FACULTAD', 'VICERRECTOR_POSGRADO', 'DIRECTOR_CARRERA', 'TRIBUNAL'])('incorpora %s de Diplomado solo tras confirmacion explicita', async (role) => {
+    postulacionesService.obtenerAsignacionesCandidatas.mockResolvedValue({ results: [
+      { id: 31, usuario: 31, usuario_nombre: 'Persona designada', tipo_participacion: role, activo: true },
+    ] })
+    render(<DefenseParticipants defense={{ ...defense, postulacion_modalidad_codigo: 'GRADUACION_VIA_DIPLOMADO', tipo_evento: 'DEFENSA_PUBLICA', participantes: [] }} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar participante' }))
+    const dialog = screen.getByRole('dialog', { name: 'Agregar participante' })
+    await userEvent.click(await within(dialog).findByRole('checkbox', { name: /Persona designada/ }))
+    expect(postulacionesService.agregarParticipanteDefensa).not.toHaveBeenCalled()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Agregar 1 participante' }))
+    await waitFor(() => expect(postulacionesService.agregarParticipanteDefensa).toHaveBeenCalledWith(81, 31, role, expect.any(AbortSignal)))
+    expect(postulacionesService.agregarParticipanteDefensa).toHaveBeenCalledTimes(1)
+    expect(postulacionesService.registrarAsistenciaDefensa).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['PROYECTO_GRADO', 'DEFENSA_PUBLICA'],
+    ['PROYECTO_GRADO', 'DEFENSA_PERFIL'],
+    ['TESIS_GRADO', 'DEFENSA_PUBLICA'],
+    ['TESIS_GRADO', 'DEFENSA_PRIVADA'],
+  ])('conserva filtros de autoridades en %s / %s', async (modalidad, tipo) => {
+    postulacionesService.obtenerAsignacionesCandidatas.mockResolvedValue({ results: [
+      ...candidateRows,
+      ...['DECANO_FACULTAD', 'VICERRECTOR_POSGRADO', 'DIRECTOR_CARRERA'].map((role, index) => ({
+        id: 31 + index, usuario_nombre: `Autoridad ${index}`, tipo_participacion: role, activo: true,
+      })),
+    ] })
+    render(<DefenseParticipants defense={{ ...defense, postulacion_modalidad_codigo: modalidad, tipo_evento: tipo, participantes: [] }} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar participante' }))
+    const dialog = screen.getByRole('dialog', { name: 'Agregar participante' })
+    expect(await within(dialog).findByRole('checkbox', { name: /Ana Tribunal/ })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('checkbox', { name: /Autoridad/ })).not.toBeInTheDocument()
+  })
+
+  it('impide otra asignacion de una autoridad ya incorporada en Diplomado', async () => {
+    postulacionesService.obtenerAsignacionesCandidatas.mockResolvedValue({ results: [
+      { id: 31, usuario: 8, usuario_nombre: 'Autoridad incorporada', tipo_participacion: 'DECANO_FACULTAD', activo: true },
+      { id: 32, usuario: 8, usuario_nombre: 'Misma persona', tipo_participacion: 'DIRECTOR_CARRERA', activo: true },
+    ] })
+    render(<DefenseParticipants defense={{ ...defense, postulacion_modalidad_codigo: 'GRADUACION_VIA_DIPLOMADO', tipo_evento: 'DEFENSA_PUBLICA', participantes: [
+      { ...participant, asignacion: 31, rol_evento: 'DECANO_FACULTAD', rol_display: 'Decano de Facultad' },
+    ] }} canManage onChanged={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Agregar participante' }))
+    const dialog = screen.getByRole('dialog', { name: 'Agregar participante' })
+    expect(await within(dialog).findByRole('checkbox', { name: /Misma persona/ })).toBeDisabled()
+    expect(within(dialog).queryByRole('checkbox', { name: /Autoridad incorporada/ })).not.toBeInTheDocument()
+    expect(postulacionesService.agregarParticipanteDefensa).not.toHaveBeenCalled()
+  })
+
   it('confirma retiro y evita doble envío', async () => {
     let resolveRequest
     postulacionesService.retirarParticipanteDefensa.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve }))

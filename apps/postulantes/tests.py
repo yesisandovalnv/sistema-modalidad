@@ -8,13 +8,13 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, close_old_connections, transaction
 from django.test import TransactionTestCase
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento
 from apps.modalidades.policies import ModalidadPolicyRegistry
-from apps.notificaciones.events import EventTypes
+from apps.notificaciones.events import EventTypes, publish_domain_event
 from apps.postulantes.models import (
     AsignacionPostulacion,
     DecisionAcademicaEtapa,
@@ -475,6 +475,255 @@ class TestCrearPostulacion(APITestCase):
         self.assertIn("modalidad", response.data)
         self.assertFalse(Postulacion.objects.filter(codigo="POST-NO-SOPORTADA").exists())
         self.assertTrue(Modalidad.objects.filter(pk=modalidad_no_soportada.pk).exists())
+
+
+class TestArranqueModalidades(APITestCase):
+    """El POST ordinario abre solo Inscripción usando las policies reales."""
+
+    modalidades = ("EXAMEN_GRADO", "TRABAJO_DIRIGIDO", "GRADUACION_VIA_DIPLOMADO")
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username="arranque-admin", is_staff=True, role=canonical_role("ADMINISTRADOR"),
+        )
+        self.student = User.objects.create_user(
+            username="arranque-estudiante", role=canonical_role("ESTUDIANTE"),
+        )
+        self.periodo = Periodo.objects.create(
+            nombre="ARRANQUE-2026", gestion=2026, semestre="II",
+            fecha_inicio="2026-07-01", fecha_fin="2026-12-31",
+        )
+        EstadoPostulacion.objects.create(codigo="REGISTRADA", nombre="Registrada")
+        EstadoPostulacion.objects.create(codigo="EN_PROCESO", nombre="En proceso")
+        self.client.force_authenticate(self.admin)
+
+    def configurar(self, codigo):
+        modalidad = Modalidad.objects.create(codigo=codigo, nombre=codigo)
+        for etapa in ModalidadPolicyRegistry.get(modalidad).get_etapas_configuradas():
+            EtapaModalidad.objects.create(
+                modalidad=modalidad, codigo=etapa.codigo, nombre=etapa.nombre,
+                orden=etapa.orden, obligatoria=etapa.obligatoria,
+                origen_normativo="Policy real de la modalidad",
+            )
+        return modalidad
+
+    def crear(self, modalidad, codigo="ARRANQUE-001", student=None):
+        return self.client.post("/api/v1/postulaciones/", {
+            "codigo": codigo, "estudiante": (student or self.student).pk,
+            "modalidad": modalidad.pk, "periodo": self.periodo.pk,
+        }, format="json")
+
+    def comprobar_arranque(self, codigo, cantidad):
+        modalidad = self.configurar(codigo)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.crear(modalidad)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["estado_actual_detalle"]["codigo"], "EN_PROCESO")
+        post = Postulacion.objects.get(pk=response.data["id"])
+        stages = list(post.seguimientos_etapa.select_related("etapa").order_by("etapa__orden"))
+        self.assertEqual(len(stages), cantidad)
+        self.assertEqual(
+            [stage.etapa.codigo for stage in stages],
+            [stage.codigo for stage in ModalidadPolicyRegistry.get(post).get_etapas_configuradas()],
+        )
+        initial = stages[0]
+        self.assertEqual((initial.etapa.codigo, initial.estado), ("INSCRIPCION", "EN_PROCESO"))
+        self.assertEqual(initial.abierta_por_id, self.admin.pk)
+        self.assertIsNotNone(initial.fecha_inicio)
+        self.assertTrue(all(stage.estado == "PENDIENTE" and stage.fecha_inicio is None for stage in stages[1:]))
+        self.assertTrue(all(stage.numero_intento == 1 and stage.fecha_fin is None for stage in stages))
+        self.assertFalse(post.documentos.exists())
+        self.assertFalse(post.eventos_defensa.exists())
+        self.assertFalse(post.asignaciones.exists())
+        self.assertEqual(list(post.historial_estados.order_by("pk").values_list(
+            "estado_nuevo__codigo", flat=True,
+        )), ["REGISTRADA", "EN_PROCESO"])
+        self.assertTrue(AuditLog.objects.filter(accion="crear_postulacion", descripcion__contains=post.codigo).exists())
+        self.assertEqual(set(post.notificaciones.filter(destinatario=self.student).values_list(
+            "tipo", flat=True,
+        )), {EventTypes.ETAPA_INICIADA, EventTypes.POSTULACION_ESTADO_CAMBIADO})
+        flow = self.client.get(f"/api/v1/postulaciones/{post.pk}/flujo/")
+        self.assertEqual(flow.status_code, status.HTTP_200_OK)
+        self.assertEqual(flow.data["porcentaje_avance"], 0.0)
+        self.assertEqual(flow.data["etapa_actual"]["estado"], "EN_PROCESO")
+        # Abrir Inscripción no satisface ni evita sus requisitos de aprobación.
+        with self.assertRaises(ValidationError):
+            WorkflowService.aprobar_etapa(initial, self.admin)
+        initial.refresh_from_db()
+        self.assertEqual(initial.estado, "EN_PROCESO")
+
+    def test_examen_crea_ocho_etapas_e_inicia_solo_inscripcion(self):
+        self.comprobar_arranque("EXAMEN_GRADO", 8)
+
+    def test_trabajo_dirigido_crea_ocho_etapas_e_inicia_solo_inscripcion(self):
+        self.comprobar_arranque("TRABAJO_DIRIGIDO", 8)
+
+    def test_diplomado_crea_diez_etapas_e_inicia_solo_inscripcion(self):
+        self.comprobar_arranque("GRADUACION_VIA_DIPLOMADO", 10)
+
+    def test_eventos_de_inicio_y_estado_sin_aprobaciones(self):
+        modalidad = self.configurar("EXAMEN_GRADO")
+        with patch("apps.postulantes.workflow.publish_domain_event", wraps=publish_domain_event) as publish:
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.crear(modalidad)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual([call.args[0] for call in publish.call_args_list], [
+            EventTypes.ETAPA_INICIADA, EventTypes.POSTULACION_ESTADO_CAMBIADO,
+        ])
+
+    def test_orden_inicial_incorrecto_revierte_creacion_historial_y_auditoria(self):
+        for codigo in self.modalidades:
+            with self.subTest(modalidad=codigo):
+                modalidad = self.configurar(codigo)
+                modalidad.etapas.filter(codigo="INSCRIPCION").update(orden=99)
+                response = self.crear(modalidad, codigo=f"ORDEN-{codigo}")
+                self.assertEqual(response.status_code, 400, response.data)
+                self.assertFalse(Postulacion.objects.filter(codigo=f"ORDEN-{codigo}").exists())
+                self.assertFalse(HistorialEstado.objects.exists())
+                self.assertFalse(SeguimientoEtapa.objects.exists())
+                self.assertFalse(AuditLog.objects.filter(accion="crear_postulacion").exists())
+
+    def test_error_de_inicio_revierte_tambien_las_etapas(self):
+        modalidad = self.configurar("EXAMEN_GRADO")
+        # Inyección de fallo exclusivamente para verificar atomicidad, no un recorrido académico.
+        with patch.object(WorkflowService, "iniciar_etapa", side_effect=ValidationError("Fallo de inicio")):
+            response = self.crear(modalidad)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Postulacion.objects.exists())
+        self.assertFalse(SeguimientoEtapa.objects.exists())
+        self.assertFalse(HistorialEstado.objects.exists())
+        self.assertFalse(AuditLog.objects.filter(accion="crear_postulacion").exists())
+
+    def test_error_de_inicializacion_revierte_creacion(self):
+        modalidad = self.configurar("TRABAJO_DIRIGIDO")
+        with patch.object(WorkflowService, "inicializar_flujo", side_effect=ValidationError("Fallo de inicialización")):
+            response = self.crear(modalidad)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Postulacion.objects.exists())
+        self.assertFalse(HistorialEstado.objects.exists())
+        self.assertFalse(AuditLog.objects.filter(accion="crear_postulacion").exists())
+
+    def test_repeticion_no_duplica_ni_reabre_y_duplicado_se_rechaza(self):
+        modalidad = self.configurar("EXAMEN_GRADO")
+        response = self.crear(modalidad)
+        self.assertEqual(response.status_code, 201)
+        post = Postulacion.objects.get(pk=response.data["id"])
+        initial = post.seguimientos_etapa.get(etapa__codigo="INSCRIPCION")
+        before = (initial.fecha_inicio, initial.abierta_por_id, initial.updated_at)
+        WorkflowService.inicializar_flujo(post, self.admin)
+        initial.refresh_from_db()
+        self.assertEqual((initial.fecha_inicio, initial.abierta_por_id, initial.updated_at), before)
+        self.assertEqual(post.seguimientos_etapa.count(), 8)
+        with self.assertRaises(ValidationError):
+            WorkflowService.iniciar_etapa(initial, self.admin)
+        duplicate = self.crear(modalidad, codigo="OTRO-CODIGO")
+        self.assertEqual(duplicate.status_code, 400)
+        self.assertEqual(Postulacion.objects.count(), 1)
+
+    def test_estudiante_no_puede_crear_ni_inicializar(self):
+        modalidad = self.configurar("EXAMEN_GRADO")
+        self.client.force_authenticate(self.student)
+        self.assertEqual(self.crear(modalidad).status_code, 403)
+        self.assertFalse(Postulacion.objects.exists())
+
+    def test_excelencia_permanece_sin_flujo_ni_criterio_automatico(self):
+        modalidad = self.configurar("EXCELENCIA_ACADEMICA")
+        response = self.crear(modalidad)
+        self.assertEqual(response.status_code, 201)
+        post = Postulacion.objects.get(pk=response.data["id"])
+        self.assertEqual(post.estado_actual.codigo, "REGISTRADA")
+        self.assertFalse(post.seguimientos_etapa.exists())
+
+    def test_historicas_no_generan_flujo(self):
+        EstadoPostulacion.objects.create(codigo="CONCLUIDA", nombre="Concluida")
+        for codigo in self.modalidades:
+            with self.subTest(modalidad=codigo):
+                modalidad = self.configurar(codigo)
+                response = self.client.post("/api/v1/postulaciones/historicas/", {
+                    "codigo": f"HIST-{codigo}", "estudiante": self.student.pk,
+                    "modalidad": modalidad.pk, "periodo": self.periodo.pk,
+                }, format="json")
+                self.assertEqual(response.status_code, 201, response.data)
+                post = Postulacion.objects.get(pk=response.data["id"])
+                self.assertEqual(post.tipo_registro, "HISTORICO")
+                self.assertFalse(post.seguimientos_etapa.exists())
+
+    def test_postulacion_anterior_sin_flujo_permanece_intacta(self):
+        modalidad = self.configurar("EXAMEN_GRADO")
+        old_student = User.objects.create_user(username="arranque-anterior")
+        previous = PostulacionService.crear_postulacion({
+            "codigo": "ANTERIOR", "estudiante": old_student, "modalidad": modalidad,
+            "periodo": self.periodo, "usuario": self.admin,
+        })
+        self.assertEqual(self.crear(modalidad).status_code, 201)
+        previous.refresh_from_db()
+        self.assertEqual(previous.estado_actual.codigo, "REGISTRADA")
+        self.assertFalse(previous.seguimientos_etapa.exists())
+
+
+class TestArranqueConcurrente(TransactionTestCase):
+    """Carreras reales de PostgreSQL, sin simular validaciones académicas."""
+
+    configurar = TestArranqueModalidades.configurar
+
+    def setUp(self):
+        self.client = APIClient()
+        TestArranqueModalidades.setUp(self)
+
+    def test_post_concurrente_crea_un_solo_flujo_por_estudiante(self):
+        for codigo in TestArranqueModalidades.modalidades:
+            with self.subTest(modalidad=codigo):
+                modalidad = self.configurar(codigo)
+                student = User.objects.create_user(username=f"concurrente-{codigo}")
+
+                def crear(numero):
+                    close_old_connections()
+                    try:
+                        client = APIClient()
+                        client.force_authenticate(User.objects.get(pk=self.admin.pk))
+                        response = client.post("/api/v1/postulaciones/", {
+                            "codigo": f"CONC-{modalidad.pk}-{numero}", "estudiante": student.pk,
+                            "modalidad": modalidad.pk, "periodo": self.periodo.pk,
+                        }, format="json")
+                        return response.status_code
+                    finally:
+                        close_old_connections()
+
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    resultados = list(executor.map(crear, (1, 2)))
+                self.assertEqual(sorted(resultados), [201, 400])
+                post = Postulacion.objects.get(estudiante=student)
+                stages = post.seguimientos_etapa
+                self.assertEqual(stages.count(), len(ModalidadPolicyRegistry.get(post).get_etapas_configuradas()))
+                self.assertEqual(stages.filter(estado="EN_PROCESO", etapa__codigo="INSCRIPCION").count(), 1)
+                self.assertFalse(stages.exclude(etapa__codigo="INSCRIPCION").exclude(estado="PENDIENTE").exists())
+
+    def test_inicializacion_concurrente_no_duplica_ni_reabre(self):
+        modalidad = self.configurar("EXAMEN_GRADO")
+        response = self.client.post("/api/v1/postulaciones/", {
+            "codigo": "REPETIR-CONC", "estudiante": self.student.pk,
+            "modalidad": modalidad.pk, "periodo": self.periodo.pk,
+        }, format="json")
+        self.assertEqual(response.status_code, 201)
+        post = Postulacion.objects.get(pk=response.data["id"])
+        initial = post.seguimientos_etapa.get(etapa__codigo="INSCRIPCION")
+        before = (initial.fecha_inicio, initial.abierta_por_id, initial.updated_at)
+
+        def inicializar(_numero):
+            close_old_connections()
+            try:
+                return len(WorkflowService.inicializar_flujo(
+                    Postulacion.objects.get(pk=post.pk), User.objects.get(pk=self.admin.pk),
+                ))
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            self.assertEqual(list(executor.map(inicializar, (1, 2))), [8, 8])
+        initial.refresh_from_db()
+        self.assertEqual((initial.fecha_inicio, initial.abierta_por_id, initial.updated_at), before)
+        self.assertEqual(post.seguimientos_etapa.count(), 8)
+        self.assertEqual(post.historial_estados.count(), 2)
 
 
 class TestBusquedaPostulacion(APITestCase):

@@ -5,6 +5,7 @@ import { postulacionesService } from '../../services/postulacionesService'
 
 const SUPPORTED_ROLES = new Set(['TUTOR', 'TRIBUNAL', 'DOCENTE_MODALIDAD', 'PRESIDENTE', 'SECRETARIO'])
 const PRIVATE_THESIS_ROLES = new Set(['TRIBUNAL', 'DOCENTE_MODALIDAD'])
+const PUBLIC_DIPLOMADO_ROLES = new Set(['DECANO_FACULTAD', 'VICERRECTOR_POSGRADO', 'DIRECTOR_CARRERA', 'TRIBUNAL'])
 const MUTABLE_STATES = new Set(['PROGRAMADA', 'EN_CURSO', 'SUSPENDIDA'])
 // Presentación normativa exclusiva de Proyecto de Grado / Defensa de Perfil.
 // No participa en el cálculo de quórum ni en la habilitación de acciones.
@@ -74,7 +75,11 @@ export default function DefenseParticipants({ defense, canManage, onChanged, pro
     try {
       const data = await postulacionesService.obtenerAsignacionesCandidatas(defense.postulacion, request.signal)
       const activeIds = new Set(participants.filter((item) => item.activo !== false).map((item) => String(item.asignacion)))
-      const allowedRoles = defense.postulacion_modalidad_codigo === 'TESIS_GRADO' && defense.tipo_evento === 'DEFENSA_PRIVADA'
+      const publicDiplomado = defense.postulacion_modalidad_codigo === 'GRADUACION_VIA_DIPLOMADO'
+        && defense.tipo_evento === 'DEFENSA_PUBLICA'
+      const allowedRoles = publicDiplomado
+        ? PUBLIC_DIPLOMADO_ROLES
+        : defense.postulacion_modalidad_codigo === 'TESIS_GRADO' && defense.tipo_evento === 'DEFENSA_PRIVADA'
         ? PRIVATE_THESIS_ROLES
         : SUPPORTED_ROLES
       const allRows = data.results || data || []
@@ -82,8 +87,8 @@ export default function DefenseParticipants({ defense, canManage, onChanged, pro
         const assignment = allRows.find((item) => String(item.id) === String(participant.asignacion))
         return assignment?.usuario == null ? [] : [[String(assignment.usuario), participant.rol_display || participant.rol_evento]]
       }))
-      const preventDuplicatePerson = defense.postulacion_modalidad_codigo === 'TESIS_GRADO'
-        && defense.tipo_evento === 'DEFENSA_PUBLICA'
+      const preventDuplicatePerson = publicDiplomado || (defense.postulacion_modalidad_codigo === 'TESIS_GRADO'
+        && defense.tipo_evento === 'DEFENSA_PUBLICA')
       const rows = allRows
         .filter((item) => item.activo !== false && allowedRoles.has(item.tipo_participacion) && !activeIds.has(String(item.id)))
         .map((item) => ({
