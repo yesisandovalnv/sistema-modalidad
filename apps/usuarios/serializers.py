@@ -231,11 +231,15 @@ class UserAdminSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password", None)
-        if not password:
+        importing_student = self.context.get("student_import", False)
+        if not password and not importing_student:
             raise serializers.ValidationError({"password": "La contraseña inicial es obligatoria."})
         validated_data["activo"] = validated_data.get("is_active", True)
         user = CustomUser.all_objects.create(**validated_data)
-        user.set_password(password)
+        if importing_student:
+            user.set_unusable_password()
+        else:
+            user.set_password(password)
         user.save(update_fields=["password"])
         return user
 

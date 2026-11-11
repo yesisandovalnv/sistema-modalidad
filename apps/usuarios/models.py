@@ -1,8 +1,14 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.db.models import Q
+from django.db.models.functions import Trim, Upper
 
 from core.managers import ActiveManager
 from core.models import BaseModel
+
+
+RU_NORMALIZED_UNIQUE_CONSTRAINT = "usuarios_customuser_ru_norm_uniq"
+CI_NORMALIZED_UNIQUE_CONSTRAINT = "usuarios_customuser_ci_norm_uniq"
 
 
 class Role(BaseModel):
@@ -131,6 +137,26 @@ class CustomUser(AbstractUser, BaseModel):
         verbose_name_plural = "Usuarios"
         ordering = ["apellido_paterno", "apellido_materno", "nombres"]
         app_label = "usuarios"
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(ru__isnull=True) | Q(ru__regex=r"\S"),
+                name="usuarios_customuser_ru_nonblank",
+            ),
+            models.CheckConstraint(
+                condition=Q(ci__isnull=True) | Q(ci__regex=r"\S"),
+                name="usuarios_customuser_ci_nonblank",
+            ),
+            models.UniqueConstraint(
+                Upper(Trim("ru")),
+                condition=Q(ru__isnull=False),
+                name=RU_NORMALIZED_UNIQUE_CONSTRAINT,
+            ),
+            models.UniqueConstraint(
+                Trim("ci"),
+                condition=Q(ci__isnull=False),
+                name=CI_NORMALIZED_UNIQUE_CONSTRAINT,
+            ),
+        ]
 
     @property
     def nombre_completo(self) -> str:

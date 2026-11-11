@@ -1,0 +1,74 @@
+.login-page {
+  --login-blue: color-mix(in srgb, var(--primary-dark) 75%, var(--blue-deep));
+  --login-violet: var(--evaluation-text);
+  --evaluation-text: #6b21a8;
+  --login-submit-gap: 1.5rem;
+}
+
+.login-page .login-logo {
+  width: 6.75rem;
+  height: 6.75rem;
+}
+
+.login-page #login-form > :has(+ button[type='submit']) {
+  margin-bottom: var(--login-submit-gap);
+}
+
+.login-page .login-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f5f8ff 100%);
+  box-shadow: 0 16px 40px rgb(29 78 216 / 20%), 0 4px 12px rgb(15 23 42 / 10%);
+}
+
+.login-page .login-gradient {
+  background: linear-gradient(110deg, var(--login-blue), var(--document) 65%, var(--login-violet));
+}
+
+.login-page .login-gradient:hover {
+  filter: brightness(1.06);
+}
+
+.login-page .login-access-tab[aria-selected='false'] {
+  color: #475569;
+}
+
+@media (max-width: 639px) {
+  .login-page .login-logo {
+    width: 6rem;
+    height: 6rem;
+  }
+}
+
+@media (max-height: 640px) {
+  .login-page {
+    --login-submit-gap: 1.25rem;
+  }
+
+  .login-page .login-card {
+    padding: 1rem;
+  }
+
+  .login-page .login-logo {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+
+  .login-page [role='tablist'] {
+    margin-top: 0.5rem;
+  }
+
+  .login-page form > :not(:last-child) {
+    margin-bottom: 0.5rem;
+  }
+
+  .login-page header p,
+  .login-page form > p {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-page button {
+    transition: none;
+  }
+}

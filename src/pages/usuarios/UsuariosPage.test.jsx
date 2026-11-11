@@ -4,7 +4,7 @@ import UsuariosPage from './UsuariosPage'
 import { usuariosService } from '../../services/usuariosService'
 import { AuthContext } from '../../context/AuthContext'
 
-vi.mock('../../services/usuariosService', () => ({ usuariosService: { listUsers: vi.fn(), listRoles: vi.fn(), createUser: vi.fn(), updateUser: vi.fn(), createRole: vi.fn(), updateRole: vi.fn() } }))
+vi.mock('../../services/usuariosService', () => ({ usuariosService: { listUsers: vi.fn(), listRoles: vi.fn(), createUser: vi.fn(), updateUser: vi.fn(), createRole: vi.fn(), updateRole: vi.fn(), downloadStudentTemplate: vi.fn(), validateStudentImport: vi.fn(), confirmStudentImport: vi.fn() } }))
 
 const role = { id: 1, codigo: 'ESTUDIANTE', nombre: 'Estudiante', activo: true, usuarios_count: 1 }
 const teacherRole = { id: 2, codigo: 'DOCENTE', nombre: 'Docente', activo: true, usuarios_count: 1 }
@@ -155,4 +155,70 @@ it('administra roles sin convertir capacidades en controles editables', async ()
   expect(await screen.findByText('Estudiante')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Nuevo rol' })).toBeInTheDocument()
   expect(screen.queryByRole('checkbox', { name: /puede gestionar/i })).not.toBeInTheDocument()
+})
+
+it('descarga la plantilla de importación desde el servicio de usuarios', async () => {
+  const createObjectURL = vi.fn(() => 'blob:template')
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() })
+  usuariosService.downloadStudentTemplate.mockResolvedValue(new Blob(['xlsx']))
+  try {
+    renderPage()
+    await screen.findByText(/Ana/)
+    fireEvent.click(screen.getByRole('button', { name: 'Importar estudiantes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Descargar plantilla Excel' }))
+    await waitFor(() => expect(usuariosService.downloadStudentTemplate).toHaveBeenCalledOnce())
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(click).toHaveBeenCalledOnce()
+  } finally {
+    click.mockRestore()
+    vi.unstubAllGlobals()
+  }
+})
+
+it('muestra la vista previa, confirma el lote y descarga el reporte CSV de filas rechazadas', async () => {
+  const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const createObjectURL = vi.fn(() => 'blob:report')
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() })
+  usuariosService.validateStudentImport.mockResolvedValue({
+    token: 'signed-lot',
+    total: 2,
+    valid: 1,
+    rejected: 1,
+    rows: [
+      { row_number: 2, nombres: 'Luis', apellido_paterno: 'Pérez', apellido_materno: 'Rojas', ru: 'RU-2', ci: 'CI-2', valid: true, errors: [] },
+      { row_number: 3, nombres: 'Ana', apellido_paterno: 'López', apellido_materno: 'Rojas', ru: 'RU-3', ci: 'CI-3', valid: false, errors: ['RU duplicado.'] },
+    ],
+  })
+  usuariosService.confirmStudentImport.mockResolvedValue({
+    created: 1,
+    rejected: 1,
+    already_confirmed: false,
+    rows: [{ row_number: 3, created: false, errors: ['RU duplicado.'] }],
+  })
+  try {
+    const { container } = renderPage()
+    await screen.findByText(/Ana/)
+    fireEvent.click(screen.getByRole('button', { name: 'Importar estudiantes' }))
+    fireEvent.change(container.querySelector('input[type="file"]'), {
+      target: { files: [new File(['xlsx'], 'estudiantes.xlsx')] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Validar archivo' }))
+    expect(await screen.findByText(/Total: 2/)).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: 'RU duplicado.' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Confirmar importaci/ }))
+    await waitFor(() => expect(usuariosService.confirmStudentImport).toHaveBeenCalledWith('signed-lot'))
+    expect(await screen.findByText(/Creados: 1/)).toBeInTheDocument()
+    const errorReportButtons = screen.getAllByRole('button', { name: 'Descargar reporte de errores' })
+    expect(errorReportButtons).toHaveLength(1)
+    fireEvent.click(errorReportButtons[0])
+    const csv = createObjectURL.mock.calls[0][0]
+    expect(await csv.text()).toContain('RU duplicado.')
+    expect(click).toHaveBeenCalled()
+  } finally {
+    confirmSpy.mockRestore()
+    click.mockRestore()
+    vi.unstubAllGlobals()
+  }
 })

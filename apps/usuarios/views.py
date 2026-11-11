@@ -7,6 +7,8 @@ from django.db.models.deletion import ProtectedError
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import FormParser, MultiPartParser
+from django.http import HttpResponse
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.types import OpenApiTypes
@@ -14,6 +16,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema
 
 from apps.usuarios.serializers import AssignmentCandidateSerializer, LoginSerializer, LogoutSerializer, RoleAdminSerializer, StudentLoginSerializer, StudentOptionSerializer, UserAdminSerializer, UserProfileSerializer
 from apps.usuarios.models import CustomUser, Role
+from apps.usuarios.student_import import build_template, confirm_import, validate_workbook
 from apps.postulantes.models import Postulacion
 from apps.usuarios.services import UserCapabilitiesService
 from core.pagination import StandardResultsSetPagination
@@ -121,6 +124,39 @@ class CanManageUsers(BasePermission):
         if getattr(obj, "is_superuser", False) and not getattr(request.user, "is_superuser", False):
             return False
         return True
+
+
+class StudentImportTemplateView(APIView):
+    permission_classes = (IsAuthenticated, IsActiveUser, CanManageUsers)
+
+    def get(self, request):
+        response = HttpResponse(
+            build_template(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = 'attachment; filename="plantilla_estudiantes.xlsx"'
+        return response
+
+
+class StudentImportValidateView(APIView):
+    permission_classes = (IsAuthenticated, IsActiveUser, CanManageUsers)
+    parser_classes = (MultiPartParser, FormParser)
+
+    def post(self, request):
+        upload = request.FILES.get("file")
+        if not upload:
+            raise ValidationError({"file": "Seleccione un archivo Excel."})
+        return Response(validate_workbook(upload), status=status.HTTP_200_OK)
+
+
+class StudentImportConfirmView(APIView):
+    permission_classes = (IsAuthenticated, IsActiveUser, CanManageUsers)
+
+    def post(self, request):
+        token = request.data.get("token")
+        if not token:
+            raise ValidationError({"token": "La referencia de lote es obligatoria."})
+        return Response(confirm_import(token, request.user, request), status=status.HTTP_200_OK)
 
 
 class UserAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):
