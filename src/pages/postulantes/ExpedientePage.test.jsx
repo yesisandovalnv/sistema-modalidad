@@ -7079,6 +7079,23 @@ describe('ExpedientePage US-008', () => {
     expect(within(dialog).queryByText('Información institucional')).not.toBeInTheDocument()
   })
 
+  it('presenta la cancelación separada del fin real y ofrece reprogramar desde una defensa cancelada', async () => {
+    const cancelled = {
+      ...defenseRows[2], estado: 'CANCELADA', estado_display: 'Cancelada',
+      fecha_inicio_real: null, fecha_fin_real: null, fecha_cancelacion: '2026-09-20T12:00:00Z',
+      reprogramada_desde: null, reprogramaciones: [],
+      evaluaciones: [], resultado_consolidado: null,
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [cancelled] })
+    renderDefenseManagerPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+    const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    expect(within(detail).getByText('Cancelada el')).toBeInTheDocument()
+    expect(within(detail).queryByText('Finalización real')).not.toBeInTheDocument()
+    expect(within(detail).getByRole('button', { name: 'Reprogramar defensa' })).toBeInTheDocument()
+  })
+
   it.each([
     ['Cerrar/×', async (dialog) => userEvent.click(within(dialog).getByRole('button', { name: 'Cerrar' }))],
     ['backdrop', async (dialog) => fireEvent.mouseDown(dialog)],

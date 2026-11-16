@@ -90,6 +90,14 @@ class ModelosDefensaTests(DefensaMixin,TestCase):
         old=self.event(); old.activo=False; old.estado="FINALIZADA"; old.save()
         self.assertIsNotNone(self.event().pk)
 
+    def test_evento_cancelado_permanece_historico_y_permite_nueva_programacion_activa(self):
+        old=self.event()
+        cancelled=EventoDefensaService.cancelar_evento(old, self.admin, "Tribunal ausente")
+        replacement=self.event()
+        self.assertNotEqual(old.pk, replacement.pk)
+        self.assertEqual(cancelled.estado, "CANCELADA")
+
+
     def test_participante_rechaza_rol_e_inactividad(self):
         ev=self.event(); assignment=self.assign["TRIBUNAL"][0]
         with self.assertRaises(ValidationError): ParticipanteEvento(evento=ev,asignacion=assignment,rol_evento="TUTOR").full_clean()
@@ -574,6 +582,31 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         ev=self.event(); ev=EventoDefensaService.iniciar_evento(ev,self.admin); ev=EventoDefensaService.suspender_evento(ev,self.admin,"Falta quórum"); ev=EventoDefensaService.reprogramar_evento(ev,timezone.now()+timedelta(days=2),self.admin,"Nueva fecha"); ev=EventoDefensaService.cancelar_evento(ev,self.admin,"Causa")
         self.assertEqual(ev.estado,"CANCELADA"); self.assertTrue({"START","SUSPEND","RESCHEDULE","CANCEL"}.issubset(set(AuditLog.objects.values_list("accion",flat=True))))
 
+    def test_reprogramar_cancelada_crea_evento_relacionado_y_no_copia_historial_operativo(self):
+        old=self.event()
+        old_fecha=old.fecha_programada
+        old_participantes=self.add(old,["TRIBUNAL"])
+        cancelled=EventoDefensaService.cancelar_evento(old,self.admin,"Tribunal ausente")
+        self.assertIsNotNone(cancelled.fecha_cancelacion)
+        self.assertIsNone(cancelled.fecha_fin_real)
+
+        new_date=timezone.now()+timedelta(days=4)
+        replacement=EventoDefensaService.reprogramar_evento(cancelled,new_date,self.admin,"Nueva convocatoria")
+
+        cancelled.refresh_from_db()
+        self.assertEqual(cancelled.fecha_programada,old_fecha)
+        self.assertEqual(cancelled.estado,"CANCELADA")
+        self.assertEqual(replacement.reprogramada_desde_id,cancelled.pk)
+        self.assertEqual(replacement.fecha_programada,new_date)
+        self.assertEqual(replacement.estado,"PROGRAMADA")
+        self.assertEqual(replacement.numero_intento,cancelled.numero_intento)
+        self.assertEqual(replacement.seguimiento_etapa_id,cancelled.seguimiento_etapa_id)
+        self.assertEqual(replacement.participantes.count(),0)
+        self.assertEqual(cancelled.participantes.count(),len(old_participantes))
+        self.assertFalse(replacement.evaluaciones.exists())
+        self.assertEqual(list(cancelled.reprogramaciones.values_list("pk",flat=True)),[replacement.pk])
+
+
     def test_reprogramar_suspendida_limpia_metadatos_tecnicos_de_cierre(self):
         ev=self.event(state="EN_CURSO"); ev.fecha_inicio_real=timezone.now()-timedelta(hours=1); ev.iniciado_por=self.admin; ev.save()
         ev=EventoDefensaService.suspender_evento(ev,self.admin,"Pausa técnica")
@@ -833,13 +866,15 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         with self.assertRaises(ValidationError): EventoDefensaService.reprogramar_evento(ev,timezone.now()+timedelta(days=1),self.admin,"Motivo")
         for state in ("FINALIZADA","CANCELADA"):
             ev.estado=state; ev.save()
-            for action in (
+            actions = (
                 lambda: EventoDefensaService.iniciar_evento(ev,self.admin),
                 lambda: EventoDefensaService.finalizar_evento(ev,self.admin),
                 lambda: EventoDefensaService.suspender_evento(ev,self.admin,"Motivo"),
                 lambda: EventoDefensaService.cancelar_evento(ev,self.admin,"Motivo"),
-                lambda: EventoDefensaService.reprogramar_evento(ev,timezone.now()+timedelta(days=1),self.admin,"Motivo"),
-            ):
+            )
+            if state == "FINALIZADA":
+                actions += (lambda: EventoDefensaService.reprogramar_evento(ev,timezone.now()+timedelta(days=1),self.admin,"Motivo"),)
+            for action in actions:
                 with self.assertRaises(ValidationError): action()
 
     def test_resultado_final_suma_aportes_y_no_sustituye_faltantes_por_cero(self):
@@ -868,6 +903,34 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
 
 
 class ApiDefensaTests(DefensaMixin,APITestCase):
+    def test_api_reprograma_cancelada_creando_otro_evento_y_exponiendo_fechas_distintas(self):
+        self.client.force_authenticate(self.admin)
+        old=self.event()
+        old_date=old.fecha_programada
+
+        cancelled=self.client.post(
+            f"/api/v1/eventos-defensa/{old.pk}/cancelar/",
+            {"motivo":"Tribunal ausente"}, format="json",
+        )
+        self.assertEqual(cancelled.status_code,200,cancelled.data)
+        self.assertIsNotNone(cancelled.data["fecha_cancelacion"])
+        self.assertIsNone(cancelled.data["fecha_fin_real"])
+
+        new_date=(timezone.now()+timedelta(days=5)).isoformat()
+        replacement=self.client.post(
+            f"/api/v1/eventos-defensa/{old.pk}/reprogramar/",
+            {"nueva_fecha":new_date,"motivo":"Nueva convocatoria"}, format="json",
+        )
+        self.assertEqual(replacement.status_code,200,replacement.data)
+        self.assertNotEqual(replacement.data["id"],old.pk)
+        self.assertEqual(replacement.data["reprogramada_desde_detalle"]["id"],old.pk)
+        self.assertEqual(replacement.data["reprogramada_desde_detalle"]["fecha_programada"],old_date)
+        old.refresh_from_db()
+        self.assertEqual(old.estado,"CANCELADA")
+        self.assertEqual(old.fecha_programada,old_date)
+        self.assertIsNone(old.fecha_fin_real)
+
+
     def test_autenticacion_propiedad_y_permisos(self):
         ev=self.event(); url=f"/api/v1/eventos-defensa/{ev.pk}/"
         self.assertEqual(self.client.get(url).status_code,401)

@@ -98,6 +98,29 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
     etapa_nombre = serializers.CharField(source="seguimiento_etapa.etapa.nombre", read_only=True)
     hoja_observaciones = serializers.SerializerMethodField()
     configuracion_numerica = serializers.SerializerMethodField()
+    reprogramada_desde_detalle = serializers.SerializerMethodField()
+    reprogramaciones = serializers.SerializerMethodField()
+
+    def get_reprogramada_desde_detalle(self, obj):
+        anterior = obj.reprogramada_desde
+        if not anterior:
+            return None
+        return {
+            "id": anterior.pk,
+            "estado": anterior.estado,
+            "fecha_programada": anterior.fecha_programada,
+            "fecha_cancelacion": anterior.fecha_cancelacion,
+            "activo": anterior.activo,
+        }
+
+    def get_reprogramaciones(self, obj):
+        return [{
+            "id": nueva.pk,
+            "estado": nueva.estado,
+            "fecha_programada": nueva.fecha_programada,
+            "activo": nueva.activo,
+        } for nueva in obj.reprogramaciones.order_by("fecha_programada", "pk")]
+
 
     def get_configuracion_numerica(self, obj) -> dict | None:
         from apps.modalidades.policies import ModalidadPolicyRegistry
@@ -132,9 +155,10 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
         fields = (
             "id", "postulacion", "postulacion_codigo", "postulacion_modalidad_codigo", "seguimiento_etapa", "etapa_codigo",
             "etapa_nombre", "tipo_evento", "tipo_display", "numero_intento", "estado",
-            "estado_display", "fecha_programada", "fecha_inicio_real", "fecha_fin_real", "lugar",
+            "estado_display", "fecha_programada", "fecha_inicio_real", "fecha_fin_real", "fecha_cancelacion", "lugar",
             "modalidad_evento", "modalidad_display", "enlace_virtual", "observaciones", "activo",
             "participantes", "evaluaciones", "resultado_consolidado",
+            "reprogramada_desde", "reprogramada_desde_detalle", "reprogramaciones",
             "hoja_observaciones",
             "configuracion_numerica",
         )
@@ -213,12 +237,14 @@ class EventoDefensaViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs=EventoDefensa.objects.select_related(
-            "postulacion__estudiante", "postulacion__modalidad", "seguimiento_etapa__etapa"
+            "postulacion__estudiante", "postulacion__modalidad", "seguimiento_etapa__etapa",
+            "reprogramada_desde",
         ).prefetch_related(
             "participantes__asignacion__usuario",
             "evaluaciones__evaluador__asignacion__usuario",
             "documentos_vinculados__tipo_documento",
             "documentos_vinculados__versiones__subido_por",
+            "reprogramaciones",
         )
         if getattr(self, "swagger_fake_view", False):
             return qs.none()

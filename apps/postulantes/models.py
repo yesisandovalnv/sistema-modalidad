@@ -805,6 +805,10 @@ class EventoDefensa(BaseModel):
     fecha_programada = models.DateTimeField()
     fecha_inicio_real = models.DateTimeField(null=True, blank=True)
     fecha_fin_real = models.DateTimeField(null=True, blank=True)
+    fecha_cancelacion = models.DateTimeField(null=True, blank=True)
+    reprogramada_desde = models.ForeignKey(
+        "self", models.PROTECT, null=True, blank=True, related_name="reprogramaciones",
+    )
     lugar = models.CharField(max_length=250, blank=True)
     modalidad_evento = models.CharField(max_length=15, choices=ModalidadEvento.choices, default=ModalidadEvento.PRESENCIAL)
     enlace_virtual = models.URLField(blank=True)
@@ -816,7 +820,11 @@ class EventoDefensa(BaseModel):
     class Meta:
         constraints = [
             models.CheckConstraint(condition=models.Q(numero_intento__gte=1), name="evento_intento_gte_1"),
-            models.UniqueConstraint(fields=["postulacion", "tipo_evento", "numero_intento"], condition=models.Q(activo=True), name="evento_defensa_activo_unico"),
+            models.UniqueConstraint(
+                fields=["postulacion", "tipo_evento", "numero_intento"],
+                condition=models.Q(activo=True) & ~models.Q(estado="CANCELADA"),
+                name="evento_defensa_activo_unico",
+            ),
         ]
 
     def clean(self):
@@ -824,6 +832,18 @@ class EventoDefensa(BaseModel):
         if self.seguimiento_etapa_id and self.postulacion_id and self.seguimiento_etapa.postulacion_id != self.postulacion_id:
             errors["seguimiento_etapa"] = "El seguimiento debe pertenecer a la postulación."
         if self.numero_intento < 1: errors["numero_intento"] = "El intento debe ser mayor o igual a 1."
+        if self.reprogramada_desde_id:
+            anterior = self.reprogramada_desde
+            if anterior.pk == self.pk:
+                errors["reprogramada_desde"] = "Un evento no puede reprogramarse a sí mismo."
+            elif (
+                anterior.estado != self.Estado.CANCELADA
+                or anterior.postulacion_id != self.postulacion_id
+                or anterior.seguimiento_etapa_id != self.seguimiento_etapa_id
+                or anterior.tipo_evento != self.tipo_evento
+                or anterior.numero_intento != self.numero_intento
+            ):
+                errors["reprogramada_desde"] = "La referencia debe apuntar a una defensa cancelada del mismo intento."
         if self.fecha_inicio_real and self.fecha_fin_real and self.fecha_fin_real < self.fecha_inicio_real: errors["fecha_fin_real"] = "La fecha final no puede ser anterior al inicio."
         if self.modalidad_evento in (self.ModalidadEvento.VIRTUAL, self.ModalidadEvento.MIXTA) and not self.enlace_virtual: errors["enlace_virtual"] = "El enlace virtual es obligatorio."
         if self.modalidad_evento == self.ModalidadEvento.PRESENCIAL and not self.lugar.strip(): errors["lugar"] = "El lugar es obligatorio."

@@ -23,7 +23,8 @@ class EventoDefensaService:
     @staticmethod
     @transaction.atomic
     def programar_evento(postulacion, seguimiento_etapa, tipo_evento, fecha_programada, usuario,
-                         lugar="", modalidad_evento="PRESENCIAL", enlace_virtual="", observaciones=""):
+                         lugar="", modalidad_evento="PRESENCIAL", enlace_virtual="", observaciones="",
+                         reprogramada_desde=None):
         seguimiento = SeguimientoEtapa.objects.select_for_update().select_related("etapa", "postulacion__modalidad").get(pk=seguimiento_etapa.pk)
         EventoDefensaService._validar_postulacion_editable(seguimiento.postulacion)
         policy = ModalidadPolicyRegistry.get(postulacion)
@@ -34,17 +35,26 @@ class EventoDefensaService:
         if anteriores.exists(): raise ValidationError("Las etapas obligatorias anteriores deben estar aprobadas.")
         asignaciones = AsignacionPostulacion.objects.filter(postulacion=postulacion, activo=True)
         policy.evento_policy.validar_programacion(tipo_evento=tipo_evento, seguimiento=seguimiento, fecha_programada=fecha_programada, asignaciones=asignaciones)
+        if reprogramada_desde is not None and (
+            reprogramada_desde.estado != EventoDefensa.Estado.CANCELADA
+            or reprogramada_desde.postulacion_id != postulacion.pk
+            or reprogramada_desde.seguimiento_etapa_id != seguimiento.pk
+            or reprogramada_desde.tipo_evento != tipo_evento
+            or reprogramada_desde.numero_intento != seguimiento.numero_intento
+        ):
+            raise ValidationError("La defensa de origen debe estar cancelada y corresponder al mismo intento.")
         duplicate = EventoDefensa.objects.filter(
             postulacion=postulacion,
             tipo_evento=tipo_evento,
             numero_intento=seguimiento.numero_intento,
             activo=True,
-        ).exists()
+        ).exclude(estado=EventoDefensa.Estado.CANCELADA).exists()
         if duplicate:
             raise ValidationError({"non_field_errors": ["Ya existe una defensa activa del mismo tipo e intento."]})
         evento=EventoDefensa(postulacion=postulacion,seguimiento_etapa=seguimiento,tipo_evento=tipo_evento,
             numero_intento=seguimiento.numero_intento,fecha_programada=fecha_programada,programado_por=usuario,
-            lugar=lugar,modalidad_evento=modalidad_evento,enlace_virtual=enlace_virtual,observaciones=observaciones)
+            lugar=lugar,modalidad_evento=modalidad_evento,enlace_virtual=enlace_virtual,observaciones=observaciones,
+            reprogramada_desde=reprogramada_desde)
         try:
             with transaction.atomic():
                 evento.save()
@@ -176,9 +186,16 @@ class EventoDefensaService:
         if evento.estado in (evento.Estado.FINALIZADA,evento.Estado.CANCELADA): raise ValidationError("El evento no puede modificarse.")
         if estado == evento.Estado.SUSPENDIDA and evento.estado == evento.Estado.SUSPENDIDA: raise ValidationError("El evento ya está suspendido.")
         if not motivo.strip(): raise ValidationError("El motivo es obligatorio.")
-        evento.estado=estado; evento.observaciones=(evento.observaciones+"\n"+motivo).strip(); evento.cerrado_por=usuario; evento.fecha_fin_real=timezone.now(); evento.save(); _audit(usuario,accion,f"Evento {evento.pk}: {motivo}")
+        evento.estado=estado; evento.observaciones=(evento.observaciones+"\n"+motivo).strip(); evento.cerrado_por=usuario
+        if estado == evento.Estado.CANCELADA:
+            evento.fecha_cancelacion=timezone.now()
+            evento.fecha_fin_real=None
+        else:
+            evento.fecha_fin_real=timezone.now()
+        evento.save(); _audit(usuario,accion,f"Evento {evento.pk}: {motivo}")
         event_type=EventTypes.DEFENSA_SUSPENDIDA if estado==EventoDefensa.Estado.SUSPENDIDA else EventTypes.DEFENSA_CANCELADA
-        publish_domain_event(event_type,evento,usuario,evento.postulacion,{},f"{event_type}:{evento.pk}:{evento.fecha_fin_real.isoformat()}"); return evento
+        event_timestamp = evento.fecha_cancelacion if estado == evento.Estado.CANCELADA else evento.fecha_fin_real
+        publish_domain_event(event_type,evento,usuario,evento.postulacion,{},f"{event_type}:{evento.pk}:{event_timestamp.isoformat()}"); return evento
     suspender_evento=staticmethod(lambda evento,usuario,motivo: EventoDefensaService._cerrar(evento,usuario,EventoDefensa.Estado.SUSPENDIDA,motivo,"SUSPEND"))
     cancelar_evento=staticmethod(lambda evento,usuario,motivo: EventoDefensaService._cerrar(evento,usuario,EventoDefensa.Estado.CANCELADA,motivo,"CANCEL"))
 
@@ -187,9 +204,26 @@ class EventoDefensaService:
     def reprogramar_evento(evento,nueva_fecha,usuario,motivo):
         evento=EventoDefensa.objects.select_for_update().get(pk=evento.pk)
         EventoDefensaService._validar_postulacion_editable(evento.postulacion)
-        if evento.estado not in (evento.Estado.PROGRAMADA,evento.Estado.SUSPENDIDA): raise ValidationError("El evento no admite reprogramación.")
         if not motivo.strip(): raise ValidationError("El motivo es obligatorio.")
-        ModalidadPolicyRegistry.get(evento.postulacion).evento_policy.validar_reprogramacion(evento, nueva_fecha)
+        policy = ModalidadPolicyRegistry.get(evento.postulacion).evento_policy
+        if evento.estado == evento.Estado.CANCELADA:
+            policy.validar_reprogramacion(evento, nueva_fecha)
+            replacement = EventoDefensaService.programar_evento(
+                postulacion=evento.postulacion,
+                seguimiento_etapa=evento.seguimiento_etapa,
+                tipo_evento=evento.tipo_evento,
+                fecha_programada=nueva_fecha,
+                usuario=usuario,
+                lugar=evento.lugar,
+                modalidad_evento=evento.modalidad_evento,
+                enlace_virtual=evento.enlace_virtual,
+                observaciones=f"Nueva programación por cancelación del evento {evento.pk}: {motivo}",
+                reprogramada_desde=evento,
+            )
+            _audit(usuario,"RESCHEDULE",f"Evento {replacement.pk} creado como nueva programación del evento cancelado {evento.pk}: {motivo}")
+            return replacement
+        if evento.estado not in (evento.Estado.PROGRAMADA,evento.Estado.SUSPENDIDA): raise ValidationError("El evento no admite reprogramación.")
+        policy.validar_reprogramacion(evento, nueva_fecha)
         evento.fecha_programada=nueva_fecha; evento.estado=evento.Estado.PROGRAMADA
         evento.fecha_inicio_real=None; evento.fecha_fin_real=None; evento.iniciado_por=None; evento.cerrado_por=None
         evento.observaciones=(evento.observaciones+"\nReprogramación: "+motivo).strip(); evento.save(); _audit(usuario,"RESCHEDULE",f"Evento {evento.pk} reprogramado: {motivo}")

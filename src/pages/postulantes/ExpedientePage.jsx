@@ -1716,7 +1716,10 @@ export default function ExpedientePage() {
       if (action === 'reprogramar') updated = await postulacionesService.reprogramarDefensa(defenseOperation.defense.id, nuevaFecha, motivo, controller.signal)
       defenseOperationController.current = null
       setDefenseOperation(null)
-      if (updated && selectedDefense && String(updated.id) === String(selectedDefense.id)) {
+      if (updated && selectedDefense && (
+        String(updated.id) === String(selectedDefense.id)
+        || (action === 'reprogramar' && defenseOperation.defense?.estado === 'CANCELADA')
+      )) {
         setSelectedDefense(updated)
         if (updated.estado === 'EN_CURSO') loadQuorum(updated)
       }
@@ -3919,7 +3922,8 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
     setAttendanceReviewRequest(0)
   }, [defense.id])
   const evaluations = defense.evaluaciones || []
-  const actions = { PROGRAMADA: ['iniciar', 'suspender', 'cancelar', 'reprogramar'], EN_CURSO: ['finalizar', 'suspender', 'cancelar'], SUSPENDIDA: ['reprogramar', 'cancelar'] }[defense.estado] || []
+  const hasActiveReplacement = defense.reprogramaciones?.some((item) => item.activo !== false && item.estado !== 'CANCELADA')
+  const actions = { PROGRAMADA: ['iniciar', 'suspender', 'cancelar', 'reprogramar'], EN_CURSO: ['finalizar', 'suspender', 'cancelar'], SUSPENDIDA: ['reprogramar', 'cancelar'], CANCELADA: isProjectGrade && !hasActiveReplacement ? ['reprogramar'] : [] }[defense.estado] || []
   const actionLabels = {
     iniciar: 'Iniciar defensa',
     finalizar: 'Finalizar defensa',
@@ -3987,11 +3991,14 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
             <span className="self-start rounded-full border border-sky-300 bg-white px-3 py-1.5 text-sm font-bold text-sky-800 dark:border-sky-700 dark:bg-slate-900 dark:text-sky-200">{defense.estado_display || defense.estado}</span>
           </div>
         <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Intento {defense.numero_intento ?? 'No registrado'} · Etapa {defense.etapa_nombre || defense.etapa_codigo || 'No registrada'}</p>
-        {(defense.fecha_inicio_real || defense.fecha_fin_real) && <dl className="mt-3 grid gap-3 border-t border-sky-200 pt-3 text-sm dark:border-sky-800 sm:grid-cols-2">
+        {(defense.fecha_inicio_real || defense.fecha_fin_real || defense.fecha_cancelacion) && <dl className="mt-3 grid gap-3 border-t border-sky-200 pt-3 text-sm dark:border-sky-800 sm:grid-cols-2">
           {defense.fecha_inicio_real && <Info label="Inicio real" value={formatDefenseDate(defense.fecha_inicio_real)} />}
           {defense.fecha_fin_real && <Info label="Finalización real" value={formatDefenseDate(defense.fecha_fin_real)} />}
+          {defense.fecha_cancelacion && <Info label="Cancelada el" value={formatDefenseDate(defense.fecha_cancelacion)} />}
         </dl>}
         </div>
+        {defense.reprogramada_desde_detalle && <p role="status" className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm dark:border-sky-800 dark:bg-sky-950">Nueva programación del evento cancelado #{defense.reprogramada_desde_detalle.id}. Fecha anterior: {formatDefenseDate(defense.reprogramada_desde_detalle.fecha_programada)}. Cancelada el: {formatDefenseDate(defense.reprogramada_desde_detalle.fecha_cancelacion)}.</p>}
+        {defense.reprogramaciones?.filter((item) => item.activo !== false && item.estado !== 'CANCELADA').map((item) => <p key={item.id} role="status" className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm dark:border-sky-800 dark:bg-sky-950">Nueva programación: evento #{item.id}, {formatDefenseDate(item.fecha_programada)}.</p>)}
         {defense.enlace_virtual && <a className="mt-4 inline-flex max-w-full break-all rounded-md border px-3 py-2 text-sm font-medium" href={defense.enlace_virtual} target="_blank" rel="noopener noreferrer">Abrir enlace virtual de la defensa</a>}
       </section>
 
@@ -4017,6 +4024,7 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
 
       {displayedPrimaryAction && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950" aria-labelledby="siguiente-accion-defensa-title"><h3 className="text-sm font-bold uppercase tracking-wide text-sky-800 dark:text-sky-200">Acción principal</h3>{![ 'iniciar', 'registrar_evaluacion'].includes(displayedPrimaryAction) && <p className="mt-2 font-semibold">{displayedPrimaryTitle}</p>}{displayedPrimaryDescription && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{displayedPrimaryDescription}</p>}{['registrar_evaluacion', 'consolidar_resultado'].includes(displayedPrimaryAction) ? <DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} action={displayedPrimaryAction} actionLabel={displayedPrimaryTitle} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} projectProfileFlow={profileQuickFlow} onReviewAttendance={() => { setAttendanceReviewRequest((value) => value + 1); const participantsHeading = document.getElementById('participantes-defensa-title'); if (typeof participantsHeading?.scrollIntoView === 'function') participantsHeading.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} /> : <Button className="mt-4" disabled={displayedPrimaryAction === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)} onClick={() => onAction(displayedPrimaryAction)}>{displayedPrimaryTitle}</Button>}</section>}
 
+      {canManage && isProjectGrade && ['DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(defense.tipo_evento) && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}
       {showEvaluationSection && !['registrar_evaluacion', 'consolidar_resultado'].includes(primaryAction) && <section aria-labelledby="evaluacion-defensa-title"><h3 id="evaluacion-defensa-title" className="text-lg font-bold">Evaluación</h3><DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} buttonVariant="secondary" hiddenAction={primaryAction} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} /></section>}
 
       {canManage && secondaryOperationalActions.length > 0 && <section aria-labelledby="otras-acciones-defensa-title"><h3 id="otras-acciones-defensa-title" className="text-lg font-bold">Más acciones</h3><div className="mt-3 flex flex-wrap gap-2">{secondaryOperationalActions.map((action) => {

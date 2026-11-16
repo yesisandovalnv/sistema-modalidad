@@ -212,7 +212,7 @@ class EventoDefensaAdmin(admin.ModelAdmin):
     list_display=("postulacion","tipo_evento","numero_intento","estado","fecha_programada","modalidad_evento","activo")
     list_filter=("tipo_evento","estado","modalidad_evento","activo")
     search_fields=("postulacion__codigo","lugar","observaciones")
-    readonly_fields=("estado","fecha_inicio_real","fecha_fin_real","iniciado_por","cerrado_por","created_at","updated_at")
+    readonly_fields=("estado","fecha_inicio_real","fecha_fin_real","fecha_cancelacion","reprogramada_desde","iniciado_por","cerrado_por","created_at","updated_at")
 
 @admin.register(ParticipanteEvento)
 class ParticipanteEventoAdmin(admin.ModelAdmin):
