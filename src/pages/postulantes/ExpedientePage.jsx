@@ -23,6 +23,15 @@ import DocumentDetailDialog, { DownloadVersionButton } from '../../components/do
 import { getActiveTribunalComposition } from './tribunalComposition'
 
 const EMPTY = 'No registrado'
+const PROJECT_GRADE_DEFENSE_TYPES = ['DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA']
+const CANCELLED_DEFENSE_RESCHEDULING_TYPES = {
+  PROYECTO_GRADO: PROJECT_GRADE_DEFENSE_TYPES,
+  TESIS_GRADO: ['DEFENSA_TEMATICA', 'DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'],
+  TRABAJO_DIRIGIDO: ['DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'],
+}
+function supportsCancelledDefenseRescheduling(defense) {
+  return (CANCELLED_DEFENSE_RESCHEDULING_TYPES[defense?.postulacion_modalidad_codigo] || []).includes(defense?.tipo_evento)
+}
 // Preferencia operativa de selección; no modifica la elegibilidad académica.
 const ACTOR_SELECTION_PRESENTATION = {
   TRABAJO_DIRIGIDO: {
@@ -2840,7 +2849,9 @@ function hasActiveCurrentDefense({ defenses, orientation, currentStage }) {
     const sameAttempt = defense.numero_intento === undefined || currentStage.numero_intento === undefined
       || Number(defense.numero_intento) === Number(currentStage.numero_intento)
     const sameType = !tipoEvento || defense.tipo_evento === tipoEvento
-    return defense.activo !== false && sameType && sameStage && sameAttempt
+    const cancelledReplacementEligible = defense.estado === 'CANCELADA'
+      && supportsCancelledDefenseRescheduling(defense)
+    return defense.activo !== false && (defense.estado !== 'CANCELADA' || cancelledReplacementEligible) && sameType && sameStage && sameAttempt
   })
 }
 
@@ -3923,7 +3934,8 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
   }, [defense.id])
   const evaluations = defense.evaluaciones || []
   const hasActiveReplacement = defense.reprogramaciones?.some((item) => item.activo !== false && item.estado !== 'CANCELADA')
-  const actions = { PROGRAMADA: ['iniciar', 'suspender', 'cancelar', 'reprogramar'], EN_CURSO: ['finalizar', 'suspender', 'cancelar'], SUSPENDIDA: ['reprogramar', 'cancelar'], CANCELADA: isProjectGrade && !hasActiveReplacement ? ['reprogramar'] : [] }[defense.estado] || []
+  const canRescheduleCancelledDefense = supportsCancelledDefenseRescheduling(defense)
+  const actions = { PROGRAMADA: ['iniciar', 'suspender', 'cancelar', 'reprogramar'], EN_CURSO: ['finalizar', 'suspender', 'cancelar'], SUSPENDIDA: ['reprogramar', 'cancelar'], CANCELADA: hasActiveReplacement || !canRescheduleCancelledDefense ? [] : ['reprogramar'] }[defense.estado] || []
   const actionLabels = {
     iniciar: 'Iniciar defensa',
     finalizar: 'Finalizar defensa',
@@ -3975,7 +3987,7 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
     ? (compatibleNextAction?.titulo || actionLabels[displayedPrimaryAction] || 'Registrar resultado de la defensa')
     : actionLabels[displayedPrimaryAction] || 'Registrar resultado de la defensa'
   const displayedPrimaryDescription = displayedPrimaryAction === primaryAction ? compatibleNextAction?.descripcion : null
-  const secondaryOperationalActions = secondaryActions.filter((action) => action !== 'cancelar' && action !== displayedPrimaryAction)
+  const secondaryOperationalActions = secondaryActions.filter((action) => action !== 'cancelar' && action !== displayedPrimaryAction && !(defense.estado === 'CANCELADA' && canRescheduleCancelledDefense && !isProjectGrade && action === 'reprogramar'))
   const destructiveActions = secondaryActions.filter((action) => action === 'cancelar')
   const showEvaluationSection = hasSecondaryEvaluationAction || (canManage && secondaryActions.length > 0 && (defense.estado !== 'PROGRAMADA' || hasEvaluation))
   return <Modal title="Detalle de defensa" onClose={onClose}>
@@ -4025,6 +4037,7 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
       {displayedPrimaryAction && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950" aria-labelledby="siguiente-accion-defensa-title"><h3 className="text-sm font-bold uppercase tracking-wide text-sky-800 dark:text-sky-200">Acción principal</h3>{![ 'iniciar', 'registrar_evaluacion'].includes(displayedPrimaryAction) && <p className="mt-2 font-semibold">{displayedPrimaryTitle}</p>}{displayedPrimaryDescription && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{displayedPrimaryDescription}</p>}{['registrar_evaluacion', 'consolidar_resultado'].includes(displayedPrimaryAction) ? <DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} action={displayedPrimaryAction} actionLabel={displayedPrimaryTitle} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} projectProfileFlow={profileQuickFlow} onReviewAttendance={() => { setAttendanceReviewRequest((value) => value + 1); const participantsHeading = document.getElementById('participantes-defensa-title'); if (typeof participantsHeading?.scrollIntoView === 'function') participantsHeading.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} /> : <Button className="mt-4" disabled={displayedPrimaryAction === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)} onClick={() => onAction(displayedPrimaryAction)}>{displayedPrimaryTitle}</Button>}</section>}
 
       {canManage && isProjectGrade && ['DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(defense.tipo_evento) && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}
+      {canManage && !isProjectGrade && defense.estado === 'CANCELADA' && canRescheduleCancelledDefense && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}
       {showEvaluationSection && !['registrar_evaluacion', 'consolidar_resultado'].includes(primaryAction) && <section aria-labelledby="evaluacion-defensa-title"><h3 id="evaluacion-defensa-title" className="text-lg font-bold">Evaluación</h3><DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} buttonVariant="secondary" hiddenAction={primaryAction} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} /></section>}
 
       {canManage && secondaryOperationalActions.length > 0 && <section aria-labelledby="otras-acciones-defensa-title"><h3 id="otras-acciones-defensa-title" className="text-lg font-bold">Más acciones</h3><div className="mt-3 flex flex-wrap gap-2">{secondaryOperationalActions.map((action) => {

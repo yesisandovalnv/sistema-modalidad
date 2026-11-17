@@ -16,7 +16,7 @@ from apps.documentos.services import DocumentoService
 from apps.modalidades.models import TrabajoDirigidoExpediente
 from apps.modalidades.policies import BaseModalidadPolicy, ModalidadPolicyRegistry
 from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
-from apps.modalidades.trabajo_dirigido import TrabajoDirigidoPolicy
+from apps.modalidades.trabajo_dirigido import TrabajoDirigidoEventoPolicy, TrabajoDirigidoPolicy
 from apps.modalidades.trabajo_dirigido_service import TrabajoDirigidoService
 from apps.modalidades.validators import ModalidadConfigurationValidator
 from apps.postulantes.asignaciones import AsignacionService
@@ -32,7 +32,7 @@ from apps.postulantes.models import (
     Postulacion,
     SeguimientoEtapa,
 )
-from apps.postulantes.defensas import EvaluacionDefensaService
+from apps.postulantes.defensas import EventoDefensaService, EvaluacionDefensaService
 from apps.postulantes.workflow import WorkflowService
 from apps.usuarios.models import AuditLog, CustomUser, Role
 
@@ -220,6 +220,54 @@ class TrabajoDirigidoTest(TestCase):
                 else SeguimientoEtapa.EstadoChoices.PENDIENTE
             )
             seguimiento.save(update_fields=["estado"])
+
+    def test_reprogramar_cancelada_conserva_historial_sin_heredar_participantes_ni_evaluaciones(self):
+        self.activate_private_defense()
+        private = self.follow["DEFENSA_PRIVADA"]
+        tribunals = self.assign_tribunals(2)
+        docent = AsignacionService.asignar_actor(
+            self.post, self.teachers[3], "DOCENTE_MODALIDAD", self.admin,
+            seguimiento_etapa=private,
+        )
+        event = EventoDefensaService.programar_evento(
+            self.post, private, "DEFENSA_PRIVADA", timezone.now() + timedelta(days=2),
+            self.admin, lugar="Sala privada",
+        )
+        EventoDefensaService.agregar_participante(event, tribunals[0], "TRIBUNAL", self.admin)
+        EventoDefensaService.agregar_participante(event, docent, "DOCENTE_MODALIDAD", self.admin)
+        EvaluacionDefensaService._registrar(
+            event, self.admin, "PRIVADA", "SUFICIENTE", Decimal("70"), None, "CONSENSO",
+            semantica_nota="BRUTA_100", omitir_quorum=True, permitir_programada=True,
+        )
+        EventoDefensaService.cancelar_evento(event, self.admin, "Integrantes no disponibles")
+        event.refresh_from_db()
+
+        replacement = EventoDefensaService.reprogramar_evento(
+            event, timezone.now() + timedelta(days=5), self.admin, "Nueva fecha acordada",
+        )
+
+        event.refresh_from_db()
+        self.assertEqual(event.estado, EventoDefensa.Estado.CANCELADA)
+        self.assertIsNotNone(event.fecha_cancelacion)
+        self.assertIsNone(event.fecha_fin_real)
+        self.assertEqual(event.participantes.count(), 2)
+        self.assertEqual(event.evaluaciones.count(), 1)
+        self.assertEqual(replacement.reprogramada_desde_id, event.pk)
+        self.assertEqual(replacement.postulacion_id, event.postulacion_id)
+        self.assertEqual(replacement.seguimiento_etapa_id, event.seguimiento_etapa_id)
+        self.assertEqual(replacement.tipo_evento, event.tipo_evento)
+        self.assertEqual(replacement.numero_intento, event.numero_intento)
+        self.assertEqual(replacement.participantes.count(), 0)
+        self.assertEqual(replacement.evaluaciones.count(), 0)
+
+    def test_politica_conserva_validacion_de_anticipacion_publica_de_48_horas(self):
+        policy = TrabajoDirigidoEventoPolicy()
+        event = EventoDefensa(tipo_evento="DEFENSA_PUBLICA")
+        now = timezone.now()
+        with patch.object(policy, "MINIMUM_NOTICE_HOURS", {"DEFENSA_PUBLICA": 48}):
+            with self.assertRaises(ValidationError):
+                policy.validar_reprogramacion(event, now + timedelta(hours=47))
+            policy.validar_reprogramacion(event, now + timedelta(hours=49))
 
     def activate_public_defense(self):
         public_order = self.follow["DEFENSA_PUBLICA"].etapa.orden

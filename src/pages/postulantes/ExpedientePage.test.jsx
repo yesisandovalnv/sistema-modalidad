@@ -4751,6 +4751,27 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('button', { name: 'Programar Defensa privada' })).not.toBeInTheDocument()
   })
 
+  it.each(['TESIS_GRADO', 'TRABAJO_DIRIGIDO'])('dirige %s desde una cancelación a la reprogramación relacionada', async (modalidad) => {
+    const cancelled = {
+      id: 906, tipo_evento: 'DEFENSA_PRIVADA', postulacion_modalidad_codigo: modalidad,
+      seguimiento_etapa: 12, etapa_codigo: 'DEFENSA_PRIVADA', numero_intento: 1,
+      estado: 'CANCELADA', activo: true, fecha_programada: '2026-09-20T10:00:00Z',
+      fecha_cancelacion: '2026-09-20T12:00:00Z', participantes: [], evaluaciones: [], reprogramaciones: [],
+    }
+    const data = programmingStageResponse('DEFENSA_PRIVADA', 'DEFENSA_PRIVADA', 1, cancelled)
+    const nombre = modalidad === 'TESIS_GRADO' ? 'Tesis de Grado' : 'Trabajo Dirigido'
+    data.detalle = { ...data.detalle, modalidad_detalle: { id: 3, codigo: modalidad, nombre } }
+    data.flujo = { ...data.flujo, modalidad: { id: 3, codigo: modalidad, nombre } }
+    postulacionesService.obtenerExpediente.mockResolvedValue(data)
+    postulacionesService.obtenerDefensas.mockResolvedValue(data.defenses)
+    renderDefenseManagerPage()
+
+    expect(screen.queryByRole('button', { name: 'Programar Defensa privada' })).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+    const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    expect(within(detail).getByRole('button', { name: 'Reprogramar defensa' })).toBeInTheDocument()
+  })
+
   it('no bloquea por un evento de otro tipo ni por un intento anterior', async () => {
     const data = programmingStageResponse('DEFENSA_PRIVADA', 'DEFENSA_PRIVADA', 2, {
       id: 902, tipo_evento: 'DEFENSA_PRIVADA', seguimiento_etapa: 11, etapa_codigo: 'DEFENSA_PRIVADA', numero_intento: 1, estado: 'EN_CURSO', activo: true,
@@ -7094,6 +7115,44 @@ describe('ExpedientePage US-008', () => {
     expect(within(detail).getByText('Cancelada el')).toBeInTheDocument()
     expect(within(detail).queryByText('Finalización real')).not.toBeInTheDocument()
     expect(within(detail).getByRole('button', { name: 'Reprogramar defensa' })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['TESIS_GRADO', 'DEFENSA_TEMATICA', true],
+    ['TESIS_GRADO', 'DEFENSA_PERFIL', true],
+    ['TESIS_GRADO', 'DEFENSA_PRIVADA', true],
+    ['TESIS_GRADO', 'DEFENSA_PUBLICA', true],
+    ['TRABAJO_DIRIGIDO', 'DEFENSA_PERFIL', true],
+    ['TRABAJO_DIRIGIDO', 'DEFENSA_PRIVADA', true],
+    ['TRABAJO_DIRIGIDO', 'DEFENSA_PUBLICA', true],
+    ['TRABAJO_DIRIGIDO', 'DEFENSA_TEMATICA', false],
+  ])('ofrece reprogramar canceladas según modalidad y tipo real (%s, %s)', async (modalidad, tipo, expected) => {
+    const modalityNames = {
+      TESIS_GRADO: 'Tesis de Grado',
+      TRABAJO_DIRIGIDO: 'Trabajo Dirigido',
+    }
+    const cancelled = {
+      ...defenseRows[2], id: 885, tipo_evento: tipo, estado: 'CANCELADA', estado_display: 'Cancelada',
+      postulacion_modalidad_codigo: modalidad, fecha_inicio_real: null, fecha_fin_real: null,
+      fecha_cancelacion: '2026-09-20T12:00:00Z', reprogramaciones: [], evaluaciones: [], resultado_consolidado: null,
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: modalidad, nombre: modalityNames[modalidad] } },
+      flujo: { ...response.flujo, modalidad: { id: 2, codigo: modalidad, nombre: modalityNames[modalidad] } },
+    })
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [cancelled] })
+    renderDefenseManagerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+    const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    if (expected) {
+      expect(within(detail).getByRole('heading', { name: 'Nueva programación' })).toBeInTheDocument()
+      expect(within(detail).getByRole('button', { name: 'Reprogramar defensa' })).toBeInTheDocument()
+    } else {
+      expect(within(detail).queryByRole('heading', { name: 'Nueva programación' })).not.toBeInTheDocument()
+      expect(within(detail).queryByRole('button', { name: 'Reprogramar defensa' })).not.toBeInTheDocument()
+    }
   })
 
   it.each([

@@ -107,6 +107,36 @@ class TesisDefensaPrivadaTest(TestCase):
         evaluation = EvaluacionDefensaService.registrar_evaluacion_privada(event, self.admin, 'SUFICIENTE', nota=Decimal('30'), modalidad_registro='CONSENSO')
         self.assertEqual(evaluation.nota_numerica, Decimal('30'))
 
+    def test_reprogramar_cancelada_conserva_historial_sin_heredar_participantes_ni_evaluaciones(self):
+        event = self.event()
+        for assignment in self.trib + [self.secretary]:
+            EventoDefensaService.agregar_participante(event, assignment, assignment.tipo_participacion, self.admin)
+        EvaluacionDefensaService._registrar(
+            event, self.admin, 'PRIVADA', 'SUFICIENTE', Decimal('30'), None, 'CONSENSO',
+            omitir_quorum=True, permitir_programada=True,
+        )
+        EventoDefensaService.cancelar_evento(event, self.admin, 'Tribunal no disponible')
+        event.refresh_from_db()
+
+        replacement = EventoDefensaService.reprogramar_evento(
+            event, timezone.now() + timedelta(days=3), self.admin, 'Nueva fecha acordada',
+        )
+
+        event.refresh_from_db()
+        replacement.refresh_from_db()
+        self.assertEqual(event.estado, EventoDefensa.Estado.CANCELADA)
+        self.assertIsNotNone(event.fecha_cancelacion)
+        self.assertIsNone(event.fecha_fin_real)
+        self.assertEqual(event.participantes.count(), 4)
+        self.assertEqual(event.evaluaciones.count(), 1)
+        self.assertEqual(replacement.reprogramada_desde_id, event.pk)
+        self.assertEqual(replacement.postulacion_id, event.postulacion_id)
+        self.assertEqual(replacement.seguimiento_etapa_id, event.seguimiento_etapa_id)
+        self.assertEqual(replacement.tipo_evento, event.tipo_evento)
+        self.assertEqual(replacement.numero_intento, event.numero_intento)
+        self.assertEqual(replacement.participantes.count(), 0)
+        self.assertEqual(replacement.evaluaciones.count(), 0)
+
     def test_sin_secretario_o_tribunales_no_programa(self):
         self.secretary.activo=False; self.secretary.save(update_fields=['activo'])
         with self.assertRaises(ValidationError): self.event()
