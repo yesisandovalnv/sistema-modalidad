@@ -7,9 +7,11 @@ export default defineConfig({
   server: {
     watch: {
       usePolling: true,
-      interval: 300,
+      interval: 500,
       ignored: [
         '**/.pytest_cache/**',
+        '**/.tmp*',
+        '**/.tmp*/**',
         '**/.tmp_test_media/**',
         '**/.tmp_test_seed/**',
         '**/.venv/**',
@@ -25,7 +27,12 @@ export default defineConfig({
         '**/normativa_tesis_de_grado/**',
         '**/normativa_trabajo_dirigido/**',
         '**/normativa_via_diplomado/**',
+        '**/*.test.*',
+        '**/*.spec.*',
+        '**/__tests__/**',
+        '**/testing_backend/**',
         '**/uab/**',
+        '**/validation-group*.local/**',
       ],
     },
   },
