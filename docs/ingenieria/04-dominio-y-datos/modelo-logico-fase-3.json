@@ -1,0 +1,6909 @@
+{
+  "Periodo": {
+    "key": "apps.academico.models.Periodo",
+    "name": "Periodo",
+    "path": "apps/academico/models.py",
+    "line": 8,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "50",
+          "unique": "True",
+          "verbose_name": "'Nombre'"
+        },
+        "line": 15
+      },
+      {
+        "name": "fecha_inicio",
+        "type": "DateField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Fecha de inicio'"
+        },
+        "line": 20
+      },
+      {
+        "name": "fecha_fin",
+        "type": "DateField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Fecha de fin'"
+        },
+        "line": 23
+      },
+      {
+        "name": "gestion",
+        "type": "PositiveSmallIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Gestión'"
+        },
+        "line": 26
+      },
+      {
+        "name": "semestre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "2",
+          "choices": "Semestre.choices",
+          "verbose_name": "'Semestre'"
+        },
+        "line": 29
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 52
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 58
+      },
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 63
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['gestion', 'semestre'], name='unique_periodo_gestion_semestre')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=50, unique=True, verbose_name='Nombre')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_inicio",
+        "value": "models.DateField(verbose_name='Fecha de inicio')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_fin",
+        "value": "models.DateField(verbose_name='Fecha de fin')",
+        "annotation": ""
+      },
+      {
+        "name": "gestion",
+        "value": "models.PositiveSmallIntegerField(verbose_name='Gestión')",
+        "annotation": ""
+      },
+      {
+        "name": "semestre",
+        "value": "models.CharField(max_length=2, choices=Semestre.choices, verbose_name='Semestre')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "Modalidad": {
+    "key": "apps.academico.models.Modalidad",
+    "name": "Modalidad",
+    "path": "apps/academico/models.py",
+    "line": 68,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "40",
+          "unique": "True",
+          "verbose_name": "'Código'"
+        },
+        "line": 71
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "150",
+          "unique": "True",
+          "verbose_name": "'Nombre'"
+        },
+        "line": 76
+      },
+      {
+        "name": "descripcion",
+        "type": "TextField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Descripción'"
+        },
+        "line": 81
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 98
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=40, unique=True, verbose_name='Código')",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=150, unique=True, verbose_name='Nombre')",
+        "annotation": ""
+      },
+      {
+        "name": "descripcion",
+        "value": "models.TextField(blank=True, null=True, verbose_name='Descripción')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "DocumentoOficialModalidad": {
+    "key": "apps.academico.models.DocumentoOficialModalidad",
+    "name": "DocumentoOficialModalidad",
+    "path": "apps/academico/models.py",
+    "line": 107,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "modalidad",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Modalidad",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'documentos_oficiales'",
+          "verbose_name": "'Modalidad'"
+        },
+        "line": 110
+      },
+      {
+        "name": "archivo",
+        "type": "FileField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "upload_to": "documento_oficial_modalidad_upload_to",
+          "verbose_name": "'Archivo PDF'"
+        },
+        "line": 116
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "200",
+          "verbose_name": "'Nombre del documento'"
+        },
+        "line": 120
+      },
+      {
+        "name": "actualizado_por",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "usuarios.CustomUser",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'documentos_oficiales_modalidad_actualizados'",
+          "verbose_name": "'Última actualización por'"
+        },
+        "line": 124
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 139
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "modalidad",
+        "value": "models.ForeignKey(Modalidad, on_delete=models.PROTECT, related_name='documentos_oficiales', verbose_name='Modalidad')",
+        "annotation": ""
+      },
+      {
+        "name": "archivo",
+        "value": "models.FileField(upload_to=documento_oficial_modalidad_upload_to, verbose_name='Archivo PDF')",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=200, verbose_name='Nombre del documento')",
+        "annotation": ""
+      },
+      {
+        "name": "actualizado_por",
+        "value": "models.ForeignKey('usuarios.CustomUser', on_delete=models.PROTECT, related_name='documentos_oficiales_modalidad_actualizados', verbose_name='Última actualización por')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "EtapaModalidad": {
+    "key": "apps.academico.models.EtapaModalidad",
+    "name": "EtapaModalidad",
+    "path": "apps/academico/models.py",
+    "line": 143,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "modalidad",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Modalidad",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'etapas'",
+          "verbose_name": "'Modalidad'"
+        },
+        "line": 146
+      },
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "50",
+          "verbose_name": "'Código'"
+        },
+        "line": 152
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "150",
+          "verbose_name": "'Nombre'"
+        },
+        "line": 156
+      },
+      {
+        "name": "orden",
+        "type": "PositiveIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Orden'"
+        },
+        "line": 160
+      },
+      {
+        "name": "obligatoria",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "True",
+          "verbose_name": "'Obligatoria'"
+        },
+        "line": 163
+      },
+      {
+        "name": "permite_repeticion",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False",
+          "verbose_name": "'Permite repetición'"
+        },
+        "line": 167
+      },
+      {
+        "name": "origen_normativo",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Origen normativo'"
+        },
+        "line": 171
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 204
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 223
+      },
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 228
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['modalidad', 'codigo'], name='unique_modalidad_etapa_codigo')",
+      "models.UniqueConstraint(fields=['modalidad', 'orden'], name='unique_modalidad_etapa_orden')",
+      "models.CheckConstraint(condition=models.Q(orden__gte=1), name='check_etapa_modalidad_orden_gte_1')"
+    ],
+    "indexes": [
+      "models.Index(fields=['modalidad', 'activo'], name='idx_etapa_modalidad_activo')",
+      "models.Index(fields=['modalidad', 'orden'], name='idx_etapa_modalidad_orden')"
+    ],
+    "attrs": [
+      {
+        "name": "modalidad",
+        "value": "models.ForeignKey(Modalidad, on_delete=models.PROTECT, related_name='etapas', verbose_name='Modalidad')",
+        "annotation": ""
+      },
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=50, verbose_name='Código')",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=150, verbose_name='Nombre')",
+        "annotation": ""
+      },
+      {
+        "name": "orden",
+        "value": "models.PositiveIntegerField(verbose_name='Orden')",
+        "annotation": ""
+      },
+      {
+        "name": "obligatoria",
+        "value": "models.BooleanField(default=True, verbose_name='Obligatoria')",
+        "annotation": ""
+      },
+      {
+        "name": "permite_repeticion",
+        "value": "models.BooleanField(default=False, verbose_name='Permite repetición')",
+        "annotation": ""
+      },
+      {
+        "name": "origen_normativo",
+        "value": "models.TextField(verbose_name='Origen normativo')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "Requisito": {
+    "key": "apps.academico.models.Requisito",
+    "name": "Requisito",
+    "path": "apps/academico/models.py",
+    "line": 233,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "50",
+          "unique": "True",
+          "verbose_name": "'Código'"
+        },
+        "line": 236
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "200",
+          "verbose_name": "'Nombre'"
+        },
+        "line": 241
+      },
+      {
+        "name": "descripcion",
+        "type": "TextField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Descripción'"
+        },
+        "line": 245
+      },
+      {
+        "name": "obligatorio",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "True",
+          "verbose_name": "'Obligatorio'"
+        },
+        "line": 250
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 266
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=50, unique=True, verbose_name='Código')",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=200, verbose_name='Nombre')",
+        "annotation": ""
+      },
+      {
+        "name": "descripcion",
+        "value": "models.TextField(blank=True, null=True, verbose_name='Descripción')",
+        "annotation": ""
+      },
+      {
+        "name": "obligatorio",
+        "value": "models.BooleanField(default=True, verbose_name='Obligatorio')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "ModalidadRequisito": {
+    "key": "apps.academico.models.ModalidadRequisito",
+    "name": "ModalidadRequisito",
+    "path": "apps/academico/models.py",
+    "line": 271,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "modalidad",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Modalidad",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'requisitos'",
+          "verbose_name": "'Modalidad'"
+        },
+        "line": 274
+      },
+      {
+        "name": "requisito",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Requisito",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'modalidades'",
+          "verbose_name": "'Requisito'"
+        },
+        "line": 280
+      },
+      {
+        "name": "orden",
+        "type": "PositiveIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Orden'"
+        },
+        "line": 286
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 304
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 310
+      },
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 315
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['modalidad', 'requisito'], name='unique_modalidad_requisito')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "modalidad",
+        "value": "models.ForeignKey(Modalidad, on_delete=models.CASCADE, related_name='requisitos', verbose_name='Modalidad')",
+        "annotation": ""
+      },
+      {
+        "name": "requisito",
+        "value": "models.ForeignKey(Requisito, on_delete=models.CASCADE, related_name='modalidades', verbose_name='Requisito')",
+        "annotation": ""
+      },
+      {
+        "name": "orden",
+        "value": "models.PositiveIntegerField(verbose_name='Orden')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "EstadoDocumento": {
+    "key": "apps.documentos.models.EstadoDocumento",
+    "name": "EstadoDocumento",
+    "path": "apps/documentos/models.py",
+    "line": 10,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "30",
+          "unique": "True",
+          "verbose_name": "'Código'"
+        },
+        "line": 17
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "100",
+          "unique": "True",
+          "verbose_name": "'Nombre'"
+        },
+        "line": 22
+      },
+      {
+        "name": "descripcion",
+        "type": "TextField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Descripción'"
+        },
+        "line": 27
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 44
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=30, unique=True, verbose_name='Código')",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=100, unique=True, verbose_name='Nombre')",
+        "annotation": ""
+      },
+      {
+        "name": "descripcion",
+        "value": "models.TextField(blank=True, null=True, verbose_name='Descripción')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "TipoDocumento": {
+    "key": "apps.documentos.models.TipoDocumento",
+    "name": "TipoDocumento",
+    "path": "apps/documentos/models.py",
+    "line": 49,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "50",
+          "unique": "True",
+          "verbose_name": "'Código'"
+        },
+        "line": 57
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "100",
+          "unique": "True",
+          "verbose_name": "'Nombre'"
+        },
+        "line": 62
+      },
+      {
+        "name": "descripcion",
+        "type": "TextField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Descripción'"
+        },
+        "line": 67
+      },
+      {
+        "name": "obligatorio",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False",
+          "verbose_name": "'Obligatorio'"
+        },
+        "line": 72
+      },
+      {
+        "name": "permite_multiple_version",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False",
+          "verbose_name": "'Permite múltiples versiones'"
+        },
+        "line": 76
+      },
+      {
+        "name": "tamano_maximo_mb",
+        "type": "PositiveIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "10",
+          "verbose_name": "'Tamaño máximo (MB)'"
+        },
+        "line": 80
+      },
+      {
+        "name": "extensiones_permitidas",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "200",
+          "default": "'pdf,doc,docx'",
+          "verbose_name": "'Extensiones permitidas'"
+        },
+        "line": 84
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 101
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=50, unique=True, verbose_name='Código')",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=100, unique=True, verbose_name='Nombre')",
+        "annotation": ""
+      },
+      {
+        "name": "descripcion",
+        "value": "models.TextField(blank=True, null=True, verbose_name='Descripción')",
+        "annotation": ""
+      },
+      {
+        "name": "obligatorio",
+        "value": "models.BooleanField(default=False, verbose_name='Obligatorio')",
+        "annotation": ""
+      },
+      {
+        "name": "permite_multiple_version",
+        "value": "models.BooleanField(default=False, verbose_name='Permite múltiples versiones')",
+        "annotation": ""
+      },
+      {
+        "name": "tamano_maximo_mb",
+        "value": "models.PositiveIntegerField(default=10, verbose_name='Tamaño máximo (MB)')",
+        "annotation": ""
+      },
+      {
+        "name": "extensiones_permitidas",
+        "value": "models.CharField(max_length=200, default='pdf,doc,docx', verbose_name='Extensiones permitidas')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "DocumentoPostulacion": {
+    "key": "apps.documentos.models.DocumentoPostulacion",
+    "name": "DocumentoPostulacion",
+    "path": "apps/documentos/models.py",
+    "line": 106,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.postulantes.models.Postulacion",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'documentos'",
+          "verbose_name": "'Postulación'"
+        },
+        "line": 109
+      },
+      {
+        "name": "evento_defensa",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "postulantes.EventoDefensa",
+        "kwargs": {
+          "on_delete": "models.SET_NULL",
+          "related_name": "'documentos_vinculados'",
+          "null": "True",
+          "blank": "True",
+          "verbose_name": "'Evento de defensa relacionado'"
+        },
+        "line": 115
+      },
+      {
+        "name": "tipo_documento",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "TipoDocumento",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'documentos'",
+          "verbose_name": "'Tipo de documento'"
+        },
+        "line": 123
+      },
+      {
+        "name": "estado",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "EstadoDocumento",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'documentos'",
+          "verbose_name": "'Estado'"
+        },
+        "line": 129
+      },
+      {
+        "name": "fecha_subida",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "auto_now_add": "True",
+          "verbose_name": "'Fecha de subida'"
+        },
+        "line": 135
+      },
+      {
+        "name": "fecha_revision",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Fecha de revisión'"
+        },
+        "line": 139
+      },
+      {
+        "name": "observacion_general",
+        "type": "TextField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Observación general'"
+        },
+        "line": 144
+      },
+      {
+        "name": "requiere_correccion",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False",
+          "verbose_name": "'Requiere corrección'"
+        },
+        "line": 149
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 171
+      },
+      {
+        "name": "clean",
+        "args": [],
+        "line": 175
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['postulacion', 'tipo_documento'], name='unique_postulacion_tipo_documento')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey(Postulacion, on_delete=models.CASCADE, related_name='documentos', verbose_name='Postulación')",
+        "annotation": ""
+      },
+      {
+        "name": "evento_defensa",
+        "value": "models.ForeignKey('postulantes.EventoDefensa', on_delete=models.SET_NULL, related_name='documentos_vinculados', null=True, blank=True, verbose_name='Evento de defensa relacionado')",
+        "annotation": ""
+      },
+      {
+        "name": "tipo_documento",
+        "value": "models.ForeignKey(TipoDocumento, on_delete=models.PROTECT, related_name='documentos', verbose_name='Tipo de documento')",
+        "annotation": ""
+      },
+      {
+        "name": "estado",
+        "value": "models.ForeignKey(EstadoDocumento, on_delete=models.PROTECT, related_name='documentos', verbose_name='Estado')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_subida",
+        "value": "models.DateTimeField(auto_now_add=True, verbose_name='Fecha de subida')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_revision",
+        "value": "models.DateTimeField(blank=True, null=True, verbose_name='Fecha de revisión')",
+        "annotation": ""
+      },
+      {
+        "name": "observacion_general",
+        "value": "models.TextField(blank=True, null=True, verbose_name='Observación general')",
+        "annotation": ""
+      },
+      {
+        "name": "requiere_correccion",
+        "value": "models.BooleanField(default=False, verbose_name='Requiere corrección')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "VersionDocumento": {
+    "key": "apps.documentos.models.VersionDocumento",
+    "name": "VersionDocumento",
+    "path": "apps/documentos/models.py",
+    "line": 181,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "documento",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "DocumentoPostulacion",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'versiones'",
+          "verbose_name": "'Documento'"
+        },
+        "line": 184
+      },
+      {
+        "name": "subido_por",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "usuarios.CustomUser",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'versiones_documentos'",
+          "verbose_name": "'Subido por'"
+        },
+        "line": 190
+      },
+      {
+        "name": "numero_version",
+        "type": "PositiveIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Número de versión'"
+        },
+        "line": 196
+      },
+      {
+        "name": "archivo",
+        "type": "FileField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "upload_to": "'documentos/versiones/'",
+          "verbose_name": "'Archivo'"
+        },
+        "line": 199
+      },
+      {
+        "name": "nombre_original",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "255",
+          "verbose_name": "'Nombre original'"
+        },
+        "line": 203
+      },
+      {
+        "name": "tamano_bytes",
+        "type": "BigIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Tamaño en bytes'"
+        },
+        "line": 207
+      },
+      {
+        "name": "hash_sha256",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "64",
+          "verbose_name": "'Hash SHA-256'"
+        },
+        "line": 210
+      },
+      {
+        "name": "fecha_subida",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "auto_now_add": "True",
+          "verbose_name": "'Fecha de subida'"
+        },
+        "line": 214
+      },
+      {
+        "name": "es_version_actual",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "True",
+          "verbose_name": "'Es versión actual'"
+        },
+        "line": 218
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 240
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['documento', 'numero_version'], name='unique_documento_numero_version')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "documento",
+        "value": "models.ForeignKey(DocumentoPostulacion, on_delete=models.CASCADE, related_name='versiones', verbose_name='Documento')",
+        "annotation": ""
+      },
+      {
+        "name": "subido_por",
+        "value": "models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='versiones_documentos', verbose_name='Subido por')",
+        "annotation": ""
+      },
+      {
+        "name": "numero_version",
+        "value": "models.PositiveIntegerField(verbose_name='Número de versión')",
+        "annotation": ""
+      },
+      {
+        "name": "archivo",
+        "value": "models.FileField(upload_to='documentos/versiones/', verbose_name='Archivo')",
+        "annotation": ""
+      },
+      {
+        "name": "nombre_original",
+        "value": "models.CharField(max_length=255, verbose_name='Nombre original')",
+        "annotation": ""
+      },
+      {
+        "name": "tamano_bytes",
+        "value": "models.BigIntegerField(verbose_name='Tamaño en bytes')",
+        "annotation": ""
+      },
+      {
+        "name": "hash_sha256",
+        "value": "models.CharField(max_length=64, verbose_name='Hash SHA-256')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_subida",
+        "value": "models.DateTimeField(auto_now_add=True, verbose_name='Fecha de subida')",
+        "annotation": ""
+      },
+      {
+        "name": "es_version_actual",
+        "value": "models.BooleanField(default=True, verbose_name='Es versión actual')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "ObservacionDocumento": {
+    "key": "apps.documentos.models.ObservacionDocumento",
+    "name": "ObservacionDocumento",
+    "path": "apps/documentos/models.py",
+    "line": 245,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "version_documento",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "VersionDocumento",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'observaciones'",
+          "verbose_name": "'Versión de documento'"
+        },
+        "line": 248
+      },
+      {
+        "name": "usuario",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "usuarios.CustomUser",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'observaciones_documentos'",
+          "verbose_name": "'Usuario'"
+        },
+        "line": 254
+      },
+      {
+        "name": "comentario",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Comentario'"
+        },
+        "line": 260
+      },
+      {
+        "name": "leida_por_estudiante",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False",
+          "verbose_name": "'Leída por estudiante'"
+        },
+        "line": 263
+      },
+      {
+        "name": "corregida",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False",
+          "verbose_name": "'Corregida'"
+        },
+        "line": 267
+      },
+      {
+        "name": "fecha_observacion",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "auto_now_add": "True",
+          "verbose_name": "'Fecha de observación'"
+        },
+        "line": 271
+      },
+      {
+        "name": "fecha_correccion",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Fecha de corrección'"
+        },
+        "line": 275
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 290
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "version_documento",
+        "value": "models.ForeignKey(VersionDocumento, on_delete=models.CASCADE, related_name='observaciones', verbose_name='Versión de documento')",
+        "annotation": ""
+      },
+      {
+        "name": "usuario",
+        "value": "models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='observaciones_documentos', verbose_name='Usuario')",
+        "annotation": ""
+      },
+      {
+        "name": "comentario",
+        "value": "models.TextField(verbose_name='Comentario')",
+        "annotation": ""
+      },
+      {
+        "name": "leida_por_estudiante",
+        "value": "models.BooleanField(default=False, verbose_name='Leída por estudiante')",
+        "annotation": ""
+      },
+      {
+        "name": "corregida",
+        "value": "models.BooleanField(default=False, verbose_name='Corregida')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_observacion",
+        "value": "models.DateTimeField(auto_now_add=True, verbose_name='Fecha de observación')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_correccion",
+        "value": "models.DateTimeField(blank=True, null=True, verbose_name='Fecha de corrección')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "ConfirmacionCorreccionDocumento": {
+    "key": "apps.documentos.models.ConfirmacionCorreccionDocumento",
+    "name": "ConfirmacionCorreccionDocumento",
+    "path": "apps/documentos/models.py",
+    "line": 295,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.postulantes.models.Postulacion",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'confirmaciones_correccion'"
+        },
+        "line": 303
+      },
+      {
+        "name": "evento_origen",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "postulantes.EventoDefensa",
+        "kwargs": {
+          "on_delete": "models.SET_NULL",
+          "null": "True",
+          "blank": "True",
+          "related_name": "'confirmaciones_correccion'"
+        },
+        "line": 306
+      },
+      {
+        "name": "version_observada",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "VersionDocumento",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'confirmaciones_observacion'"
+        },
+        "line": 310
+      },
+      {
+        "name": "version_corregida",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "VersionDocumento",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'confirmaciones_correccion'"
+        },
+        "line": 313
+      },
+      {
+        "name": "confirmado_por",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "usuarios.CustomUser",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'confirmaciones_correccion_realizadas'"
+        },
+        "line": 316
+      },
+      {
+        "name": "asignacion_confirmante",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "postulantes.AsignacionPostulacion",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "null": "True",
+          "blank": "True",
+          "related_name": "'confirmaciones_correccion_emitidas'"
+        },
+        "line": 319
+      },
+      {
+        "name": "fecha_confirmacion",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "auto_now_add": "True"
+        },
+        "line": 323
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 324
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 343
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 368
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['version_observada', 'version_corregida'], condition=models.Q(activo=True), name='confirmacion_correccion_versiones_activa_unica')"
+    ],
+    "indexes": [
+      "models.Index(fields=['postulacion', 'activo'])",
+      "models.Index(fields=['evento_origen', 'activo'])"
+    ],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey(Postulacion, on_delete=models.CASCADE, related_name='confirmaciones_correccion')",
+        "annotation": ""
+      },
+      {
+        "name": "evento_origen",
+        "value": "models.ForeignKey('postulantes.EventoDefensa', on_delete=models.SET_NULL, null=True, blank=True, related_name='confirmaciones_correccion')",
+        "annotation": ""
+      },
+      {
+        "name": "version_observada",
+        "value": "models.ForeignKey(VersionDocumento, on_delete=models.PROTECT, related_name='confirmaciones_observacion')",
+        "annotation": ""
+      },
+      {
+        "name": "version_corregida",
+        "value": "models.ForeignKey(VersionDocumento, on_delete=models.PROTECT, related_name='confirmaciones_correccion')",
+        "annotation": ""
+      },
+      {
+        "name": "confirmado_por",
+        "value": "models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='confirmaciones_correccion_realizadas')",
+        "annotation": ""
+      },
+      {
+        "name": "asignacion_confirmante",
+        "value": "models.ForeignKey('postulantes.AsignacionPostulacion', on_delete=models.PROTECT, null=True, blank=True, related_name='confirmaciones_correccion_emitidas')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_confirmacion",
+        "value": "models.DateTimeField(auto_now_add=True)",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "ExamenArea": {
+    "key": "apps.modalidades.models.ExamenArea",
+    "name": "ExamenArea",
+    "path": "apps/modalidades/models.py",
+    "line": 8,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "postulantes.Postulacion",
+        "kwargs": {
+          "related_name": "'examen_areas'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 16
+      },
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "30"
+        },
+        "line": 17
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "150"
+        },
+        "line": 18
+      },
+      {
+        "name": "orden",
+        "type": "PositiveSmallIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {},
+        "line": 19
+      },
+      {
+        "name": "ponderacion",
+        "type": "DecimalField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_digits": "5",
+          "decimal_places": "2"
+        },
+        "line": 20
+      },
+      {
+        "name": "estado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "Estado.choices",
+          "default": "Estado.PENDIENTE"
+        },
+        "line": 21
+      },
+      {
+        "name": "intento_actual",
+        "type": "PositiveSmallIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "1"
+        },
+        "line": 22
+      },
+      {
+        "name": "reintento_hasta",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 23
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 35
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 45
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['postulacion', 'codigo'], name='unique_examen_area_postulacion_codigo')",
+      "models.UniqueConstraint(fields=['postulacion', 'orden'], name='unique_examen_area_postulacion_orden')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey('postulantes.Postulacion', models.CASCADE, related_name='examen_areas')",
+        "annotation": ""
+      },
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=30)",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=150)",
+        "annotation": ""
+      },
+      {
+        "name": "orden",
+        "value": "models.PositiveSmallIntegerField()",
+        "annotation": ""
+      },
+      {
+        "name": "ponderacion",
+        "value": "models.DecimalField(max_digits=5, decimal_places=2)",
+        "annotation": ""
+      },
+      {
+        "name": "estado",
+        "value": "models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)",
+        "annotation": ""
+      },
+      {
+        "name": "intento_actual",
+        "value": "models.PositiveSmallIntegerField(default=1)",
+        "annotation": ""
+      },
+      {
+        "name": "reintento_hasta",
+        "value": "models.DateTimeField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "ExamenEvaluacion": {
+    "key": "apps.modalidades.models.ExamenEvaluacion",
+    "name": "ExamenEvaluacion",
+    "path": "apps/modalidades/models.py",
+    "line": 50,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "area",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "ExamenArea",
+        "kwargs": {
+          "related_name": "'evaluaciones'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 59
+      },
+      {
+        "name": "intento",
+        "type": "PositiveSmallIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {},
+        "line": 60
+      },
+      {
+        "name": "nota",
+        "type": "DecimalField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_digits": "5",
+          "decimal_places": "2"
+        },
+        "line": 61
+      },
+      {
+        "name": "resultado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "Resultado.choices"
+        },
+        "line": 62
+      },
+      {
+        "name": "modalidad_registro",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "15",
+          "choices": "ModalidadRegistro.choices",
+          "default": "ModalidadRegistro.INDIVIDUAL"
+        },
+        "line": 63
+      },
+      {
+        "name": "evaluador",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "usuarios.CustomUser",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'evaluaciones_examen'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 64
+      },
+      {
+        "name": "fecha_evaluacion",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "auto_now_add": "True"
+        },
+        "line": 65
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 66
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 77
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 85
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['area', 'intento', 'evaluador'], name='unique_examen_evaluacion_area_intento_evaluador')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "area",
+        "value": "models.ForeignKey(ExamenArea, models.CASCADE, related_name='evaluaciones')",
+        "annotation": ""
+      },
+      {
+        "name": "intento",
+        "value": "models.PositiveSmallIntegerField()",
+        "annotation": ""
+      },
+      {
+        "name": "nota",
+        "value": "models.DecimalField(max_digits=5, decimal_places=2)",
+        "annotation": ""
+      },
+      {
+        "name": "resultado",
+        "value": "models.CharField(max_length=20, choices=Resultado.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "modalidad_registro",
+        "value": "models.CharField(max_length=15, choices=ModalidadRegistro.choices, default=ModalidadRegistro.INDIVIDUAL)",
+        "annotation": ""
+      },
+      {
+        "name": "evaluador",
+        "value": "models.ForeignKey('usuarios.CustomUser', models.PROTECT, null=True, blank=True, related_name='evaluaciones_examen')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_evaluacion",
+        "value": "models.DateTimeField(auto_now_add=True)",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "ExcelenciaExpediente": {
+    "key": "apps.modalidades.models.ExcelenciaExpediente",
+    "name": "ExcelenciaExpediente",
+    "path": "apps/modalidades/models.py",
+    "line": 90,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "OneToOneField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "postulantes.Postulacion",
+        "kwargs": {
+          "related_name": "'excelencia_expediente'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 100
+      },
+      {
+        "name": "criterio",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "30",
+          "choices": "Criterio.choices"
+        },
+        "line": 103
+      },
+      {
+        "name": "resultado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "Resultado.choices",
+          "default": "Resultado.PENDIENTE"
+        },
+        "line": 104
+      },
+      {
+        "name": "promedio_general",
+        "type": "DecimalField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_digits": "5",
+          "decimal_places": "2",
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 105
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 106
+      },
+      {
+        "name": "evaluado_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "usuarios.CustomUser",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'evaluaciones_excelencia'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 107
+      },
+      {
+        "name": "fecha_evaluacion",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 110
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 118
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 130
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.OneToOneField('postulantes.Postulacion', models.CASCADE, related_name='excelencia_expediente')",
+        "annotation": ""
+      },
+      {
+        "name": "criterio",
+        "value": "models.CharField(max_length=30, choices=Criterio.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "resultado",
+        "value": "models.CharField(max_length=20, choices=Resultado.choices, default=Resultado.PENDIENTE)",
+        "annotation": ""
+      },
+      {
+        "name": "promedio_general",
+        "value": "models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "evaluado_por",
+        "value": "models.ForeignKey('usuarios.CustomUser', models.PROTECT, null=True, blank=True, related_name='evaluaciones_excelencia')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_evaluacion",
+        "value": "models.DateTimeField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "DiplomadoModulo": {
+    "key": "apps.modalidades.models.DiplomadoModulo",
+    "name": "DiplomadoModulo",
+    "path": "apps/modalidades/models.py",
+    "line": 135,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "postulantes.Postulacion",
+        "kwargs": {
+          "related_name": "'diplomado_modulos'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 142
+      },
+      {
+        "name": "orden",
+        "type": "PositiveSmallIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {},
+        "line": 143
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "180"
+        },
+        "line": 144
+      },
+      {
+        "name": "horas",
+        "type": "PositiveSmallIntegerField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 145
+      },
+      {
+        "name": "estado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "Estado.choices",
+          "default": "Estado.PENDIENTE"
+        },
+        "line": 146
+      },
+      {
+        "name": "nota",
+        "type": "DecimalField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_digits": "5",
+          "decimal_places": "2",
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 147
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 148
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 159
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 171
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['postulacion', 'orden'], name='unique_diplomado_modulo_orden')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey('postulantes.Postulacion', models.CASCADE, related_name='diplomado_modulos')",
+        "annotation": ""
+      },
+      {
+        "name": "orden",
+        "value": "models.PositiveSmallIntegerField()",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=180)",
+        "annotation": ""
+      },
+      {
+        "name": "horas",
+        "value": "models.PositiveSmallIntegerField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "estado",
+        "value": "models.CharField(max_length=20, choices=Estado.choices, default=Estado.PENDIENTE)",
+        "annotation": ""
+      },
+      {
+        "name": "nota",
+        "value": "models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "DiplomadoDefensa": {
+    "key": "apps.modalidades.models.DiplomadoDefensa",
+    "name": "DiplomadoDefensa",
+    "path": "apps/modalidades/models.py",
+    "line": 176,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "postulantes.Postulacion",
+        "kwargs": {
+          "related_name": "'diplomado_defensas'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 182
+      },
+      {
+        "name": "numero_intento",
+        "type": "PositiveSmallIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "1"
+        },
+        "line": 183
+      },
+      {
+        "name": "nota_consenso",
+        "type": "DecimalField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_digits": "5",
+          "decimal_places": "2",
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 184
+      },
+      {
+        "name": "resultado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "Resultado.choices",
+          "default": "Resultado.PENDIENTE"
+        },
+        "line": 185
+      },
+      {
+        "name": "reintento_hasta",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 186
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 187
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 198
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 203
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['postulacion', 'numero_intento'], name='unique_diplomado_defensa_intento')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey('postulantes.Postulacion', models.CASCADE, related_name='diplomado_defensas')",
+        "annotation": ""
+      },
+      {
+        "name": "numero_intento",
+        "value": "models.PositiveSmallIntegerField(default=1)",
+        "annotation": ""
+      },
+      {
+        "name": "nota_consenso",
+        "value": "models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "resultado",
+        "value": "models.CharField(max_length=20, choices=Resultado.choices, default=Resultado.PENDIENTE)",
+        "annotation": ""
+      },
+      {
+        "name": "reintento_hasta",
+        "value": "models.DateTimeField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "TrabajoDirigidoExpediente": {
+    "key": "apps.modalidades.models.TrabajoDirigidoExpediente",
+    "name": "TrabajoDirigidoExpediente",
+    "path": "apps/modalidades/models.py",
+    "line": 208,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "OneToOneField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "postulantes.Postulacion",
+        "kwargs": {
+          "related_name": "'trabajo_dirigido_expediente'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 217
+      },
+      {
+        "name": "tipo_ejecucion",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "10",
+          "choices": "TipoEjecucion.choices"
+        },
+        "line": 220
+      },
+      {
+        "name": "institucion_nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "250"
+        },
+        "line": 221
+      },
+      {
+        "name": "institucion_tipo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "10",
+          "choices": "TipoInstitucion.choices"
+        },
+        "line": 222
+      },
+      {
+        "name": "constituida_legalmente",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False"
+        },
+        "line": 223
+      },
+      {
+        "name": "actividad_permanente",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False"
+        },
+        "line": 224
+      },
+      {
+        "name": "proporciona_recursos",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False"
+        },
+        "line": 225
+      },
+      {
+        "name": "supervisor_nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "200"
+        },
+        "line": 226
+      },
+      {
+        "name": "supervisor_profesion",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "150",
+          "blank": "True"
+        },
+        "line": 227
+      },
+      {
+        "name": "convenio_vigente",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False"
+        },
+        "line": 228
+      },
+      {
+        "name": "fecha_firma_convenio",
+        "type": "DateField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 229
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 230
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 235
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 247
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.OneToOneField('postulantes.Postulacion', models.CASCADE, related_name='trabajo_dirigido_expediente')",
+        "annotation": ""
+      },
+      {
+        "name": "tipo_ejecucion",
+        "value": "models.CharField(max_length=10, choices=TipoEjecucion.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "institucion_nombre",
+        "value": "models.CharField(max_length=250)",
+        "annotation": ""
+      },
+      {
+        "name": "institucion_tipo",
+        "value": "models.CharField(max_length=10, choices=TipoInstitucion.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "constituida_legalmente",
+        "value": "models.BooleanField(default=False)",
+        "annotation": ""
+      },
+      {
+        "name": "actividad_permanente",
+        "value": "models.BooleanField(default=False)",
+        "annotation": ""
+      },
+      {
+        "name": "proporciona_recursos",
+        "value": "models.BooleanField(default=False)",
+        "annotation": ""
+      },
+      {
+        "name": "supervisor_nombre",
+        "value": "models.CharField(max_length=200)",
+        "annotation": ""
+      },
+      {
+        "name": "supervisor_profesion",
+        "value": "models.CharField(max_length=150, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "convenio_vigente",
+        "value": "models.BooleanField(default=False)",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_firma_convenio",
+        "value": "models.DateField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "InformeSeguimientoTrabajoDirigido": {
+    "key": "apps.modalidades.models.InformeSeguimientoTrabajoDirigido",
+    "name": "InformeSeguimientoTrabajoDirigido",
+    "path": "apps/modalidades/models.py",
+    "line": 252,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "expediente",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "TrabajoDirigidoExpediente",
+        "kwargs": {
+          "related_name": "'informes_seguimiento'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 253
+      },
+      {
+        "name": "periodo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "80"
+        },
+        "line": 256
+      },
+      {
+        "name": "descripcion_desempeno",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {},
+        "line": 257
+      },
+      {
+        "name": "evaluacion_cualitativa",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {},
+        "line": 258
+      },
+      {
+        "name": "aporte_laboral",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {},
+        "line": 259
+      },
+      {
+        "name": "sugerencias_recomendaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 260
+      },
+      {
+        "name": "registrado_por",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "usuarios.CustomUser",
+        "kwargs": {
+          "related_name": "'informes_trabajo_dirigido_registrados'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 261
+      }
+    ],
+    "methods": [
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 271
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "expediente",
+        "value": "models.ForeignKey(TrabajoDirigidoExpediente, models.CASCADE, related_name='informes_seguimiento')",
+        "annotation": ""
+      },
+      {
+        "name": "periodo",
+        "value": "models.CharField(max_length=80)",
+        "annotation": ""
+      },
+      {
+        "name": "descripcion_desempeno",
+        "value": "models.TextField()",
+        "annotation": ""
+      },
+      {
+        "name": "evaluacion_cualitativa",
+        "value": "models.TextField()",
+        "annotation": ""
+      },
+      {
+        "name": "aporte_laboral",
+        "value": "models.TextField()",
+        "annotation": ""
+      },
+      {
+        "name": "sugerencias_recomendaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "registrado_por",
+        "value": "models.ForeignKey('usuarios.CustomUser', models.PROTECT, related_name='informes_trabajo_dirigido_registrados')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "Notificacion": {
+    "key": "apps.notificaciones.models.Notificacion",
+    "name": "Notificacion",
+    "path": "apps/notificaciones/models.py",
+    "line": 8,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "destinatario",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "usuarios.CustomUser",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'notificaciones'"
+        },
+        "line": 11
+      },
+      {
+        "name": "tipo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "60"
+        },
+        "line": 12
+      },
+      {
+        "name": "titulo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "180"
+        },
+        "line": 13
+      },
+      {
+        "name": "mensaje",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {},
+        "line": 14
+      },
+      {
+        "name": "nivel",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "10",
+          "choices": "Nivel.choices",
+          "default": "Nivel.INFO"
+        },
+        "line": 15
+      },
+      {
+        "name": "leida",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False"
+        },
+        "line": 16
+      },
+      {
+        "name": "fecha_lectura",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 17
+      },
+      {
+        "name": "actor",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "usuarios.CustomUser",
+        "kwargs": {
+          "on_delete": "models.SET_NULL",
+          "null": "True",
+          "blank": "True",
+          "related_name": "'notificaciones_generadas'"
+        },
+        "line": 18
+      },
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "postulantes.Postulacion",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "null": "True",
+          "blank": "True",
+          "related_name": "'notificaciones'"
+        },
+        "line": 19
+      },
+      {
+        "name": "aggregate_type",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "80"
+        },
+        "line": 20
+      },
+      {
+        "name": "aggregate_id",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "80"
+        },
+        "line": 21
+      },
+      {
+        "name": "event_id",
+        "type": "UUIDField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {},
+        "line": 22
+      },
+      {
+        "name": "deduplication_key",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "255"
+        },
+        "line": 23
+      },
+      {
+        "name": "metadata",
+        "type": "JSONField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "dict",
+          "blank": "True"
+        },
+        "line": 24
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 29
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 41
+      },
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 42
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['destinatario', 'deduplication_key'], name='unique_notif_dest_dedup')"
+    ],
+    "indexes": [
+      "models.Index(fields=['destinatario', 'leida', '-created_at'], name='notif_dest_read_created')",
+      "models.Index(fields=['postulacion'], name='notif_postulacion_idx')",
+      "models.Index(fields=['event_id'], name='notif_event_idx')"
+    ],
+    "attrs": [
+      {
+        "name": "destinatario",
+        "value": "models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notificaciones')",
+        "annotation": ""
+      },
+      {
+        "name": "tipo",
+        "value": "models.CharField(max_length=60)",
+        "annotation": ""
+      },
+      {
+        "name": "titulo",
+        "value": "models.CharField(max_length=180)",
+        "annotation": ""
+      },
+      {
+        "name": "mensaje",
+        "value": "models.TextField()",
+        "annotation": ""
+      },
+      {
+        "name": "nivel",
+        "value": "models.CharField(max_length=10, choices=Nivel.choices, default=Nivel.INFO)",
+        "annotation": ""
+      },
+      {
+        "name": "leida",
+        "value": "models.BooleanField(default=False)",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_lectura",
+        "value": "models.DateTimeField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "actor",
+        "value": "models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='notificaciones_generadas')",
+        "annotation": ""
+      },
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey('postulantes.Postulacion', on_delete=models.CASCADE, null=True, blank=True, related_name='notificaciones')",
+        "annotation": ""
+      },
+      {
+        "name": "aggregate_type",
+        "value": "models.CharField(max_length=80)",
+        "annotation": ""
+      },
+      {
+        "name": "aggregate_id",
+        "value": "models.CharField(max_length=80)",
+        "annotation": ""
+      },
+      {
+        "name": "event_id",
+        "value": "models.UUIDField()",
+        "annotation": ""
+      },
+      {
+        "name": "deduplication_key",
+        "value": "models.CharField(max_length=255)",
+        "annotation": ""
+      },
+      {
+        "name": "metadata",
+        "value": "models.JSONField(default=dict, blank=True)",
+        "annotation": ""
+      }
+    ]
+  },
+  "EstadoPostulacion": {
+    "key": "apps.postulantes.models.EstadoPostulacion",
+    "name": "EstadoPostulacion",
+    "path": "apps/postulantes/models.py",
+    "line": 12,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "30",
+          "unique": "True",
+          "verbose_name": "'Código'"
+        },
+        "line": 19
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "100",
+          "unique": "True",
+          "verbose_name": "'Nombre'"
+        },
+        "line": 24
+      },
+      {
+        "name": "descripcion",
+        "type": "TextField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Descripción'"
+        },
+        "line": 29
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 46
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=30, unique=True, verbose_name='Código')",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=100, unique=True, verbose_name='Nombre')",
+        "annotation": ""
+      },
+      {
+        "name": "descripcion",
+        "value": "models.TextField(blank=True, null=True, verbose_name='Descripción')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "HistorialEstado": {
+    "key": "apps.postulantes.models.HistorialEstado",
+    "name": "HistorialEstado",
+    "path": "apps/postulantes/models.py",
+    "line": 51,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Postulacion",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'historial_estados'",
+          "verbose_name": "'Postulación'"
+        },
+        "line": 59
+      },
+      {
+        "name": "estado_anterior",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "EstadoPostulacion",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'historial_estado_anterior'",
+          "verbose_name": "'Estado anterior'",
+          "blank": "True",
+          "null": "True"
+        },
+        "line": 65
+      },
+      {
+        "name": "estado_nuevo",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "EstadoPostulacion",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'historial_estado_nuevo'",
+          "verbose_name": "'Estado nuevo'"
+        },
+        "line": 73
+      },
+      {
+        "name": "usuario",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'historial_estados'",
+          "verbose_name": "'Usuario'"
+        },
+        "line": 79
+      },
+      {
+        "name": "fecha_cambio",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "auto_now_add": "True",
+          "verbose_name": "'Fecha de cambio'"
+        },
+        "line": 85
+      },
+      {
+        "name": "comentario",
+        "type": "TextField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Comentario'"
+        },
+        "line": 89
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 106
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey('Postulacion', on_delete=models.CASCADE, related_name='historial_estados', verbose_name='Postulación')",
+        "annotation": ""
+      },
+      {
+        "name": "estado_anterior",
+        "value": "models.ForeignKey(EstadoPostulacion, on_delete=models.PROTECT, related_name='historial_estado_anterior', verbose_name='Estado anterior', blank=True, null=True)",
+        "annotation": ""
+      },
+      {
+        "name": "estado_nuevo",
+        "value": "models.ForeignKey(EstadoPostulacion, on_delete=models.PROTECT, related_name='historial_estado_nuevo', verbose_name='Estado nuevo')",
+        "annotation": ""
+      },
+      {
+        "name": "usuario",
+        "value": "models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='historial_estados', verbose_name='Usuario')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_cambio",
+        "value": "models.DateTimeField(auto_now_add=True, verbose_name='Fecha de cambio')",
+        "annotation": ""
+      },
+      {
+        "name": "comentario",
+        "value": "models.TextField(blank=True, null=True, verbose_name='Comentario')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "Observacion": {
+    "key": "apps.postulantes.models.Observacion",
+    "name": "Observacion",
+    "path": "apps/postulantes/models.py",
+    "line": 111,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Postulacion",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'observaciones'",
+          "verbose_name": "'Postulación'"
+        },
+        "line": 119
+      },
+      {
+        "name": "usuario",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'observaciones'",
+          "verbose_name": "'Usuario'"
+        },
+        "line": 125
+      },
+      {
+        "name": "comentario",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Comentario'"
+        },
+        "line": 131
+      },
+      {
+        "name": "leida_estudiante",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False",
+          "verbose_name": "'Leída por el estudiante'"
+        },
+        "line": 134
+      },
+      {
+        "name": "fecha_observacion",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "auto_now_add": "True",
+          "verbose_name": "'Fecha de observación'"
+        },
+        "line": 138
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 154
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey('Postulacion', on_delete=models.CASCADE, related_name='observaciones', verbose_name='Postulación')",
+        "annotation": ""
+      },
+      {
+        "name": "usuario",
+        "value": "models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='observaciones', verbose_name='Usuario')",
+        "annotation": ""
+      },
+      {
+        "name": "comentario",
+        "value": "models.TextField(verbose_name='Comentario')",
+        "annotation": ""
+      },
+      {
+        "name": "leida_estudiante",
+        "value": "models.BooleanField(default=False, verbose_name='Leída por el estudiante')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_observacion",
+        "value": "models.DateTimeField(auto_now_add=True, verbose_name='Fecha de observación')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "Postulacion": {
+    "key": "apps.postulantes.models.Postulacion",
+    "name": "Postulacion",
+    "path": "apps/postulantes/models.py",
+    "line": 159,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "30",
+          "unique": "True",
+          "verbose_name": "'Código'"
+        },
+        "line": 182
+      },
+      {
+        "name": "estudiante",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'postulaciones'",
+          "verbose_name": "'Estudiante'"
+        },
+        "line": 187
+      },
+      {
+        "name": "modalidad",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.academico.models.Modalidad",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'postulaciones'",
+          "verbose_name": "'Modalidad'"
+        },
+        "line": 193
+      },
+      {
+        "name": "periodo",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.academico.models.Periodo",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'postulaciones'",
+          "verbose_name": "'Período'"
+        },
+        "line": 199
+      },
+      {
+        "name": "fecha_postulacion",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "auto_now_add": "True",
+          "verbose_name": "'Fecha de postulación'"
+        },
+        "line": 205
+      },
+      {
+        "name": "observaciones_generales",
+        "type": "TextField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Observaciones generales'"
+        },
+        "line": 209
+      },
+      {
+        "name": "estado_actual",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "EstadoPostulacion",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'postulaciones'",
+          "verbose_name": "'Estado actual'",
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 214
+      },
+      {
+        "name": "vigencia",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "VigenciaChoices.choices",
+          "default": "VigenciaChoices.VIGENTE",
+          "verbose_name": "'Vigencia de la inscripción'"
+        },
+        "line": 222
+      },
+      {
+        "name": "tipo_registro",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "TipoRegistroChoices.choices",
+          "default": "TipoRegistroChoices.SEGUIMIENTO",
+          "verbose_name": "'Tipo de registro'"
+        },
+        "line": 228
+      },
+      {
+        "name": "regimen_workflow",
+        "type": "CharField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "RegimenWorkflowChoices.choices",
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Régimen del workflow'"
+        },
+        "line": 234
+      },
+      {
+        "name": "fecha_baja",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "verbose_name": "'Fecha de baja'"
+        },
+        "line": 241
+      },
+      {
+        "name": "motivo_baja",
+        "type": "TextField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "verbose_name": "'Motivo de baja'"
+        },
+        "line": 246
+      },
+      {
+        "name": "baja_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'postulaciones_dadas_de_baja'",
+          "null": "True",
+          "blank": "True",
+          "verbose_name": "'Responsable de la baja'"
+        },
+        "line": 251
+      }
+    ],
+    "methods": [
+      {
+        "name": "vigentes",
+        "args": [],
+        "line": 264
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 267
+      },
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 292
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['estudiante'], condition=models.Q(vigencia='VIGENTE'), name='unique_postulacion_vigente_por_estudiante')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=30, unique=True, verbose_name='Código')",
+        "annotation": ""
+      },
+      {
+        "name": "estudiante",
+        "value": "models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='postulaciones', verbose_name='Estudiante')",
+        "annotation": ""
+      },
+      {
+        "name": "modalidad",
+        "value": "models.ForeignKey(Modalidad, on_delete=models.PROTECT, related_name='postulaciones', verbose_name='Modalidad')",
+        "annotation": ""
+      },
+      {
+        "name": "periodo",
+        "value": "models.ForeignKey(Periodo, on_delete=models.PROTECT, related_name='postulaciones', verbose_name='Período')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_postulacion",
+        "value": "models.DateTimeField(auto_now_add=True, verbose_name='Fecha de postulación')",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones_generales",
+        "value": "models.TextField(blank=True, null=True, verbose_name='Observaciones generales')",
+        "annotation": ""
+      },
+      {
+        "name": "estado_actual",
+        "value": "models.ForeignKey(EstadoPostulacion, on_delete=models.PROTECT, related_name='postulaciones', verbose_name='Estado actual', null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "vigencia",
+        "value": "models.CharField(max_length=20, choices=VigenciaChoices.choices, default=VigenciaChoices.VIGENTE, verbose_name='Vigencia de la inscripción')",
+        "annotation": ""
+      },
+      {
+        "name": "tipo_registro",
+        "value": "models.CharField(max_length=20, choices=TipoRegistroChoices.choices, default=TipoRegistroChoices.SEGUIMIENTO, verbose_name='Tipo de registro')",
+        "annotation": ""
+      },
+      {
+        "name": "regimen_workflow",
+        "value": "models.CharField(max_length=20, choices=RegimenWorkflowChoices.choices, blank=True, null=True, verbose_name='Régimen del workflow')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_baja",
+        "value": "models.DateTimeField(null=True, blank=True, verbose_name='Fecha de baja')",
+        "annotation": ""
+      },
+      {
+        "name": "motivo_baja",
+        "value": "models.TextField(null=True, blank=True, verbose_name='Motivo de baja')",
+        "annotation": ""
+      },
+      {
+        "name": "baja_por",
+        "value": "models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='postulaciones_dadas_de_baja', null=True, blank=True, verbose_name='Responsable de la baja')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "SeguimientoEtapa": {
+    "key": "apps.postulantes.models.SeguimientoEtapa",
+    "name": "SeguimientoEtapa",
+    "path": "apps/postulantes/models.py",
+    "line": 297,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Postulacion",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'seguimientos_etapa'",
+          "verbose_name": "'Postulación'"
+        },
+        "line": 308
+      },
+      {
+        "name": "etapa",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.academico.models.EtapaModalidad",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'seguimientos'",
+          "verbose_name": "'Etapa'"
+        },
+        "line": 314
+      },
+      {
+        "name": "estado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "EstadoChoices.choices",
+          "default": "EstadoChoices.PENDIENTE",
+          "verbose_name": "'Estado'",
+          "help_text": "'Estado técnico del sistema; no corresponde a nombres oficiales del reglamento.'"
+        },
+        "line": 320
+      },
+      {
+        "name": "numero_intento",
+        "type": "PositiveIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "1",
+          "verbose_name": "'Número de intento'"
+        },
+        "line": 327
+      },
+      {
+        "name": "fecha_inicio",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Fecha de inicio'"
+        },
+        "line": 331
+      },
+      {
+        "name": "fecha_fin",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Fecha de fin'"
+        },
+        "line": 336
+      },
+      {
+        "name": "abierta_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "on_delete": "models.SET_NULL",
+          "blank": "True",
+          "null": "True",
+          "related_name": "'seguimientos_etapa_abiertos'",
+          "verbose_name": "'Abierta por'"
+        },
+        "line": 341
+      },
+      {
+        "name": "cerrada_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "on_delete": "models.SET_NULL",
+          "blank": "True",
+          "null": "True",
+          "related_name": "'seguimientos_etapa_cerrados'",
+          "verbose_name": "'Cerrada por'"
+        },
+        "line": 349
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "verbose_name": "'Observaciones'"
+        },
+        "line": 357
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 396
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 411
+      },
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 416
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['postulacion', 'etapa', 'numero_intento'], name='unique_postulacion_etapa_intento')",
+      "models.CheckConstraint(condition=models.Q(numero_intento__gte=1), name='check_seguimiento_numero_intento_gte_1')",
+      "models.CheckConstraint(condition=models.Q(fecha_inicio__isnull=True) | models.Q(fecha_fin__isnull=True) | models.Q(fecha_fin__gte=models.F('fecha_inicio')), name='check_seguimiento_fechas_validas')"
+    ],
+    "indexes": [
+      "models.Index(fields=['postulacion', 'estado'], name='idx_seg_post_estado')",
+      "models.Index(fields=['postulacion', 'etapa'], name='idx_seg_post_etapa')",
+      "models.Index(fields=['etapa', 'estado'], name='idx_seg_etapa_estado')"
+    ],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey(Postulacion, on_delete=models.CASCADE, related_name='seguimientos_etapa', verbose_name='Postulación')",
+        "annotation": ""
+      },
+      {
+        "name": "etapa",
+        "value": "models.ForeignKey(EtapaModalidad, on_delete=models.PROTECT, related_name='seguimientos', verbose_name='Etapa')",
+        "annotation": ""
+      },
+      {
+        "name": "estado",
+        "value": "models.CharField(max_length=20, choices=EstadoChoices.choices, default=EstadoChoices.PENDIENTE, verbose_name='Estado', help_text='Estado técnico del sistema; no corresponde a nombres oficiales del reglamento.')",
+        "annotation": ""
+      },
+      {
+        "name": "numero_intento",
+        "value": "models.PositiveIntegerField(default=1, verbose_name='Número de intento')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_inicio",
+        "value": "models.DateTimeField(blank=True, null=True, verbose_name='Fecha de inicio')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_fin",
+        "value": "models.DateTimeField(blank=True, null=True, verbose_name='Fecha de fin')",
+        "annotation": ""
+      },
+      {
+        "name": "abierta_por",
+        "value": "models.ForeignKey(CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='seguimientos_etapa_abiertos', verbose_name='Abierta por')",
+        "annotation": ""
+      },
+      {
+        "name": "cerrada_por",
+        "value": "models.ForeignKey(CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='seguimientos_etapa_cerrados', verbose_name='Cerrada por')",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True, verbose_name='Observaciones')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "AsignacionPostulacion": {
+    "key": "apps.postulantes.models.AsignacionPostulacion",
+    "name": "AsignacionPostulacion",
+    "path": "apps/postulantes/models.py",
+    "line": 421,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Postulacion",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'asignaciones'",
+          "verbose_name": "'Postulación'"
+        },
+        "line": 436
+      },
+      {
+        "name": "usuario",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'asignaciones_postulacion'",
+          "verbose_name": "'Usuario asignado'"
+        },
+        "line": 442
+      },
+      {
+        "name": "tipo_participacion",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "40",
+          "choices": "TipoParticipacionChoices.choices",
+          "verbose_name": "'Tipo de participación'",
+          "help_text": "'Código técnico del sistema fundamentado en los actores del reglamento y el diagrama oficial.'"
+        },
+        "line": 448
+      },
+      {
+        "name": "orden_cargo",
+        "type": "PositiveIntegerField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Orden del cargo'"
+        },
+        "line": 456
+      },
+      {
+        "name": "fecha_designacion",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "timezone.now",
+          "verbose_name": "'Fecha de designación'"
+        },
+        "line": 461
+      },
+      {
+        "name": "fecha_finalizacion",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Fecha de finalización'"
+        },
+        "line": 465
+      },
+      {
+        "name": "designado_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "on_delete": "models.SET_NULL",
+          "blank": "True",
+          "null": "True",
+          "related_name": "'asignaciones_realizadas'",
+          "verbose_name": "'Designado por'"
+        },
+        "line": 470
+      },
+      {
+        "name": "seguimiento_etapa",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "SeguimientoEtapa",
+        "kwargs": {
+          "on_delete": "models.SET_NULL",
+          "blank": "True",
+          "null": "True",
+          "related_name": "'asignaciones_actor'",
+          "verbose_name": "'Seguimiento de etapa'"
+        },
+        "line": 478
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "verbose_name": "'Observaciones'"
+        },
+        "line": 486
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 534
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 552
+      },
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 557
+      }
+    ],
+    "constraints": [
+      "models.CheckConstraint(condition=models.Q(orden_cargo__isnull=True) | models.Q(orden_cargo__gte=1), name='check_asignacion_orden_cargo_gte_1')",
+      "models.CheckConstraint(condition=models.Q(fecha_finalizacion__isnull=True) | models.Q(fecha_finalizacion__gte=models.F('fecha_designacion')), name='check_asignacion_fechas_validas')",
+      "models.UniqueConstraint(fields=['postulacion', 'usuario', 'tipo_participacion', 'orden_cargo'], condition=models.Q(activo=True, orden_cargo__isnull=False), name='unique_asignacion_activa_con_orden')",
+      "models.UniqueConstraint(fields=['postulacion', 'usuario', 'tipo_participacion'], condition=models.Q(activo=True, orden_cargo__isnull=True), name='unique_asignacion_activa_sin_orden')"
+    ],
+    "indexes": [
+      "models.Index(fields=['postulacion', 'tipo_participacion', 'activo'], name='idx_asig_post_tipo_act')",
+      "models.Index(fields=['usuario', 'activo'], name='idx_asig_usuario_act')",
+      "models.Index(fields=['postulacion', 'activo'], name='idx_asig_post_act')",
+      "models.Index(fields=['tipo_participacion', 'activo'], name='idx_asig_tipo_act')"
+    ],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey(Postulacion, on_delete=models.CASCADE, related_name='asignaciones', verbose_name='Postulación')",
+        "annotation": ""
+      },
+      {
+        "name": "usuario",
+        "value": "models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='asignaciones_postulacion', verbose_name='Usuario asignado')",
+        "annotation": ""
+      },
+      {
+        "name": "tipo_participacion",
+        "value": "models.CharField(max_length=40, choices=TipoParticipacionChoices.choices, verbose_name='Tipo de participación', help_text='Código técnico del sistema fundamentado en los actores del reglamento y el diagrama oficial.')",
+        "annotation": ""
+      },
+      {
+        "name": "orden_cargo",
+        "value": "models.PositiveIntegerField(blank=True, null=True, verbose_name='Orden del cargo')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_designacion",
+        "value": "models.DateTimeField(default=timezone.now, verbose_name='Fecha de designación')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_finalizacion",
+        "value": "models.DateTimeField(blank=True, null=True, verbose_name='Fecha de finalización')",
+        "annotation": ""
+      },
+      {
+        "name": "designado_por",
+        "value": "models.ForeignKey(CustomUser, on_delete=models.SET_NULL, blank=True, null=True, related_name='asignaciones_realizadas', verbose_name='Designado por')",
+        "annotation": ""
+      },
+      {
+        "name": "seguimiento_etapa",
+        "value": "models.ForeignKey(SeguimientoEtapa, on_delete=models.SET_NULL, blank=True, null=True, related_name='asignaciones_actor', verbose_name='Seguimiento de etapa')",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True, verbose_name='Observaciones')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "DecisionAcademicaEtapa": {
+    "key": "apps.postulantes.models.DecisionAcademicaEtapa",
+    "name": "DecisionAcademicaEtapa",
+    "path": "apps/postulantes/models.py",
+    "line": 562,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "seguimiento_etapa",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "SeguimientoEtapa",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'decisiones_academicas'"
+        },
+        "line": 565
+      },
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "80"
+        },
+        "line": 570
+      },
+      {
+        "name": "resultado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "80"
+        },
+        "line": 571
+      },
+      {
+        "name": "fecha_decision",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "timezone.now"
+        },
+        "line": 572
+      },
+      {
+        "name": "registrado_por",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'decisiones_academicas_registradas'"
+        },
+        "line": 573
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 578
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 596
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 609
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['seguimiento_etapa', 'codigo'], condition=models.Q(activo=True), name='unique_decision_academica_activa')"
+    ],
+    "indexes": [
+      "models.Index(fields=['seguimiento_etapa', 'activo'], name='idx_decision_seg_activo')"
+    ],
+    "attrs": [
+      {
+        "name": "seguimiento_etapa",
+        "value": "models.ForeignKey(SeguimientoEtapa, on_delete=models.PROTECT, related_name='decisiones_academicas')",
+        "annotation": ""
+      },
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=80)",
+        "annotation": ""
+      },
+      {
+        "name": "resultado",
+        "value": "models.CharField(max_length=80)",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_decision",
+        "value": "models.DateTimeField(default=timezone.now)",
+        "annotation": ""
+      },
+      {
+        "name": "registrado_por",
+        "value": "models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='decisiones_academicas_registradas')",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "ParticipacionDecisionAcademica": {
+    "key": "apps.postulantes.models.ParticipacionDecisionAcademica",
+    "name": "ParticipacionDecisionAcademica",
+    "path": "apps/postulantes/models.py",
+    "line": 614,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "decision",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "DecisionAcademicaEtapa",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'participaciones'"
+        },
+        "line": 617
+      },
+      {
+        "name": "asignacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "AsignacionPostulacion",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'participaciones_decision_academica'"
+        },
+        "line": 622
+      },
+      {
+        "name": "rol",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "60"
+        },
+        "line": 627
+      },
+      {
+        "name": "orden",
+        "type": "PositiveIntegerField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 628
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 646
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 661
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['decision', 'asignacion'], name='unique_asignacion_participacion_decision')",
+      "models.CheckConstraint(condition=models.Q(orden__isnull=True) | models.Q(orden__gte=1), name='check_decision_participante_orden_gte_1')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "decision",
+        "value": "models.ForeignKey(DecisionAcademicaEtapa, on_delete=models.CASCADE, related_name='participaciones')",
+        "annotation": ""
+      },
+      {
+        "name": "asignacion",
+        "value": "models.ForeignKey(AsignacionPostulacion, on_delete=models.PROTECT, related_name='participaciones_decision_academica')",
+        "annotation": ""
+      },
+      {
+        "name": "rol",
+        "value": "models.CharField(max_length=60)",
+        "annotation": ""
+      },
+      {
+        "name": "orden",
+        "value": "models.PositiveIntegerField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "PublicacionMemorandumDesignacion": {
+    "key": "apps.postulantes.models.PublicacionMemorandumDesignacion",
+    "name": "PublicacionMemorandumDesignacion",
+    "path": "apps/postulantes/models.py",
+    "line": 666,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Postulacion",
+        "kwargs": {
+          "related_name": "'publicaciones_memorandum_designacion'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 669
+      },
+      {
+        "name": "seguimiento_etapa",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "SeguimientoEtapa",
+        "kwargs": {
+          "related_name": "'publicaciones_memorandum_designacion'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 672
+      },
+      {
+        "name": "version_documento",
+        "type": "OneToOneField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "documentos.VersionDocumento",
+        "kwargs": {
+          "related_name": "'publicacion_designacion'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 675
+      },
+      {
+        "name": "asignaciones",
+        "type": "ManyToManyField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "AsignacionPostulacion",
+        "kwargs": {
+          "related_name": "'publicaciones_memorandum_designacion'"
+        },
+        "line": 678
+      },
+      {
+        "name": "publicado_por",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "related_name": "'memorandums_designacion_publicados'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 681
+      },
+      {
+        "name": "fecha_publicacion",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "timezone.now"
+        },
+        "line": 684
+      }
+    ],
+    "methods": [],
+    "constraints": [
+      "models.UniqueConstraint(fields=['postulacion'], condition=models.Q(activo=True), name='unique_memorandum_designacion_activo')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey(Postulacion, models.PROTECT, related_name='publicaciones_memorandum_designacion')",
+        "annotation": ""
+      },
+      {
+        "name": "seguimiento_etapa",
+        "value": "models.ForeignKey(SeguimientoEtapa, models.PROTECT, related_name='publicaciones_memorandum_designacion')",
+        "annotation": ""
+      },
+      {
+        "name": "version_documento",
+        "value": "models.OneToOneField('documentos.VersionDocumento', models.PROTECT, related_name='publicacion_designacion')",
+        "annotation": ""
+      },
+      {
+        "name": "asignaciones",
+        "value": "models.ManyToManyField(AsignacionPostulacion, related_name='publicaciones_memorandum_designacion')",
+        "annotation": ""
+      },
+      {
+        "name": "publicado_por",
+        "value": "models.ForeignKey(CustomUser, models.PROTECT, related_name='memorandums_designacion_publicados')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_publicacion",
+        "value": "models.DateTimeField(default=timezone.now)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "CondicionPostulacion": {
+    "key": "apps.postulantes.models.CondicionPostulacion",
+    "name": "CondicionPostulacion",
+    "path": "apps/postulantes/models.py",
+    "line": 699,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Postulacion",
+        "kwargs": {
+          "related_name": "'condiciones'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 715
+      },
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "40",
+          "choices": "Tipo.choices"
+        },
+        "line": 716
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "150"
+        },
+        "line": 717
+      },
+      {
+        "name": "tipo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "40",
+          "choices": "Tipo.choices"
+        },
+        "line": 718
+      },
+      {
+        "name": "estado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "15",
+          "choices": "Estado.choices",
+          "default": "Estado.PENDIENTE"
+        },
+        "line": 719
+      },
+      {
+        "name": "fecha_verificacion",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 720
+      },
+      {
+        "name": "verificado_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'condiciones_verificadas'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 721
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 722
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 728
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 738
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['postulacion', 'codigo'], name='condicion_codigo_postulacion_unico')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey(Postulacion, models.CASCADE, related_name='condiciones')",
+        "annotation": ""
+      },
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=40, choices=Tipo.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=150)",
+        "annotation": ""
+      },
+      {
+        "name": "tipo",
+        "value": "models.CharField(max_length=40, choices=Tipo.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "estado",
+        "value": "models.CharField(max_length=15, choices=Estado.choices, default=Estado.PENDIENTE)",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_verificacion",
+        "value": "models.DateTimeField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "verificado_por",
+        "value": "models.ForeignKey(CustomUser, models.PROTECT, null=True, blank=True, related_name='condiciones_verificadas')",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      }
+    ]
+  },
+  "EntregaFisica": {
+    "key": "apps.postulantes.models.EntregaFisica",
+    "name": "EntregaFisica",
+    "path": "apps/postulantes/models.py",
+    "line": 741,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Postulacion",
+        "kwargs": {
+          "related_name": "'entregas_fisicas'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 755
+      },
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "40",
+          "choices": "Tipo.choices"
+        },
+        "line": 756
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "150"
+        },
+        "line": 757
+      },
+      {
+        "name": "cantidad",
+        "type": "PositiveIntegerField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 758
+      },
+      {
+        "name": "cantidad_recibida",
+        "type": "PositiveIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "0"
+        },
+        "line": 759
+      },
+      {
+        "name": "estado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "15",
+          "choices": "Estado.choices",
+          "default": "Estado.PENDIENTE"
+        },
+        "line": 760
+      },
+      {
+        "name": "fecha_entrega",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 761
+      },
+      {
+        "name": "recibido_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'entregas_fisicas_recibidas'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 762
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 763
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 769
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 778
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['postulacion', 'codigo'], name='entrega_codigo_postulacion_unico')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey(Postulacion, models.CASCADE, related_name='entregas_fisicas')",
+        "annotation": ""
+      },
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=40, choices=Tipo.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=150)",
+        "annotation": ""
+      },
+      {
+        "name": "cantidad",
+        "value": "models.PositiveIntegerField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "cantidad_recibida",
+        "value": "models.PositiveIntegerField(default=0)",
+        "annotation": ""
+      },
+      {
+        "name": "estado",
+        "value": "models.CharField(max_length=15, choices=Estado.choices, default=Estado.PENDIENTE)",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_entrega",
+        "value": "models.DateTimeField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "recibido_por",
+        "value": "models.ForeignKey(CustomUser, models.PROTECT, null=True, blank=True, related_name='entregas_fisicas_recibidas')",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      }
+    ]
+  },
+  "EventoDefensa": {
+    "key": "apps.postulantes.models.EventoDefensa",
+    "name": "EventoDefensa",
+    "path": "apps/postulantes/models.py",
+    "line": 781,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "postulacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "Postulacion",
+        "kwargs": {
+          "related_name": "'eventos_defensa'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 800
+      },
+      {
+        "name": "seguimiento_etapa",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "SeguimientoEtapa",
+        "kwargs": {
+          "related_name": "'eventos_defensa'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 801
+      },
+      {
+        "name": "tipo_evento",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "30",
+          "choices": "Tipo.choices"
+        },
+        "line": 802
+      },
+      {
+        "name": "numero_intento",
+        "type": "PositiveIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "1"
+        },
+        "line": 803
+      },
+      {
+        "name": "estado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "Estado.choices",
+          "default": "Estado.PROGRAMADA"
+        },
+        "line": 804
+      },
+      {
+        "name": "fecha_programada",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {},
+        "line": 805
+      },
+      {
+        "name": "fecha_inicio_real",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 806
+      },
+      {
+        "name": "fecha_fin_real",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 807
+      },
+      {
+        "name": "lugar",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "250",
+          "blank": "True"
+        },
+        "line": 808
+      },
+      {
+        "name": "modalidad_evento",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "15",
+          "choices": "ModalidadEvento.choices",
+          "default": "ModalidadEvento.PRESENCIAL"
+        },
+        "line": 809
+      },
+      {
+        "name": "enlace_virtual",
+        "type": "URLField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 810
+      },
+      {
+        "name": "programado_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "null": "True",
+          "related_name": "'eventos_programados'",
+          "on_delete": "models.SET_NULL"
+        },
+        "line": 811
+      },
+      {
+        "name": "iniciado_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'eventos_iniciados'",
+          "on_delete": "models.SET_NULL"
+        },
+        "line": 812
+      },
+      {
+        "name": "cerrado_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'eventos_cerrados'",
+          "on_delete": "models.SET_NULL"
+        },
+        "line": 813
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 814
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 822
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 835
+      }
+    ],
+    "constraints": [
+      "models.CheckConstraint(condition=models.Q(numero_intento__gte=1), name='evento_intento_gte_1')",
+      "models.UniqueConstraint(fields=['postulacion', 'tipo_evento', 'numero_intento'], condition=models.Q(activo=True), name='evento_defensa_activo_unico')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "postulacion",
+        "value": "models.ForeignKey(Postulacion, models.CASCADE, related_name='eventos_defensa')",
+        "annotation": ""
+      },
+      {
+        "name": "seguimiento_etapa",
+        "value": "models.ForeignKey(SeguimientoEtapa, models.PROTECT, related_name='eventos_defensa')",
+        "annotation": ""
+      },
+      {
+        "name": "tipo_evento",
+        "value": "models.CharField(max_length=30, choices=Tipo.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "numero_intento",
+        "value": "models.PositiveIntegerField(default=1)",
+        "annotation": ""
+      },
+      {
+        "name": "estado",
+        "value": "models.CharField(max_length=20, choices=Estado.choices, default=Estado.PROGRAMADA)",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_programada",
+        "value": "models.DateTimeField()",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_inicio_real",
+        "value": "models.DateTimeField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_fin_real",
+        "value": "models.DateTimeField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "lugar",
+        "value": "models.CharField(max_length=250, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "modalidad_evento",
+        "value": "models.CharField(max_length=15, choices=ModalidadEvento.choices, default=ModalidadEvento.PRESENCIAL)",
+        "annotation": ""
+      },
+      {
+        "name": "enlace_virtual",
+        "value": "models.URLField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "programado_por",
+        "value": "models.ForeignKey(CustomUser, models.SET_NULL, null=True, related_name='eventos_programados')",
+        "annotation": ""
+      },
+      {
+        "name": "iniciado_por",
+        "value": "models.ForeignKey(CustomUser, models.SET_NULL, null=True, blank=True, related_name='eventos_iniciados')",
+        "annotation": ""
+      },
+      {
+        "name": "cerrado_por",
+        "value": "models.ForeignKey(CustomUser, models.SET_NULL, null=True, blank=True, related_name='eventos_cerrados')",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      }
+    ]
+  },
+  "ParticipanteEvento": {
+    "key": "apps.postulantes.models.ParticipanteEvento",
+    "name": "ParticipanteEvento",
+    "path": "apps/postulantes/models.py",
+    "line": 838,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "evento",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "EventoDefensa",
+        "kwargs": {
+          "related_name": "'participantes'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 841
+      },
+      {
+        "name": "asignacion",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "AsignacionPostulacion",
+        "kwargs": {
+          "related_name": "'participaciones_evento'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 842
+      },
+      {
+        "name": "rol_evento",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "30",
+          "choices": "Rol.choices"
+        },
+        "line": 843
+      },
+      {
+        "name": "convocado",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "True"
+        },
+        "line": 844
+      },
+      {
+        "name": "presente",
+        "type": "BooleanField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 845
+      },
+      {
+        "name": "fecha_registro_asistencia",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 846
+      },
+      {
+        "name": "registrado_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'asistencias_registradas'",
+          "on_delete": "models.SET_NULL"
+        },
+        "line": 847
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 848
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 851
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 858
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['evento', 'asignacion'], name='participante_evento_asignacion_unica')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "evento",
+        "value": "models.ForeignKey(EventoDefensa, models.CASCADE, related_name='participantes')",
+        "annotation": ""
+      },
+      {
+        "name": "asignacion",
+        "value": "models.ForeignKey(AsignacionPostulacion, models.PROTECT, related_name='participaciones_evento')",
+        "annotation": ""
+      },
+      {
+        "name": "rol_evento",
+        "value": "models.CharField(max_length=30, choices=Rol.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "convocado",
+        "value": "models.BooleanField(default=True)",
+        "annotation": ""
+      },
+      {
+        "name": "presente",
+        "value": "models.BooleanField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_registro_asistencia",
+        "value": "models.DateTimeField(null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "registrado_por",
+        "value": "models.ForeignKey(CustomUser, models.SET_NULL, null=True, blank=True, related_name='asistencias_registradas')",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      }
+    ]
+  },
+  "EvaluacionDefensa": {
+    "key": "apps.postulantes.models.EvaluacionDefensa",
+    "name": "EvaluacionDefensa",
+    "path": "apps/postulantes/models.py",
+    "line": 861,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "evento",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "EventoDefensa",
+        "kwargs": {
+          "related_name": "'evaluaciones'",
+          "on_delete": "models.CASCADE"
+        },
+        "line": 866
+      },
+      {
+        "name": "evaluador",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "ParticipanteEvento",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'evaluaciones'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 867
+      },
+      {
+        "name": "tipo_evaluacion",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "Tipo.choices"
+        },
+        "line": 868
+      },
+      {
+        "name": "modalidad_registro",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "15",
+          "choices": "ModalidadRegistro.choices"
+        },
+        "line": 869
+      },
+      {
+        "name": "resultado_cualitativo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "45",
+          "choices": "Resultado.choices",
+          "blank": "True"
+        },
+        "line": 870
+      },
+      {
+        "name": "nota_numerica",
+        "type": "DecimalField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_digits": "5",
+          "decimal_places": "2",
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 871
+      },
+      {
+        "name": "ponderacion",
+        "type": "DecimalField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_digits": "5",
+          "decimal_places": "2",
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 872
+      },
+      {
+        "name": "aporte_ponderado",
+        "type": "DecimalField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_digits": "6",
+          "decimal_places": "2",
+          "null": "True",
+          "blank": "True"
+        },
+        "line": 873
+      },
+      {
+        "name": "semantica_nota",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "24",
+          "choices": "SemanticaNota.choices",
+          "default": "SemanticaNota.MODALIDAD_ESPECIFICA"
+        },
+        "line": 874
+      },
+      {
+        "name": "es_resultado_final_evento",
+        "type": "BooleanField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "False"
+        },
+        "line": 875
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 876
+      },
+      {
+        "name": "registrado_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'evaluaciones_registradas'",
+          "on_delete": "models.SET_NULL"
+        },
+        "line": 877
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 880
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 889
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['evento', 'evaluador', 'tipo_evaluacion'], condition=models.Q(evaluador__isnull=False), name='evaluacion_individual_unica')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "evento",
+        "value": "models.ForeignKey(EventoDefensa, models.CASCADE, related_name='evaluaciones')",
+        "annotation": ""
+      },
+      {
+        "name": "evaluador",
+        "value": "models.ForeignKey(ParticipanteEvento, models.PROTECT, null=True, blank=True, related_name='evaluaciones')",
+        "annotation": ""
+      },
+      {
+        "name": "tipo_evaluacion",
+        "value": "models.CharField(max_length=20, choices=Tipo.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "modalidad_registro",
+        "value": "models.CharField(max_length=15, choices=ModalidadRegistro.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "resultado_cualitativo",
+        "value": "models.CharField(max_length=45, choices=Resultado.choices, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "nota_numerica",
+        "value": "models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "ponderacion",
+        "value": "models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "aporte_ponderado",
+        "value": "models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "semantica_nota",
+        "value": "models.CharField(max_length=24, choices=SemanticaNota.choices, default=SemanticaNota.MODALIDAD_ESPECIFICA)",
+        "annotation": ""
+      },
+      {
+        "name": "es_resultado_final_evento",
+        "value": "models.BooleanField(default=False)",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "registrado_por",
+        "value": "models.ForeignKey(CustomUser, models.SET_NULL, null=True, blank=True, related_name='evaluaciones_registradas')",
+        "annotation": ""
+      }
+    ]
+  },
+  "DictamenRevisionDocumento": {
+    "key": "apps.postulantes.models.DictamenRevisionDocumento",
+    "name": "DictamenRevisionDocumento",
+    "path": "apps/postulantes/models.py",
+    "line": 892,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "seguimiento_etapa",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "SeguimientoEtapa",
+        "kwargs": {
+          "related_name": "'dictamenes_revision'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 903
+      },
+      {
+        "name": "version_documento_revisada",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "documentos.VersionDocumento",
+        "kwargs": {
+          "related_name": "'dictamenes_recibidos'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 906
+      },
+      {
+        "name": "tipo_revision",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "TipoRevision.choices"
+        },
+        "line": 909
+      },
+      {
+        "name": "resultado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "Resultado.choices"
+        },
+        "line": 910
+      },
+      {
+        "name": "evidencia_version",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "documentos.VersionDocumento",
+        "kwargs": {
+          "related_name": "'evidencias_dictamen_revision'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 911
+      },
+      {
+        "name": "asignacion_emisora",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "AsignacionPostulacion",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'dictamenes_emitidos'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 914
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 918
+      },
+      {
+        "name": "registrado_por",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "null": "True",
+          "blank": "True",
+          "related_name": "'dictamenes_revision_registrados'",
+          "on_delete": "models.SET_NULL"
+        },
+        "line": 919
+      },
+      {
+        "name": "fecha_registro",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "auto_now_add": "True"
+        },
+        "line": 923
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 939
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 954
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['seguimiento_etapa', 'version_documento_revisada', 'tipo_revision'], condition=models.Q(activo=True), name='unique_dictamen_revision_activo_version_tipo')"
+    ],
+    "indexes": [
+      "models.Index(fields=['seguimiento_etapa', 'tipo_revision', 'activo'])"
+    ],
+    "attrs": [
+      {
+        "name": "seguimiento_etapa",
+        "value": "models.ForeignKey(SeguimientoEtapa, models.PROTECT, related_name='dictamenes_revision')",
+        "annotation": ""
+      },
+      {
+        "name": "version_documento_revisada",
+        "value": "models.ForeignKey('documentos.VersionDocumento', models.PROTECT, related_name='dictamenes_recibidos')",
+        "annotation": ""
+      },
+      {
+        "name": "tipo_revision",
+        "value": "models.CharField(max_length=20, choices=TipoRevision.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "resultado",
+        "value": "models.CharField(max_length=20, choices=Resultado.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "evidencia_version",
+        "value": "models.ForeignKey('documentos.VersionDocumento', models.PROTECT, related_name='evidencias_dictamen_revision')",
+        "annotation": ""
+      },
+      {
+        "name": "asignacion_emisora",
+        "value": "models.ForeignKey(AsignacionPostulacion, models.PROTECT, null=True, blank=True, related_name='dictamenes_emitidos')",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "registrado_por",
+        "value": "models.ForeignKey(CustomUser, models.SET_NULL, null=True, blank=True, related_name='dictamenes_revision_registrados')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_registro",
+        "value": "models.DateTimeField(auto_now_add=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "InformeRevisionTribunalPrevia": {
+    "key": "apps.postulantes.models.InformeRevisionTribunalPrevia",
+    "name": "InformeRevisionTribunalPrevia",
+    "path": "apps/postulantes/models.py",
+    "line": 959,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "seguimiento_etapa",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "SeguimientoEtapa",
+        "kwargs": {
+          "related_name": "'informes_revision_tribunal'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 966
+      },
+      {
+        "name": "version_documento_revisada",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "documentos.VersionDocumento",
+        "kwargs": {
+          "related_name": "'informes_revision_tribunal'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 971
+      },
+      {
+        "name": "resultado",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "choices": "Resultado.choices"
+        },
+        "line": 976
+      },
+      {
+        "name": "observaciones",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True"
+        },
+        "line": 977
+      },
+      {
+        "name": "evidencia_version",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "documentos.VersionDocumento",
+        "kwargs": {
+          "related_name": "'evidencias_revision_tribunal'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 978
+      },
+      {
+        "name": "fecha_registro",
+        "type": "DateTimeField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "auto_now_add": "True"
+        },
+        "line": 983
+      },
+      {
+        "name": "registrado_por",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "apps.usuarios.models.CustomUser",
+        "kwargs": {
+          "related_name": "'informes_revision_tribunal_registrados'",
+          "on_delete": "models.PROTECT"
+        },
+        "line": 984
+      }
+    ],
+    "methods": [
+      {
+        "name": "clean",
+        "args": [],
+        "line": 1003
+      },
+      {
+        "name": "save",
+        "args": [
+          "*args",
+          "**kwargs"
+        ],
+        "line": 1024
+      },
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 1028
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['seguimiento_etapa', 'version_documento_revisada'], condition=models.Q(activo=True), name='unique_informe_revision_activo_version')"
+    ],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "seguimiento_etapa",
+        "value": "models.ForeignKey(SeguimientoEtapa, models.PROTECT, related_name='informes_revision_tribunal')",
+        "annotation": ""
+      },
+      {
+        "name": "version_documento_revisada",
+        "value": "models.ForeignKey('documentos.VersionDocumento', models.PROTECT, related_name='informes_revision_tribunal')",
+        "annotation": ""
+      },
+      {
+        "name": "resultado",
+        "value": "models.CharField(max_length=20, choices=Resultado.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "observaciones",
+        "value": "models.TextField(blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "evidencia_version",
+        "value": "models.ForeignKey('documentos.VersionDocumento', models.PROTECT, related_name='evidencias_revision_tribunal')",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_registro",
+        "value": "models.DateTimeField(auto_now_add=True)",
+        "annotation": ""
+      },
+      {
+        "name": "registrado_por",
+        "value": "models.ForeignKey(CustomUser, models.PROTECT, related_name='informes_revision_tribunal_registrados')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "Role": {
+    "key": "apps.usuarios.models.Role",
+    "name": "Role",
+    "path": "apps/usuarios/models.py",
+    "line": 8,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "codigo",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "unique": "True",
+          "verbose_name": "'Código'"
+        },
+        "line": 11
+      },
+      {
+        "name": "nombre",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "100",
+          "verbose_name": "'Nombre'"
+        },
+        "line": 16
+      },
+      {
+        "name": "descripcion",
+        "type": "TextField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True",
+          "verbose_name": "'Descripción'"
+        },
+        "line": 20
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 37
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "codigo",
+        "value": "models.CharField(max_length=20, unique=True, verbose_name='Código')",
+        "annotation": ""
+      },
+      {
+        "name": "nombre",
+        "value": "models.CharField(max_length=100, verbose_name='Nombre')",
+        "annotation": ""
+      },
+      {
+        "name": "descripcion",
+        "value": "models.TextField(blank=True, null=True, verbose_name='Descripción')",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "CustomUser": {
+    "key": "apps.usuarios.models.CustomUser",
+    "name": "CustomUser",
+    "path": "apps/usuarios/models.py",
+    "line": 42,
+    "bases": [
+      "django.contrib.auth.models.AbstractUser",
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "role",
+        "type": "ForeignKey",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "Role",
+        "kwargs": {
+          "on_delete": "models.PROTECT",
+          "related_name": "'usuarios'",
+          "verbose_name": "'Rol'",
+          "blank": "True",
+          "null": "True"
+        },
+        "line": 45
+      },
+      {
+        "name": "nombres",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "150",
+          "verbose_name": "'Nombres'",
+          "blank": "True"
+        },
+        "line": 53
+      },
+      {
+        "name": "apellido_paterno",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "100",
+          "verbose_name": "'Apellido paterno'",
+          "blank": "True"
+        },
+        "line": 58
+      },
+      {
+        "name": "apellido_materno",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "100",
+          "verbose_name": "'Apellido materno'",
+          "blank": "True"
+        },
+        "line": 63
+      },
+      {
+        "name": "ci",
+        "type": "CharField",
+        "null": true,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "unique": "True",
+          "verbose_name": "'Cédula de identidad'",
+          "blank": "True",
+          "null": "True",
+          "default": "None"
+        },
+        "line": 68
+      },
+      {
+        "name": "expedido",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "50",
+          "verbose_name": "'Expedido en'",
+          "blank": "True"
+        },
+        "line": 76
+      },
+      {
+        "name": "fecha_nacimiento",
+        "type": "DateField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Fecha de nacimiento'",
+          "blank": "True",
+          "null": "True"
+        },
+        "line": 81
+      },
+      {
+        "name": "telefono",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "verbose_name": "'Teléfono'",
+          "blank": "True"
+        },
+        "line": 86
+      },
+      {
+        "name": "correo_personal",
+        "type": "EmailField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Correo personal'",
+          "blank": "True"
+        },
+        "line": 91
+      },
+      {
+        "name": "correo_institucional",
+        "type": "EmailField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Correo institucional'",
+          "blank": "True"
+        },
+        "line": 95
+      },
+      {
+        "name": "fotografia",
+        "type": "FileField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "upload_to": "'fotos_usuarios/'",
+          "verbose_name": "'Fotografía'",
+          "blank": "True",
+          "null": "True"
+        },
+        "line": 99
+      },
+      {
+        "name": "ru",
+        "type": "CharField",
+        "null": true,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "20",
+          "unique": "True",
+          "verbose_name": "'R.U.'",
+          "blank": "True",
+          "null": "True",
+          "default": "None"
+        },
+        "line": 105
+      },
+      {
+        "name": "username",
+        "type": "CharField",
+        "null": false,
+        "unique": true,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "150",
+          "unique": "True",
+          "verbose_name": "'Nombre de usuario'"
+        },
+        "line": 114
+      },
+      {
+        "name": "email",
+        "type": "EmailField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Correo electrónico'",
+          "blank": "True"
+        },
+        "line": 119
+      }
+    ],
+    "methods": [
+      {
+        "name": "nombre_completo",
+        "args": [],
+        "line": 136
+      },
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 140
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "role",
+        "value": "models.ForeignKey(Role, on_delete=models.PROTECT, related_name='usuarios', verbose_name='Rol', blank=True, null=True)",
+        "annotation": ""
+      },
+      {
+        "name": "nombres",
+        "value": "models.CharField(max_length=150, verbose_name='Nombres', blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "apellido_paterno",
+        "value": "models.CharField(max_length=100, verbose_name='Apellido paterno', blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "apellido_materno",
+        "value": "models.CharField(max_length=100, verbose_name='Apellido materno', blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "ci",
+        "value": "models.CharField(max_length=20, unique=True, verbose_name='Cédula de identidad', blank=True, null=True, default=None)",
+        "annotation": ""
+      },
+      {
+        "name": "expedido",
+        "value": "models.CharField(max_length=50, verbose_name='Expedido en', blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "fecha_nacimiento",
+        "value": "models.DateField(verbose_name='Fecha de nacimiento', blank=True, null=True)",
+        "annotation": ""
+      },
+      {
+        "name": "telefono",
+        "value": "models.CharField(max_length=20, verbose_name='Teléfono', blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "correo_personal",
+        "value": "models.EmailField(verbose_name='Correo personal', blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "correo_institucional",
+        "value": "models.EmailField(verbose_name='Correo institucional', blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "fotografia",
+        "value": "models.FileField(upload_to='fotos_usuarios/', verbose_name='Fotografía', blank=True, null=True)",
+        "annotation": ""
+      },
+      {
+        "name": "ru",
+        "value": "models.CharField(max_length=20, unique=True, verbose_name='R.U.', blank=True, null=True, default=None)",
+        "annotation": ""
+      },
+      {
+        "name": "username",
+        "value": "models.CharField(max_length=150, unique=True, verbose_name='Nombre de usuario')",
+        "annotation": ""
+      },
+      {
+        "name": "email",
+        "value": "models.EmailField(verbose_name='Correo electrónico', blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "objects",
+        "value": "ActiveManager()",
+        "annotation": ""
+      },
+      {
+        "name": "all_objects",
+        "value": "models.Manager()",
+        "annotation": ""
+      }
+    ]
+  },
+  "AuditLog": {
+    "key": "apps.usuarios.models.AuditLog",
+    "name": "AuditLog",
+    "path": "apps/usuarios/models.py",
+    "line": 145,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "usuario",
+        "type": "ForeignKey",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "CustomUser",
+        "kwargs": {
+          "on_delete": "models.CASCADE",
+          "related_name": "'audit_logs'",
+          "verbose_name": "'Usuario'"
+        },
+        "line": 148
+      },
+      {
+        "name": "accion",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "100",
+          "verbose_name": "'Acción'"
+        },
+        "line": 154
+      },
+      {
+        "name": "modulo",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "100",
+          "verbose_name": "'Módulo'"
+        },
+        "line": 158
+      },
+      {
+        "name": "descripcion",
+        "type": "TextField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Descripción'"
+        },
+        "line": 162
+      },
+      {
+        "name": "ip_address",
+        "type": "GenericIPAddressField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "verbose_name": "'Dirección IP'",
+          "blank": "True",
+          "null": "True"
+        },
+        "line": 165
+      },
+      {
+        "name": "metodo_http",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "10",
+          "verbose_name": "'Método HTTP'",
+          "blank": "True"
+        },
+        "line": 170
+      },
+      {
+        "name": "url",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "300",
+          "verbose_name": "'URL'",
+          "blank": "True"
+        },
+        "line": 175
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 189
+      }
+    ],
+    "constraints": [],
+    "indexes": [],
+    "attrs": [
+      {
+        "name": "usuario",
+        "value": "models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='audit_logs', verbose_name='Usuario')",
+        "annotation": ""
+      },
+      {
+        "name": "accion",
+        "value": "models.CharField(max_length=100, verbose_name='Acción')",
+        "annotation": ""
+      },
+      {
+        "name": "modulo",
+        "value": "models.CharField(max_length=100, verbose_name='Módulo')",
+        "annotation": ""
+      },
+      {
+        "name": "descripcion",
+        "value": "models.TextField(verbose_name='Descripción')",
+        "annotation": ""
+      },
+      {
+        "name": "ip_address",
+        "value": "models.GenericIPAddressField(verbose_name='Dirección IP', blank=True, null=True)",
+        "annotation": ""
+      },
+      {
+        "name": "metodo_http",
+        "value": "models.CharField(max_length=10, verbose_name='Método HTTP', blank=True)",
+        "annotation": ""
+      },
+      {
+        "name": "url",
+        "value": "models.CharField(max_length=300, verbose_name='URL', blank=True)",
+        "annotation": ""
+      }
+    ]
+  },
+  "StudentLoginThrottle": {
+    "key": "apps.usuarios.models.StudentLoginThrottle",
+    "name": "StudentLoginThrottle",
+    "path": "apps/usuarios/models.py",
+    "line": 194,
+    "bases": [
+      "core.models.BaseModel"
+    ],
+    "fields": [
+      {
+        "name": "scope",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "10",
+          "choices": "Scope.choices"
+        },
+        "line": 201
+      },
+      {
+        "name": "key_digest",
+        "type": "CharField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "max_length": "64"
+        },
+        "line": 202
+      },
+      {
+        "name": "failed_attempts",
+        "type": "PositiveSmallIntegerField",
+        "null": false,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "default": "0"
+        },
+        "line": 203
+      },
+      {
+        "name": "window_started_at",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True"
+        },
+        "line": 204
+      },
+      {
+        "name": "blocked_until",
+        "type": "DateTimeField",
+        "null": true,
+        "unique": false,
+        "pk": false,
+        "target": "",
+        "kwargs": {
+          "blank": "True",
+          "null": "True"
+        },
+        "line": 205
+      }
+    ],
+    "methods": [
+      {
+        "name": "__str__",
+        "args": [],
+        "line": 220
+      }
+    ],
+    "constraints": [
+      "models.UniqueConstraint(fields=['scope', 'key_digest'], name='unique_student_login_throttle_key')"
+    ],
+    "indexes": [
+      "models.Index(fields=['scope', 'blocked_until'], name='idx_student_login_block')"
+    ],
+    "attrs": [
+      {
+        "name": "scope",
+        "value": "models.CharField(max_length=10, choices=Scope.choices)",
+        "annotation": ""
+      },
+      {
+        "name": "key_digest",
+        "value": "models.CharField(max_length=64)",
+        "annotation": ""
+      },
+      {
+        "name": "failed_attempts",
+        "value": "models.PositiveSmallIntegerField(default=0)",
+        "annotation": ""
+      },
+      {
+        "name": "window_started_at",
+        "value": "models.DateTimeField(blank=True, null=True)",
+        "annotation": ""
+      },
+      {
+        "name": "blocked_until",
+        "value": "models.DateTimeField(blank=True, null=True)",
+        "annotation": ""
+      }
+    ]
+  }
+}

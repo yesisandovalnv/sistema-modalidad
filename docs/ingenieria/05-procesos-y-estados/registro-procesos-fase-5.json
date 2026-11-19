@@ -1,0 +1,245 @@
+[
+  {
+    "id": "PROC-SYS-001",
+    "title": "Autenticación y sesión",
+    "cases": [
+      "UC-USR-001",
+      "UC-USR-003",
+      "UC-USR-004",
+      "UC-USR-005",
+      "UC-USR-009"
+    ],
+    "critical": "Credenciales, throttling, renovación y revocación.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-USR-001",
+    "title": "Administración de cuentas y roles",
+    "cases": [
+      "UC-USR-002",
+      "UC-USR-006"
+    ],
+    "critical": "Autoridad administrativa y protección de superusuario.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-ACA-001",
+    "title": "Catálogos y documentación oficial",
+    "cases": [
+      "UC-ACA-001",
+      "UC-ACA-002",
+      "UC-ACA-003",
+      "UC-ACA-004",
+      "UC-ACA-005",
+      "UC-ACA-006",
+      "UC-ACA-007",
+      "UC-POS-028",
+      "UC-DOC-007",
+      "UC-DOC-008"
+    ],
+    "critical": "Separar lecturas autenticadas y escritura administrativa; métodos prohibidos.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-POS-001",
+    "title": "Registro, consulta y estado general",
+    "cases": [
+      "UC-POS-001",
+      "UC-POS-002",
+      "UC-POS-010",
+      "UC-POS-011",
+      "UC-POS-024",
+      "UC-POS-025"
+    ],
+    "critical": "Unicidad vigente, alta histórica, PATCH distinto de conclusión.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-POS-002",
+    "title": "Inicialización, inscripción y seguimiento",
+    "cases": [
+      "UC-POS-003",
+      "UC-POS-005",
+      "UC-POS-008",
+      "UC-POS-009",
+      "UC-POS-012",
+      "UC-POS-013",
+      "UC-POS-014",
+      "UC-POS-015"
+    ],
+    "critical": "Guarda de etapa, decisiones, rechazo, reintento y conclusión.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-POS-003",
+    "title": "Asignaciones y elegibilidad contextual",
+    "cases": [
+      "UC-USR-007",
+      "UC-USR-008",
+      "UC-POS-004",
+      "UC-POS-016",
+      "UC-POS-017"
+    ],
+    "critical": "Ocupación, incompatibilidad, reemplazo y preservación histórica.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-DOC-001",
+    "title": "Carga, versiones y evidencia histórica",
+    "cases": [
+      "UC-DOC-001",
+      "UC-DOC-006"
+    ],
+    "critical": "Archivo fuera de rollback SQL, contexto y autoaprobaciones específicas.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-DOC-002",
+    "title": "Lectura y descarga documental",
+    "cases": [
+      "UC-DOC-003"
+    ],
+    "critical": "Alcance por vínculo y publicación vigente de memorandos.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-DOC-003",
+    "title": "Revisión documental",
+    "cases": [
+      "UC-DOC-002"
+    ],
+    "critical": "ENV/APR/REC y observaciones no equivalentes a un estado OBS.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-DOC-004",
+    "title": "Corrección y confirmación técnica",
+    "cases": [
+      "UC-DOC-004",
+      "UC-DOC-005"
+    ],
+    "critical": "Administración; observación, versión y confirmación son dimensiones separadas.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-POS-004",
+    "title": "Ciclo de defensa, participantes y asistencia",
+    "cases": [
+      "UC-POS-006",
+      "UC-POS-018",
+      "UC-POS-019",
+      "UC-POS-020"
+    ],
+    "critical": "Fecha, quórum, asistencia y mutaciones administrativas.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-POS-005",
+    "title": "Evaluación y consolidación",
+    "cases": [
+      "UC-POS-007",
+      "UC-POS-021",
+      "UC-POS-022"
+    ],
+    "critical": "Escala, individual/consenso, consolidado único y efectos sobre etapa.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-POS-006",
+    "title": "Condiciones y entrega física",
+    "cases": [
+      "UC-POS-023",
+      "UC-POS-026",
+      "UC-POS-027"
+    ],
+    "critical": "Verificación única, recepción absoluta de cantidades y lotes atómicos.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-NOT-001",
+    "title": "Notificación interna y lectura",
+    "cases": [
+      "UC-NOT-001",
+      "UC-NOT-002"
+    ],
+    "critical": "on_commit robusto, destinatarios y deduplicación; lectura propia.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-REP-001",
+    "title": "Reportes y exportación",
+    "cases": [
+      "UC-REP-001",
+      "UC-REP-002",
+      "UC-REP-003",
+      "UC-REP-004"
+    ],
+    "critical": "Administración/docente acotado; exportación administrativa.",
+    "variant": "Compartido; las políticas conservan el alcance académico de cada modalidad."
+  },
+  {
+    "id": "PROC-PG-001",
+    "title": "Proyecto de Grado",
+    "cases": [
+      "UC-PG-001",
+      "UC-PG-002"
+    ],
+    "critical": "Reglas y conclusión propias, sin extrapolar la política de Proyecto.",
+    "variant": "Proyecto de Grado; usa infraestructura común con política específica."
+  },
+  {
+    "id": "PROC-TG-001",
+    "title": "Tesis de Grado",
+    "cases": [
+      "UC-TG-001"
+    ],
+    "critical": "Reglas y conclusión propias, sin extrapolar la política de Proyecto.",
+    "variant": "Tesis de Grado; usa infraestructura común con política específica."
+  },
+  {
+    "id": "PROC-TD-001",
+    "title": "Trabajo Dirigido",
+    "cases": [
+      "UC-TD-001",
+      "UC-TD-002",
+      "UC-TD-003",
+      "UC-TD-004"
+    ],
+    "critical": "Reglas y conclusión propias, sin extrapolar la política de Proyecto.",
+    "variant": "Trabajo Dirigido; usa infraestructura común con política específica."
+  },
+  {
+    "id": "PROC-EG-001",
+    "title": "Examen de Grado",
+    "cases": [
+      "UC-EG-001",
+      "UC-EG-002",
+      "UC-EG-003"
+    ],
+    "critical": "Reglas y conclusión propias, sin extrapolar la política de Proyecto.",
+    "variant": "Examen de Grado; usa infraestructura común con política específica."
+  },
+  {
+    "id": "PROC-EA-001",
+    "title": "Excelencia Académica",
+    "cases": [
+      "UC-EA-001",
+      "UC-EA-002",
+      "UC-EA-003",
+      "UC-EA-004"
+    ],
+    "critical": "Reglas y conclusión propias, sin extrapolar la política de Proyecto.",
+    "variant": "Excelencia Académica; usa infraestructura común con política específica."
+  },
+  {
+    "id": "PROC-DIP-001",
+    "title": "Vía Diplomado",
+    "cases": [
+      "UC-DIP-001",
+      "UC-DIP-002",
+      "UC-DIP-003"
+    ],
+    "critical": "Reglas y conclusión propias, sin extrapolar la política de Proyecto.",
+    "variant": "Vía Diplomado; usa infraestructura común con política específica."
+  }
+]
