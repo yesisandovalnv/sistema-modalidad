@@ -1,0 +1,2594 @@
+[
+  {
+    "id": "DIA-USR-001",
+    "title": "Clases de dominio: usuarios",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de usuarios",
+    "scope": "Role, CustomUser, AuditLog, StudentLoginThrottle",
+    "sources": [
+      "apps/usuarios/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False. Campos y M2M heredados de AbstractUser se separan en la vista de autenticación.",
+    "source": "diagramas/fuentes/DIA-USR-001-usuarios-clases.puml",
+    "description": "diagramas/fichas/DIA-USR-001-usuarios-clases.md",
+    "evidence": {
+      "models": [
+        "Role",
+        "CustomUser",
+        "AuditLog",
+        "StudentLoginThrottle"
+      ],
+      "relationships": [
+        {
+          "source": "CustomUser",
+          "field": "role",
+          "target": "Role",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "AuditLog",
+          "field": "usuario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-USR-101",
+    "title": "ER lógico: usuarios",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de usuarios",
+    "scope": "Role, CustomUser, AuditLog, StudentLoginThrottle",
+    "sources": [
+      "apps/usuarios/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False. Campos y M2M heredados de AbstractUser se separan en la vista de autenticación.",
+    "source": "diagramas/fuentes/DIA-USR-101-usuarios-er.puml",
+    "description": "diagramas/fichas/DIA-USR-101-usuarios-er.md",
+    "evidence": {
+      "models": [
+        "Role",
+        "CustomUser",
+        "AuditLog",
+        "StudentLoginThrottle"
+      ],
+      "relationships": [
+        {
+          "source": "CustomUser",
+          "field": "role",
+          "target": "Role",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "AuditLog",
+          "field": "usuario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-ACA-001",
+    "title": "Clases de dominio: academico",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de academico",
+    "scope": "Periodo, Modalidad, DocumentoOficialModalidad, EtapaModalidad, Requisito, ModalidadRequisito",
+    "sources": [
+      "apps/academico/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-ACA-001-academico-clases.puml",
+    "description": "diagramas/fichas/DIA-ACA-001-academico-clases.md",
+    "evidence": {
+      "models": [
+        "Periodo",
+        "Modalidad",
+        "DocumentoOficialModalidad",
+        "EtapaModalidad",
+        "Requisito",
+        "ModalidadRequisito"
+      ],
+      "relationships": [
+        {
+          "source": "DocumentoOficialModalidad",
+          "field": "modalidad",
+          "target": "Modalidad",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DocumentoOficialModalidad",
+          "field": "actualizado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "EtapaModalidad",
+          "field": "modalidad",
+          "target": "Modalidad",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ModalidadRequisito",
+          "field": "modalidad",
+          "target": "Modalidad",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ModalidadRequisito",
+          "field": "requisito",
+          "target": "Requisito",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-ACA-101",
+    "title": "ER lógico: academico",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de academico",
+    "scope": "Periodo, Modalidad, DocumentoOficialModalidad, EtapaModalidad, Requisito, ModalidadRequisito",
+    "sources": [
+      "apps/academico/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-ACA-101-academico-er.puml",
+    "description": "diagramas/fichas/DIA-ACA-101-academico-er.md",
+    "evidence": {
+      "models": [
+        "Periodo",
+        "Modalidad",
+        "DocumentoOficialModalidad",
+        "EtapaModalidad",
+        "Requisito",
+        "ModalidadRequisito"
+      ],
+      "relationships": [
+        {
+          "source": "DocumentoOficialModalidad",
+          "field": "modalidad",
+          "target": "Modalidad",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DocumentoOficialModalidad",
+          "field": "actualizado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "EtapaModalidad",
+          "field": "modalidad",
+          "target": "Modalidad",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ModalidadRequisito",
+          "field": "modalidad",
+          "target": "Modalidad",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ModalidadRequisito",
+          "field": "requisito",
+          "target": "Requisito",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-001",
+    "title": "Clases de dominio: postulaciones",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de postulaciones",
+    "scope": "EstadoPostulacion, Postulacion, HistorialEstado, Observacion",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-POS-001-postulaciones-clases.puml",
+    "description": "diagramas/fichas/DIA-POS-001-postulaciones-clases.md",
+    "evidence": {
+      "models": [
+        "EstadoPostulacion",
+        "Postulacion",
+        "HistorialEstado",
+        "Observacion"
+      ],
+      "relationships": [
+        {
+          "source": "Postulacion",
+          "field": "estudiante",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Postulacion",
+          "field": "modalidad",
+          "target": "Modalidad",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Postulacion",
+          "field": "periodo",
+          "target": "Periodo",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Postulacion",
+          "field": "estado_actual",
+          "target": "EstadoPostulacion",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "Postulacion",
+          "field": "baja_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "HistorialEstado",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "HistorialEstado",
+          "field": "estado_anterior",
+          "target": "EstadoPostulacion",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "HistorialEstado",
+          "field": "estado_nuevo",
+          "target": "EstadoPostulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "HistorialEstado",
+          "field": "usuario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Observacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Observacion",
+          "field": "usuario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-101",
+    "title": "ER lógico: postulaciones",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de postulaciones",
+    "scope": "EstadoPostulacion, Postulacion, HistorialEstado, Observacion",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-POS-101-postulaciones-er.puml",
+    "description": "diagramas/fichas/DIA-POS-101-postulaciones-er.md",
+    "evidence": {
+      "models": [
+        "EstadoPostulacion",
+        "Postulacion",
+        "HistorialEstado",
+        "Observacion"
+      ],
+      "relationships": [
+        {
+          "source": "Postulacion",
+          "field": "estudiante",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Postulacion",
+          "field": "modalidad",
+          "target": "Modalidad",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Postulacion",
+          "field": "periodo",
+          "target": "Periodo",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Postulacion",
+          "field": "estado_actual",
+          "target": "EstadoPostulacion",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "Postulacion",
+          "field": "baja_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "HistorialEstado",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "HistorialEstado",
+          "field": "estado_anterior",
+          "target": "EstadoPostulacion",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "HistorialEstado",
+          "field": "estado_nuevo",
+          "target": "EstadoPostulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "HistorialEstado",
+          "field": "usuario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Observacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Observacion",
+          "field": "usuario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-002",
+    "title": "Clases de dominio: etapas",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de etapas",
+    "scope": "SeguimientoEtapa",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-POS-002-etapas-clases.puml",
+    "description": "diagramas/fichas/DIA-POS-002-etapas-clases.md",
+    "evidence": {
+      "models": [
+        "SeguimientoEtapa"
+      ],
+      "relationships": [
+        {
+          "source": "SeguimientoEtapa",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "SeguimientoEtapa",
+          "field": "etapa",
+          "target": "EtapaModalidad",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "SeguimientoEtapa",
+          "field": "abierta_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "SeguimientoEtapa",
+          "field": "cerrada_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-102",
+    "title": "ER lógico: etapas",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de etapas",
+    "scope": "SeguimientoEtapa",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-POS-102-etapas-er.puml",
+    "description": "diagramas/fichas/DIA-POS-102-etapas-er.md",
+    "evidence": {
+      "models": [
+        "SeguimientoEtapa"
+      ],
+      "relationships": [
+        {
+          "source": "SeguimientoEtapa",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "SeguimientoEtapa",
+          "field": "etapa",
+          "target": "EtapaModalidad",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "SeguimientoEtapa",
+          "field": "abierta_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "SeguimientoEtapa",
+          "field": "cerrada_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-003",
+    "title": "Clases de dominio: asignaciones-decisiones",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de asignaciones-decisiones",
+    "scope": "AsignacionPostulacion, DecisionAcademicaEtapa, ParticipacionDecisionAcademica, PublicacionMemorandumDesignacion",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False. asignaciones es M2M con intermediaria implícita, sin nombre físico certificado.",
+    "source": "diagramas/fuentes/DIA-POS-003-asignaciones-decisiones-clases.puml",
+    "description": "diagramas/fichas/DIA-POS-003-asignaciones-decisiones-clases.md",
+    "evidence": {
+      "models": [
+        "AsignacionPostulacion",
+        "DecisionAcademicaEtapa",
+        "ParticipacionDecisionAcademica",
+        "PublicacionMemorandumDesignacion"
+      ],
+      "relationships": [
+        {
+          "source": "AsignacionPostulacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "AsignacionPostulacion",
+          "field": "usuario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "AsignacionPostulacion",
+          "field": "designado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "AsignacionPostulacion",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "DecisionAcademicaEtapa",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DecisionAcademicaEtapa",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ParticipacionDecisionAcademica",
+          "field": "decision",
+          "target": "DecisionAcademicaEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ParticipacionDecisionAcademica",
+          "field": "asignacion",
+          "target": "AsignacionPostulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "PublicacionMemorandumDesignacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "PublicacionMemorandumDesignacion",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "PublicacionMemorandumDesignacion",
+          "field": "version_documento",
+          "target": "VersionDocumento",
+          "type": "OneToOneField",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "PublicacionMemorandumDesignacion",
+          "field": "asignaciones",
+          "target": "AsignacionPostulacion",
+          "type": "ManyToManyField",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "PublicacionMemorandumDesignacion",
+          "field": "publicado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-103",
+    "title": "ER lógico: asignaciones-decisiones",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de asignaciones-decisiones",
+    "scope": "AsignacionPostulacion, DecisionAcademicaEtapa, ParticipacionDecisionAcademica, PublicacionMemorandumDesignacion",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False. asignaciones es M2M con intermediaria implícita, sin nombre físico certificado.",
+    "source": "diagramas/fuentes/DIA-POS-103-asignaciones-decisiones-er.puml",
+    "description": "diagramas/fichas/DIA-POS-103-asignaciones-decisiones-er.md",
+    "evidence": {
+      "models": [
+        "AsignacionPostulacion",
+        "DecisionAcademicaEtapa",
+        "ParticipacionDecisionAcademica",
+        "PublicacionMemorandumDesignacion"
+      ],
+      "relationships": [
+        {
+          "source": "AsignacionPostulacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "AsignacionPostulacion",
+          "field": "usuario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "AsignacionPostulacion",
+          "field": "designado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "AsignacionPostulacion",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "DecisionAcademicaEtapa",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DecisionAcademicaEtapa",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ParticipacionDecisionAcademica",
+          "field": "decision",
+          "target": "DecisionAcademicaEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ParticipacionDecisionAcademica",
+          "field": "asignacion",
+          "target": "AsignacionPostulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "PublicacionMemorandumDesignacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "PublicacionMemorandumDesignacion",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "PublicacionMemorandumDesignacion",
+          "field": "version_documento",
+          "target": "VersionDocumento",
+          "type": "OneToOneField",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "PublicacionMemorandumDesignacion",
+          "field": "asignaciones",
+          "target": "AsignacionPostulacion",
+          "type": "ManyToManyField",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "PublicacionMemorandumDesignacion",
+          "field": "publicado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-004",
+    "title": "Clases de dominio: condiciones-entregas",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de condiciones-entregas",
+    "scope": "CondicionPostulacion, EntregaFisica",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-POS-004-condiciones-entregas-clases.puml",
+    "description": "diagramas/fichas/DIA-POS-004-condiciones-entregas-clases.md",
+    "evidence": {
+      "models": [
+        "CondicionPostulacion",
+        "EntregaFisica"
+      ],
+      "relationships": [
+        {
+          "source": "CondicionPostulacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "CondicionPostulacion",
+          "field": "verificado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "EntregaFisica",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "EntregaFisica",
+          "field": "recibido_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-104",
+    "title": "ER lógico: condiciones-entregas",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de condiciones-entregas",
+    "scope": "CondicionPostulacion, EntregaFisica",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-POS-104-condiciones-entregas-er.puml",
+    "description": "diagramas/fichas/DIA-POS-104-condiciones-entregas-er.md",
+    "evidence": {
+      "models": [
+        "CondicionPostulacion",
+        "EntregaFisica"
+      ],
+      "relationships": [
+        {
+          "source": "CondicionPostulacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "CondicionPostulacion",
+          "field": "verificado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "EntregaFisica",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "EntregaFisica",
+          "field": "recibido_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-005",
+    "title": "Clases de dominio: defensas-evaluaciones",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de defensas-evaluaciones",
+    "scope": "EventoDefensa, ParticipanteEvento, EvaluacionDefensa",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-POS-005-defensas-evaluaciones-clases.puml",
+    "description": "diagramas/fichas/DIA-POS-005-defensas-evaluaciones-clases.md",
+    "evidence": {
+      "models": [
+        "EventoDefensa",
+        "ParticipanteEvento",
+        "EvaluacionDefensa"
+      ],
+      "relationships": [
+        {
+          "source": "EventoDefensa",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "EventoDefensa",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "EventoDefensa",
+          "field": "programado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "EventoDefensa",
+          "field": "iniciado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "EventoDefensa",
+          "field": "cerrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "ParticipanteEvento",
+          "field": "evento",
+          "target": "EventoDefensa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ParticipanteEvento",
+          "field": "asignacion",
+          "target": "AsignacionPostulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ParticipanteEvento",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "EvaluacionDefensa",
+          "field": "evento",
+          "target": "EventoDefensa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "EvaluacionDefensa",
+          "field": "evaluador",
+          "target": "ParticipanteEvento",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "EvaluacionDefensa",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-105",
+    "title": "ER lógico: defensas-evaluaciones",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de defensas-evaluaciones",
+    "scope": "EventoDefensa, ParticipanteEvento, EvaluacionDefensa",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-POS-105-defensas-evaluaciones-er.puml",
+    "description": "diagramas/fichas/DIA-POS-105-defensas-evaluaciones-er.md",
+    "evidence": {
+      "models": [
+        "EventoDefensa",
+        "ParticipanteEvento",
+        "EvaluacionDefensa"
+      ],
+      "relationships": [
+        {
+          "source": "EventoDefensa",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "EventoDefensa",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "EventoDefensa",
+          "field": "programado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "EventoDefensa",
+          "field": "iniciado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "EventoDefensa",
+          "field": "cerrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "ParticipanteEvento",
+          "field": "evento",
+          "target": "EventoDefensa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ParticipanteEvento",
+          "field": "asignacion",
+          "target": "AsignacionPostulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ParticipanteEvento",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "EvaluacionDefensa",
+          "field": "evento",
+          "target": "EventoDefensa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "EvaluacionDefensa",
+          "field": "evaluador",
+          "target": "ParticipanteEvento",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "EvaluacionDefensa",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-006",
+    "title": "Clases de dominio: dictamenes",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de dictamenes",
+    "scope": "DictamenRevisionDocumento, InformeRevisionTribunalPrevia",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-POS-006-dictamenes-clases.puml",
+    "description": "diagramas/fichas/DIA-POS-006-dictamenes-clases.md",
+    "evidence": {
+      "models": [
+        "DictamenRevisionDocumento",
+        "InformeRevisionTribunalPrevia"
+      ],
+      "relationships": [
+        {
+          "source": "DictamenRevisionDocumento",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DictamenRevisionDocumento",
+          "field": "version_documento_revisada",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DictamenRevisionDocumento",
+          "field": "evidencia_version",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DictamenRevisionDocumento",
+          "field": "asignacion_emisora",
+          "target": "AsignacionPostulacion",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "DictamenRevisionDocumento",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "InformeRevisionTribunalPrevia",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "InformeRevisionTribunalPrevia",
+          "field": "version_documento_revisada",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "InformeRevisionTribunalPrevia",
+          "field": "evidencia_version",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "InformeRevisionTribunalPrevia",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-106",
+    "title": "ER lógico: dictamenes",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de dictamenes",
+    "scope": "DictamenRevisionDocumento, InformeRevisionTribunalPrevia",
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-POS-106-dictamenes-er.puml",
+    "description": "diagramas/fichas/DIA-POS-106-dictamenes-er.md",
+    "evidence": {
+      "models": [
+        "DictamenRevisionDocumento",
+        "InformeRevisionTribunalPrevia"
+      ],
+      "relationships": [
+        {
+          "source": "DictamenRevisionDocumento",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DictamenRevisionDocumento",
+          "field": "version_documento_revisada",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DictamenRevisionDocumento",
+          "field": "evidencia_version",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DictamenRevisionDocumento",
+          "field": "asignacion_emisora",
+          "target": "AsignacionPostulacion",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "DictamenRevisionDocumento",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "InformeRevisionTribunalPrevia",
+          "field": "seguimiento_etapa",
+          "target": "SeguimientoEtapa",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "InformeRevisionTribunalPrevia",
+          "field": "version_documento_revisada",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "InformeRevisionTribunalPrevia",
+          "field": "evidencia_version",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "InformeRevisionTribunalPrevia",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-DOC-001",
+    "title": "Clases de dominio: documentos-versiones",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de documentos-versiones",
+    "scope": "EstadoDocumento, TipoDocumento, DocumentoPostulacion, VersionDocumento",
+    "sources": [
+      "apps/documentos/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-DOC-001-documentos-versiones-clases.puml",
+    "description": "diagramas/fichas/DIA-DOC-001-documentos-versiones-clases.md",
+    "evidence": {
+      "models": [
+        "EstadoDocumento",
+        "TipoDocumento",
+        "DocumentoPostulacion",
+        "VersionDocumento"
+      ],
+      "relationships": [
+        {
+          "source": "DocumentoPostulacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DocumentoPostulacion",
+          "field": "evento_defensa",
+          "target": "EventoDefensa",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "DocumentoPostulacion",
+          "field": "tipo_documento",
+          "target": "TipoDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DocumentoPostulacion",
+          "field": "estado",
+          "target": "EstadoDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "VersionDocumento",
+          "field": "documento",
+          "target": "DocumentoPostulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "VersionDocumento",
+          "field": "subido_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-DOC-101",
+    "title": "ER lógico: documentos-versiones",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de documentos-versiones",
+    "scope": "EstadoDocumento, TipoDocumento, DocumentoPostulacion, VersionDocumento",
+    "sources": [
+      "apps/documentos/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-DOC-101-documentos-versiones-er.puml",
+    "description": "diagramas/fichas/DIA-DOC-101-documentos-versiones-er.md",
+    "evidence": {
+      "models": [
+        "EstadoDocumento",
+        "TipoDocumento",
+        "DocumentoPostulacion",
+        "VersionDocumento"
+      ],
+      "relationships": [
+        {
+          "source": "DocumentoPostulacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DocumentoPostulacion",
+          "field": "evento_defensa",
+          "target": "EventoDefensa",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "DocumentoPostulacion",
+          "field": "tipo_documento",
+          "target": "TipoDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DocumentoPostulacion",
+          "field": "estado",
+          "target": "EstadoDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "VersionDocumento",
+          "field": "documento",
+          "target": "DocumentoPostulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "VersionDocumento",
+          "field": "subido_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-DOC-002",
+    "title": "Clases de dominio: observaciones-correcciones",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de observaciones-correcciones",
+    "scope": "ObservacionDocumento, ConfirmacionCorreccionDocumento",
+    "sources": [
+      "apps/documentos/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-DOC-002-observaciones-correcciones-clases.puml",
+    "description": "diagramas/fichas/DIA-DOC-002-observaciones-correcciones-clases.md",
+    "evidence": {
+      "models": [
+        "ObservacionDocumento",
+        "ConfirmacionCorreccionDocumento"
+      ],
+      "relationships": [
+        {
+          "source": "ObservacionDocumento",
+          "field": "version_documento",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ObservacionDocumento",
+          "field": "usuario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "evento_origen",
+          "target": "EventoDefensa",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "version_observada",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "version_corregida",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "confirmado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "asignacion_confirmante",
+          "target": "AsignacionPostulacion",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-DOC-102",
+    "title": "ER lógico: observaciones-correcciones",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de observaciones-correcciones",
+    "scope": "ObservacionDocumento, ConfirmacionCorreccionDocumento",
+    "sources": [
+      "apps/documentos/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-DOC-102-observaciones-correcciones-er.puml",
+    "description": "diagramas/fichas/DIA-DOC-102-observaciones-correcciones-er.md",
+    "evidence": {
+      "models": [
+        "ObservacionDocumento",
+        "ConfirmacionCorreccionDocumento"
+      ],
+      "relationships": [
+        {
+          "source": "ObservacionDocumento",
+          "field": "version_documento",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ObservacionDocumento",
+          "field": "usuario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "evento_origen",
+          "target": "EventoDefensa",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "version_observada",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "version_corregida",
+          "target": "VersionDocumento",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "confirmado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ConfirmacionCorreccionDocumento",
+          "field": "asignacion_confirmante",
+          "target": "AsignacionPostulacion",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-NOT-001",
+    "title": "Clases de dominio: notificaciones",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de notificaciones",
+    "scope": "Notificacion",
+    "sources": [
+      "apps/notificaciones/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-NOT-001-notificaciones-clases.puml",
+    "description": "diagramas/fichas/DIA-NOT-001-notificaciones-clases.md",
+    "evidence": {
+      "models": [
+        "Notificacion"
+      ],
+      "relationships": [
+        {
+          "source": "Notificacion",
+          "field": "destinatario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Notificacion",
+          "field": "actor",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "Notificacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-NOT-101",
+    "title": "ER lógico: notificaciones",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de notificaciones",
+    "scope": "Notificacion",
+    "sources": [
+      "apps/notificaciones/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-NOT-101-notificaciones-er.puml",
+    "description": "diagramas/fichas/DIA-NOT-101-notificaciones-er.md",
+    "evidence": {
+      "models": [
+        "Notificacion"
+      ],
+      "relationships": [
+        {
+          "source": "Notificacion",
+          "field": "destinatario",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "Notificacion",
+          "field": "actor",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        },
+        {
+          "source": "Notificacion",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-EG-001",
+    "title": "Clases de dominio: examen",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de examen",
+    "scope": "ExamenArea, ExamenEvaluacion",
+    "sources": [
+      "apps/modalidades/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-EG-001-examen-clases.puml",
+    "description": "diagramas/fichas/DIA-EG-001-examen-clases.md",
+    "evidence": {
+      "models": [
+        "ExamenArea",
+        "ExamenEvaluacion"
+      ],
+      "relationships": [
+        {
+          "source": "ExamenArea",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ExamenEvaluacion",
+          "field": "area",
+          "target": "ExamenArea",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ExamenEvaluacion",
+          "field": "evaluador",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-EG-101",
+    "title": "ER lógico: examen",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de examen",
+    "scope": "ExamenArea, ExamenEvaluacion",
+    "sources": [
+      "apps/modalidades/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-EG-101-examen-er.puml",
+    "description": "diagramas/fichas/DIA-EG-101-examen-er.md",
+    "evidence": {
+      "models": [
+        "ExamenArea",
+        "ExamenEvaluacion"
+      ],
+      "relationships": [
+        {
+          "source": "ExamenArea",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ExamenEvaluacion",
+          "field": "area",
+          "target": "ExamenArea",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ExamenEvaluacion",
+          "field": "evaluador",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-EA-001",
+    "title": "Clases de dominio: excelencia",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de excelencia",
+    "scope": "ExcelenciaExpediente",
+    "sources": [
+      "apps/modalidades/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-EA-001-excelencia-clases.puml",
+    "description": "diagramas/fichas/DIA-EA-001-excelencia-clases.md",
+    "evidence": {
+      "models": [
+        "ExcelenciaExpediente"
+      ],
+      "relationships": [
+        {
+          "source": "ExcelenciaExpediente",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "OneToOneField",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ExcelenciaExpediente",
+          "field": "evaluado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-EA-101",
+    "title": "ER lógico: excelencia",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de excelencia",
+    "scope": "ExcelenciaExpediente",
+    "sources": [
+      "apps/modalidades/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-EA-101-excelencia-er.puml",
+    "description": "diagramas/fichas/DIA-EA-101-excelencia-er.md",
+    "evidence": {
+      "models": [
+        "ExcelenciaExpediente"
+      ],
+      "relationships": [
+        {
+          "source": "ExcelenciaExpediente",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "OneToOneField",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "ExcelenciaExpediente",
+          "field": "evaluado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": true,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-DIP-001",
+    "title": "Clases de dominio: diplomado",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de diplomado",
+    "scope": "DiplomadoModulo, DiplomadoDefensa",
+    "sources": [
+      "apps/modalidades/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-DIP-001-diplomado-clases.puml",
+    "description": "diagramas/fichas/DIA-DIP-001-diplomado-clases.md",
+    "evidence": {
+      "models": [
+        "DiplomadoModulo",
+        "DiplomadoDefensa"
+      ],
+      "relationships": [
+        {
+          "source": "DiplomadoModulo",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DiplomadoDefensa",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-DIP-101",
+    "title": "ER lógico: diplomado",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de diplomado",
+    "scope": "DiplomadoModulo, DiplomadoDefensa",
+    "sources": [
+      "apps/modalidades/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-DIP-101-diplomado-er.puml",
+    "description": "diagramas/fichas/DIA-DIP-101-diplomado-er.md",
+    "evidence": {
+      "models": [
+        "DiplomadoModulo",
+        "DiplomadoDefensa"
+      ],
+      "relationships": [
+        {
+          "source": "DiplomadoModulo",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "DiplomadoDefensa",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-TD-001",
+    "title": "Clases de dominio: trabajo-dirigido",
+    "type": "Clases",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de trabajo-dirigido",
+    "scope": "TrabajoDirigidoExpediente, InformeSeguimientoTrabajoDirigido",
+    "sources": [
+      "apps/modalidades/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-TD-001-trabajo-dirigido-clases.puml",
+    "description": "diagramas/fichas/DIA-TD-001-trabajo-dirigido-clases.md",
+    "evidence": {
+      "models": [
+        "TrabajoDirigidoExpediente",
+        "InformeSeguimientoTrabajoDirigido"
+      ],
+      "relationships": [
+        {
+          "source": "TrabajoDirigidoExpediente",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "OneToOneField",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "InformeSeguimientoTrabajoDirigido",
+          "field": "expediente",
+          "target": "TrabajoDirigidoExpediente",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "InformeSeguimientoTrabajoDirigido",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-TD-101",
+    "title": "ER lógico: trabajo-dirigido",
+    "type": "ER lógico",
+    "goal": "Mostrar entidades, relaciones y opcionalidad de trabajo-dirigido",
+    "scope": "TrabajoDirigidoExpediente, InformeSeguimientoTrabajoDirigido",
+    "sources": [
+      "apps/modalidades/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.",
+    "source": "diagramas/fuentes/DIA-TD-101-trabajo-dirigido-er.puml",
+    "description": "diagramas/fichas/DIA-TD-101-trabajo-dirigido-er.md",
+    "evidence": {
+      "models": [
+        "TrabajoDirigidoExpediente",
+        "InformeSeguimientoTrabajoDirigido"
+      ],
+      "relationships": [
+        {
+          "source": "TrabajoDirigidoExpediente",
+          "field": "postulacion",
+          "target": "Postulacion",
+          "type": "OneToOneField",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "InformeSeguimientoTrabajoDirigido",
+          "field": "expediente",
+          "target": "TrabajoDirigidoExpediente",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        },
+        {
+          "source": "InformeSeguimientoTrabajoDirigido",
+          "field": "registrado_por",
+          "target": "CustomUser",
+          "type": "ForeignKey",
+          "null": false,
+          "unique": false
+        }
+      ]
+    }
+  },
+  {
+    "id": "DIA-SYS-002",
+    "title": "Clases: modelo-base",
+    "type": "Clases de diseño",
+    "goal": "Identificar atributos comunes heredados sin crear una tabla BaseModel",
+    "scope": "BaseModel",
+    "sources": [
+      "core/models.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-SYS-002-modelo-base.puml",
+    "description": "diagramas/fichas/DIA-SYS-002-modelo-base.md",
+    "evidence": {
+      "classes": [
+        "core.models.BaseModel"
+      ]
+    }
+  },
+  {
+    "id": "DIA-PG-020",
+    "title": "Clases: politicas-proyecto_grado",
+    "type": "Clases de diseño",
+    "goal": "Mostrar especialización propia de PG y herencias explícitas",
+    "scope": "ProyectoGradoEventoPolicy, ProyectoGradoLegacyEvaluacionPolicy, ProyectoGradoEvaluacionPolicy, ProyectoGradoRevisionTribunalPreviaPolicy, ProyectoGradoRequisitosPolicy, ProyectoGradoPolicy",
+    "sources": [
+      "apps/modalidades/policies.py",
+      "apps/modalidades/proyecto_grado.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-PG-020-politicas-proyecto_grado.puml",
+    "description": "diagramas/fichas/DIA-PG-020-politicas-proyecto_grado.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.proyecto_grado.ProyectoGradoEventoPolicy",
+        "apps.modalidades.proyecto_grado.ProyectoGradoLegacyEvaluacionPolicy",
+        "apps.modalidades.proyecto_grado.ProyectoGradoEvaluacionPolicy",
+        "apps.modalidades.proyecto_grado.ProyectoGradoRevisionTribunalPreviaPolicy",
+        "apps.modalidades.proyecto_grado.ProyectoGradoRequisitosPolicy",
+        "apps.modalidades.proyecto_grado.ProyectoGradoPolicy"
+      ]
+    }
+  },
+  {
+    "id": "DIA-TG-020",
+    "title": "Clases: politicas-tesis_grado",
+    "type": "Clases de diseño",
+    "goal": "Mostrar especialización propia de TG y herencias explícitas",
+    "scope": "TesisGradoEventoPolicy, TesisGradoEvaluacionPolicy, TesisGradoRequisitosPolicy, TesisGradoPolicy",
+    "sources": [
+      "apps/modalidades/policies.py",
+      "apps/modalidades/tesis_grado.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-TG-020-politicas-tesis_grado.puml",
+    "description": "diagramas/fichas/DIA-TG-020-politicas-tesis_grado.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.tesis_grado.TesisGradoEventoPolicy",
+        "apps.modalidades.tesis_grado.TesisGradoEvaluacionPolicy",
+        "apps.modalidades.tesis_grado.TesisGradoRequisitosPolicy",
+        "apps.modalidades.tesis_grado.TesisGradoPolicy"
+      ]
+    }
+  },
+  {
+    "id": "DIA-TD-020",
+    "title": "Clases: politicas-trabajo_dirigido",
+    "type": "Clases de diseño",
+    "goal": "Mostrar especialización propia de TD y herencias explícitas",
+    "scope": "TrabajoDirigidoEventoPolicy, TrabajoDirigidoRevisionPolicy, TrabajoDirigidoRequisitosPolicy, TrabajoDirigidoEvaluacionPolicy, TrabajoDirigidoPolicy",
+    "sources": [
+      "apps/modalidades/policies.py",
+      "apps/modalidades/proyecto_grado.py",
+      "apps/modalidades/trabajo_dirigido.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-TD-020-politicas-trabajo_dirigido.puml",
+    "description": "diagramas/fichas/DIA-TD-020-politicas-trabajo_dirigido.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.trabajo_dirigido.TrabajoDirigidoEventoPolicy",
+        "apps.modalidades.trabajo_dirigido.TrabajoDirigidoRevisionPolicy",
+        "apps.modalidades.trabajo_dirigido.TrabajoDirigidoRequisitosPolicy",
+        "apps.modalidades.trabajo_dirigido.TrabajoDirigidoEvaluacionPolicy",
+        "apps.modalidades.trabajo_dirigido.TrabajoDirigidoPolicy"
+      ]
+    }
+  },
+  {
+    "id": "DIA-EG-020",
+    "title": "Clases: politicas-examen_grado",
+    "type": "Clases de diseño",
+    "goal": "Mostrar especialización propia de EG y herencias explícitas",
+    "scope": "ExamenGradoRequisitosPolicy, ExamenGradoPolicy",
+    "sources": [
+      "apps/modalidades/examen_grado.py",
+      "apps/modalidades/policies.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-EG-020-politicas-examen_grado.puml",
+    "description": "diagramas/fichas/DIA-EG-020-politicas-examen_grado.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.examen_grado.ExamenGradoRequisitosPolicy",
+        "apps.modalidades.examen_grado.ExamenGradoPolicy"
+      ]
+    }
+  },
+  {
+    "id": "DIA-EA-020",
+    "title": "Clases: politicas-excelencia_academica",
+    "type": "Clases de diseño",
+    "goal": "Mostrar especialización propia de EA y herencias explícitas",
+    "scope": "ExcelenciaAcademicaRequisitosPolicy, ExcelenciaAcademicaPolicy",
+    "sources": [
+      "apps/modalidades/excelencia_academica.py",
+      "apps/modalidades/policies.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-EA-020-politicas-excelencia_academica.puml",
+    "description": "diagramas/fichas/DIA-EA-020-politicas-excelencia_academica.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.excelencia_academica.ExcelenciaAcademicaRequisitosPolicy",
+        "apps.modalidades.excelencia_academica.ExcelenciaAcademicaPolicy"
+      ]
+    }
+  },
+  {
+    "id": "DIA-DIP-020",
+    "title": "Clases: politicas-diplomado",
+    "type": "Clases de diseño",
+    "goal": "Mostrar especialización propia de DIP y herencias explícitas",
+    "scope": "DiplomadoRequisitosPolicy, DiplomadoEventoPolicy, DiplomadoEvaluacionPolicy, DiplomadoPolicy",
+    "sources": [
+      "apps/modalidades/diplomado.py",
+      "apps/modalidades/policies.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-DIP-020-politicas-diplomado.puml",
+    "description": "diagramas/fichas/DIA-DIP-020-politicas-diplomado.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.diplomado.DiplomadoRequisitosPolicy",
+        "apps.modalidades.diplomado.DiplomadoEventoPolicy",
+        "apps.modalidades.diplomado.DiplomadoEvaluacionPolicy",
+        "apps.modalidades.diplomado.DiplomadoPolicy"
+      ]
+    }
+  },
+  {
+    "id": "DIA-MOD-001",
+    "title": "Clases: contratos-politicas",
+    "type": "Clases de diseño",
+    "goal": "Mostrar contratos de extensión sin atribuir a todas las modalidades las reglas de Proyecto",
+    "scope": "EtapaDefinition, DecisionAcademicaDefinition, ModalidadCapabilities, BaseEventoPolicy, BaseEvaluacionPolicy, BaseRevisionTribunalPreviaPolicy, BaseRequisitosPolicy, BaseCierrePolicy, BaseModalidadPolicy, ModalidadPolicyRegistry",
+    "sources": [
+      "apps/modalidades/policies.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-MOD-001-contratos-politicas.puml",
+    "description": "diagramas/fichas/DIA-MOD-001-contratos-politicas.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.policies.EtapaDefinition",
+        "apps.modalidades.policies.DecisionAcademicaDefinition",
+        "apps.modalidades.policies.ModalidadCapabilities",
+        "apps.modalidades.policies.BaseEventoPolicy",
+        "apps.modalidades.policies.BaseEvaluacionPolicy",
+        "apps.modalidades.policies.BaseRevisionTribunalPreviaPolicy",
+        "apps.modalidades.policies.BaseRequisitosPolicy",
+        "apps.modalidades.policies.BaseCierrePolicy",
+        "apps.modalidades.policies.BaseModalidadPolicy",
+        "apps.modalidades.policies.ModalidadPolicyRegistry"
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-020",
+    "title": "Clases: servicios-expediente",
+    "type": "Clases de diseño",
+    "goal": "Separar servicios, entrada API y políticas; solo operaciones verificadas",
+    "scope": "PostulacionService, WorkflowService, AsignacionService, DecisionAcademicaEtapaService",
+    "sources": [
+      "apps/postulantes/asignaciones.py",
+      "apps/postulantes/decisiones_academicas.py",
+      "apps/postulantes/services.py",
+      "apps/postulantes/workflow.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-POS-020-servicios-expediente.puml",
+    "description": "diagramas/fichas/DIA-POS-020-servicios-expediente.md",
+    "evidence": {
+      "classes": [
+        "apps.postulantes.services.PostulacionService",
+        "apps.postulantes.workflow.WorkflowService",
+        "apps.postulantes.asignaciones.AsignacionService",
+        "apps.postulantes.decisiones_academicas.DecisionAcademicaEtapaService"
+      ]
+    }
+  },
+  {
+    "id": "DIA-POS-021",
+    "title": "Clases: servicios-defensa-cierre",
+    "type": "Clases de diseño",
+    "goal": "Separar servicios, entrada API y políticas; solo operaciones verificadas",
+    "scope": "ProyectoGradoCierrePolicy, CierrePostulacionService, EventoDefensaService, EvaluacionDefensaService",
+    "sources": [
+      "apps/modalidades/policies.py",
+      "apps/postulantes/cierre.py",
+      "apps/postulantes/defensas.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-POS-021-servicios-defensa-cierre.puml",
+    "description": "diagramas/fichas/DIA-POS-021-servicios-defensa-cierre.md",
+    "evidence": {
+      "classes": [
+        "apps.postulantes.cierre.ProyectoGradoCierrePolicy",
+        "apps.postulantes.cierre.CierrePostulacionService",
+        "apps.postulantes.defensas.EventoDefensaService",
+        "apps.postulantes.defensas.EvaluacionDefensaService"
+      ]
+    }
+  },
+  {
+    "id": "DIA-DOC-020",
+    "title": "Clases: servicios-documentales",
+    "type": "Clases de diseño",
+    "goal": "Separar servicios, entrada API y políticas; solo operaciones verificadas",
+    "scope": "DocumentoService, ConfirmacionCorreccionDocumentoService",
+    "sources": [
+      "apps/documentos/services.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-DOC-020-servicios-documentales.puml",
+    "description": "diagramas/fichas/DIA-DOC-020-servicios-documentales.md",
+    "evidence": {
+      "classes": [
+        "apps.documentos.services.DocumentoService",
+        "apps.documentos.services.ConfirmacionCorreccionDocumentoService"
+      ]
+    }
+  },
+  {
+    "id": "DIA-NOT-020",
+    "title": "Clases: servicios-eventos-notificaciones",
+    "type": "Clases de diseño",
+    "goal": "Separar servicios, entrada API y políticas; solo operaciones verificadas",
+    "scope": "DomainEvent, DomainEventPublisher, NotificationRecipientResolver, NotificationService",
+    "sources": [
+      "apps/notificaciones/events.py",
+      "apps/notificaciones/services.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-NOT-020-servicios-eventos-notificaciones.puml",
+    "description": "diagramas/fichas/DIA-NOT-020-servicios-eventos-notificaciones.md",
+    "evidence": {
+      "classes": [
+        "apps.notificaciones.events.DomainEvent",
+        "apps.notificaciones.events.DomainEventPublisher",
+        "apps.notificaciones.services.NotificationRecipientResolver",
+        "apps.notificaciones.services.NotificationService"
+      ]
+    }
+  },
+  {
+    "id": "DIA-USR-020",
+    "title": "Clases: autenticacion-autorizacion",
+    "type": "Clases de diseño",
+    "goal": "Separar servicios, entrada API y políticas; solo operaciones verificadas",
+    "scope": "CustomTokenObtainPairView, CustomTokenRefreshView, StudentTokenObtainPairView, LogoutView, MeView, UserCapabilitiesService, IsActiveUser, IsStaff",
+    "sources": [
+      "apps/usuarios/services.py",
+      "apps/usuarios/views.py",
+      "core/permissions.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-USR-020-autenticacion-autorizacion.puml",
+    "description": "diagramas/fichas/DIA-USR-020-autenticacion-autorizacion.md",
+    "evidence": {
+      "classes": [
+        "apps.usuarios.views.CustomTokenObtainPairView",
+        "apps.usuarios.views.CustomTokenRefreshView",
+        "apps.usuarios.views.StudentTokenObtainPairView",
+        "apps.usuarios.views.LogoutView",
+        "apps.usuarios.views.MeView",
+        "apps.usuarios.services.UserCapabilitiesService",
+        "core.permissions.IsActiveUser",
+        "core.permissions.IsStaff"
+      ]
+    }
+  },
+  {
+    "id": "DIA-EG-021",
+    "title": "Clases: servicio-examen",
+    "type": "Clases de diseño",
+    "goal": "Separar servicios, entrada API y políticas; solo operaciones verificadas",
+    "scope": "ExamenGradoService",
+    "sources": [
+      "apps/modalidades/examen_grado_service.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-EG-021-servicio-examen.puml",
+    "description": "diagramas/fichas/DIA-EG-021-servicio-examen.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.examen_grado_service.ExamenGradoService"
+      ]
+    }
+  },
+  {
+    "id": "DIA-EA-021",
+    "title": "Clases: servicio-excelencia",
+    "type": "Clases de diseño",
+    "goal": "Separar servicios, entrada API y políticas; solo operaciones verificadas",
+    "scope": "ExcelenciaAcademicaService",
+    "sources": [
+      "apps/modalidades/excelencia_academica_service.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-EA-021-servicio-excelencia.puml",
+    "description": "diagramas/fichas/DIA-EA-021-servicio-excelencia.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.excelencia_academica_service.ExcelenciaAcademicaService"
+      ]
+    }
+  },
+  {
+    "id": "DIA-DIP-021",
+    "title": "Clases: servicio-diplomado",
+    "type": "Clases de diseño",
+    "goal": "Separar servicios, entrada API y políticas; solo operaciones verificadas",
+    "scope": "DiplomadoService",
+    "sources": [
+      "apps/modalidades/diplomado_service.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-DIP-021-servicio-diplomado.puml",
+    "description": "diagramas/fichas/DIA-DIP-021-servicio-diplomado.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.diplomado_service.DiplomadoService"
+      ]
+    }
+  },
+  {
+    "id": "DIA-TD-021",
+    "title": "Clases: servicio-trabajo-dirigido",
+    "type": "Clases de diseño",
+    "goal": "Separar servicios, entrada API y políticas; solo operaciones verificadas",
+    "scope": "TrabajoDirigidoService",
+    "sources": [
+      "apps/modalidades/trabajo_dirigido_service.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.",
+    "source": "diagramas/fuentes/DIA-TD-021-servicio-trabajo-dirigido.puml",
+    "description": "diagramas/fichas/DIA-TD-021-servicio-trabajo-dirigido.md",
+    "evidence": {
+      "classes": [
+        "apps.modalidades.trabajo_dirigido_service.TrabajoDirigidoService"
+      ]
+    }
+  },
+  {
+    "id": "DIA-SYS-006",
+    "title": "Componentes generales",
+    "type": "Componentes",
+    "goal": "Situar SPA, API, seguridad, dominio y almacenamiento",
+    "scope": "SPA, seguridad, dominio, políticas, ORM y archivos",
+    "sources": [
+      "apps/documentos/services.py",
+      "apps/notificaciones/events.py",
+      "apps/postulantes/workflow.py",
+      "apps/reportes/services.py",
+      "core/settings/base.py",
+      "core/urls.py",
+      "src/services/api.js"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Vista general selectiva: las dependencias no son una secuencia ni servicios desplegables separados. No hay broker externo demostrado. FileField representa rutas/archivos, no BLOB PostgreSQL.",
+    "source": "diagramas/fuentes/DIA-SYS-006-componentes-general.puml",
+    "description": "diagramas/fichas/DIA-SYS-006-componentes-general.md",
+    "evidence": {}
+  },
+  {
+    "id": "DIA-MOD-002",
+    "title": "Motor y modalidades",
+    "type": "Componentes",
+    "goal": "Mostrar resolución explícita de políticas y límites de reutilización",
+    "scope": "Motor común y seis políticas",
+    "sources": [
+      "apps/documentos/services.py",
+      "apps/modalidades/apps.py",
+      "apps/modalidades/policies.py",
+      "apps/modalidades/trabajo_dirigido.py",
+      "apps/postulantes/defensas.py",
+      "apps/postulantes/workflow.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Las flechas de registro no implican invocación simultánea de modalidades. No existe política académica de respaldo para códigos sin registro.",
+    "source": "diagramas/fuentes/DIA-MOD-002-componentes-motor.puml",
+    "description": "diagramas/fichas/DIA-MOD-002-componentes-motor.md",
+    "evidence": {}
+  },
+  {
+    "id": "DIA-SYS-007",
+    "title": "Despliegue Docker de desarrollo declarado",
+    "type": "Despliegue",
+    "goal": "Separar navegador, publicaciones de puertos, red implícita y volúmenes",
+    "scope": "Tres servicios, red implícita, puertos y montajes",
+    "sources": [
+      "Dockerfile.backend",
+      "Dockerfile.frontend",
+      "core/settings/production.py",
+      "docker-compose.yml",
+      "docker/backend/entrypoint.sh",
+      "src/config/env.js"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Infraestructura declarada de desarrollo, no contenedores observados. No se ejecutó Docker ni se leyó .env. Producción no representada como desplegada; no se afirma proxy, TLS terminado o nube.",
+    "source": "diagramas/fuentes/DIA-SYS-007-despliegue-docker.puml",
+    "description": "diagramas/fichas/DIA-SYS-007-despliegue-docker.md",
+    "evidence": {}
+  },
+  {
+    "id": "DIA-USR-021",
+    "title": "Herencia y persistencia de autenticación",
+    "type": "Clases / persistencia heredada",
+    "goal": "Explicar la herencia de usuario y M2M de autenticación sin confundir rol académico y permisos Django",
+    "scope": "CustomUser, dos bases, rol y referencias Django Group/Permission",
+    "sources": [
+      "apps/usuarios/migrations/0001_initial.py",
+      "apps/usuarios/models.py",
+      "core/models.py",
+      "core/permissions.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "AbstractUser se muestra como frontera del framework; la lista incluye campos que hereda de sus propias bases, no afirma que todos se declaren directamente allí. Evidencia de M2M y campos: migración versionada, sin ejecutarla. La instalación física y el esquema completo de Django/SimpleJWT quedan pendientes.",
+    "source": "diagramas/fuentes/DIA-USR-021-herencia-autenticacion.puml",
+    "description": "diagramas/fichas/DIA-USR-021-herencia-autenticacion.md",
+    "evidence": {}
+  },
+  {
+    "id": "DIA-POS-120",
+    "title": "ER lógico: intermedia de memorando",
+    "type": "ER lógico derivado",
+    "goal": "Hacer visible la intermedia implícita de asignaciones sin inventar su nombre físico",
+    "scope": "Dos entidades de referencia y una intermedia conceptual derivada",
+    "sources": [
+      "apps/postulantes/migrations/0019_publicacionmemorandumdesignacion.py",
+      "apps/postulantes/models.py"
+    ],
+    "version": "689eeb56ac6f / desarrollo / directorio de trabajo",
+    "limitations": "Intermedia inferida de la declaración M2M y la migración; no se cuenta como modelo propio adicional ni se declara tabla efectivamente instalada.",
+    "source": "diagramas/fuentes/DIA-POS-120-intermedia-memorandum.puml",
+    "description": "diagramas/fichas/DIA-POS-120-intermedia-memorandum.md",
+    "evidence": {}
+  }
+]

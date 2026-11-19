@@ -1,0 +1,71 @@
+@startuml ACA-01--DIA-SYS-001
+' Adaptación académica ACA-01; original DIA-SYS-001; fase 9
+' Identificador: DIA-SYS-001
+' Nombre: Vista general del sistema
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-USR-001, UC-POS-002, UC-POS-003, UC-DOC-001, UC-POS-006, UC-NOT-001, UC-REP-001, UC-ACA-005
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/academico/views.py
+' Evidencia: apps/documentos/services.py
+' Evidencia: apps/documentos/views.py
+' Evidencia: apps/modalidades/policies.py
+' Evidencia: apps/notificaciones/services.py
+' Evidencia: apps/notificaciones/views.py
+' Evidencia: apps/postulantes/defensas.py
+' Evidencia: apps/postulantes/defensas_api.py
+' Evidencia: apps/postulantes/permissions.py
+' Evidencia: apps/postulantes/views.py
+' Evidencia: apps/postulantes/workflow.py
+' Evidencia: apps/reportes/resultados.py
+' Evidencia: apps/reportes/views.py
+' Evidencia: apps/usuarios/serializers.py
+' Evidencia: apps/usuarios/views.py
+!include ../estilo-academico.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title Figura 01 — DIA-SYS-001 — Vista general del sistema
+actor "Propietario de\npostulación" as ACT_POS_001
+actor "Usuario vinculado al\nexpediente" as ACT_POS_002
+actor "Solicitante de acceso" as ACT_SYS_001
+actor "Usuario autenticado" as ACT_SYS_002
+actor "Administración\nfuncional" as ACT_USR_001
+actor "Estudiante" as ACT_USR_002
+actor "Docente" as ACT_USR_003
+ACT_POS_001 --|> ACT_SYS_002
+ACT_POS_002 --|> ACT_SYS_002
+ACT_USR_001 --|> ACT_SYS_002
+ACT_USR_002 --|> ACT_SYS_002
+ACT_USR_003 --|> ACT_SYS_002
+rectangle "Sistema de Modalidades de\nGraduación\nVista general del sistema" {
+  usecase "UC-USR-001\nIniciar sesión con usuario y\ncontraseña" as UC_USR_001
+  usecase "UC-POS-002\nConsultar postulaciones y\nexpediente" as UC_POS_002
+  usecase "UC-POS-003\nEjecutar una transición de etapa" as UC_POS_003
+  usecase "UC-DOC-001\nCargar un documento o una nueva\nversión" as UC_DOC_001
+  usecase "UC-POS-006\nAdministrar el ciclo de una\ndefensa" as UC_POS_006
+  usecase "UC-NOT-001\nConsultar notificaciones propias" as UC_NOT_001
+  usecase "UC-REP-001\nConsultar resultados académicos\ninstitucionales" as UC_REP_001
+  usecase "UC-ACA-005\nConsultar modalidades y\ncapacidades" as UC_ACA_005
+}
+ACT_SYS_001 -- UC_USR_001
+ACT_USR_001 -- UC_POS_002
+ACT_USR_002 -- UC_POS_002
+ACT_USR_003 -- UC_POS_002
+ACT_USR_001 -- UC_POS_003
+ACT_USR_001 -- UC_DOC_001
+ACT_POS_001 -- UC_DOC_001
+ACT_USR_001 -- UC_POS_006
+ACT_SYS_002 -- UC_NOT_001
+ACT_USR_001 -- UC_REP_001
+ACT_USR_003 -- UC_REP_001
+ACT_SYS_002 -- UC_ACA_005
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer Referencia técnica: 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

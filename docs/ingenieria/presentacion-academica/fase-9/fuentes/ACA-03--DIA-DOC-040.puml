@@ -1,0 +1,50 @@
+@startuml ACA-03--DIA-DOC-040
+' Adaptación académica ACA-03; original DIA-DOC-040; fase 9
+' Identificador: DIA-DOC-040
+' Nombre: Gestión documental
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-DOC-001, UC-DOC-002, UC-DOC-007, UC-DOC-008, UC-DOC-003, UC-DOC-004, UC-DOC-005, UC-DOC-006
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/documentos/services.py
+' Evidencia: apps/documentos/views.py
+' Evidencia: apps/postulantes/views.py
+!include ../estilo-academico.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title Figura 03 — DIA-DOC-040 — Gestión documental
+actor "Propietario de\npostulación" as ACT_POS_001
+actor "Usuario vinculado al\nexpediente" as ACT_POS_002
+actor "Usuario autenticado" as ACT_SYS_002
+actor "Administración\nfuncional" as ACT_USR_001
+rectangle "Sistema de Modalidades de\nGraduación\nGestión documental" {
+  usecase "UC-DOC-001\nCargar un documento o una nueva\nversión" as UC_DOC_001
+  usecase "UC-DOC-002\nRevisar un documento presentado" as UC_DOC_002
+  usecase "UC-DOC-007\nConsultar catálogos documentales\ny estados técnicos" as UC_DOC_007
+  usecase "UC-DOC-008\nAdministrar tipos y estados\ndocumentales" as UC_DOC_008
+  usecase "UC-DOC-003\nConsultar documentos y descargar\nversiones" as UC_DOC_003
+  usecase "UC-DOC-004\nMarcar observación documental\ncomo corregida" as UC_DOC_004
+  usecase "UC-DOC-005\nRegistrar confirmación técnica\nentre versiones" as UC_DOC_005
+  usecase "UC-DOC-006\nAdjuntar evidencia a un registro\nhistórico" as UC_DOC_006
+}
+ACT_USR_001 -- UC_DOC_001
+ACT_POS_001 -- UC_DOC_001
+ACT_USR_001 -- UC_DOC_002
+ACT_SYS_002 -- UC_DOC_007
+ACT_USR_001 -- UC_DOC_008
+ACT_USR_001 -- UC_DOC_003
+ACT_POS_001 -- UC_DOC_003
+ACT_POS_002 -- UC_DOC_003
+ACT_USR_001 -- UC_DOC_004
+ACT_USR_001 -- UC_DOC_005
+ACT_USR_001 -- UC_DOC_006
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer Referencia técnica: 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

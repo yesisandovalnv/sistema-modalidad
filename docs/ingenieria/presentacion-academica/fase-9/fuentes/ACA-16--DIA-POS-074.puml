@@ -1,0 +1,73 @@
+@startuml ACA-16--DIA-POS-074
+' Adaptación académica ACA-16; original DIA-POS-074; fase 9
+' ID: DIA-POS-074
+' Nombre: Conclusión común validada por modalidad
+' Tipo UML: Secuencia
+' Objetivo: Documentar el comportamiento implementado de conclusión común validada por modalidad, con decisiones, guardas y límites de evidencia.
+' Alcance: Inicialización, inscripción y seguimiento; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-003, UC-POS-005, UC-POS-008, UC-POS-009, UC-POS-012, UC-POS-013, UC-POS-014, UC-POS-015
+' RN: RN-POS-103, RN-POS-105, RN-POS-108, RN-POS-109, RN-POS-112, RN-POS-113, RN-POS-114, RN-POS-115
+' Componentes: CMP-CORE-001, CMP-POS-001, CMP-WEB-001
+' Entidades: ENT-ACA-004, ENT-DOC-004, ENT-POS-001, ENT-POS-002, ENT-POS-004, ENT-POS-005, ENT-POS-006, ENT-POS-007, ENT-POS-008, ENT-POS-015, ENT-POS-016
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente.
+' Evidencia: apps/postulantes/decisiones_academicas.py:DecisionAcademicaEtapaService.registrar
+' Evidencia: apps/postulantes/dictamenes_revision.py:DictamenRevisionDocumentoService.registrar
+' Evidencia: apps/postulantes/revision_tribunal.py:RevisionTribunalPreviaService
+' Evidencia: apps/postulantes/serializers.py:SeguimientoEtapaSerializer
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.concluir_academicamente
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.inicializar_flujo
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.nuevo_intento
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.aprobar
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.dictamenes_revision
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.informes_revision_tribunal
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.registrar_decision
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.aprobar_etapa
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.concluir_postulacion
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.crear_nuevo_intento
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.inicializar_flujo
+' Evidencia: src/pages/postulantes/ExpedientePage.jsx
+' Evidencia: src/services/postulacionesService.js
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_cierre.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_decisiones_academicas.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_dictamen_revision.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_revision_tribunal.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_workflow.py
+!include ../estilo-academico.puml.inc
+skinparam maxMessageSize 300
+hide footbox
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title Figura 16 — DIA-POS-074 — Conclusión común validada por modalidad
+actor "Administración" as U
+participant "ExpedientePage /\npostulacionesService /\napiClient" as FE
+participant "Postulacion\nView\nSet" as API
+participant "Workflow\nService" as W
+participant "Policy de modalidad" as P
+database "Postulacion /\nEstadoPostulacion /\nHistorial\nORM → PostgreSQL" as DB
+participant "publish_domain_event" as EV
+U -> FE : Concluir académicamente
+FE -> API : POST postulaciones/{id}/concluir-academicamente/
+API -> API : Exigir administración\nLeer request.data.get("observaciones", "")
+API -> W : concluir_postulacion(...)
+group atomic
+ W -> DB : Bloquear solo postulación (of=self)\nConsultar modalidad y estado nullable
+ alt Ya CONCLUIDA
+  W --> API : Retornar sin volver a validar policy
+ else No concluida
+  W -> P : validar_conclusion_academica(post)
+  alt Requisitos faltantes
+   P --> W : ValidationError
+   W --> API : Error / rollback
+  else Validación aceptada
+   W -> DB : Obtener CONCLUIDA (strict=True)\nGuardar estado e HistorialEstado
+   W -> EV : POSTULACION_ESTADO_CAMBIADO para on_commit
+   W --> API : Postulación
+  end
+ end
+end
+API --> FE : Resultado o error DRF
+note over W,P : Tesis exige su ACTA_DEFENSA; otras políticas tienen\nguardas distintas. No se cambia vigencia en este método.\nLos cierres específicos tienen secuencias propias, no son alias universales.
+footer Referencia técnica: 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

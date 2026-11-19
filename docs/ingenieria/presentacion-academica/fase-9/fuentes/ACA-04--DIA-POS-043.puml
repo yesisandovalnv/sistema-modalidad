@@ -1,0 +1,53 @@
+@startuml ACA-04--DIA-POS-043
+' Adaptación académica ACA-04; original DIA-POS-043; fase 9
+' Identificador: DIA-POS-043
+' Nombre: Defensas y evaluaciones
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-POS-006, UC-POS-007, UC-POS-018, UC-POS-019, UC-POS-020, UC-POS-021, UC-POS-022
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/postulantes/defensas.py
+' Evidencia: apps/postulantes/defensas_api.py
+!include ../estilo-academico.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title Figura 04 — DIA-POS-043 — Defensas y evaluaciones
+actor "Propietario de\npostulación" as ACT_POS_001
+actor "Usuario vinculado al\nexpediente" as ACT_POS_002
+actor "Administración\nfuncional" as ACT_USR_001
+actor "Estudiante" as ACT_USR_002
+actor "Docente" as ACT_USR_003
+rectangle "Sistema de Modalidades de\nGraduación\nDefensas y evaluaciones" {
+  usecase "UC-POS-006\nAdministrar el ciclo de una\ndefensa" as UC_POS_006
+  usecase "UC-POS-007\nConsolidar la evaluación de una\ndefensa" as UC_POS_007
+  usecase "UC-POS-018\nConsultar defensas y quórum" as UC_POS_018
+  usecase "UC-POS-019\nAdministrar participantes de\ndefensa" as UC_POS_019
+  usecase "UC-POS-020\nRegistrar asistencia de defensa" as UC_POS_020
+  usecase "UC-POS-021\nRegistrar evaluación de defensa" as UC_POS_021
+  usecase "UC-POS-022\nConsultar o recalcular resultado\nfinal" as UC_POS_022
+}
+ACT_USR_001 -- UC_POS_006
+ACT_USR_001 -- UC_POS_007
+ACT_USR_001 -- UC_POS_018
+ACT_POS_001 -- UC_POS_018
+ACT_POS_002 -- UC_POS_018
+ACT_USR_001 -- UC_POS_019
+ACT_USR_001 -- UC_POS_020
+ACT_USR_001 -- UC_POS_021
+ACT_USR_001 -- UC_POS_022
+ACT_USR_002 -- UC_POS_022
+ACT_USR_003 -- UC_POS_022
+note bottom of UC_POS_022
+Estudiante/docente: GET en su alcance.
+POST recálculo: solo administración.
+end note
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer Referencia técnica: 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

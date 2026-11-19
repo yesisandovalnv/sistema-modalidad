@@ -1,0 +1,72 @@
+@startuml ACA-14--DIA-DOC-070
+' Adaptación académica ACA-14; original DIA-DOC-070; fase 9
+' ID: DIA-DOC-070
+' Nombre: Carga documental, storage y rollback
+' Tipo UML: Secuencia
+' Objetivo: Documentar el comportamiento implementado de carga documental, storage y rollback, con decisiones, guardas y límites de evidencia.
+' Alcance: Carga, versiones y evidencia histórica; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-DOC-001, UC-DOC-006
+' RN: RN-DOC-101, RN-DOC-106
+' Componentes: CMP-CORE-001, CMP-DOC-001, CMP-WEB-001
+' Entidades: ENT-DOC-002, ENT-DOC-003, ENT-DOC-004, ENT-POS-004, ENT-USR-003
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: El borrado compensatorio está en el catch de crear_nueva_version. No garantiza compensación por un rollback exterior posterior al retorno de ese método, ni atomicidad entre filesystem y PostgreSQL.
+' Evidencia: apps/documentos/services.py:DocumentoService.crear_nueva_version
+' Evidencia: apps/documentos/services.py:DocumentoService.subir_documento
+' Evidencia: apps/documentos/services.py:DocumentoService.subir_documento_historico
+' Evidencia: apps/documentos/views.py:DocumentoPostulacionViewSet.subir
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.subir_documento_historico
+' Evidencia: src/pages/postulantes/ExpedientePage.jsx
+' Evidencia: src/services/api.js
+' Evidencia: src/services/postulacionesService.js
+' Prueba relacionada, no ejecutada: apps/documentos/test_api.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_us007.py
+!include ../estilo-academico.puml.inc
+skinparam maxMessageSize 300
+hide footbox
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title Figura 14 — DIA-DOC-070 — Carga documental, storage y rollback
+actor "Propietario o administración" as U
+participant "ExpedientePage /\npostulacionesService" as FE
+participant "api\nClient" as HTTP
+participant "Documento\nPostulacion\nView\nSet" as API
+participant "Subir\nDocumento\nSerializer" as SER
+participant "Documento\nService" as S
+participant "Policy de modalidad / evento" as P
+database "Modelos ORM → PostgreSQL" as DB
+collections "Storage de archivos" as FS
+participant "publish_domain_event" as EV
+U -> FE : Adjuntar archivo
+FE -> HTTP : cargar documento (FormData)
+HTTP -> API : POST documentos/documentos/subir/
+API -> SER : Validar payload y referencias
+API -> S : subir_documento(...)
+S -> S : Validar editable, archivo y actor
+alt Propietario/administración no autorizado o datos inválidos
+ S --> API : PermissionDenied / ValidationError / NotFound
+ API --> HTTP : Error DRF
+else Validaciones previas aceptadas
+ group atomic subir_documento + atomic crear_nueva_version anidado
+  S -> DB : select_for_update postulación y documento
+  S -> P : Capacidad, aplicabilidad y vínculo de evento
+  S -> DB : Crear documento si falta; bloquear versiones\nnumero=max+1; anteriores no actuales; estado ENV
+  S -> FS : version.archivo.save(..., save=False)
+  S -> DB : version.save(); auditoría
+  S -> EV : Registrar evento para on_commit
+  opt Autoaprobación inicial específica permitida
+   S -> S : aprobar_documento(documento, usuario)
+  end
+ end
+ alt Excepción capturada al crear nueva versión
+  S -> FS : storage.delete(nombre recién creado), si existe
+  S --> API : Propagar excepción / rollback SQL
+ else Commit exitoso
+  note over S,EV : El callback de notificación se ejecuta tras commit exterior.\nVer secuencia de publicación interna.
+  S --> API : VersionDocumento
+  API --> HTTP : Versión serializada
+  HTTP --> FE : Resultado de carga
+ end
+end
+footer Referencia técnica: 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,71 @@
+@startuml ACA-17--DIA-POS-081
+' Adaptación académica ACA-17; original DIA-POS-081; fase 9
+' ID: DIA-POS-081
+' Nombre: Ciclo técnico de un seguimiento
+' Tipo UML: Estados
+' Objetivo: Documentar el comportamiento implementado de ciclo técnico de un seguimiento, con decisiones, guardas y límites de evidencia.
+' Alcance: Inicialización, inscripción y seguimiento; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-003, UC-POS-005, UC-POS-008, UC-POS-009, UC-POS-012, UC-POS-013, UC-POS-014, UC-POS-015
+' RN: RN-POS-103, RN-POS-105, RN-POS-108, RN-POS-109, RN-POS-112, RN-POS-113, RN-POS-114, RN-POS-115
+' Componentes: CMP-CORE-001, CMP-POS-001
+' Entidades: ENT-ACA-004, ENT-DOC-004, ENT-POS-001, ENT-POS-002, ENT-POS-004, ENT-POS-005, ENT-POS-006, ENT-POS-007, ENT-POS-008, ENT-POS-015, ENT-POS-016
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Un único objeto SeguimientoEtapa. Nuevo intento crea otro PENDIENTE y deja el anterior RECHAZADA; no se dibuja como vuelta del mismo objeto. La excepción de reapertura pertenece al cierre de Proyecto, no al motor genérico de todas las etapas.
+' Evidencia: apps/postulantes/cierre.py:CierrePostulacionService.reabrir_cierre
+' Evidencia: apps/postulantes/decisiones_academicas.py:DecisionAcademicaEtapaService.registrar
+' Evidencia: apps/postulantes/dictamenes_revision.py:DictamenRevisionDocumentoService.registrar
+' Evidencia: apps/postulantes/revision_tribunal.py:RevisionTribunalPreviaService
+' Evidencia: apps/postulantes/serializers.py:SeguimientoEtapaSerializer
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.concluir_academicamente
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.inicializar_flujo
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.nuevo_intento
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.aprobar
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.dictamenes_revision
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.informes_revision_tribunal
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.registrar_decision
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.aprobar_etapa
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.concluir_postulacion
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.crear_nuevo_intento
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.inicializar_flujo
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.iniciar_etapa
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.observar_etapa
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.omitir_etapa
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.rechazar_etapa
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_cierre.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_decisiones_academicas.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_dictamen_revision.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_revision_tribunal.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_workflow.py
+!include ../estilo-academico.puml.inc
+skinparam maxMessageSize 300
+hide footbox
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title Figura 17 — DIA-POS-081 — Ciclo técnico de un seguimiento
+hide empty description
+state "PENDIENTE" as s0
+state "EN_PROCESO" as s1
+state "OBSERVADA" as s2
+state "APROBADA" as s3
+state "RECHAZADA" as s4
+state "OMITIDA" as s5
+[*] --> s0 : T01 inicializar_flujo\n[G01] / A01
+s0 --> s1 : T02 iniciar_etapa\n[G02] / A02
+s1 --> s2 : T03 observar_etapa\n[G03] / A03
+s1 --> s3 : T04 aprobar_etapa\n[G04] / A04
+s1 --> s4 : T05 rechazar_etapa\n[G05] / A05
+s2 --> s3 : T06 aprobar_etapa\n[G06] / A06
+s2 --> s4 : T07 rechazar_etapa\n[G07] / A07
+s0 --> s5 : T08 omitir_etapa\n[G08] / A08
+s1 --> s5 : T09 omitir_etapa\n[G09] / A09
+s2 --> s5 : T10 omitir_etapa\n[G10] / A10
+s3 --> s1 : T11 reabrir_cierre (solo Proyecto)\n[G11] / A11
+legend bottom
+Txx: contrato completo en la ficha.
+Gxx = guarda de Txx; Axx = acción de Txx.
+Son alias documentales, no variables del código.
+No se infieren transiciones a partir de choices.
+endlegend
+footer Referencia técnica: 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

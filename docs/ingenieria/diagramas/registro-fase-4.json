@@ -1,0 +1,508 @@
+[
+  {
+    "id": "DIA-SYS-001",
+    "title": "Vista general del sistema",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-USR-001, UC-POS-002, UC-POS-003, UC-DOC-001, UC-POS-006, UC-NOT-001, UC-REP-001, UC-ACA-005",
+    "sources": [
+      "apps/academico/views.py",
+      "apps/documentos/services.py",
+      "apps/documentos/views.py",
+      "apps/modalidades/policies.py",
+      "apps/notificaciones/services.py",
+      "apps/notificaciones/views.py",
+      "apps/postulantes/defensas.py",
+      "apps/postulantes/defensas_api.py",
+      "apps/postulantes/permissions.py",
+      "apps/postulantes/views.py",
+      "apps/postulantes/workflow.py",
+      "apps/reportes/resultados.py",
+      "apps/reportes/views.py",
+      "apps/usuarios/serializers.py",
+      "apps/usuarios/views.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-SYS-001.puml",
+    "description": "diagramas/fichas/fase-4/DIA-SYS-001.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-SYS-001.svg",
+    "cases": [
+      "UC-USR-001",
+      "UC-POS-002",
+      "UC-POS-003",
+      "UC-DOC-001",
+      "UC-POS-006",
+      "UC-NOT-001",
+      "UC-REP-001",
+      "UC-ACA-005"
+    ],
+    "actors": [
+      "ACT-POS-001",
+      "ACT-POS-002",
+      "ACT-SYS-001",
+      "ACT-SYS-002",
+      "ACT-USR-001",
+      "ACT-USR-002",
+      "ACT-USR-003"
+    ]
+  },
+  {
+    "id": "DIA-USR-040",
+    "title": "Autenticación y usuarios",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-USR-001, UC-USR-002, UC-USR-003, UC-USR-004, UC-USR-005, UC-USR-006, UC-USR-009",
+    "sources": [
+      "apps/usuarios/serializers.py",
+      "apps/usuarios/services.py",
+      "apps/usuarios/student_auth.py",
+      "apps/usuarios/views.py",
+      "core/settings/base.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-USR-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-USR-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-USR-040.svg",
+    "cases": [
+      "UC-USR-001",
+      "UC-USR-002",
+      "UC-USR-003",
+      "UC-USR-004",
+      "UC-USR-005",
+      "UC-USR-006",
+      "UC-USR-009"
+    ],
+    "actors": [
+      "ACT-SYS-001",
+      "ACT-SYS-002",
+      "ACT-USR-001"
+    ]
+  },
+  {
+    "id": "DIA-ACA-040",
+    "title": "Gestión académica",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-ACA-001, UC-ACA-002, UC-ACA-007, UC-ACA-003, UC-ACA-004, UC-ACA-005, UC-ACA-006",
+    "sources": [
+      "apps/academico/serializers.py",
+      "apps/academico/views.py",
+      "apps/modalidades/policies.py",
+      "core/permissions.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-ACA-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-ACA-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-ACA-040.svg",
+    "cases": [
+      "UC-ACA-001",
+      "UC-ACA-002",
+      "UC-ACA-007",
+      "UC-ACA-003",
+      "UC-ACA-004",
+      "UC-ACA-005",
+      "UC-ACA-006"
+    ],
+    "actors": [
+      "ACT-SYS-002",
+      "ACT-USR-001"
+    ]
+  },
+  {
+    "id": "DIA-POS-040",
+    "title": "Postulaciones",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-POS-001, UC-POS-002, UC-POS-008, UC-POS-028, UC-POS-010, UC-POS-011, UC-POS-024, UC-POS-025",
+    "sources": [
+      "apps/postulantes/permissions.py",
+      "apps/postulantes/serializers.py",
+      "apps/postulantes/services.py",
+      "apps/postulantes/views.py",
+      "apps/postulantes/workflow.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-POS-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-POS-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-POS-040.svg",
+    "cases": [
+      "UC-POS-001",
+      "UC-POS-002",
+      "UC-POS-008",
+      "UC-POS-028",
+      "UC-POS-010",
+      "UC-POS-011",
+      "UC-POS-024",
+      "UC-POS-025"
+    ],
+    "actors": [
+      "ACT-POS-001",
+      "ACT-POS-002",
+      "ACT-USR-001",
+      "ACT-USR-002",
+      "ACT-USR-003"
+    ]
+  },
+  {
+    "id": "DIA-POS-041",
+    "title": "Seguimiento de etapas",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-POS-003, UC-POS-005, UC-POS-009, UC-POS-012, UC-POS-013, UC-POS-014, UC-POS-015",
+    "sources": [
+      "apps/postulantes/decisiones_academicas.py",
+      "apps/postulantes/dictamenes_revision.py",
+      "apps/postulantes/revision_tribunal.py",
+      "apps/postulantes/serializers.py",
+      "apps/postulantes/views.py",
+      "apps/postulantes/workflow.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-POS-041.puml",
+    "description": "diagramas/fichas/fase-4/DIA-POS-041.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-POS-041.svg",
+    "cases": [
+      "UC-POS-003",
+      "UC-POS-005",
+      "UC-POS-009",
+      "UC-POS-012",
+      "UC-POS-013",
+      "UC-POS-014",
+      "UC-POS-015"
+    ],
+    "actors": [
+      "ACT-POS-001",
+      "ACT-POS-002",
+      "ACT-USR-001"
+    ]
+  },
+  {
+    "id": "DIA-POS-042",
+    "title": "Asignaciones académicas",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-POS-004, UC-USR-007, UC-USR-008, UC-POS-016, UC-POS-017",
+    "sources": [
+      "apps/postulantes/asignaciones.py",
+      "apps/postulantes/views.py",
+      "apps/usuarios/views.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-POS-042.puml",
+    "description": "diagramas/fichas/fase-4/DIA-POS-042.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-POS-042.svg",
+    "cases": [
+      "UC-POS-004",
+      "UC-USR-007",
+      "UC-USR-008",
+      "UC-POS-016",
+      "UC-POS-017"
+    ],
+    "actors": [
+      "ACT-POS-001",
+      "ACT-POS-002",
+      "ACT-USR-001"
+    ]
+  },
+  {
+    "id": "DIA-POS-043",
+    "title": "Defensas y evaluaciones",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-POS-006, UC-POS-007, UC-POS-018, UC-POS-019, UC-POS-020, UC-POS-021, UC-POS-022",
+    "sources": [
+      "apps/postulantes/defensas.py",
+      "apps/postulantes/defensas_api.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-POS-043.puml",
+    "description": "diagramas/fichas/fase-4/DIA-POS-043.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-POS-043.svg",
+    "cases": [
+      "UC-POS-006",
+      "UC-POS-007",
+      "UC-POS-018",
+      "UC-POS-019",
+      "UC-POS-020",
+      "UC-POS-021",
+      "UC-POS-022"
+    ],
+    "actors": [
+      "ACT-POS-001",
+      "ACT-POS-002",
+      "ACT-USR-001",
+      "ACT-USR-002",
+      "ACT-USR-003"
+    ]
+  },
+  {
+    "id": "DIA-POS-044",
+    "title": "Condiciones y entrega física",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-POS-023, UC-POS-026, UC-POS-027",
+    "sources": [
+      "apps/postulantes/complementarios.py",
+      "apps/postulantes/complementarios_api.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-POS-044.puml",
+    "description": "diagramas/fichas/fase-4/DIA-POS-044.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-POS-044.svg",
+    "cases": [
+      "UC-POS-023",
+      "UC-POS-026",
+      "UC-POS-027"
+    ],
+    "actors": [
+      "ACT-POS-001",
+      "ACT-POS-002",
+      "ACT-USR-001"
+    ]
+  },
+  {
+    "id": "DIA-DOC-040",
+    "title": "Gestión documental",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-DOC-001, UC-DOC-002, UC-DOC-007, UC-DOC-008, UC-DOC-003, UC-DOC-004, UC-DOC-005, UC-DOC-006",
+    "sources": [
+      "apps/documentos/services.py",
+      "apps/documentos/views.py",
+      "apps/postulantes/views.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-DOC-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-DOC-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-DOC-040.svg",
+    "cases": [
+      "UC-DOC-001",
+      "UC-DOC-002",
+      "UC-DOC-007",
+      "UC-DOC-008",
+      "UC-DOC-003",
+      "UC-DOC-004",
+      "UC-DOC-005",
+      "UC-DOC-006"
+    ],
+    "actors": [
+      "ACT-POS-001",
+      "ACT-POS-002",
+      "ACT-SYS-002",
+      "ACT-USR-001"
+    ]
+  },
+  {
+    "id": "DIA-NOT-040",
+    "title": "Notificaciones",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-NOT-001, UC-NOT-002",
+    "sources": [
+      "apps/notificaciones/services.py",
+      "apps/notificaciones/views.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-NOT-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-NOT-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-NOT-040.svg",
+    "cases": [
+      "UC-NOT-001",
+      "UC-NOT-002"
+    ],
+    "actors": [
+      "ACT-SYS-002"
+    ]
+  },
+  {
+    "id": "DIA-REP-040",
+    "title": "Reportes",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-REP-001, UC-REP-002, UC-REP-003, UC-REP-004",
+    "sources": [
+      "apps/reportes/permissions.py",
+      "apps/reportes/resultados.py",
+      "apps/reportes/services.py",
+      "apps/reportes/views.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-REP-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-REP-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-REP-040.svg",
+    "cases": [
+      "UC-REP-001",
+      "UC-REP-002",
+      "UC-REP-003",
+      "UC-REP-004"
+    ],
+    "actors": [
+      "ACT-USR-001",
+      "ACT-USR-003"
+    ]
+  },
+  {
+    "id": "DIA-PG-040",
+    "title": "Proyecto de Grado",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-PG-001, UC-PG-002",
+    "sources": [
+      "apps/postulantes/cierre.py",
+      "apps/postulantes/cierre_api.py",
+      "apps/postulantes/memorandums.py",
+      "apps/postulantes/views.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-PG-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-PG-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-PG-040.svg",
+    "cases": [
+      "UC-PG-001",
+      "UC-PG-002"
+    ],
+    "actors": [
+      "ACT-USR-001"
+    ]
+  },
+  {
+    "id": "DIA-TG-040",
+    "title": "Tesis de Grado",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-TG-001",
+    "sources": [
+      "apps/modalidades/tesis_grado.py",
+      "apps/postulantes/views.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-TG-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-TG-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-TG-040.svg",
+    "cases": [
+      "UC-TG-001"
+    ],
+    "actors": [
+      "ACT-USR-001"
+    ]
+  },
+  {
+    "id": "DIA-TD-040",
+    "title": "Trabajo Dirigido",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-TD-001, UC-TD-002, UC-TD-003, UC-TD-004",
+    "sources": [
+      "apps/modalidades/trabajo_dirigido_api.py",
+      "apps/modalidades/trabajo_dirigido_service.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-TD-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-TD-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-TD-040.svg",
+    "cases": [
+      "UC-TD-001",
+      "UC-TD-002",
+      "UC-TD-003",
+      "UC-TD-004"
+    ],
+    "actors": [
+      "ACT-USR-001",
+      "ACT-USR-002",
+      "ACT-USR-003"
+    ]
+  },
+  {
+    "id": "DIA-EG-040",
+    "title": "Examen de Grado",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-EG-001, UC-EG-002, UC-EG-003",
+    "sources": [
+      "apps/modalidades/examen_grado_api.py",
+      "apps/modalidades/examen_grado_service.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-EG-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-EG-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-EG-040.svg",
+    "cases": [
+      "UC-EG-001",
+      "UC-EG-002",
+      "UC-EG-003"
+    ],
+    "actors": [
+      "ACT-USR-001",
+      "ACT-USR-002",
+      "ACT-USR-003"
+    ]
+  },
+  {
+    "id": "DIA-EA-040",
+    "title": "Excelencia Académica",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-EA-001, UC-EA-002, UC-EA-003, UC-EA-004",
+    "sources": [
+      "apps/modalidades/excelencia_academica_api.py",
+      "apps/modalidades/excelencia_academica_service.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-EA-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-EA-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-EA-040.svg",
+    "cases": [
+      "UC-EA-001",
+      "UC-EA-002",
+      "UC-EA-003",
+      "UC-EA-004"
+    ],
+    "actors": [
+      "ACT-USR-001",
+      "ACT-USR-002",
+      "ACT-USR-003"
+    ]
+  },
+  {
+    "id": "DIA-DIP-040",
+    "title": "Graduación vía Diplomado",
+    "type": "Casos de uso",
+    "goal": "Mostrar objetivos reales y actores autorizados sin confundir cargos con permisos.",
+    "scope": "UC-DIP-001, UC-DIP-002, UC-DIP-003",
+    "sources": [
+      "apps/modalidades/diplomado_api.py",
+      "apps/modalidades/diplomado_service.py"
+    ],
+    "version": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02",
+    "limitations": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados.",
+    "source": "diagramas/fuentes/fase-4/DIA-DIP-040.puml",
+    "description": "diagramas/fichas/fase-4/DIA-DIP-040.md",
+    "svg": "diagramas/renderizados/fase-4/DIA-DIP-040.svg",
+    "cases": [
+      "UC-DIP-001",
+      "UC-DIP-002",
+      "UC-DIP-003"
+    ],
+    "actors": [
+      "ACT-USR-001",
+      "ACT-USR-002",
+      "ACT-USR-003"
+    ]
+  }
+]
