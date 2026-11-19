@@ -1,0 +1,23 @@
+{
+  "procesos": 21,
+  "casos_cubiertos": 75,
+  "nivel_cobertura": "Familias y recorridos selectivos; no todos los payloads/variantes",
+  "diagramas": 49,
+  "tipos": {
+    "Actividades": 24,
+    "Secuencia": 11,
+    "Estados": 14
+  },
+  "transiciones": 79,
+  "modalidades_con_etapas_contrastadas": 6,
+  "fuentes_totales": 118,
+  "artefactos_previos_conservados": 213,
+  "huellas_exteriores": 1724,
+  "git_exterior_conservado": true,
+  "sintaxis_plantuml": 0,
+  "svg_renderizado": 0,
+  "avisos_geometricos": 0,
+  "enlaces_galeria": 590,
+  "pruebas_funcionales_ejecutadas": 0,
+  "errores": []
+}

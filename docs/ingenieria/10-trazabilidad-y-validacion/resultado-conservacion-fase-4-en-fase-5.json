@@ -1,0 +1,19 @@
+{
+  "casos": 75,
+  "actores": 7,
+  "reglas_nuevas": 75,
+  "diagramas_nuevos": 17,
+  "fuentes_totales": 118,
+  "especificaciones": 75,
+  "variantes_matriz_permisos": 77,
+  "simbolos_referenciados": 150,
+  "archivos_pruebas_relacionados": 33,
+  "pruebas_producto_ejecutadas": 0,
+  "huellas_fase3": 158,
+  "huellas_exteriores": 1724,
+  "git_exterior_conservado": true,
+  "galeria_enlaces": 590,
+  "sintaxis_plantuml": 0,
+  "svg_renderizado": 0,
+  "errores": []
+}

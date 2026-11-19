@@ -1,0 +1,691 @@
+{
+  "autorizacion": "Fase 7; exclusivamente documentación; AUD-06-001 a AUD-06-010",
+  "head": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19",
+  "rama": "desarrollo",
+  "modificados": {
+    "02-actores-permisos/matriz-fase-4.md": {
+      "antes": "33ce56244b321270e2039e8e7518a2f5e52fb2f28381133dfe7358e391cd4dd4",
+      "despues": "9fa7911979d85cb5aa9b5a12fa19f928d51349fa8561a1954ce6d91e979cadb9"
+    },
+    "03-casos-de-uso/construir_fase4.py": {
+      "antes": "2007b95bdcff7bb4c298ae4c4c492e771a8359cb094042060fb9bddc19afc514",
+      "despues": "8d82762f2bb32c58844571aa403d7fd0ee7559fd9f8f8180ea9fa5888366423f"
+    },
+    "03-casos-de-uso/datos_fase4.py": {
+      "antes": "6366ea02e6b119cd7c9ab0d157778e435a41de339449fce3337451e9f50c67ef",
+      "despues": "4020312f29faabc5a44550c7e49413bf1f5b3343d2bdcff12ec0374f229228df"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-001.md": {
+      "antes": "2a451e6a61e8646378b8aa8f21833c3f45f0477fb9b76557eca72df9cbefe481",
+      "despues": "4341a148f40f40795ce18f07e8f72fdd653a39b96b1a1369952c25ee251888d9"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-002.md": {
+      "antes": "96c4cf3bb88dac235e764dc6603ac1e057c55cac79bd482796e07fd8661d6f9d",
+      "despues": "01e5143440fb1e830ad8f8caed8e87ef3915982f52c817a42e0f0fa77e5e5a46"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-003.md": {
+      "antes": "f19a3c142b791b75ccc4af6f62b447ff4648f9c9d2e159ac62c7ced60441acda",
+      "despues": "4fe985bb9db276ab161cb07932240c81255071a6fab44ecd0c53e2ffa6b35680"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-004.md": {
+      "antes": "5192b5f45b89f40ca077c6bf29cd63b07516dee4ee9ba30b6060be1249460771",
+      "despues": "d660ed7ccf995a2a755ea35f760b9b9488b623b2f052f09bfc7cb640b8cd03e9"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-005.md": {
+      "antes": "62462f17d7b76c9ac8812a9c0ffdb102e06b87bfd0238d28ead3db8626cf31cc",
+      "despues": "9481f26c88611ea7c47236e5b1e0ef9ee7d0a1ee735705fe5c630d6bf90fa925"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-006.md": {
+      "antes": "0a3e5a39926af4659d958b302c496333de144f4b315dab7d7ec3723464edc027",
+      "despues": "699e447e5d4cc80fcba0f0ef430ce51440f6156d84dba187701a1e0021d9184e"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-007.md": {
+      "antes": "24f2b044dc4105e00b9779c15ba0cb196a1e564953b3f47d03840b299556de69",
+      "despues": "d50b588cd45b7221d9dd97a5bf049d1842011777bbd247a2982678566b2efe15"
+    },
+    "03-casos-de-uso/especificaciones/UC-DIP-001.md": {
+      "antes": "a9fe2734503703f390c4d355d8bffccfbed1a651b08c537c1084b87eb6f515f8",
+      "despues": "0da6ba5a9f3c8d5642c9279db31fe1824e3beb33672918df33820d3f3fa26e1a"
+    },
+    "03-casos-de-uso/especificaciones/UC-DIP-002.md": {
+      "antes": "6cd1fa44f0c786680e849aa22ae37aa558a65543828fa9301eb59790b10445e9",
+      "despues": "67bd37fe4f9ba653e692d56ee98e937720b012187ce74abc176383aea8bcba63"
+    },
+    "03-casos-de-uso/especificaciones/UC-DIP-003.md": {
+      "antes": "b319c3a7297ec877523f3ededdbab953abc10c36fa3d1f58e51a7a3fda6224af",
+      "despues": "caca5f9e08c48123b7c8e753fbe3cbb127eb3580e71411e323000de6f3ba3e20"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-001.md": {
+      "antes": "06b7371f64eaebbee5a4392ee65ceb3d92e2ece29ae842b95f4f2641ddf504f7",
+      "despues": "3e9db9af5d04d9f9d2c0033c262d13962753e31be85d7eaec15faf7351c21f39"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-002.md": {
+      "antes": "2313654b6867e172834872ad8be4b3f70474e00ee15ace968657bab176cc3e6d",
+      "despues": "e90f7008a9e55e595502aca300d43a3e4707e1792fae646a01caba2e4066dc7a"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-003.md": {
+      "antes": "9d71ff2644ce6743040562715b25894ffd6cd9791d8fc6a6ec6f85e0ea6aaa20",
+      "despues": "05b113cbc85e0e9d3f7fe5109460699fcbb630bc8b1d86f72e3a81e27ac7e412"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-004.md": {
+      "antes": "65b05667248eb75b184f9c202cb70c5533c3062346074ec6b86bc5bd5ea782b9",
+      "despues": "29697293d5782dec359279151700c6aa8e21d3e5c6662990228fbeaa4a3b770e"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-005.md": {
+      "antes": "481117f148c244485004fc8e2289cd212f40ee7d73949f5c5a9d387de2b76a71",
+      "despues": "bdf170100add5c705b11a5c0eb2ee8aee3d5fca739b6055a2f22377df536716b"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-006.md": {
+      "antes": "8b402bbea913ccbda25d82ed87367f411ba4323492269d06a3f0e84a603b8960",
+      "despues": "e22b20d6a1f544015a968307fcae478f17f628bac4f5e4b0d8208627f4f3097e"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-007.md": {
+      "antes": "c3eadb2d9d925425e8e5547444a6cdd4bca415f3578fecae9213984fe93cbb0c",
+      "despues": "b85cf05b728613deccdfc24dd0a8c6c161abe426c599f813c0ce97832c37a5a2"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-008.md": {
+      "antes": "bcbed8e6001d109b6c644ceabe05a351e9bfcb8acab884c6210476ac7b2a9846",
+      "despues": "25eec926de7fc611f116a6b4e2cf3eb5dd05af21500f575ffbeda64860b84c86"
+    },
+    "03-casos-de-uso/especificaciones/UC-EA-001.md": {
+      "antes": "7bd8c64e45af71eb674128730d274d6e3fa1489eac9f3fab063731f77afc0466",
+      "despues": "cb14b19c44be641d1fe1b650a20e3060321912bef551649221bdb9a36e36d11c"
+    },
+    "03-casos-de-uso/especificaciones/UC-EA-002.md": {
+      "antes": "9f558665d1ae49204e1f7219d23c28324a3e62902d7ce2655e0356ab603f32fa",
+      "despues": "57f83c3d95196ca54dda1925873bae1998d0f0c7a9358023eaa40cc4df5b899c"
+    },
+    "03-casos-de-uso/especificaciones/UC-EA-003.md": {
+      "antes": "14656fc34d571f047ffc37b30702221459eb98a6daabec85abca624c8817f33d",
+      "despues": "ddbc3dda68c3a30fc8e3c92a1bd7c1c1a41e94b683a54de72a7267500d2fe00c"
+    },
+    "03-casos-de-uso/especificaciones/UC-EA-004.md": {
+      "antes": "2ae860b008ca6b951a55e7a80d996fe992abde5e812b0e94ac9d4110f0e60302",
+      "despues": "29e72e649f9cbfdbe2af61d8a4664a21c4fa87861ac584c3e7f273e362638113"
+    },
+    "03-casos-de-uso/especificaciones/UC-EG-001.md": {
+      "antes": "4e6d6dee9b44b35118e7c899c4617ebc20b8a2215d43f2983e6b6a0db0f86d2d",
+      "despues": "1a79606f5d931b235f4b322dcdfa955a763babcb78ab2883f61a47a206b129bf"
+    },
+    "03-casos-de-uso/especificaciones/UC-EG-002.md": {
+      "antes": "71f75665626c0c9234837091e332fb23c9082bc9d28dced2d74d73108242a69a",
+      "despues": "a0e67dcd6846c0a697ef5ac77ee530464205f3471f21979774982b04f5daa18c"
+    },
+    "03-casos-de-uso/especificaciones/UC-EG-003.md": {
+      "antes": "eaa532646b590cdeb6f113f64b5ef8c620f3aab88f7f789e53db8c5a74de77c7",
+      "despues": "7d315e8c55b6bf40c629408a06bdad430cfc99cadf4a3201aaae7d7c0ebd111d"
+    },
+    "03-casos-de-uso/especificaciones/UC-NOT-001.md": {
+      "antes": "dd71d238ba4cde43d5ee181812d14cbbe883afbc2e69ae746ba623f4df97e2e9",
+      "despues": "4fb934782eb714e7eb1d78d38fe0c482116e3123722f3ec467948ec392495eaf"
+    },
+    "03-casos-de-uso/especificaciones/UC-NOT-002.md": {
+      "antes": "27ce04135974648158c5cbcd34d07063bd57b83c1707bf0057a8b137d9a937f8",
+      "despues": "26bbb8da860302284cec2292c81b8e5ff0793c983cd37eca55b513a4ca50bc81"
+    },
+    "03-casos-de-uso/especificaciones/UC-PG-001.md": {
+      "antes": "606baf1b1723636b5f4bdb3d92c52f8458caf85d6b806f461239a13beea4a3ea",
+      "despues": "0478d76d27dc1575656e02d0b12e7f46ae3ab7d55120ac17ba99b20475c9dced"
+    },
+    "03-casos-de-uso/especificaciones/UC-PG-002.md": {
+      "antes": "3edaf44c91a5c004abf60e9260dfde841882872564dcb84b5ce47b0a9916256b",
+      "despues": "f82709df0c6a76eeedfd39d5c63fd30a6203859c2e23392510d25b120f40d27c"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-001.md": {
+      "antes": "807d734d909f5de7349490336d019e47004a15b88dc733155271ff6b2876aa92",
+      "despues": "b82ce6b64e13a79301266c74e45acc3cdbecff730a6de268ed7e45bd72e7c311"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-002.md": {
+      "antes": "d7ad93c887a0075e0ea59db4ea8b499f55ce003b3edd78c97ce1faa71d26eee6",
+      "despues": "e3938b446c1519345da2c8ddfe761daeefedc32cd71930a7a6752010c11d24d9"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-003.md": {
+      "antes": "c37d77d1b9c8b28408ff4fa20547b86aaca308e9d24a3259db1622278dd959b7",
+      "despues": "943f47f2cd8584859043e92e300798e8cf1b3c9622240a4653486ec557b06da9"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-004.md": {
+      "antes": "d0289086f6c304f06165510f33e0c372f8e7958fd4c19e5ab35103656486dbc0",
+      "despues": "03a57df1f6004c1648dcd9f57f29ce35e272ca1f6572bd5a926b294cd3debddf"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-005.md": {
+      "antes": "5875cecd15248e0317051e2b6f232602fbbcbf5d2cd38a8381151c103411641c",
+      "despues": "89b0db9b6aa47aa13770d2225de6e372847e7c34757f6c92837b6ab2e1c13c09"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-006.md": {
+      "antes": "1ec2ac41391685ef483039dfc6dc0cd9bbad0029738275557eed937cb4262598",
+      "despues": "9d6bfc804b27a5f43cd10b2b24c671614d65691ef9aea5ce233c1d8c6ba8567a"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-007.md": {
+      "antes": "fd9e78f901f9cf945eddd9d353d7f812b5139d244f3806c0b1388ee3ef93ceac",
+      "despues": "de3be595f34c57bcf23534b6f182cb7f9d795c20597056c055c7f8587d92aab0"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-008.md": {
+      "antes": "3c9e21047e9b70ccfc481502fde41bc41fa9501ba762314d2f3e3e57b0c2a875",
+      "despues": "6782876ef0a93c8a7afa79a270ded8f915531483fbcd5ecaa9d3783c5af6d51b"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-009.md": {
+      "antes": "a80966e633e48abf5a8639ed8405b921c269863ebcccf1abc41ef6b9e706ea64",
+      "despues": "6d1ad874640b3c28edb49078a757671ab025b1947f650cf15885540b779d4716"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-010.md": {
+      "antes": "0c63a5ced1fdc03cdc96237b578023fe201bc74ad4c6e8a43e71ec269eed3141",
+      "despues": "b69536a1adf1fde0d8934ad08521b8f62fd0dfafa21861110fabf729e0169e0d"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-011.md": {
+      "antes": "af17b0a8da70c3af4480200e7321e25286fecaf6f92357d8925238ada00521d7",
+      "despues": "cee082182b8533adbdea283295d4a72ad5c8ac06bcdf9ec0f2afcc820ccecc29"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-012.md": {
+      "antes": "47fcec3319b839565534109d5148da4a73f9cc1975dcf55c2296ca11e32f52b5",
+      "despues": "80289882f3416b9dbf9348ff92484b28341a03a8cc90a99ad5c9d0a73632aadc"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-013.md": {
+      "antes": "cdf86a91d2f740f9798087108b72ec10858686bf7da56b549585a330b98b76c4",
+      "despues": "406d791336b96ce396fd727012fa19871a77ca1da0a0c3fe5a2a9b62e1c2e244"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-014.md": {
+      "antes": "3ffecbc5a741a09bce23ce4eb2dcc2cb00feee39adcc2e2d4989ef18f0fe109a",
+      "despues": "8593fd822b197a8f4df97a21321a1235adb171895bcd48102c272494cf812cb8"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-015.md": {
+      "antes": "56e20bdf176844afa103adf153ffeba221b61a4c3eeb3966ea61e2fabaf50ebd",
+      "despues": "976eb052c87be7bf8ace8e226446ce661039f8f332b4d9b43a4563b0e7003b30"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-016.md": {
+      "antes": "509804ee0b75fbc0c16012824e8fbed31e2343c5b16f336c454275103e451604",
+      "despues": "5e0d325775861682cab39fd9077cd3529c850f469ac6402703adb132ca2576af"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-017.md": {
+      "antes": "1a88e1f06e71060c10f4526d49b153ca105d73fe2ebd9364b82598ab166e7d74",
+      "despues": "c4693e6179516f1747a1e1c20a7f3d74867d72adb0fcfcc10f781ea368a2bb49"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-018.md": {
+      "antes": "3bc9979972e7823a04a5b46c267d6149b673518014ccf586cbd0d111d5234736",
+      "despues": "02a4da6948da4b97e83aa4b94d276a0d8575c4892d5b862bc5d263d568cd53b9"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-019.md": {
+      "antes": "9200f31de7256d7a965012baa49af9bec96f37bfc30999f4eb3cd871041856da",
+      "despues": "f7dcc1f51c6414b8da6db1d448967f16e7851267bd06157e55b3c5d67df97aa4"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-020.md": {
+      "antes": "58e3915502e85111f008dd3287c872e8e5cf94be793cfcc4db9f73fab65c9abd",
+      "despues": "df2f0e427a099e60b1b2f69bf9ddc4c63c4f0fb56a0c8f82c11f94e75f1a16cf"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-021.md": {
+      "antes": "b09009792a97e3395300698cc8256f3334910011aac2fdc6e33595d94a08e9f0",
+      "despues": "3f329fe195521029ff9f3fc2aeae1e16700d7a957bf4b6725e753b4e5766fef0"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-022.md": {
+      "antes": "f4c8c53ed46fe1c48586efdedbd0752475b24be83eb44e7e14aba19f40b76634",
+      "despues": "1d662636849fb31dc1fd22da81b5f07f4fb36a8cd89c667335c8b7988764a065"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-023.md": {
+      "antes": "a4dc8709194957562198fa51d6f40b343e9eec4907119ddf3b75d91bce1025cb",
+      "despues": "d5e9dc5f92eb53d8b9ca7f12876eb408c2818b5aece93769f9ce9cfa76cc5ef6"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-024.md": {
+      "antes": "b025de8df4c46e6b7b6693e6247f9ce0cbf56ee4929ccd394e9015fcc35b2c5d",
+      "despues": "4d11f9b0f17d39e31c59e7260345625b66f55f3167c80c8ef0b3047ebf9430c9"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-025.md": {
+      "antes": "03207d7cf61265a417d4cca527f54ede275258c914b55da7bb38d78668c70b69",
+      "despues": "3a5bc8aa48e5e387aca6ed685b040d5bd8f7637d643bb5dca83f44f6c590a637"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-026.md": {
+      "antes": "4a32570e2643e01acc7f6afa8ad9c7bbc5bceb75d846099d52fdb6b823960f8e",
+      "despues": "9945da447abfc8138cfccf3cfb4e46fc575f3a67da309cc7023ea8b3b47f43d2"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-027.md": {
+      "antes": "af4bd7b0fbcef3a9eeb54432fcf6aab48ecb470e06ef5a1cd0624254d1f35e1a",
+      "despues": "6dc30c672dbb94d666fd2af9a61c7af487f7810ed12ec76a4640c713b420403f"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-028.md": {
+      "antes": "34d48a79f3638d86312cb4b39f77aecc0306c16b67fd3fe5975e24d098288c46",
+      "despues": "1caa95bf261e20175b6350c01f17fbf61df7daa917c8798d71a46ce5c5a7c7ac"
+    },
+    "03-casos-de-uso/especificaciones/UC-REP-001.md": {
+      "antes": "7beb644f9c22d0d7a8a96c1ff0e1d5002c054788cb343c733cf64af44f6e34ad",
+      "despues": "36082846707d08eebc811307339740de1863d175444e131d56dac22441c2d741"
+    },
+    "03-casos-de-uso/especificaciones/UC-REP-002.md": {
+      "antes": "4d70fa2d5405304fca51c6dcf7d5cfebfca0932cbf2990ef363dee9c1facf076",
+      "despues": "22d4040ae77350ced5291ae9ffb36a2cb419cd552317c439af60743afc02f989"
+    },
+    "03-casos-de-uso/especificaciones/UC-REP-003.md": {
+      "antes": "426c1bd597561a30b13bd0bdc01c29ce9b3bf4df1cdf7f95190adfa665ff208c",
+      "despues": "935324437f93e309a58ed6b56a13eef5a0cefe028d6b42bb26220beb12dfd3f0"
+    },
+    "03-casos-de-uso/especificaciones/UC-REP-004.md": {
+      "antes": "dedcdd24f65a6a2395195e638008589d007968bee75552b26b449d336da1c711",
+      "despues": "385ebf5fbf077c2877190e74facde8b67db4060735c58d53834737b5c3453208"
+    },
+    "03-casos-de-uso/especificaciones/UC-TD-001.md": {
+      "antes": "f2cdcf96787f815eb33b96f6883bed78be10f2a40c65ba28489c77161c87edf4",
+      "despues": "e4c56840caa6a08cf922948cd7a6189e3a2abe01646d1886182eb473c71a5bf8"
+    },
+    "03-casos-de-uso/especificaciones/UC-TD-002.md": {
+      "antes": "c7825b962e964a2fac08f55850979c5e8bbd67dc8a6b37a45e0bcef45005cc16",
+      "despues": "c269d37c6dec7d40999d8b089ad76ba7115582dc93e6d2f24a3365009b21f673"
+    },
+    "03-casos-de-uso/especificaciones/UC-TD-003.md": {
+      "antes": "9b1af78545b15ec99560593850edce71c7176f4711bf93759371a03d9b8f5f80",
+      "despues": "7b96f0adc88a6433fbb2b3dfb2308f8bb56de8b6392ae971e50bb383884db0c2"
+    },
+    "03-casos-de-uso/especificaciones/UC-TD-004.md": {
+      "antes": "0845de8a04ada215e02cbbdf745c43cdf193ecada65e488e20aba8cf73c77694",
+      "despues": "f7f0430f86edefa0b800c490bb833ad24b0b1265662c3884799962eb15def825"
+    },
+    "03-casos-de-uso/especificaciones/UC-TG-001.md": {
+      "antes": "4fc6d9d355b001afdb6f269ae35fe090c1dbd618a4106b5e28a8af8c37c9fce3",
+      "despues": "c03ce09ff7e9c17a4c82c3825eb5cb76f8fc970a479d458d14433db76d5799e5"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-001.md": {
+      "antes": "461f38fd53a5f1110d81288c79b3f2e1dc77e7da0cee502555dc3ea23b933ea8",
+      "despues": "6b4862e672153f157498ee56c5b56d6a32a224ae59c2b0d29f42ed130c314c91"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-002.md": {
+      "antes": "8ee5740d50e718e0a8cf92d270a2a2033a979225e00aff68988fbdda810b4e58",
+      "despues": "55d82ecbad1eff580ee4a80cc11e3a4426d61dea0c1f822515926298c6aef157"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-003.md": {
+      "antes": "544fab4e40087d9ebdedd07610ebb5fba47cacd588423acccdd1591462b522a9",
+      "despues": "fe7dbca18a61f372bf5ed97d3aa3a2bc50c49aee90cdee9ebd2754a4aa32b287"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-004.md": {
+      "antes": "437c8036d5a02cf368a1bc8874b954b3ae9a94278bdaf01a8c39941fd0c69537",
+      "despues": "313aca9e2a83d4824da9e92f55a140c5966f86ccf747e20e879a2cd3d2699fdd"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-005.md": {
+      "antes": "97d8553ff84bb6a699fb4d3817c9d836217bd70654f0cc6cb714766822fa7637",
+      "despues": "fdd1a8ed6c8ccfda593b45622ff240dc098b821855bc2d2a2cce8d11650609ac"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-006.md": {
+      "antes": "4deee270961cedf899fbbaaea892978177e75567416dcbd57c06c7f7e0428c55",
+      "despues": "ce4d317e93cd195d42bd0af3a02e15ce27bf9de2fdeff385c310ec67cf09eafc"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-007.md": {
+      "antes": "f00434fc49dc3a12203b265d6b6e3179fabfc98f44cb0a263e89c0f736d94470",
+      "despues": "7adad82e9c6013916d128bf6df475b5ba5e27d2af7ad21fefb8eeed429587d5a"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-008.md": {
+      "antes": "117a0f9bf6db17638832416d19c10bcd0965f5540c176bdf6b89125704c42ef1",
+      "despues": "e2c16d7f0093f33e1746eb33cf3555b1117d4d72cbb6f198934de2b989d4842f"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-009.md": {
+      "antes": "f87cb0050205faa183fc88075b711b44a0820a27388bf13c09f23d664153958d",
+      "despues": "140e8d7f496c1b2bd159fa902f2964259d191596485ca0b49ab4f4abf1ee7c98"
+    },
+    "03-casos-de-uso/registro-fase-4.json": {
+      "antes": "0884b11ea664c73a96d0d00c01aef309526193a2474bc76e73bb119588d952d5",
+      "despues": "26f7786b4adc2ad4ebce95807c78c45052fb54e0ccd8eeec5ec2d717da4f924c"
+    },
+    "05-procesos-y-estados/construir_fase5.py": {
+      "antes": "9dd0c1086cd67d87d4c3530c5cff96b7155f2c2b43e0a1f34c303faa29e4efae",
+      "despues": "15944748d7086e6f16772c32e064d1ccd568253a8422234fbe89a6a31ce06800"
+    },
+    "05-procesos-y-estados/datos_fase5.py": {
+      "antes": "d0952232951110cf2ce1fb196f6122148114c02e0b42bb687368b7a9c6a05a15",
+      "despues": "503a349e8e787d05668d3f3222417087ff7c6cda0099a76a5a2812d9bea53001"
+    },
+    "05-procesos-y-estados/modalidades_fase5.py": {
+      "antes": "293f3338f423bcc7e4772f534494f940ae2c02d886086c6b85b30f961f5703da",
+      "despues": "6c5a26c38ed3b51a798f4d105cb2182889ff142ec7fe25c3487c3058105e0436"
+    },
+    "05-procesos-y-estados/secuencias_fase5.py": {
+      "antes": "dd07db0144ceaf09adc85648fdeb6b530f46dbe5a1f6160931cac0303a76a125",
+      "despues": "2183b162ec47d92e651258d08413e83cb4fa1c54a6527bfb01445a2d0b322d9c"
+    },
+    "09-modalidades/diplomado/README.md": {
+      "antes": "8c023e223f14289a606d634a9a429ae613852f8a5d2a98a9f040af2c09e49ce7",
+      "despues": "daddfa54b8e0ca90f857a5f9581bf295604d2bf12fd199dfe9626b7f866deabd"
+    },
+    "09-modalidades/examen-grado/README.md": {
+      "antes": "76c964046f0449a0aa5df1bbefb9caaad5523594ff901d5a2ca44f5d29a9ab11",
+      "despues": "7a301459ce54e0f8db40a3a96b307f4ab4f60563756b588647d473ed52babca7"
+    },
+    "09-modalidades/excelencia-academica/README.md": {
+      "antes": "d3f7aca6e63613a9197edabebefe7a32eb3fc3c51b836c4ccd8d656d2ea5c151",
+      "despues": "afb4f52a8b114df75b2df38a4164692c97465926369ec6e168cc1e90b475b653"
+    },
+    "09-modalidades/proyecto-grado/README.md": {
+      "antes": "e7897a45c9ac04f0dc89e2649eac2f3464b0406cd5b4f264d3d1a1b630927f38",
+      "despues": "125ff52781bbf12b59ee6991f81694d20dd92a9c4ddb3158896b173f2704e7a2"
+    },
+    "09-modalidades/tesis-grado/README.md": {
+      "antes": "fdcc5a10c734dfef1e183c3b7d85ac964939d8fe63ff5204ad4ac38cb84abd1a",
+      "despues": "a40ca350bce596bd6462f1f593f31e3c8aeb565938b50f7c258b4d7ca5756a2a"
+    },
+    "09-modalidades/trabajo-dirigido/README.md": {
+      "antes": "f753e7c129e73aa0d120de31a8572256216619eb21930c4c830aff96d9582e39",
+      "despues": "f50fcc7e117638bfbc46df80d3835e4f7af4fcdc86f894c5760028fc2f04fc2b"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado-fase-5/geometria-svg.json": {
+      "antes": "0c600368f829c0cd6c716187d5ecccac2f1048ab3c471d4ea5e1cfbdabfbfe67",
+      "despues": "0665a2ff3fe044fe5151bbeb1f12d8dc5c288a73d8bdf4cb7a48783732addfe1"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado-fase-5/previsualizaciones/DIA-PG-070.png": {
+      "antes": "5a0b2273516efde8c2f86d184debbf3c994968d7205bf7bc2a1b5107068b08be",
+      "despues": "996d0306a4da77bc45ee5a39d321fe8b38506413582808be23bb5243e8850406"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado-fase-5/previsualizaciones/DIA-POS-067.png": {
+      "antes": "e66d5460c3f09f3852ac892044c793ed14d110ab30266d4716e1995cfb76e0f6",
+      "despues": "db29fdf68b3730c4717af4d444a83198b7e735eb72717229c43e7898215fb9dd"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado-fase-5/previsualizaciones/DIA-POS-074.png": {
+      "antes": "dc924ad73db6ab53cafe66c3f8dfe1a126e18f58ce735e91caaa98efdd2cf8ee",
+      "despues": "fd963aac57f3daee32d2da4d6d4681e7121a5352b715e6e97aeb17efabbccdc1"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado-fase-5/previsualizaciones/contacto-03.png": {
+      "antes": "f9bef22b15e2e77ab81faec32d1d17339a2d380bfcf38f6482e5c98f42dab551",
+      "despues": "7a49949f99679a439dff353d052139d02451dcc4f0146fd686455ab63784994b"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado-fase-5/previsualizaciones/contacto-05.png": {
+      "antes": "f3defdde0e8e49ca77d33134c634fc2e9f1301978c39e5a46ced0ba1de551f73",
+      "despues": "4c8559520b8ca7a7cfc66c5ac063457603ba8c49e3a2ac651ed3fe59d28e4a45"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado-fase-5/previsualizaciones/contacto-09.png": {
+      "antes": "45f040517e1ba53f06638c3eb72a6c50c69ca9c8efe85f3bbb01b1699cd886f8",
+      "despues": "e125547e18458639e6d2c51c02d2198aa594abc68cb479dd33863d4170465fc8"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado-fase-5/resultado.json": {
+      "antes": "f8884c88409e03950734b3e4a01ca551a6469dc0611f2de164d47f1319b7e43f",
+      "despues": "15a8d9d317da41d9cf3f4db7f6c194c3d0e3ba2e06a1b6c6749342b23645d152"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado/geometria-svg.json": {
+      "antes": "390f7f3da707aa46ccd536439e3990e12c17b96b98b3e86086cb0e95e877c400",
+      "despues": "54b5c3c61cecbd196faeebdfb61fb7691af3e972e9c6931f0692833c4eb839ec"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado/previsualizaciones/DIA-POS-021-servicios-defensa-cierre.png": {
+      "antes": "98783dd3264e505cf5db17f1bf2ac2d1127ed77f06973182ce892ee316e788e5",
+      "despues": "ecc3f65eb447c09581d5c0b7c353a7f06cab8a293d867aede6f0149f7d55c024"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado/previsualizaciones/contacto-07.png": {
+      "antes": "bfdc3f3db4b36045a50005824448425c7bfbeb8d536dfc3d363006538a1d9126",
+      "despues": "f79391126436824376b327dbc199878538733b3d164b0a586b54c851255eca91"
+    },
+    "10-trazabilidad-y-validacion/logs-renderizado/resultado.json": {
+      "antes": "3ecd2fb85249dd90f2f81c032fc6b1b7ed7932839c9d5a14374a4e2610650c19",
+      "despues": "4039368e7356912f6763b71ac62fcaae8551ae189b1decc466c89287433fb9db"
+    },
+    "10-trazabilidad-y-validacion/matriz-fase-4.md": {
+      "antes": "bd34e15815edea418b0f31a5c0dd8fa50b73b2813ea46e85afed51022640ae5d",
+      "despues": "181511f7a202991906c237e37c5d8e70dbaeef6cafecd1b15baa271a889bc948"
+    },
+    "10-trazabilidad-y-validacion/matriz-fase-5.md": {
+      "antes": "7aeaefee68bb058f6ae14e88463ef3014512b40934ca4cecaca9fe2e0b5ed90f",
+      "despues": "1c2761c75379a3a2e5dd62e494cdd7d4e35de37cbcb1a89732ee89af237a18c7"
+    },
+    "10-trazabilidad-y-validacion/reglas-fase-4.md": {
+      "antes": "c10d998b1fa3573df151801e7a4b5ca1f273eb1c9d4daa6cc3169e04cb223671",
+      "despues": "e541e65209e81150e206c9679ed093b498862fd56e06a6ccc60cdf8915fdd493"
+    },
+    "10-trazabilidad-y-validacion/validar_fase3.py": {
+      "antes": "2e41104406e71a452320052fe6800db22ec47f8f86fd3cf4be3cde426462e6cb",
+      "despues": "f79412d421582d56495441998146455f42570a6fa67236ac323f9d5798016f48"
+    },
+    "10-trazabilidad-y-validacion/validar_fase4.py": {
+      "antes": "9b430497c6d40f22d144853a7bcf87e613bfdf32b9f05e1b87c309c9044d3918",
+      "despues": "1e162ac3d6be6dbf4fba116808174ae5a61d3d4335b323c2c8fd902d40924f5d"
+    },
+    "10-trazabilidad-y-validacion/validar_fase5.py": {
+      "antes": "78bae6383b3c72a2a6c50d906d0fe6785e759c4d1dd0660f7cb0782ddb0d5c61",
+      "despues": "dfbc6f4f1a0e3c57ec5fe718c93bca2a26e05058c5cd7e48e39eb945f1bd0701"
+    },
+    "README.md": {
+      "antes": "003e70125c78e1cd110188e5465431142bae378552e0808007d86fd2e5bf95cd",
+      "despues": "6d854d768f142c1398e76941ed2b656442085f20487dc3092c46073ba25104fb"
+    },
+    "diagramas/construir_fase3.py": {
+      "antes": "cd0e060ea63822825d4f37d517e89c42e4a6a9bf431e71c01609354a6d0b102a",
+      "despues": "c9080161814bb51331af3d1fb7036af504d8ee975a21e173c22b0a610a131c30"
+    },
+    "diagramas/fichas/fase-5/DIA-ACA-060.md": {
+      "antes": "58e73a3c5bbe6cbc85dd427e701f7d1a27364858056ca24e82f56a2c01242f81",
+      "despues": "2396d1e3883339775b778fa773401b59962d68d0d8ec13ee67a642639d42b7ca"
+    },
+    "diagramas/fichas/fase-5/DIA-DIP-060.md": {
+      "antes": "047c499655fe8e7838eaf00c7c27fbe56c63a0cc57be896240e482476ba6c9c8",
+      "despues": "cb74a27fe1747b0693a747c8c4618652a9af61418d0b3295a4e39a4a1aba0c01"
+    },
+    "diagramas/fichas/fase-5/DIA-DIP-080.md": {
+      "antes": "84973044b78ccf38881ea10c0543f9a962eced73e2f8efe9d5d2ba45582a304f",
+      "despues": "6caa1d4ef096ebbc0ae8ace348bfefc54bde54caeb791c815458b619832f8d3c"
+    },
+    "diagramas/fichas/fase-5/DIA-DOC-060.md": {
+      "antes": "d50db5e01959856921b9e492996a3d1cf711c785b19c8dc36c0e2dcdddfc349e",
+      "despues": "3cd3f9342b99db3e793626db5a047bcb4fd8329cefe19457559f871124e3995d"
+    },
+    "diagramas/fichas/fase-5/DIA-DOC-061.md": {
+      "antes": "2cac2679a78905351222f01c1769026d3fa993d906ecd902bf4284a88d0e5c07",
+      "despues": "14318103cb62eb30e84d1f568fbb11055926b61ec46560856ea1dd3c28659dd2"
+    },
+    "diagramas/fichas/fase-5/DIA-DOC-062.md": {
+      "antes": "a1bddd3d4690fe1287b1e61a936c128be09a972f63456f56f61b7798e19a6b52",
+      "despues": "832299f0a31df05fe7a20ffe298914ea2fa9741a955d0fa3837c0be60eb88323"
+    },
+    "diagramas/fichas/fase-5/DIA-DOC-063.md": {
+      "antes": "280e12f2c703a2578b4345e9b63c9e09f6b35a93985a3fa24554251581b23c56",
+      "despues": "75733881ba07c76f77a994e66fbbc6874fcb6f7ea0bae012297effdb6d320383"
+    },
+    "diagramas/fichas/fase-5/DIA-DOC-070.md": {
+      "antes": "c2c549292ce5e3ede3b7d1321c9f7a395d2583888575db074268da3aa3be16e0",
+      "despues": "6f5faa2c87167422b53bbde2b9304a3ec9ddeb149626410150c4f981267b6b78"
+    },
+    "diagramas/fichas/fase-5/DIA-DOC-080.md": {
+      "antes": "574c82d2010f1c7b39f8df616224a8e66ebc61bb099e342147f4747b29f3fb12",
+      "despues": "bc34451f4c63a638708c744a6abdf1f1c3b07d0c762a8ab8fa5c0c70d2394dd1"
+    },
+    "diagramas/fichas/fase-5/DIA-DOC-081.md": {
+      "antes": "f64143754880cf68d0b9b3a089fb5949f03174a76e3b6e00f9450d14fd6c330e",
+      "despues": "d9316f685a38cd2e8e678636ba4cd27cd4b63b2014b92baa7eaff77850264af3"
+    },
+    "diagramas/fichas/fase-5/DIA-DOC-082.md": {
+      "antes": "129376cf86b717ef90160f2017de519c39c70d71be035e1e3a86a649607886f1",
+      "despues": "d5809cb6abaaeb79c123a588a92992ef5b2a4d51f4d9813a6c9d7e46f2d80b96"
+    },
+    "diagramas/fichas/fase-5/DIA-EA-060.md": {
+      "antes": "281b98c7460e33b942c759271e5daff0a869318ae6c3ef60973b56bc785cbbe5",
+      "despues": "21c342bd7d0dfde2ce4b4c6745f67d7083182a8636e265002540323a61804cf0"
+    },
+    "diagramas/fichas/fase-5/DIA-EA-080.md": {
+      "antes": "340a794ba0da0ccdefff72ee0dffcb546ebd443fd0cd1760317ec6b41b61dbc4",
+      "despues": "0987966b5776cddf4621e05b1bb76db1801b934fd537c376ee584a52b24891f6"
+    },
+    "diagramas/fichas/fase-5/DIA-EG-060.md": {
+      "antes": "08e3a1ab7f519dceb478174975d4ad09d4ca9818f5bc6dd83f028413a766686f",
+      "despues": "a7cd775547de7c87850e4c21f861fdb23422aa91bcf24e1395f493ecdfdcfd02"
+    },
+    "diagramas/fichas/fase-5/DIA-EG-080.md": {
+      "antes": "70ed8cab85196f3709dd2ff28e289c926e7a766bcb378a851569c04412d4eca4",
+      "despues": "4af6a37c5424e4b8adcaaa5c4979ff58e2fd879cf718761a5ff8975f78fe1fa0"
+    },
+    "diagramas/fichas/fase-5/DIA-NOT-060.md": {
+      "antes": "fe4c44545c27ea03982da67f0f8936728c248246693fac1706d96cbbb8bd1aed",
+      "despues": "71e4451d19a11d8e20c1e553fab75569a5a6c7a87653fe6ff73f958882a9e19d"
+    },
+    "diagramas/fichas/fase-5/DIA-NOT-070.md": {
+      "antes": "0fe49a06be8d000545504e4321cd8744a2b705870150b69d072bb2cece04920b",
+      "despues": "d05930c695a28ee44e28e673904654262f2849976f9981e8411fb0159685b727"
+    },
+    "diagramas/fichas/fase-5/DIA-NOT-080.md": {
+      "antes": "8fd3965b7bcdde1b2c850e01e45d1f1b07451d25c693523f9df87e0372fada07",
+      "despues": "6fa3b21d845d3d848a1380f744385a75e36778575b962f8ce99867ba70207246"
+    },
+    "diagramas/fichas/fase-5/DIA-PG-060.md": {
+      "antes": "815ee9d703ad16e57b65ca750f3c67b2d886e1faddd2529cd301130a9938973a",
+      "despues": "29296663e34a0791d13fc4c4119d61edd214df54d50d23f2c324f9245ff9b102"
+    },
+    "diagramas/fichas/fase-5/DIA-PG-070.md": {
+      "antes": "ef49902c5b0476c28dbb36577681ec578f475328af577621cb4f0ef1d28c6fc9",
+      "despues": "356bca1812746e39beb400d32351b0df1c71232cc91ef43bb9d929e593978dd6"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-060.md": {
+      "antes": "189922748eb754e9e11382fa5c17e6ee71ca41df5c4f6188ef3b8f0fd5379f94",
+      "despues": "bd768c9c6b9fee83838a53cab6396b702fd4d1061861260f739fae27fcbb3632"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-061.md": {
+      "antes": "236795db884f90cf8ffd7a765474004ea8cf0d8f12a94dcebbf52e799e496605",
+      "despues": "27d2b414babccb81b8992f4dbc7f0bd7cbe6915b60b566c9e6b8b3622b7f5327"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-062.md": {
+      "antes": "32d99126b6c72a5da39925456910c111815a56e6980aae5ca56db2228d6e8851",
+      "despues": "f36fc8f29e547c51461ce2cec2b4a2b5df4cdd3d461958fe905b4f9baf945fe8"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-063.md": {
+      "antes": "d9e3abc8fd6c55af692f0bc0d570ee6351ce6692af9b1804bcd277e621d36d51",
+      "despues": "81b69523084a0df938b79731761d9e2e5d9782b698990bbb10d52c67aa5cd800"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-064.md": {
+      "antes": "7c4890178a5dd25ea19b4a8c3a2a25e82e517a529f329a29446e66a82a6af7d1",
+      "despues": "a27d31b9a15619724ba798d5103cb805f34c3d4ce19ef7653a4a07963db419fc"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-065.md": {
+      "antes": "af92edd45e1dba56f3ab5d0a5726f6e04746570de3a9f15dcf1ecc90fdccd5d8",
+      "despues": "450ac035d522535c4b9eb535b8bd860e9ab24a2208d1e0c5b70b611a55f53815"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-066.md": {
+      "antes": "b2d6641d29b245d4eccc9ebc68f7d4e03d5f1b52a56911f342eb94ce8028d73f",
+      "despues": "bc40994196ceb6cfb881d2e10bfb3b72746e6c28fdffd48fac5e3f62b767b50a"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-067.md": {
+      "antes": "998ff659d8973bdb6fb07511cf37e016048cf6578198312ee9c1eed687ae65d5",
+      "despues": "e92778401a5c99163580bf5fcf15c82080209519ab5c334cb4f7e85eec4d4b41"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-070.md": {
+      "antes": "86f97d2d895bc0abbfb5ab8d2c4a54ee76e42efdae5e4a0136b3c273e9d9adee",
+      "despues": "20b99f8796863d1d79cd95c6ca4c668c1eb7e852b09e0d5012ef646db558a3d7"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-071.md": {
+      "antes": "5b7305f7f8de7e3f11c0758f24e20686ecf98e02ab022571955b0bc4d1868696",
+      "despues": "2c87f468f22ab36f1a7ca87a6b2148d8ef7a524bcd77889dff82252b493c68ff"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-072.md": {
+      "antes": "b8deb240ad199a1657ade630d52d5c321c1ed061a9b00157179d35ec774aa613",
+      "despues": "8b996b3e3347ad3b29df87e40071241f461c775933b2eb3786062377dec11a21"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-073.md": {
+      "antes": "3298fda68d88aa9fc269edea10c61e1aa7ac4de23185594d3052eb6a3b591b17",
+      "despues": "0bb3d872011830e166128da2ed1c4f58496ea934a209c34a943d5f7117552cc0"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-074.md": {
+      "antes": "edc5479323f6b37685246ffde8a85ad1dd3ee4c5103a5636706163ba88671938",
+      "despues": "f46745039d34cdf57501a6bb775c17ab01d4e5ae14e552057a28578163fc42bf"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-080.md": {
+      "antes": "94c6c18653b5c8b65162ed65f1845533f2e5ad770138e9c2216f7a60e252cfab",
+      "despues": "0a4251ebcdc4b500b01538353eaee6ffbb71806803de4ab35df289e360c44c91"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-081.md": {
+      "antes": "7a041d134c82d1a7bb97e96c28109cd54cab7a8e23507eb55eec3045d0d30f41",
+      "despues": "ff591474a10c96d8e8769b6f2f33e72ec3732b2d23af1a558c0daa84daff8fc3"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-082.md": {
+      "antes": "498389eb74ab107057d1a9d2ded2bb5837978364b1e8ad712b15cbb777b1131c",
+      "despues": "953a5c72a9f404d97ee8e30911051308d70aafe418c49ce2fb63545d3ad899a8"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-083.md": {
+      "antes": "c03fa99f627edc10cee4b67395006b5d478802bcf3d691573f8425900c55f899",
+      "despues": "789db2ff10aeef95c1ee844d6195a519f9187df7221f49cf58370d8d804c572d"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-084.md": {
+      "antes": "90b8a1a9e2783fa3c8a1574f63aa51534e8791fcef553913fef56e190ae9010b",
+      "despues": "0e36ad746bdfb9f94734ecf772d05f88ede5fe625a5cf12ae8a74142956a0b73"
+    },
+    "diagramas/fichas/fase-5/DIA-POS-085.md": {
+      "antes": "112ee6213329063ec96833410945e35d844877cbbb77a59204e59b6580983a1e",
+      "despues": "94c9771a589a279a332eb5ec3200a9d30d6c82b506242edba388b52c6684a952"
+    },
+    "diagramas/fichas/fase-5/DIA-REP-060.md": {
+      "antes": "8518cd0c6679fa6bcff3b7a6b188b9b26300f1e081320c7a09c28a6f3cda1ebd",
+      "despues": "e5f4bbd003ea2a97517c8a1c0aec1b8cf1c9fca9328441fd9c2d388f6f4f62c5"
+    },
+    "diagramas/fichas/fase-5/DIA-SYS-003.md": {
+      "antes": "e2e6f6047b9eab81d4be9f4051f04dbac36babc822d1d7892bdacc88bd2873c6",
+      "despues": "d848dbc062aee8cb6ed3954562b7a3b01231d0785a2dd5e9c9ba3e3a22450e5b"
+    },
+    "diagramas/fichas/fase-5/DIA-SYS-004.md": {
+      "antes": "0b01c22e3b66c0ab898863d1c72682d10c6ed826128e0de065a0e5c27c05eb4d",
+      "despues": "a0d05f009e6910a0b1eae57a5f228fddc27e131dc87c4a25a2437c3b9062bdf0"
+    },
+    "diagramas/fichas/fase-5/DIA-SYS-005.md": {
+      "antes": "85ed028b7ea04707bb2c38c2733c54d52d6ec82df3ac85f6e3c2fa071d158293",
+      "despues": "2bf2c974c2232900fc33aef3e29e57f8170c5ff65af66c2c002541a5952fe817"
+    },
+    "diagramas/fichas/fase-5/DIA-TD-060.md": {
+      "antes": "daf3a8fdfc290ce7dd778d149e809ed5debb7a754daac47e4bdc6928b9c988a9",
+      "despues": "08a970fd812ab847533322c055e4819936db1ec5f6d0acdce1b80587c408c1bf"
+    },
+    "diagramas/fichas/fase-5/DIA-TG-060.md": {
+      "antes": "0f874d821fb1b59c1b61b175bf7e9d9d08a1474478a5142716ba8c841b2aa62e",
+      "despues": "8ab86e3b27d65f7d7ab1e1836b4b5e54623e60d6a12f57d56aadfa04d3985d9c"
+    },
+    "diagramas/fichas/fase-5/DIA-USR-060.md": {
+      "antes": "e543648128cebb2fd524fb21492cfc3250658001ad474c57d6cbca9d6aeda453",
+      "despues": "154718e7e9628c070fae1d073d2f5b63e9106ed5cff7733104414115aee552b3"
+    },
+    "diagramas/fichas/fase-5/DIA-USR-061.md": {
+      "antes": "42e4668cdabf4fdbd20ec15fb8566879fe0ef0294127a77e66cda9f4c0ef91fd",
+      "despues": "4c69c8fd744bf72ab99358351d9812ee1eca461fd1724b0923cfd512c7643f40"
+    },
+    "diagramas/fichas/fase-5/DIA-USR-070.md": {
+      "antes": "c6a4f22e9a5f2800ed069e687081c02738fbddd5fc9d7243f4013309dd60af70",
+      "despues": "3f7fa84cdc7529aa6b8eb4af0f8d39c6f101271e1eec0e721aae57d3eebef149"
+    },
+    "diagramas/fichas/fase-5/DIA-USR-071.md": {
+      "antes": "c7de41c875afc2e72d9b5aaf34dc90f126a22498b7ced0bbd7bee5f1f27cdfd7",
+      "despues": "0338f71fdbd3dfb60c125fcd195bf61799ee5b8799f9f5a3495e3b3cbb75d34e"
+    },
+    "diagramas/fuentes/DIA-POS-021-servicios-defensa-cierre.puml": {
+      "antes": "ac593286b3d78936890dea4a780f80c1c60283e75e320f5d73091c0336f1f746",
+      "despues": "a72bfaa3aaa76643ec9be0016d7be0878c7b6802aae1e324ed9d6ee5ffc201b8"
+    },
+    "diagramas/fuentes/fase-5/actividades/DIA-POS-067.puml": {
+      "antes": "d01f94082a28a17942f9835fcbd4b3643a6e3ff467e5c69467d49d8a9e2f175f",
+      "despues": "75f55f7d4ea7b1fb21166e1cd7ce0518899bcf554577460a2bda9612393293b3"
+    },
+    "diagramas/fuentes/fase-5/secuencias/DIA-PG-070.puml": {
+      "antes": "dde344726442324eff9097df9a536f5d2ae5b7155cd3f61cfbd2961542170ec4",
+      "despues": "2abc03be5e90cd40bbc7647bfd33e3676b8ad0ae6039ef35e0016262ff2c4aa1"
+    },
+    "diagramas/fuentes/fase-5/secuencias/DIA-POS-074.puml": {
+      "antes": "1f559e42e490bd337fb35c9d81d6db451c01cf59115f47dcc10dc0376d6e882d",
+      "despues": "4fc51e5eea4ea3b289b92ed918eb8e5ae31cd383b80edc9b36a9b81d324c13dd"
+    },
+    "diagramas/registro-fase-5.json": {
+      "antes": "cb15852906bd8025ac547e42a46e1454dad12502044cc0d6b6ffef7f91bb88c1",
+      "despues": "7c7b6777358f43a2a53d74947444ea90bf9c4c332cfaed98ac377d1363f809a5"
+    },
+    "diagramas/renderizados/DIA-POS-021-servicios-defensa-cierre.svg": {
+      "antes": "913554cfe63355eb913808b4c382d096866aea59cd92802403685862c8f45744",
+      "despues": "eda8535610a42d42a2cead881f640d9e0cf4fa40bb582aa1b51002084fc9e898"
+    },
+    "diagramas/renderizados/fase-5/DIA-PG-070.svg": {
+      "antes": "9b66eb6cf93100fe12e6630adb7deb23d17ea727de2c745542e0bf15741c6e8c",
+      "despues": "d04ae00b030555d7f7aeca90dc78adc7d0a6132c2f5ed0f671472b450a8964fe"
+    },
+    "diagramas/renderizados/fase-5/DIA-POS-067.svg": {
+      "antes": "62665ded484658d44ee8755aa12eb967e3d7b1d0ce25c9380d2c9f905b21757a",
+      "despues": "bb821d9438ff174bc122b2405f74e5d3026530f75dafd723be436674e2a583c5"
+    },
+    "diagramas/renderizados/fase-5/DIA-POS-074.svg": {
+      "antes": "089378a860fa6376241a8f0a9be3dd387274617abb210e3877003d43c4e28a84",
+      "despues": "5ea238931a70fb87ef974080fd45b2a6f9e2313897e217df2448ffa729bbba16"
+    }
+  },
+  "creados": [
+    "00-alcance-y-evidencia/estado-fase-7.json",
+    "00-alcance-y-evidencia/referencia-fase-7.md",
+    "02-actores-permisos/variantes_fase7.py",
+    "03-casos-de-uso/evidencias_fase7.py",
+    "05-procesos-y-estados/cobertura_fase7.py",
+    "10-trazabilidad-y-validacion/archivos-fase-7.md",
+    "10-trazabilidad-y-validacion/cambios-fase-7.json",
+    "10-trazabilidad-y-validacion/corregir_fase7.py",
+    "10-trazabilidad-y-validacion/ejecutar_validaciones_fase7.py",
+    "10-trazabilidad-y-validacion/informe-fase-7.md",
+    "10-trazabilidad-y-validacion/integridad_fase7.py",
+    "10-trazabilidad-y-validacion/registrar_cambios_fase7.py",
+    "10-trazabilidad-y-validacion/resultado-fase-7.json",
+    "10-trazabilidad-y-validacion/validar_fase7.py"
+  ]
+}

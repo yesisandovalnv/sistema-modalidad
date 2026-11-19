@@ -1,0 +1,11 @@
+{
+  "diagramas": 52,
+  "modelos_propios": 40,
+  "relaciones_contrastadas_clases_y_er": 172,
+  "operaciones_de_diseno_contrastadas": 221,
+  "huellas_exteriores": 1724,
+  "estado_git_exterior_sin_cambio": true,
+  "herencias_contrastadas": 24,
+  "sintaxis_plantuml_oficial": "VALIDADA localmente con PlantUML 1.2026.9",
+  "errores": []
+}

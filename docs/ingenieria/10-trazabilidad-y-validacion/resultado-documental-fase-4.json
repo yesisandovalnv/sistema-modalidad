@@ -1,0 +1,18 @@
+{
+  "markdown": 190,
+  "markdown_proveedor_excluidos": 29,
+  "enlaces_locales": 2503,
+  "simbolos_python": 74,
+  "ids": {
+    "FUN": 75,
+    "UC": 75,
+    "RN": 98,
+    "ENT": 40,
+    "CMP": 16,
+    "DIA": 73,
+    "ACT": 7,
+    "DISC": 14
+  },
+  "archivos_previos_sin_cambio": 1724,
+  "errores": []
+}

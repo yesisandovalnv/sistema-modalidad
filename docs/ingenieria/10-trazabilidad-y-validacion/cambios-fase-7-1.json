@@ -1,0 +1,412 @@
+{
+  "autorizacion": "Exclusivamente fase 7.1, AUD-06-009, documentación; sin pruebas del producto ejecutadas",
+  "head": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19",
+  "rama": "desarrollo",
+  "modificados": {
+    "03-casos-de-uso/construir_fase4.py": {
+      "antes": "8d82762f2bb32c58844571aa403d7fd0ee7559fd9f8f8180ea9fa5888366423f",
+      "despues": "68755ece5a39c297b13e9a8bcb44a4714483f532d57bb5650a31bf02117c1b89"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-001.md": {
+      "antes": "4341a148f40f40795ce18f07e8f72fdd653a39b96b1a1369952c25ee251888d9",
+      "despues": "498ccab105c5d166eeaa536cfa550adba6d5361774818d0f780329b72731088d"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-002.md": {
+      "antes": "01e5143440fb1e830ad8f8caed8e87ef3915982f52c817a42e0f0fa77e5e5a46",
+      "despues": "c68dea22d0e2d4af6bf48abc7f6a0e319bdd6d35c3c710e4e8f2cc19ed1bc2d9"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-003.md": {
+      "antes": "4fe985bb9db276ab161cb07932240c81255071a6fab44ecd0c53e2ffa6b35680",
+      "despues": "592807ffc8d18dde9ead165f2227884c2f27ab3c343b6dd6a74bac06009558a2"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-004.md": {
+      "antes": "d660ed7ccf995a2a755ea35f760b9b9488b623b2f052f09bfc7cb640b8cd03e9",
+      "despues": "dd409e562c932b1a53a986ed6ccff5e8bc84f0c4eadd74909148934621089ccb"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-005.md": {
+      "antes": "9481f26c88611ea7c47236e5b1e0ef9ee7d0a1ee735705fe5c630d6bf90fa925",
+      "despues": "30157e12577edd13c6000e04af4faa0f6fc8f375c39fe330b0f2d5c56c099eaa"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-006.md": {
+      "antes": "699e447e5d4cc80fcba0f0ef430ce51440f6156d84dba187701a1e0021d9184e",
+      "despues": "3a1e91eae90e8955a8a8018f55f2973b1fbd7bbaaf70006cf8c7800ff8c153a5"
+    },
+    "03-casos-de-uso/especificaciones/UC-ACA-007.md": {
+      "antes": "d50b588cd45b7221d9dd97a5bf049d1842011777bbd247a2982678566b2efe15",
+      "despues": "be7eeba148810b72a3b3c942e3ecc4e367f28c07c41faf992acfda40795ccbdf"
+    },
+    "03-casos-de-uso/especificaciones/UC-DIP-001.md": {
+      "antes": "0da6ba5a9f3c8d5642c9279db31fe1824e3beb33672918df33820d3f3fa26e1a",
+      "despues": "908df46a1091fb8f14a150a900454892c7918e51f8e2b80e12f84910aa1401b4"
+    },
+    "03-casos-de-uso/especificaciones/UC-DIP-002.md": {
+      "antes": "67bd37fe4f9ba653e692d56ee98e937720b012187ce74abc176383aea8bcba63",
+      "despues": "cefe8726c58eac216165750875d070fcdaaa14e021466538f0d3b7965aafc816"
+    },
+    "03-casos-de-uso/especificaciones/UC-DIP-003.md": {
+      "antes": "caca5f9e08c48123b7c8e753fbe3cbb127eb3580e71411e323000de6f3ba3e20",
+      "despues": "f86dbf09fa8e823958e38b78a3f03a42529bcf03ed28e8a691d98c0b66c2b9f5"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-001.md": {
+      "antes": "3e9db9af5d04d9f9d2c0033c262d13962753e31be85d7eaec15faf7351c21f39",
+      "despues": "11129da18b9afac09b524db006494c814f13062b25b5d5bbabe5494598b66121"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-002.md": {
+      "antes": "e90f7008a9e55e595502aca300d43a3e4707e1792fae646a01caba2e4066dc7a",
+      "despues": "14f9253ae14454db6693b6415227b4734c8a3f99f7195fb6547c7e6df120884e"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-003.md": {
+      "antes": "05b113cbc85e0e9d3f7fe5109460699fcbb630bc8b1d86f72e3a81e27ac7e412",
+      "despues": "131f9d14f53fdbc6de21f758159c36dac03505ea2fcc747c9e7dde3438c7ea9a"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-004.md": {
+      "antes": "29697293d5782dec359279151700c6aa8e21d3e5c6662990228fbeaa4a3b770e",
+      "despues": "d9df3efd7da19c0363978dd3baae4acd80a90155c79bcc2ac81b343caa578053"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-005.md": {
+      "antes": "bdf170100add5c705b11a5c0eb2ee8aee3d5fca739b6055a2f22377df536716b",
+      "despues": "ca3ec813b13cdaafdfc12ca22ec446bdae9bb9221d73f28d42de98428af4abd9"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-006.md": {
+      "antes": "e22b20d6a1f544015a968307fcae478f17f628bac4f5e4b0d8208627f4f3097e",
+      "despues": "929d4c1f195feb33839f9c7f3ab308bb9e3cb1876ba2082afa0b5b488761814b"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-007.md": {
+      "antes": "b85cf05b728613deccdfc24dd0a8c6c161abe426c599f813c0ce97832c37a5a2",
+      "despues": "4168ed81a290fa3283b6230760baee9fae9b621e3513b8cc124b5fdc278fc712"
+    },
+    "03-casos-de-uso/especificaciones/UC-DOC-008.md": {
+      "antes": "25eec926de7fc611f116a6b4e2cf3eb5dd05af21500f575ffbeda64860b84c86",
+      "despues": "78a6c32da6106f4c61361b7dd0542de814488866cbd338663c663adcfb0864c9"
+    },
+    "03-casos-de-uso/especificaciones/UC-EA-001.md": {
+      "antes": "cb14b19c44be641d1fe1b650a20e3060321912bef551649221bdb9a36e36d11c",
+      "despues": "8290aa71822332748497a5f9ecff58f3a51eb8c1a3f2953474840279341ab082"
+    },
+    "03-casos-de-uso/especificaciones/UC-EA-002.md": {
+      "antes": "57f83c3d95196ca54dda1925873bae1998d0f0c7a9358023eaa40cc4df5b899c",
+      "despues": "47c9191a229703ccd773a5e5a9c587f2f950c200b3426d3642bb0437b4a796d5"
+    },
+    "03-casos-de-uso/especificaciones/UC-EA-003.md": {
+      "antes": "ddbc3dda68c3a30fc8e3c92a1bd7c1c1a41e94b683a54de72a7267500d2fe00c",
+      "despues": "57449752d2b9881073e2fa96cc92b5f5b64e6e54e940672dd5cb1f16705cb201"
+    },
+    "03-casos-de-uso/especificaciones/UC-EA-004.md": {
+      "antes": "29e72e649f9cbfdbe2af61d8a4664a21c4fa87861ac584c3e7f273e362638113",
+      "despues": "99a6d700cbfec33c741f3c8f22c295027b43f38708ac5303a150377953445eee"
+    },
+    "03-casos-de-uso/especificaciones/UC-EG-001.md": {
+      "antes": "1a79606f5d931b235f4b322dcdfa955a763babcb78ab2883f61a47a206b129bf",
+      "despues": "2d67cec84a99bd8a2a8570908888407a52d62a4c15ff7d4e37fda9ac91140246"
+    },
+    "03-casos-de-uso/especificaciones/UC-EG-002.md": {
+      "antes": "a0e67dcd6846c0a697ef5ac77ee530464205f3471f21979774982b04f5daa18c",
+      "despues": "96521e2b8f565ad505fa6785cb113522845b8a555768b59f2c8dd72998b9e244"
+    },
+    "03-casos-de-uso/especificaciones/UC-EG-003.md": {
+      "antes": "7d315e8c55b6bf40c629408a06bdad430cfc99cadf4a3201aaae7d7c0ebd111d",
+      "despues": "7671a4e3a6fb21cd12b1a2ec6e1ec5f51f8e8dcaf07fcaa86df79cc31d41a187"
+    },
+    "03-casos-de-uso/especificaciones/UC-NOT-001.md": {
+      "antes": "4fb934782eb714e7eb1d78d38fe0c482116e3123722f3ec467948ec392495eaf",
+      "despues": "787fc3242e19debbf55f14df430b2bdf8b9f119f7761f37fb738d97717b09148"
+    },
+    "03-casos-de-uso/especificaciones/UC-NOT-002.md": {
+      "antes": "26bbb8da860302284cec2292c81b8e5ff0793c983cd37eca55b513a4ca50bc81",
+      "despues": "5b47d07559fa724cce223652882969f39250229c6b4a9a7e7285514b1dbc6761"
+    },
+    "03-casos-de-uso/especificaciones/UC-PG-001.md": {
+      "antes": "0478d76d27dc1575656e02d0b12e7f46ae3ab7d55120ac17ba99b20475c9dced",
+      "despues": "57e0745961eabc5997fa1844a5ea6adda3039b90a2d8c781529bf38575ee0491"
+    },
+    "03-casos-de-uso/especificaciones/UC-PG-002.md": {
+      "antes": "f82709df0c6a76eeedfd39d5c63fd30a6203859c2e23392510d25b120f40d27c",
+      "despues": "219c2fd3a9ad352ea510c764c23276af204e51934d2cc53842c1710a934fcd31"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-001.md": {
+      "antes": "b82ce6b64e13a79301266c74e45acc3cdbecff730a6de268ed7e45bd72e7c311",
+      "despues": "d247bab7c7fdee50451288023841fa9d8a0deb55432accd9716ab570d1c14e63"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-002.md": {
+      "antes": "e3938b446c1519345da2c8ddfe761daeefedc32cd71930a7a6752010c11d24d9",
+      "despues": "99d655779b737630b3e22007eab043ccc2aaf9959c1a831611b096e7075c63a2"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-003.md": {
+      "antes": "943f47f2cd8584859043e92e300798e8cf1b3c9622240a4653486ec557b06da9",
+      "despues": "0f0b2c137fc56c896418e374c896d2b36adc4f546897cdc41b0a8065bbd832aa"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-004.md": {
+      "antes": "03a57df1f6004c1648dcd9f57f29ce35e272ca1f6572bd5a926b294cd3debddf",
+      "despues": "1e071e1f84bc6e8d2ac5f7327ebe7bb6c1f1251c0577a72c21019c15b545366d"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-005.md": {
+      "antes": "89b0db9b6aa47aa13770d2225de6e372847e7c34757f6c92837b6ab2e1c13c09",
+      "despues": "f14c7d94db2316117f90e46d8ebc86b14e42327fc63d47da21ea72d37e9edebc"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-006.md": {
+      "antes": "9d6bfc804b27a5f43cd10b2b24c671614d65691ef9aea5ce233c1d8c6ba8567a",
+      "despues": "52c889c7e40b8e3b327d4e6ef7e2b6048093f36915ef55d2972f29562e63fc59"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-007.md": {
+      "antes": "de3be595f34c57bcf23534b6f182cb7f9d795c20597056c055c7f8587d92aab0",
+      "despues": "444fe8b8a3b6edc72cd60c442cab71a68ed00168ff46d0768b43ea4cdac2606d"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-008.md": {
+      "antes": "6782876ef0a93c8a7afa79a270ded8f915531483fbcd5ecaa9d3783c5af6d51b",
+      "despues": "aaca846c91ba39db6faeda48424fcde2e33eb54531d09c839de75eda2a2462ec"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-009.md": {
+      "antes": "6d1ad874640b3c28edb49078a757671ab025b1947f650cf15885540b779d4716",
+      "despues": "dc1f377266c594d1d15b19a73bef1ee556cbae936a9afd6c2110b3acebc2349b"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-010.md": {
+      "antes": "b69536a1adf1fde0d8934ad08521b8f62fd0dfafa21861110fabf729e0169e0d",
+      "despues": "066388fe277c422f64b62a78885c5bcfb4d460c9624ee7e185437308ab9a7cc2"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-011.md": {
+      "antes": "cee082182b8533adbdea283295d4a72ad5c8ac06bcdf9ec0f2afcc820ccecc29",
+      "despues": "d0e7bfee53b0eba3adaf3ca26ca9a4316b9b1b4b53ca1c2cabf181a4aebdd2b4"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-012.md": {
+      "antes": "80289882f3416b9dbf9348ff92484b28341a03a8cc90a99ad5c9d0a73632aadc",
+      "despues": "51d39f01497332c14687ecfa0e015125812a336c0b508eeb578be50ed9ed219e"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-013.md": {
+      "antes": "406d791336b96ce396fd727012fa19871a77ca1da0a0c3fe5a2a9b62e1c2e244",
+      "despues": "f1440c1a2dbb7ba7615bec0571cbf9004a981bc9d9d111a649f78025f217013c"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-014.md": {
+      "antes": "8593fd822b197a8f4df97a21321a1235adb171895bcd48102c272494cf812cb8",
+      "despues": "e9f2170650903582a9dd190b11404d9c107f8fa08afa05730bc1d7790bb73ae4"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-015.md": {
+      "antes": "976eb052c87be7bf8ace8e226446ce661039f8f332b4d9b43a4563b0e7003b30",
+      "despues": "db4fd29d39fa8ee24ddf3bca21732c8130bdafbd1d0055d74a86e7ebd02f34d0"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-016.md": {
+      "antes": "5e0d325775861682cab39fd9077cd3529c850f469ac6402703adb132ca2576af",
+      "despues": "6f6f028269b6531f9c701e58d6b1dee10f83293f78f5cc3a147dc63aa3ea3feb"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-017.md": {
+      "antes": "c4693e6179516f1747a1e1c20a7f3d74867d72adb0fcfcc10f781ea368a2bb49",
+      "despues": "c24bfd4a3843d680fe49b68eb7adf1cc40a0fdcbb3ff7658fa9c44e2dbfb5e11"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-018.md": {
+      "antes": "02a4da6948da4b97e83aa4b94d276a0d8575c4892d5b862bc5d263d568cd53b9",
+      "despues": "8f7d58c47a12239b2034740126b9d55b05ea47354a140ea957f557decdf78e00"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-019.md": {
+      "antes": "f7dcc1f51c6414b8da6db1d448967f16e7851267bd06157e55b3c5d67df97aa4",
+      "despues": "347fb8fe3648513916ee887c076819a0c8f4a5225d6d30f144368c99e99861ff"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-020.md": {
+      "antes": "df2f0e427a099e60b1b2f69bf9ddc4c63c4f0fb56a0c8f82c11f94e75f1a16cf",
+      "despues": "e60f5aa9ef0a9e186373b9de4c538feed96de8b5b15072ad285ca7cc7f1c65f0"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-021.md": {
+      "antes": "3f329fe195521029ff9f3fc2aeae1e16700d7a957bf4b6725e753b4e5766fef0",
+      "despues": "4619f3846c72067ae8e19fe3472ba3de0f99431bd398865e2243c8dade761c0b"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-022.md": {
+      "antes": "1d662636849fb31dc1fd22da81b5f07f4fb36a8cd89c667335c8b7988764a065",
+      "despues": "b90c5d3fe9b0c4b14e2b2460d3b7c81d8498361cba4cb366d3cc245029c6e1a4"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-023.md": {
+      "antes": "d5e9dc5f92eb53d8b9ca7f12876eb408c2818b5aece93769f9ce9cfa76cc5ef6",
+      "despues": "d672382ec0a711bd8c023a71a4287ccf6ad27eaaf2433d56a614b18e3a23a65c"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-024.md": {
+      "antes": "4d11f9b0f17d39e31c59e7260345625b66f55f3167c80c8ef0b3047ebf9430c9",
+      "despues": "9a916c1df9a92ae6211e47f52540f47e9b9c1371fec502e2f152a3f13343660c"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-025.md": {
+      "antes": "3a5bc8aa48e5e387aca6ed685b040d5bd8f7637d643bb5dca83f44f6c590a637",
+      "despues": "3bae08a8208f75d7b519e93b59f5873434c83034edc5a043a0aaa64e4cf5b784"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-026.md": {
+      "antes": "9945da447abfc8138cfccf3cfb4e46fc575f3a67da309cc7023ea8b3b47f43d2",
+      "despues": "66dea9e08bcb686113c5251b0b86a352b1c1b289605d822c305627a8db5399bd"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-027.md": {
+      "antes": "6dc30c672dbb94d666fd2af9a61c7af487f7810ed12ec76a4640c713b420403f",
+      "despues": "590b248392ca1f53520dcaac765cdd1320cf8c04e71e48db4518ffbc5085ecce"
+    },
+    "03-casos-de-uso/especificaciones/UC-POS-028.md": {
+      "antes": "1caa95bf261e20175b6350c01f17fbf61df7daa917c8798d71a46ce5c5a7c7ac",
+      "despues": "9e22b8f84c78918d1cfff7f0ddc80009ecb13095e104af3f8f1a2b663d80464a"
+    },
+    "03-casos-de-uso/especificaciones/UC-REP-001.md": {
+      "antes": "36082846707d08eebc811307339740de1863d175444e131d56dac22441c2d741",
+      "despues": "15894a839836fa65e8933082f05b03f3e4cf878a11a0f6cc187389af772d0e14"
+    },
+    "03-casos-de-uso/especificaciones/UC-REP-002.md": {
+      "antes": "22d4040ae77350ced5291ae9ffb36a2cb419cd552317c439af60743afc02f989",
+      "despues": "12aaaeccb24453bdc4f5eaca566fae8cba26488a1cdc3d891ffc5c9a6222b28e"
+    },
+    "03-casos-de-uso/especificaciones/UC-REP-003.md": {
+      "antes": "935324437f93e309a58ed6b56a13eef5a0cefe028d6b42bb26220beb12dfd3f0",
+      "despues": "2350060b76f6070f9a30f775b8d61896725a7a2ba7de5554da961b872dd20f7c"
+    },
+    "03-casos-de-uso/especificaciones/UC-REP-004.md": {
+      "antes": "385ebf5fbf077c2877190e74facde8b67db4060735c58d53834737b5c3453208",
+      "despues": "ed9218d93d365c6bd4855408e3d3efd239d097ae4ff3bce06e41f9d7d7e645b5"
+    },
+    "03-casos-de-uso/especificaciones/UC-TD-001.md": {
+      "antes": "e4c56840caa6a08cf922948cd7a6189e3a2abe01646d1886182eb473c71a5bf8",
+      "despues": "a87dc2352fc5e858bcb609e8ff474bdb7622dba539b092e6ed0fc6fc5532b858"
+    },
+    "03-casos-de-uso/especificaciones/UC-TD-002.md": {
+      "antes": "c269d37c6dec7d40999d8b089ad76ba7115582dc93e6d2f24a3365009b21f673",
+      "despues": "86ab27d7354ac30cd112057932b73c9ef6e6fb9acf4f2090b5e9079f8b1bb3c5"
+    },
+    "03-casos-de-uso/especificaciones/UC-TD-003.md": {
+      "antes": "7b96f0adc88a6433fbb2b3dfb2308f8bb56de8b6392ae971e50bb383884db0c2",
+      "despues": "a062331704986af9932be4802b202f8a730d6c9934d2f558f6a6d788afa5f5c9"
+    },
+    "03-casos-de-uso/especificaciones/UC-TD-004.md": {
+      "antes": "f7f0430f86edefa0b800c490bb833ad24b0b1265662c3884799962eb15def825",
+      "despues": "9a7951ca6b1b5e02661d3e2a7317de192faec1b63ee391e967403d8d332ff68b"
+    },
+    "03-casos-de-uso/especificaciones/UC-TG-001.md": {
+      "antes": "c03ce09ff7e9c17a4c82c3825eb5cb76f8fc970a479d458d14433db76d5799e5",
+      "despues": "c3ae503705c4af15a6a29c6207303ea883759fcbcd1f63d064846b4b366b95b2"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-001.md": {
+      "antes": "6b4862e672153f157498ee56c5b56d6a32a224ae59c2b0d29f42ed130c314c91",
+      "despues": "c5889be3800e9a48fda0af85392e5c40ebe3f589e11b502292f1e442e0bef4e3"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-002.md": {
+      "antes": "55d82ecbad1eff580ee4a80cc11e3a4426d61dea0c1f822515926298c6aef157",
+      "despues": "4b576e7b119b0c3c709da5df78de7bbc4c3a191a1b2bd8555c9c975cd6d291fc"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-003.md": {
+      "antes": "fe7dbca18a61f372bf5ed97d3aa3a2bc50c49aee90cdee9ebd2754a4aa32b287",
+      "despues": "e674cca8ea47f9f206f21f21519f196796a2a6e8417ad022a85634b8d101443c"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-004.md": {
+      "antes": "313aca9e2a83d4824da9e92f55a140c5966f86ccf747e20e879a2cd3d2699fdd",
+      "despues": "8d0c42334e23260cd1d427e9efb36aced49607fc186e7169c7297d80bc6f8f47"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-005.md": {
+      "antes": "fdd1a8ed6c8ccfda593b45622ff240dc098b821855bc2d2a2cce8d11650609ac",
+      "despues": "a2cf6807aabc544698f42796e3a417314af4c8d879a34851f53988d7ecef22f7"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-006.md": {
+      "antes": "ce4d317e93cd195d42bd0af3a02e15ce27bf9de2fdeff385c310ec67cf09eafc",
+      "despues": "39ac37d90d83ea3606977f21882d49d95d820751fa8b4e9681013ea16b9697c2"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-007.md": {
+      "antes": "7adad82e9c6013916d128bf6df475b5ba5e27d2af7ad21fefb8eeed429587d5a",
+      "despues": "c133a248088e54925b24b17f8cac29c2524987896db68f2056875c60635c590e"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-008.md": {
+      "antes": "e2c16d7f0093f33e1746eb33cf3555b1117d4d72cbb6f198934de2b989d4842f",
+      "despues": "461e59be17756613ed16b31b0cc4b9e03ca52d36328f38448ac24561c09cbec4"
+    },
+    "03-casos-de-uso/especificaciones/UC-USR-009.md": {
+      "antes": "140e8d7f496c1b2bd159fa902f2964259d191596485ca0b49ab4f4abf1ee7c98",
+      "despues": "f8293f64b628bbbba63bdad60f418990e94513146f04a6fc79382d0912163298"
+    },
+    "10-trazabilidad-y-validacion/integridad_fase7.py": {
+      "antes": "d527849cbae5426fd6ba12d4829c833e224c0ef37f425d94d8935dc0de1c50ff",
+      "despues": "2fb1631e6b463bc9ea4901745ebb223690acddfcbb19b0df33fbf4b6eaff1875"
+    },
+    "10-trazabilidad-y-validacion/validar_fase7.py": {
+      "antes": "2201677a0345dd04a5be929006be852329a695ca2653f6e483ded22339a1cb74",
+      "despues": "eda467dd74bb702818acc2ca75fdd18befbbeb02d1b1c22beede4cc64b13915d"
+    },
+    "README.md": {
+      "antes": "6d854d768f142c1398e76941ed2b656442085f20487dc3092c46073ba25104fb",
+      "despues": "618ecaf5133b614fb1b7321d4ae3fa57e43ae4dd6510a67aac3e78aad89d33f8"
+    }
+  },
+  "creados": [
+    "00-alcance-y-evidencia/estado-fase-7-1.json",
+    "03-casos-de-uso/curacion_fase71.py",
+    "03-casos-de-uso/escenarios_fase71.py",
+    "10-trazabilidad-y-validacion/cambios-fase-7-1.json",
+    "10-trazabilidad-y-validacion/ejecutar_validaciones_fase71.py",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1.json",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-ACA-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-ACA-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-ACA-003.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-ACA-004.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-ACA-005.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-ACA-006.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-ACA-007.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DIP-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DIP-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DIP-003.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DOC-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DOC-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DOC-003.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DOC-004.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DOC-005.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DOC-006.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DOC-007.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-DOC-008.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-EA-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-EA-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-EA-003.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-EA-004.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-EG-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-EG-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-EG-003.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-NOT-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-NOT-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-PG-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-PG-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-003.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-004.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-005.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-006.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-007.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-008.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-009.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-010.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-011.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-012.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-013.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-014.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-015.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-016.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-017.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-018.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-019.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-020.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-021.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-022.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-023.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-024.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-025.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-026.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-027.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-POS-028.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-REP-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-REP-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-REP-003.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-REP-004.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-TD-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-TD-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-TD-003.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-TD-004.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-TG-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-USR-001.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-USR-002.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-USR-003.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-USR-004.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-USR-005.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-USR-006.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-USR-007.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-USR-008.md",
+    "10-trazabilidad-y-validacion/escenarios-fase-7-1/UC-USR-009.md",
+    "10-trazabilidad-y-validacion/informe-fase-7-1.md",
+    "10-trazabilidad-y-validacion/inventario-aserciones-fase-7-1.json",
+    "10-trazabilidad-y-validacion/matriz-escenarios-fase-7-1.md",
+    "10-trazabilidad-y-validacion/registrar_cambios_fase71.py",
+    "10-trazabilidad-y-validacion/resultado-fase-7-1.json",
+    "10-trazabilidad-y-validacion/validar_fase71.py"
+  ]
+}

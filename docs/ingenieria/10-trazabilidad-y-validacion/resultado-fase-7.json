@@ -1,0 +1,167 @@
+{
+  "fecha": "2026-11-02",
+  "tipo": "Verificación documental estática local",
+  "pruebas_funcionales_ejecutadas": 0,
+  "resultados": [
+    {
+      "script": "corregir_fase7.py",
+      "comando": [
+        "C:\\Users\\luisfer\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Users\\luisfer\\Documents\\Visual-Code\\sistema-modalidad\\docs\\ingenieria\\10-trazabilidad-y-validacion\\corregir_fase7.py",
+        "--check"
+      ],
+      "retorno": 0,
+      "stdout": "Regeneración selectiva: 75 especificaciones; reglas/permisos; 1 clase; metadatos de 49 vistas y 3 recorridos; 6 README.\n",
+      "stderr": ""
+    },
+    {
+      "script": "verificar.py",
+      "comando": [
+        "C:\\Users\\luisfer\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Users\\luisfer\\Documents\\Visual-Code\\sistema-modalidad\\docs\\ingenieria\\10-trazabilidad-y-validacion\\verificar.py"
+      ],
+      "retorno": 0,
+      "stdout": "{\n  \"markdown\": 255,\n  \"markdown_proveedor_excluidos\": 29,\n  \"enlaces_locales\": 4794,\n  \"simbolos_python\": 74,\n  \"ids\": {\n    \"FUN\": 75,\n    \"UC\": 75,\n    \"RN\": 98,\n    \"ENT\": 40,\n    \"CMP\": 16,\n    \"DIA\": 119,\n    \"ACT\": 7,\n    \"DISC\": 20\n  },\n  \"archivos_previos_sin_cambio\": 1724,\n  \"errores\": []\n}\n",
+      "stderr": "",
+      "datos": {
+        "markdown": 255,
+        "markdown_proveedor_excluidos": 29,
+        "enlaces_locales": 4794,
+        "simbolos_python": 74,
+        "ids": {
+          "FUN": 75,
+          "UC": 75,
+          "RN": 98,
+          "ENT": 40,
+          "CMP": 16,
+          "DIA": 119,
+          "ACT": 7,
+          "DISC": 20
+        },
+        "archivos_previos_sin_cambio": 1724,
+        "errores": []
+      }
+    },
+    {
+      "script": "validar_fase3.py",
+      "comando": [
+        "C:\\Users\\luisfer\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Users\\luisfer\\Documents\\Visual-Code\\sistema-modalidad\\docs\\ingenieria\\10-trazabilidad-y-validacion\\validar_fase3.py"
+      ],
+      "retorno": 0,
+      "stdout": "{\n  \"diagramas\": 52,\n  \"modelos_propios\": 40,\n  \"relaciones_contrastadas_clases_y_er\": 172,\n  \"operaciones_de_diseno_contrastadas\": 231,\n  \"huellas_exteriores\": 1724,\n  \"estado_git_exterior_sin_cambio\": true,\n  \"herencias_contrastadas\": 24,\n  \"sintaxis_plantuml_oficial\": \"VALIDADA localmente con PlantUML 1.2026.9\",\n  \"errores\": []\n}\n",
+      "stderr": "",
+      "datos": {
+        "diagramas": 52,
+        "modelos_propios": 40,
+        "relaciones_contrastadas_clases_y_er": 172,
+        "operaciones_de_diseno_contrastadas": 231,
+        "huellas_exteriores": 1724,
+        "estado_git_exterior_sin_cambio": true,
+        "herencias_contrastadas": 24,
+        "sintaxis_plantuml_oficial": "VALIDADA localmente con PlantUML 1.2026.9",
+        "errores": []
+      }
+    },
+    {
+      "script": "validar_fase4.py",
+      "comando": [
+        "C:\\Users\\luisfer\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Users\\luisfer\\Documents\\Visual-Code\\sistema-modalidad\\docs\\ingenieria\\10-trazabilidad-y-validacion\\validar_fase4.py"
+      ],
+      "retorno": 0,
+      "stdout": "{\n  \"casos\": 75,\n  \"actores\": 7,\n  \"reglas_nuevas\": 75,\n  \"diagramas_nuevos\": 17,\n  \"fuentes_totales\": 118,\n  \"especificaciones\": 75,\n  \"resumenes_matriz_permisos\": 77,\n  \"variantes_http_detalladas\": 16,\n  \"simbolos_referenciados\": 150,\n  \"archivos_pruebas_relacionados\": 33,\n  \"pruebas_producto_ejecutadas\": 0,\n  \"huellas_fase3\": 158,\n  \"huellas_exteriores\": 1724,\n  \"git_exterior_conservado\": true,\n  \"galeria_enlaces\": 590,\n  \"sintaxis_plantuml\": 0,\n  \"svg_renderizado\": 0,\n  \"errores\": []\n}\n",
+      "stderr": "",
+      "datos": {
+        "casos": 75,
+        "actores": 7,
+        "reglas_nuevas": 75,
+        "diagramas_nuevos": 17,
+        "fuentes_totales": 118,
+        "especificaciones": 75,
+        "resumenes_matriz_permisos": 77,
+        "variantes_http_detalladas": 16,
+        "simbolos_referenciados": 150,
+        "archivos_pruebas_relacionados": 33,
+        "pruebas_producto_ejecutadas": 0,
+        "huellas_fase3": 158,
+        "huellas_exteriores": 1724,
+        "git_exterior_conservado": true,
+        "galeria_enlaces": 590,
+        "sintaxis_plantuml": 0,
+        "svg_renderizado": 0,
+        "errores": []
+      }
+    },
+    {
+      "script": "validar_fase5.py",
+      "comando": [
+        "C:\\Users\\luisfer\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Users\\luisfer\\Documents\\Visual-Code\\sistema-modalidad\\docs\\ingenieria\\10-trazabilidad-y-validacion\\validar_fase5.py"
+      ],
+      "retorno": 0,
+      "stdout": "{\n  \"procesos\": 21,\n  \"casos_inventariados\": 75,\n  \"casos_con_recorrido_directo_selectivo\": 55,\n  \"nivel_cobertura\": \"Familias y recorridos selectivos; no todos los payloads/variantes\",\n  \"diagramas\": 49,\n  \"tipos\": {\n    \"Actividades\": 24,\n    \"Secuencia\": 11,\n    \"Estados\": 14\n  },\n  \"transiciones\": 79,\n  \"modalidades_con_etapas_contrastadas\": 6,\n  \"fuentes_totales\": 118,\n  \"artefactos_previos_controlados\": 213,\n  \"artefactos_previos_sin_cambio\": 210,\n  \"correcciones_documentales_autorizadas\": 3,\n  \"huellas_exteriores\": 1724,\n  \"git_exterior_conservado\": true,\n  \"sintaxis_plantuml\": 0,\n  \"svg_renderizado\": 0,\n  \"avisos_geometricos\": 0,\n  \"enlaces_galeria\": 590,\n  \"pruebas_funcionales_ejecutadas\": 0,\n  \"errores\": []\n}\n",
+      "stderr": "",
+      "datos": {
+        "procesos": 21,
+        "casos_inventariados": 75,
+        "casos_con_recorrido_directo_selectivo": 55,
+        "nivel_cobertura": "Familias y recorridos selectivos; no todos los payloads/variantes",
+        "diagramas": 49,
+        "tipos": {
+          "Actividades": 24,
+          "Secuencia": 11,
+          "Estados": 14
+        },
+        "transiciones": 79,
+        "modalidades_con_etapas_contrastadas": 6,
+        "fuentes_totales": 118,
+        "artefactos_previos_controlados": 213,
+        "artefactos_previos_sin_cambio": 210,
+        "correcciones_documentales_autorizadas": 3,
+        "huellas_exteriores": 1724,
+        "git_exterior_conservado": true,
+        "sintaxis_plantuml": 0,
+        "svg_renderizado": 0,
+        "avisos_geometricos": 0,
+        "enlaces_galeria": 590,
+        "pruebas_funcionales_ejecutadas": 0,
+        "errores": []
+      }
+    },
+    {
+      "script": "validar_fase7.py",
+      "comando": [
+        "C:\\Users\\luisfer\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Users\\luisfer\\Documents\\Visual-Code\\sistema-modalidad\\docs\\ingenieria\\10-trazabilidad-y-validacion\\validar_fase7.py"
+      ],
+      "retorno": 0,
+      "stdout": "{\n  \"huellas_exteriores\": 1724,\n  \"archivos_modificados\": 167,\n  \"casos_revisados\": 75,\n  \"casos_con_excepciones_explicitas\": 59,\n  \"casos_con_metodos_prueba_identificados\": 23,\n  \"metodos_prueba_distintos\": 136,\n  \"uc_con_recorrido_directo_selectivo\": 55,\n  \"clasificaciones\": {\n    \"DIRECTA\": 80,\n    \"PENDIENTE DE VERIFICACIÓN\": 5,\n    \"REFERENCIA CONTEXTUAL\": 111,\n    \"NO REPRESENTADO\": 3\n  },\n  \"pruebas_producto_ejecutadas\": 0,\n  \"errores\": []\n}\n",
+      "stderr": "",
+      "datos": {
+        "huellas_exteriores": 1724,
+        "archivos_modificados": 167,
+        "casos_revisados": 75,
+        "casos_con_excepciones_explicitas": 59,
+        "casos_con_metodos_prueba_identificados": 23,
+        "metodos_prueba_distintos": 136,
+        "uc_con_recorrido_directo_selectivo": 55,
+        "clasificaciones": {
+          "DIRECTA": 80,
+          "PENDIENTE DE VERIFICACIÓN": 5,
+          "REFERENCIA CONTEXTUAL": 111,
+          "NO REPRESENTADO": 3
+        },
+        "pruebas_producto_ejecutadas": 0,
+        "errores": []
+      }
+    }
+  ],
+  "correcto": true
+}
