@@ -1,0 +1,45 @@
+@startuml
+' Identificador: DIA-USR-040
+' Nombre: Autenticación y usuarios
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-USR-001, UC-USR-002, UC-USR-003, UC-USR-004, UC-USR-005, UC-USR-006, UC-USR-009
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/usuarios/serializers.py
+' Evidencia: apps/usuarios/services.py
+' Evidencia: apps/usuarios/student_auth.py
+' Evidencia: apps/usuarios/views.py
+' Evidencia: core/settings/base.py
+!include ../../estilos/base.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title DIA-USR-040 — Autenticación y usuarios
+actor "Solicitante de acceso" as ACT_SYS_001
+actor "Usuario autenticado" as ACT_SYS_002
+actor "Administración\nfuncional" as ACT_USR_001
+rectangle "Sistema de Modalidades de Graduación\nAutenticación y usuarios" {
+  usecase "UC-USR-001\nIniciar sesión con usuario y\ncontraseña" as UC_USR_001
+  usecase "UC-USR-002\nAdministrar cuentas de usuario" as UC_USR_002
+  usecase "UC-USR-003\nRenovar tokens JWT" as UC_USR_003
+  usecase "UC-USR-004\nCerrar sesión" as UC_USR_004
+  usecase "UC-USR-005\nConsultar perfil y capacidades\npropias" as UC_USR_005
+  usecase "UC-USR-006\nAdministrar roles" as UC_USR_006
+  usecase "UC-USR-009\nIniciar sesión estudiantil con\nR.U. y C.I." as UC_USR_009
+}
+ACT_SYS_001 -- UC_USR_001
+ACT_USR_001 -- UC_USR_002
+ACT_SYS_001 -- UC_USR_003
+ACT_SYS_002 -- UC_USR_004
+ACT_SYS_002 -- UC_USR_005
+ACT_USR_001 -- UC_USR_006
+ACT_SYS_001 -- UC_USR_009
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

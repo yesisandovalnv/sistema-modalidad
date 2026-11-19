@@ -1,0 +1,73 @@
+@startuml
+' ID: DIA-EA-060
+' Nombre: Recorrido nominal y conclusión: Excelencia Académica
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de recorrido nominal y conclusión: excelencia académica, con decisiones, guardas y límites de evidencia.
+' Alcance: Excelencia Académica; Excelencia Académica; usa infraestructura común con política específica.
+' UC: UC-EA-001, UC-EA-002, UC-EA-003, UC-EA-004
+' RN: RN-EA-101, RN-EA-102, RN-EA-103, RN-EA-104
+' Componentes: CMP-CORE-001, CMP-MOD-001
+' Entidades: ENT-MOD-003, ENT-POS-004, ENT-POS-005
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista de coordinación académica entre solicitudes; el loop no existe como un único método automático. STAGE_DATA es declaración de código, no esquema instalado. Criterio inmutable después de seleccionado. RENDIMIENTO_ACADEMICO requiere promedio documentado >=80; RECONOCIMIENTO_CALIDAD no admite nota numérica. FAVORABLE aprueba EVALUACION_TRIBUNAL; DESFAVORABLE no rechaza automáticamente esa etapa.
+' Evidencia: apps/modalidades/excelencia_academica.py:ExcelenciaAcademicaPolicy
+' Evidencia: apps/modalidades/excelencia_academica_api.py:ExcelenciaAcademicaOverviewView.get
+' Evidencia: apps/modalidades/excelencia_academica_api.py:ExcelenciaAcademicaOverviewView.post
+' Evidencia: apps/modalidades/excelencia_academica_service.py:ExcelenciaAcademicaService.concluir
+' Evidencia: apps/modalidades/excelencia_academica_service.py:ExcelenciaAcademicaService.configurar_criterio
+' Evidencia: apps/modalidades/excelencia_academica_service.py:ExcelenciaAcademicaService.overview
+' Evidencia: apps/modalidades/excelencia_academica_service.py:ExcelenciaAcademicaService.registrar_evaluacion
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.aprobar_etapa
+' Prueba relacionada, no ejecutada: apps/modalidades/tests_excelencia_academica.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-EA-060 — Recorrido nominal y conclusión: Excelencia Académica
+!pragma useVerticalIf on
+|Operación administrativa (varias solicitudes)|
+start
+:Resolver expediente operativo y modalidad
+No simular este recorrido para HISTORICO;
+if (Policy y etapas activas coherentes) then (sí)
+else (no)
+:Rechazar por configuración/contexto;
+stop
+endif
+:Recorrer las etapas nominales declaradas;
+note right
+1. INSCRIPCION
+2. REVISION_REQUISITOS
+3. EVALUACION_TRIBUNAL
+4. REGISTRO_ACTA
+5. CONCLUSION_ACADEMICA
+end note
+repeat
+:Seleccionar la etapa/contexto operable
+y ejecutar sus operaciones académicas propias;
+|Backend común + policy específica|
+:Validar documentos, actores, requisitos y estado
+según la operación y la policy de esta modalidad;
+if (Guarda satisfecha) then (sí)
+:Aplicar efectos de la acción solicitada
+Aprobación/rechazo no es avance automático universal;
+else (no)
+:Devolver faltantes/error
+No dar por aprobada la etapa;
+stop
+endif
+|Operación administrativa (varias solicitudes)|
+repeat while (Quedan etapas/operaciones por tramitar) is (sí) not (no)
+|Servicio de conclusión específico|
+:ExcelenciaAcademicaService.concluir
+Exigir etapas previas, resultado FAVORABLE, tribunal y documentos/acta
+Iniciar/aprobar CONCLUSION_ACADEMICA y fijar CONCLUIDA;
+if (Gates propios satisfechos) then (sí)
+:Formalizar CONCLUIDA por la ruta correspondiente;
+else (no)
+:Rechazar conclusión y conservar el resultado permitido por atomic;
+stop
+endif
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

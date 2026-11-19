@@ -1,0 +1,44 @@
+@startuml
+' ID: DIA-POS-084
+' Nombre: Recepción física y cantidades
+' Tipo UML: Estados
+' Objetivo: Documentar el comportamiento implementado de recepción física y cantidades, con decisiones, guardas y límites de evidencia.
+' Alcance: Condiciones y entrega física; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-023, UC-POS-026, UC-POS-027
+' RN: RN-POS-123, RN-POS-126, RN-POS-127
+' Componentes: CMP-CORE-001, CMP-POS-001
+' Entidades: ENT-POS-004, ENT-POS-010, ENT-POS-011
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: La cantidad recibida se sustituye, no se incrementa. La operación individual permite recalcular desde COMPLETA/PARCIAL; el lote registrar_multiples exige pendientes. No se impone una irreversibilidad inexistente.
+' Evidencia: apps/postulantes/complementarios.py:CondicionService
+' Evidencia: apps/postulantes/complementarios.py:EntregaFisicaService
+' Evidencia: apps/postulantes/complementarios.py:EntregaFisicaService.crear
+' Evidencia: apps/postulantes/complementarios.py:EntregaFisicaService.registrar_entrega
+' Evidencia: apps/postulantes/complementarios_api.py:CondicionViewSet
+' Evidencia: apps/postulantes/complementarios_api.py:EntregaFisicaViewSet
+' Evidencia: apps/postulantes/complementarios_api.py:RelatedViewSet.get_queryset
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_complementarios.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-POS-084 — Recepción física y cantidades
+hide empty description
+state "PENDIENTE" as s0
+state "PARCIAL" as s1
+state "COMPLETA" as s2
+[*] --> s0 : T01 crear\n[G01] / A01
+s0 --> s2 : T02 registrar_entrega o actualizar\n[G02] / A02
+s0 --> s1 : T03 registrar_entrega o actualizar\n[G03] / A03
+s1 --> s2 : T04 registrar_entrega o actualizar\n[G04] / A04
+s1 --> s1 : T05 registrar_entrega o actualizar\n[G05] / A05
+s2 --> s2 : T06 registrar_entrega o actualizar\n[G06] / A06
+s2 --> s1 : T07 registrar_entrega o actualizar\n[G07] / A07
+legend bottom
+Txx: contrato completo en la ficha.
+Gxx = guarda de Txx; Axx = acción de Txx.
+Son alias documentales, no variables del código.
+No se infieren transiciones a partir de choices.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,30 @@
+@startuml
+' Identificador: DIA-NOT-040
+' Nombre: Notificaciones
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-NOT-001, UC-NOT-002
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/notificaciones/services.py
+' Evidencia: apps/notificaciones/views.py
+!include ../../estilos/base.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title DIA-NOT-040 — Notificaciones
+actor "Usuario autenticado" as ACT_SYS_002
+rectangle "Sistema de Modalidades de Graduación\nNotificaciones" {
+  usecase "UC-NOT-001\nConsultar notificaciones propias" as UC_NOT_001
+  usecase "UC-NOT-002\nActualizar lectura de\nnotificaciones propias" as UC_NOT_002
+}
+ACT_SYS_002 -- UC_NOT_001
+ACT_SYS_002 -- UC_NOT_002
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

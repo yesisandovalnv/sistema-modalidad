@@ -1,0 +1,79 @@
+@startuml
+' ID: DIA-SYS-004
+' Nombre: Creación operativa y arranque por modalidad
+' Tipo UML: Secuencia
+' Objetivo: Documentar el comportamiento implementado de creación operativa y arranque por modalidad, con decisiones, guardas y límites de evidencia.
+' Alcance: Registro, consulta y estado general; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-001, UC-POS-002, UC-POS-010, UC-POS-011, UC-POS-024, UC-POS-025
+' RN: RN-POS-101, RN-POS-102, RN-POS-110, RN-POS-111, RN-POS-124, RN-POS-125
+' Componentes: CMP-CORE-001, CMP-POS-001, CMP-WEB-001
+' Entidades: ENT-ACA-001, ENT-ACA-002, ENT-POS-001, ENT-POS-002, ENT-POS-003, ENT-POS-004, ENT-POS-005, ENT-USR-002, ENT-USR-003
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente.
+' Evidencia: apps/postulantes/permissions.py:postulaciones_in_scope
+' Evidencia: apps/postulantes/proyecto_grado_workflow.py:ProyectoGradoWorkflowOrchestrator.inicializar_proceso
+' Evidencia: apps/postulantes/services.py:PostulacionService.agregar_observacion
+' Evidencia: apps/postulantes/services.py:PostulacionService.cambiar_estado
+' Evidencia: apps/postulantes/services.py:PostulacionService.crear_postulacion
+' Evidencia: apps/postulantes/services.py:PostulacionService.crear_postulacion_historica
+' Evidencia: apps/postulantes/tesis_grado_workflow.py:TesisGradoWorkflowOrchestrator.inicializar_proceso
+' Evidencia: apps/postulantes/views.py:HistorialEstadoViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:ObservacionViewSet.create
+' Evidencia: apps/postulantes/views.py:ObservacionViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.create
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.historicas
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.partial_update
+' Evidencia: src/pages/postulantes/PostulantesPage.jsx
+' Evidencia: src/services/api.js
+' Evidencia: src/services/crudService.js
+' Prueba relacionada, no ejecutada: apps/postulantes/tests.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_security_contract.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_us007.py
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_role_authority.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-SYS-004 — Creación operativa y arranque por modalidad
+actor Administración as U
+participant "PostulantesPage / crudService" as FE
+participant apiClient as HTTP
+participant PostulacionViewSet as API
+participant "Permisos +\nPostulacionSerializer" as SER
+participant "ModalidadConfigurationValidator\nModalidadPolicyRegistry" as CFG
+participant PostulacionService as S
+participant "Orquestador propio /\nWorkflowService" as W
+database "Modelos ORM → PostgreSQL" as DB
+U -> FE : Registrar postulación
+FE -> HTTP : create(payload)
+HTTP -> API : POST /api/v1/postulaciones/
+API -> SER : IsAuthenticated / IsStaffOrReadOnly\ny serializer.is_valid()
+API -> CFG : has_policy y validate_modalidad
+alt Sin autorización o configuración válida
+ API --> HTTP : Error de permiso/validación
+else Petición válida
+ group transaction.atomic de la vista (incluye servicios anidados)
+  API -> S : crear_postulacion(datos con usuario)
+  S -> DB : Bloquear estudiante; comprobar vigente\ny obtener REGISTRADA
+  S -> DB : Crear postulación + historial + auditoría
+  alt PROYECTO_GRADO o TESIS_GRADO
+   API -> W : inicializar_proceso (orquestador de la modalidad)
+   W -> DB : Inicializar seguimientos; comprobar flujo oficial
+   W -> W : Iniciar INSCRIPCION solo cuando corresponde
+  else EXAMEN_GRADO / TRABAJO_DIRIGIDO / DIPLOMADO
+   API -> W : inicializar_flujo; validar primera INSCRIPCION
+   API -> W : iniciar_etapa(primer seguimiento)
+  else Excelencia u otra rama sin autoarranque aquí
+   note over API,W : create no inicializa automáticamente esta rama.
+  end
+ end
+ note over API,DB
+Error dentro de atomic revierte la creación y arranque.
+Callbacks registrados por servicios esperan commit exterior.
+end note
+ API --> HTTP : 201 postulación serializada
+ HTTP --> FE : Recurso creado
+end
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

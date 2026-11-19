@@ -1,0 +1,97 @@
+@startuml DIA-MOD-001-contratos-politicas
+' ID: DIA-MOD-001
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Mostrar contratos de extensión sin atribuir a todas las modalidades las reglas de Proyecto
+' Alcance y elementos: EtapaDefinition, DecisionAcademicaDefinition, ModalidadCapabilities, BaseEventoPolicy, BaseEvaluacionPolicy, BaseRevisionTribunalPreviaPolicy, BaseRequisitosPolicy, BaseCierrePolicy, BaseModalidadPolicy, ModalidadPolicyRegistry
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.
+' Fuente: apps/modalidades/policies.py
+!include ../estilos/base.puml.inc
+title DIA-MOD-001 — Clases: contratos-politicas
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+left to right direction
+class "EtapaDefinition" as EtapaDefinition <<clase>> {
+  codigo : str
+  nombre : str
+  orden : int
+  obligatoria : bool
+}
+class "DecisionAcademicaDefinition" as DecisionAcademicaDefinition <<clase>> {
+  codigo : str
+  resultados : tuple[str, ...]
+  nombre : str | None
+  roles_participantes : tuple[str, ...]
+}
+class "ModalidadCapabilities" as ModalidadCapabilities <<clase>> {
+  codigo : str
+  nombre : str
+  soportada : bool
+  workflow_configurado : bool
+  +to_dict()
+}
+class "BaseEventoPolicy" as BaseEventoPolicy <<politica>> {
+  +get_tipos_evento()
+  +get_precondiciones_programacion(codigo_etapa)
+  +evaluar_requisitos_programacion(tipo_evento, seguimiento, asignaciones)
+  +validar_programacion(**kwargs)
+  +validar_participante(**kwargs)
+  +validar_quorum(evento)
+}
+class "BaseEvaluacionPolicy" as BaseEvaluacionPolicy <<politica>> {
+  +get_configuracion_numerica(tipo)
+  +calcular_aporte(nota, ponderacion)
+  +get_valores_para_semantica(evento, tipo, nota, semantica)
+  +admite_semantica_entrada(evento, tipo, semantica)
+  +get_tipos_evaluacion()
+  +validar_evaluacion(**kwargs)
+}
+class "BaseRevisionTribunalPreviaPolicy" as BaseRevisionTribunalPreviaPolicy <<politica>> {
+  +validar_seguimiento(seguimiento)
+  +validar_tribunales(seguimiento)
+  +get_documento_final_codigo()
+  +get_tipo_evidencia_codigo()
+}
+class "BaseRequisitosPolicy" as BaseRequisitosPolicy <<politica>> {
+  +get_condiciones_requeridas(fase)
+  +get_entregas_requeridas(fase)
+  +get_documentos_requeridos(fase)
+  +get_actores_carga_permitidos(fase, codigo_documento)
+  +validar_condicion(codigo, **kwargs)
+  +validar_entrega(codigo, **kwargs)
+}
+class "BaseCierrePolicy" as BaseCierrePolicy <<politica>> {
+  +evaluar_revision_final(postulacion)
+  +evaluar_cierre_documental(postulacion)
+  +puede_concluir(postulacion)
+  +obtener_faltantes(postulacion)
+  +obtener_advertencias(postulacion)
+}
+class "BaseModalidadPolicy" as BaseModalidadPolicy <<politica>> {
+  codigo
+  etapas : tuple[EtapaDefinition, ...]
+  evento_policy : BaseEventoPolicy | None
+  evaluacion_policy : BaseEvaluacionPolicy | None
+  +get_codigo_modalidad()
+  +get_etapas_configuradas()
+  +get_etapa_inicial()
+  +get_etapas_obligatorias()
+  +get_etapas_finales()
+  +get_transiciones_permitidas()
+}
+class "ModalidadPolicyRegistry" as ModalidadPolicyRegistry <<politica>> {
+  _policies : dict[str, BaseModalidadPolicy]
+  +register(codigo_modalidad, policy)
+  +get(value)
+  +has_policy(value)
+  +list_supported()
+}
+BaseModalidadPolicy ..> EtapaDefinition : tipo de etapas
+BaseModalidadPolicy ..> BaseEventoPolicy : tipo de evento_policy
+BaseModalidadPolicy ..> BaseEvaluacionPolicy : tipo de evaluacion_policy
+BaseModalidadPolicy ..> BaseRequisitosPolicy : tipo de requisitos_policy
+ModalidadPolicyRegistry ..> BaseModalidadPolicy : tipo de _policies
+@enduml

@@ -1,0 +1,49 @@
+@startuml
+' ID: DIA-USR-060
+' Nombre: Acceso, sesión y renovación
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de acceso, sesión y renovación, con decisiones, guardas y límites de evidencia.
+' Alcance: Autenticación y sesión; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-USR-001, UC-USR-003, UC-USR-004, UC-USR-005, UC-USR-009
+' RN: RN-USR-101, RN-USR-103, RN-USR-104, RN-USR-105, RN-USR-109
+' Componentes: CMP-CORE-001, CMP-USR-001
+' Entidades: ENT-USR-001, ENT-USR-002, ENT-USR-004
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Las acciones de un catálogo o ciclo son variantes por solicitud; no ejecución obligatoria de todo CRUD. Guardas académicas delegadas a la política citada.
+' Evidencia: apps/usuarios/serializers.py:LoginSerializer.validate
+' Evidencia: apps/usuarios/serializers.py:LogoutSerializer
+' Evidencia: apps/usuarios/services.py:UserCapabilitiesService.resolve
+' Evidencia: apps/usuarios/student_auth.py:authenticate_student
+' Evidencia: apps/usuarios/views.py:CustomTokenObtainPairView.post
+' Evidencia: apps/usuarios/views.py:CustomTokenRefreshView.post
+' Evidencia: apps/usuarios/views.py:LogoutView.post
+' Evidencia: apps/usuarios/views.py:MeView.get
+' Evidencia: apps/usuarios/views.py:StudentTokenObtainPairView.post
+' Evidencia: core/settings/base.py:SIMPLE_JWT
+' Evidencia: src/services/api.js
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_contract.py
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_student_login.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-USR-060 — Acceso, sesión y renovación
+!pragma useVerticalIf on
+|Operador API|
+start
+:Solicitar la operación indicada;
+|Backend|
+:Seleccionar login por contraseña, R.U./C.I., refresh, logout o perfil;
+:Validar el payload y la guarda de la variante
+Login estudiantil: cuenta existente, activa, sin staff/superusuario y control de intentos;
+if (Credenciales/token y permisos de la variante válidos) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Procesar authenticate, emisión/renovación JWT o blacklist según la ruta
+Perfil: serializar usuario y capacidades;
+:Devolver el resultado de la operación;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

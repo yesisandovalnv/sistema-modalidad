@@ -1,0 +1,48 @@
+@startuml
+' ID: DIA-DOC-063
+' Nombre: Corrección administrativa y confirmación técnica
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de corrección administrativa y confirmación técnica, con decisiones, guardas y límites de evidencia.
+' Alcance: Corrección y confirmación técnica; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-DOC-004, UC-DOC-005
+' RN: RN-DOC-104, RN-DOC-105
+' Componentes: CMP-CORE-001, CMP-DOC-001
+' Entidades: ENT-DOC-003, ENT-DOC-004, ENT-DOC-005, ENT-DOC-006, ENT-POS-006, ENT-USR-003
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Dos variantes independientes, no pasos obligatorios de una misma solicitud. No se extrapolan las validaciones de create a PUT/PATCH/DELETE heredados de la confirmación.
+' Evidencia: apps/documentos/services.py:ConfirmacionCorreccionDocumentoService.registrar
+' Evidencia: apps/documentos/services.py:DocumentoService.marcar_observacion_corregida
+' Evidencia: apps/documentos/views.py:ConfirmacionCorreccionDocumentoViewSet.create
+' Evidencia: apps/documentos/views.py:ObservacionDocumentoViewSet.marcar_corregida
+' Prueba relacionada, no ejecutada: apps/documentos/test_api.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-DOC-063 — Corrección administrativa y confirmación técnica
+!pragma useVerticalIf on
+
+|Administración|
+start
+:Seleccionar corrección o confirmación técnica;
+|Backend|
+:Exigir autoridad administrativa y validar payload;
+if (Marcar observación corregida) then (sí)
+ :Atomic: bloquear observación\nExigir activa y no corregida;
+ :Guardar corregida=True y fecha;
+ :Consultar pendientes de la versión ACTUAL\ny recalcular requiere_correccion del documento;
+else (Crear confirmación técnica)
+ :Atomic: construir confirmación con versiones,\nevento, asignación y confirmado_por=request.user;
+ :Ejecutar full_clean y validación específica de policy;
+ if (Contexto y versiones coherentes) then (sí)
+  :Guardar confirmación;
+ else (no)
+  :Error y rollback;
+  stop
+ endif
+endif
+:Auditar y devolver registro o error;
+stop
+
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,67 @@
+@startuml
+' ID: DIA-SYS-003
+' Nombre: Alta operativa frente a registro histórico
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de alta operativa frente a registro histórico, con decisiones, guardas y límites de evidencia.
+' Alcance: Registro, consulta y estado general; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-001, UC-POS-002, UC-POS-010, UC-POS-011, UC-POS-024, UC-POS-025
+' RN: RN-POS-101, RN-POS-102, RN-POS-110, RN-POS-111, RN-POS-124, RN-POS-125
+' Componentes: CMP-CORE-001, CMP-POS-001
+' Entidades: ENT-ACA-001, ENT-ACA-002, ENT-POS-001, ENT-POS-002, ENT-POS-003, ENT-POS-004, ENT-POS-005, ENT-USR-002, ENT-USR-003
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente.
+' Evidencia: apps/postulantes/permissions.py:postulaciones_in_scope
+' Evidencia: apps/postulantes/services.py:PostulacionService.agregar_observacion
+' Evidencia: apps/postulantes/services.py:PostulacionService.cambiar_estado
+' Evidencia: apps/postulantes/services.py:PostulacionService.crear_postulacion
+' Evidencia: apps/postulantes/services.py:PostulacionService.crear_postulacion_historica
+' Evidencia: apps/postulantes/views.py:HistorialEstadoViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:ObservacionViewSet.create
+' Evidencia: apps/postulantes/views.py:ObservacionViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.create
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.historicas
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.partial_update
+' Prueba relacionada, no ejecutada: apps/postulantes/tests.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_security_contract.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_us007.py
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_role_authority.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-SYS-003 — Alta operativa frente a registro histórico
+|Administración|
+start
+:Enviar datos de postulación;
+|Backend|
+:Validar serializer, política y configuración de modalidad;
+if (Datos/configuración válidos) then (sí)
+else (no)
+ :Rechazar sin crear expediente;
+ stop
+endif
+if (Ruta historicas) then (histórica)
+ :Servicio histórico atómico\nCrear CONCLUIDA / CERRADA / HISTORICO\nHistorial y auditoría;
+ :No crear seguimiento operativo;
+else (ordinaria)
+ :Abrir atomic en la vista\nServicio: bloquear estudiante y exigir ausencia de vigente;
+ if (Estado REGISTRADA y unicidad válidos) then (sí)
+ else (no)
+  :Error y rollback;
+  stop
+ endif
+ :Crear REGISTRADA, historial y auditoría;
+ if (Proyecto o Tesis) then (sí)
+  :Orquestador propio inicializa flujo\ny arranca INSCRIPCION si la configuración es oficial;
+ elseif (Examen, Trabajo Dirigido o Diplomado) then (sí)
+  :Inicializar flujo\nExigir INSCRIPCION como primera etapa e iniciarla;
+ else (otra rama, incluida Excelencia)
+  :Sin autoarranque en create\nInicialización por operación específica;
+ endif
+ :Commit de la vista;
+endif
+:Serializar respuesta 201;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,65 @@
+@startuml
+' ID: DIA-ACA-060
+' Nombre: Catálogos y archivo oficial de modalidad
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de catálogos y archivo oficial de modalidad, con decisiones, guardas y límites de evidencia.
+' Alcance: Catálogos y documentación oficial; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-ACA-001, UC-ACA-002, UC-ACA-003, UC-ACA-004, UC-ACA-005, UC-ACA-006, UC-ACA-007, UC-POS-028, UC-DOC-007, UC-DOC-008
+' RN: RN-ACA-101, RN-ACA-102, RN-ACA-103, RN-ACA-104, RN-ACA-105, RN-ACA-106, RN-ACA-107, RN-DOC-107, RN-DOC-108, RN-POS-128
+' Componentes: CMP-ACA-001, CMP-CORE-001
+' Entidades: ENT-ACA-001, ENT-ACA-002, ENT-ACA-003, ENT-ACA-004, ENT-ACA-005, ENT-ACA-006, ENT-DOC-001, ENT-DOC-002, ENT-POS-001, ENT-USR-003
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Las acciones de un catálogo o ciclo son variantes por solicitud; no ejecución obligatoria de todo CRUD. Guardas académicas delegadas a la política citada.
+' Evidencia: apps/academico/serializers.py:DocumentoOficialModalidadSerializer
+' Evidencia: apps/academico/serializers.py:ModalidadRequisitoSerializer.validate
+' Evidencia: apps/academico/serializers.py:ModalidadSerializer
+' Evidencia: apps/academico/serializers.py:PeriodoSerializer.validate
+' Evidencia: apps/academico/views.py:ModalidadRequisitoViewSet
+' Evidencia: apps/academico/views.py:ModalidadViewSet
+' Evidencia: apps/academico/views.py:ModalidadViewSet._documento_oficial
+' Evidencia: apps/academico/views.py:ModalidadViewSet._guardar_documento_oficial
+' Evidencia: apps/academico/views.py:ModalidadViewSet.capacidades
+' Evidencia: apps/academico/views.py:ModalidadViewSet.descargar_documento_oficial
+' Evidencia: apps/academico/views.py:PeriodoViewSet
+' Evidencia: apps/documentos/views.py:EstadoDocumentoViewSet
+' Evidencia: apps/documentos/views.py:TipoDocumentoViewSet
+' Evidencia: apps/modalidades/policies.py:ModalidadPolicyRegistry
+' Evidencia: apps/postulantes/serializers.py:EstadoPostulacionSerializer
+' Evidencia: apps/postulantes/views.py:EstadoPostulacionViewSet
+' Evidencia: core/permissions.py:IsStaffOrReadOnly
+' Prueba relacionada, no ejecutada: apps/academico/tests.py
+' Prueba relacionada, no ejecutada: apps/academico/tests_documento_oficial_modalidad.py
+' Prueba relacionada, no ejecutada: apps/documentos/test_api.py
+' Prueba relacionada, no ejecutada: apps/modalidades/tests_policies.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_security_contract.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-ACA-060 — Catálogos y archivo oficial de modalidad
+!pragma useVerticalIf on
+|Operador API|
+start
+:Solicitar la operación indicada;
+|Backend|
+:Autenticar y seleccionar lectura o escritura de catálogo;
+:Aplicar permiso administrativo solo en escritura
+Modalidad: create/destroy rechazados; estados técnicos: DELETE rechazado;
+if (Método y autoridad admitidos) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Validar serializer de la variante
+Archivo oficial: PDF, firma, tamaño, nombre y pertenencia a modalidad;
+if (Datos válidos) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Ejecutar variante de catálogo
+Archivo oficial: atomic, auditoría y eliminación del sustituido por on_commit;
+:Devolver el resultado de la operación;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,57 @@
+@startuml DIA-SYS-006-componentes-general
+' ID: DIA-SYS-006
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Situar SPA, API, seguridad, dominio y almacenamiento
+' Alcance y elementos: SPA, seguridad, dominio, políticas, ORM y archivos
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Vista general selectiva: las dependencias no son una secuencia ni servicios desplegables separados. No hay broker externo demostrado. FileField representa rutas/archivos, no BLOB PostgreSQL.
+' Fuente: apps/documentos/services.py
+' Fuente: apps/notificaciones/events.py
+' Fuente: apps/postulantes/workflow.py
+' Fuente: apps/reportes/services.py
+' Fuente: core/settings/base.py
+' Fuente: core/urls.py
+' Fuente: src/services/api.js
+!include ../estilos/base.puml.inc
+title DIA-SYS-006 — Componentes generales
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+
+component "React SPA\nCMP-WEB-001" as Web
+package "Backend Django REST Framework" {
+ component "Rutas / APIViews / ViewSets" as API
+ component "JWT / permisos / alcance\nCMP-USR-001" as Auth
+ component "Servicios de expediente\nCMP-POS-001" as Pos
+ component "Registro y políticas\nCMP-MOD-001" as Mod
+ component "Documentos\nCMP-DOC-001" as Doc
+ component "Catálogos académicos\nCMP-ACA-001" as Acad
+ component "Reportes\nCMP-REP-001" as Rep
+ component "Eventos y notificaciones\nCMP-NOT-001" as Not
+ component "ORM Django" as ORM
+}
+database "PostgreSQL" as DB
+folder "media / FileField" as Media
+Web --> API : HTTP / JSON / multipart / Bearer
+API --> Auth : autenticación y autorización
+API --> Pos
+API --> Doc
+API --> Rep
+API --> Acad
+API --> Not : consulta y lectura de notificaciones
+Pos --> Acad : entidades académicas
+Acad --> ORM
+Pos --> Mod : validaciones específicas
+Doc --> Mod : documentos / actores / contexto
+Pos --> Not : publicar después del commit
+Doc --> Not : publicar después del commit
+Pos --> ORM
+Doc --> ORM
+Not --> ORM
+Rep --> ORM
+ORM --> DB : psycopg2
+Doc --> Media : guardar / leer archivos
+
+@enduml

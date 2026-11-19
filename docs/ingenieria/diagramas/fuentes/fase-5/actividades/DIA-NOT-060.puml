@@ -1,0 +1,49 @@
+@startuml
+' ID: DIA-NOT-060
+' Nombre: Publicación interna y notificaciones propias
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de publicación interna y notificaciones propias, con decisiones, guardas y límites de evidencia.
+' Alcance: Notificación interna y lectura; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-NOT-001, UC-NOT-002
+' RN: RN-NOT-101, RN-NOT-102
+' Componentes: CMP-CORE-001, CMP-NOT-001
+' Entidades: ENT-NOT-001, ENT-USR-003
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Publicación y lectura son procesos relacionados, no una única solicitud. Callback síncrono posterior al commit, sin broker ni garantía de entrega/reintento persistente demostrados.
+' Evidencia: apps/notificaciones/events.py:DomainEventPublisher.publish_after_commit
+' Evidencia: apps/notificaciones/services.py:NotificationService.listar_usuario
+' Evidencia: apps/notificaciones/services.py:NotificationService.marcar_leida
+' Evidencia: apps/notificaciones/services.py:NotificationService.procesar_evento
+' Evidencia: apps/notificaciones/views.py:NotificacionViewSet.get_queryset
+' Evidencia: apps/notificaciones/views.py:NotificacionViewSet.marcar_leida
+' Prueba relacionada, no ejecutada: apps/notificaciones/tests_api.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-NOT-060 — Publicación interna y notificaciones propias
+!pragma useVerticalIf on
+
+start
+if (Evento de dominio) then (sí)
+ :build_event y registrar on_commit robust=True;
+ if (Commit exterior exitoso) then (sí)
+  :Invocar handlers locales síncronamente;
+  :Resolver destinatarios activos y plantilla;
+  :get_or_create por destinatario y deduplication_key\nen transacciones de notificación;
+ else (rollback)
+  :No ejecutar callbacks;
+ endif
+else (Operación de usuario)
+ :Autenticar y limitar queryset a destinatario propio;
+ if (Modificar lectura) then (sí)
+  :Control de propietario\nMarcar leída/no leída o todas propias;
+ else (consulta)
+  :Listar, obtener detalle o contar no leídas propias;
+ endif
+endif
+:Terminar la operación seleccionada;
+stop
+
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

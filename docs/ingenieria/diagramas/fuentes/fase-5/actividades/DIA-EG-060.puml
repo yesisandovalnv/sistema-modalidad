@@ -1,0 +1,75 @@
+@startuml
+' ID: DIA-EG-060
+' Nombre: Recorrido nominal y conclusión: Examen de Grado
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de recorrido nominal y conclusión: examen de grado, con decisiones, guardas y límites de evidencia.
+' Alcance: Examen de Grado; Examen de Grado; usa infraestructura común con política específica.
+' UC: UC-EG-001, UC-EG-002, UC-EG-003
+' RN: RN-EG-101, RN-EG-102, RN-EG-103
+' Componentes: CMP-CORE-001, CMP-MOD-001
+' Entidades: ENT-MOD-001, ENT-MOD-002, ENT-POS-004, ENT-POS-005
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista de coordinación académica entre solicitudes; el loop no existe como un único método automático. STAGE_DATA es declaración de código, no esquema instalado. Cuatro áreas con pesos de AREA_DATA, consenso o tres notas individuales. Mínimo 61 por área. Primer insuficiente: POSTERGADA, intento 2 y plazo de 15 días; segundo insuficiente: REPROBADA. No son defensas 30/70 de Proyecto.
+' Evidencia: apps/modalidades/examen_grado.py:ExamenGradoPolicy
+' Evidencia: apps/modalidades/examen_grado_api.py:ExamenGradoOverviewView.get
+' Evidencia: apps/modalidades/examen_grado_api.py:ExamenGradoOverviewView.post
+' Evidencia: apps/modalidades/examen_grado_service.py:ExamenGradoService.concluir
+' Evidencia: apps/modalidades/examen_grado_service.py:ExamenGradoService.overview
+' Evidencia: apps/modalidades/examen_grado_service.py:ExamenGradoService.registrar_evaluacion
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.aprobar_etapa
+' Prueba relacionada, no ejecutada: apps/modalidades/tests_examen_grado.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-EG-060 — Recorrido nominal y conclusión: Examen de Grado
+!pragma useVerticalIf on
+|Operación administrativa (varias solicitudes)|
+start
+:Resolver expediente operativo y modalidad
+No simular este recorrido para HISTORICO;
+if (Policy y etapas activas coherentes) then (sí)
+else (no)
+:Rechazar por configuración/contexto;
+stop
+endif
+:Recorrer las etapas nominales declaradas;
+note right
+1. INSCRIPCION
+2. PREPARACION_EXAMEN
+3. AREA_1
+4. AREA_2
+5. AREA_3
+6. AREA_4
+7. DOCUMENTACION_FINAL
+8. CONCLUSION_ACADEMICA
+end note
+repeat
+:Seleccionar la etapa/contexto operable
+y ejecutar sus operaciones académicas propias;
+|Backend común + policy específica|
+:Validar documentos, actores, requisitos y estado
+según la operación y la policy de esta modalidad;
+if (Guarda satisfecha) then (sí)
+:Aplicar efectos de la acción solicitada
+Aprobación/rechazo no es avance automático universal;
+else (no)
+:Devolver faltantes/error
+No dar por aprobada la etapa;
+stop
+endif
+|Operación administrativa (varias solicitudes)|
+repeat while (Quedan etapas/operaciones por tramitar) is (sí) not (no)
+|Servicio de conclusión específico|
+:ExamenGradoService.concluir
+Validar etapas previas y documentos
+Iniciar/aprobar CONCLUSION_ACADEMICA y fijar CONCLUIDA;
+if (Gates propios satisfechos) then (sí)
+:Formalizar CONCLUIDA por la ruta correspondiente;
+else (no)
+:Rechazar conclusión y conservar el resultado permitido por atomic;
+stop
+endif
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

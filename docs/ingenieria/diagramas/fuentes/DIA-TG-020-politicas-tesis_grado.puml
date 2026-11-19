@@ -1,0 +1,68 @@
+@startuml DIA-TG-020-politicas-tesis_grado
+' ID: DIA-TG-020
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Mostrar especialización propia de TG y herencias explícitas
+' Alcance y elementos: TesisGradoEventoPolicy, TesisGradoEvaluacionPolicy, TesisGradoRequisitosPolicy, TesisGradoPolicy
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.
+' Fuente: apps/modalidades/policies.py
+' Fuente: apps/modalidades/tesis_grado.py
+!include ../estilos/base.puml.inc
+title DIA-TG-020 — Clases: politicas-tesis_grado
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+left to right direction
+class "TesisGradoEventoPolicy" as TesisGradoEventoPolicy <<politica>> {
+  PUBLIC_REQUIRED_ACTORS
+  EVENT_STAGE
+  +public_actor_requirements(asignaciones)
+  +get_tipos_evento()
+  +get_etapa_asociada(tipo_evento)
+  +validar_correspondencia_evento_etapa(evento)
+  +validar_programacion(tipo_evento, seguimiento, fecha_programada, **kwargs)
+  +validar_participante(evento, asignacion, rol_evento, **kwargs)
+}
+class "TesisGradoEvaluacionPolicy" as TesisGradoEvaluacionPolicy <<politica>> {
+  +get_tipos_evaluacion()
+  +get_configuracion_numerica(tipo)
+  +admite_semantica_entrada(evento, tipo, semantica)
+  +get_modalidad_registro_por_defecto(evento, tipo)
+  +validar_solicitud_registro(modalidad_registro, evaluador, **kwargs)
+  +validar_registro(evaluacion)
+}
+class "TesisGradoRequisitosPolicy" as TesisGradoRequisitosPolicy <<politica>> {
+  INSCRIPCION_DOCUMENTS
+  DOCUMENTS_BY_STAGE
+  +get_documentos_requeridos(fase)
+}
+class "TesisGradoPolicy" as TesisGradoPolicy <<politica>> {
+  codigo
+  etapas
+  evento_policy
+  evaluacion_policy
+  +resolver_contexto_documental(postulacion)
+  +get_orientacion_etapa_actual(postulacion, seguimiento)
+  +get_reglas_asignacion()
+  +get_configuracion_actores(postulacion, seguimiento)
+  +validar_asignacion(queryset_contexto, postulacion, tipo_participacion, seguimiento_etapa, orden_cargo, **kwargs)
+  +validar_nuevo_intento(etapa, ultimo_seguimiento, **kwargs)
+}
+class "BaseEventoPolicy" as BaseEventoPolicy <<referencia>> {
+}
+class "BaseEvaluacionPolicy" as BaseEvaluacionPolicy <<referencia>> {
+}
+class "BaseRequisitosPolicy" as BaseRequisitosPolicy <<referencia>> {
+}
+class "BaseModalidadPolicy" as BaseModalidadPolicy <<referencia>> {
+}
+BaseEventoPolicy <|-- TesisGradoEventoPolicy
+BaseEvaluacionPolicy <|-- TesisGradoEvaluacionPolicy
+BaseRequisitosPolicy <|-- TesisGradoRequisitosPolicy
+BaseModalidadPolicy <|-- TesisGradoPolicy
+TesisGradoPolicy --> TesisGradoEventoPolicy : evento_policy
+TesisGradoPolicy --> TesisGradoEvaluacionPolicy : evaluacion_policy
+TesisGradoPolicy --> TesisGradoRequisitosPolicy : requisitos_policy
+@enduml

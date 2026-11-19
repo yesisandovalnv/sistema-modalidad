@@ -1,0 +1,53 @@
+@startuml
+' ID: DIA-REP-060
+' Nombre: Consulta y exportación de reportes
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de consulta y exportación de reportes, con decisiones, guardas y límites de evidencia.
+' Alcance: Reportes y exportación; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-REP-001, UC-REP-002, UC-REP-003, UC-REP-004
+' RN: RN-REP-101, RN-REP-102, RN-REP-103, RN-REP-104
+' Componentes: CMP-CORE-001, CMP-REP-001
+' Entidades: ENT-ACA-001, ENT-ACA-002, ENT-MOD-002, ENT-MOD-003, ENT-MOD-004, ENT-POS-004, ENT-POS-014
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Las acciones de un catálogo o ciclo son variantes por solicitud; no ejecución obligatoria de todo CRUD. Guardas académicas delegadas a la política citada.
+' Evidencia: apps/reportes/permissions.py:CanExportReports.has_permission
+' Evidencia: apps/reportes/resultados.py:ResultadoAcademicoReportService
+' Evidencia: apps/reportes/services.py:DashboardService.obtener_dashboard
+' Evidencia: apps/reportes/services.py:ReportePostulacionesService
+' Evidencia: apps/reportes/views.py:DashboardView.get
+' Evidencia: apps/reportes/views.py:ExportView.get
+' Evidencia: apps/reportes/views.py:PostulacionesReportView.get
+' Evidencia: apps/reportes/views.py:ResultadosAcademicosReportView.get
+' Prueba relacionada, no ejecutada: apps/reportes/tests.py
+' Prueba relacionada, no ejecutada: apps/reportes/tests_dashboard.py
+' Prueba relacionada, no ejecutada: apps/reportes/tests_resultados_api.py
+' Prueba relacionada, no ejecutada: apps/reportes/tests_resultados_export.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-REP-060 — Consulta y exportación de reportes
+!pragma useVerticalIf on
+|Operador API|
+start
+:Solicitar la operación indicada;
+|Backend|
+:Autenticar; para consulta exigir administración o DOCENTE;
+if (Actor admitido por la vista) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Aplicar alcance global administrativo o expedientes asignados al docente;
+:Si es exportación exigir administración
+Validar filtros/formato de la ruta concreta;
+if (Formato y autoridad de exportación válidos) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Construir reporte con servicio del recurso y devolver JSON o archivo permitido;
+:Devolver el resultado de la operación;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

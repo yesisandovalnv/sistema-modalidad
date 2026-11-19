@@ -1,0 +1,69 @@
+@startuml
+' ID: DIA-POS-061
+' Nombre: Inscripción, requisitos y aprobación de etapa
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de inscripción, requisitos y aprobación de etapa, con decisiones, guardas y límites de evidencia.
+' Alcance: Inicialización, inscripción y seguimiento; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-003, UC-POS-005, UC-POS-008, UC-POS-009, UC-POS-012, UC-POS-013, UC-POS-014, UC-POS-015
+' RN: RN-POS-103, RN-POS-105, RN-POS-108, RN-POS-109, RN-POS-112, RN-POS-113, RN-POS-114, RN-POS-115
+' Componentes: CMP-CORE-001, CMP-POS-001
+' Entidades: ENT-ACA-004, ENT-DOC-004, ENT-POS-001, ENT-POS-002, ENT-POS-004, ENT-POS-005, ENT-POS-006, ENT-POS-007, ENT-POS-008, ENT-POS-015, ENT-POS-016
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Las acciones de un catálogo o ciclo son variantes por solicitud; no ejecución obligatoria de todo CRUD. Guardas académicas delegadas a la política citada.
+' Evidencia: apps/postulantes/decisiones_academicas.py:DecisionAcademicaEtapaService.registrar
+' Evidencia: apps/postulantes/dictamenes_revision.py:DictamenRevisionDocumentoService.registrar
+' Evidencia: apps/postulantes/revision_tribunal.py:RevisionTribunalPreviaService
+' Evidencia: apps/postulantes/serializers.py:SeguimientoEtapaSerializer
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.concluir_academicamente
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.inicializar_flujo
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.nuevo_intento
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.aprobar
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.dictamenes_revision
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.informes_revision_tribunal
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.registrar_decision
+' Evidencia: apps/postulantes/workflow.py:WorkflowService._validar_etapas_anteriores_aprobadas
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.aprobar_etapa
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.concluir_postulacion
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.crear_nuevo_intento
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.inicializar_flujo
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.iniciar_etapa
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_cierre.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_decisiones_academicas.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_dictamen_revision.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_revision_tribunal.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_workflow.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-POS-061 — Inscripción, requisitos y aprobación de etapa
+!pragma useVerticalIf on
+|Operador API|
+start
+:Solicitar la operación indicada;
+|Backend|
+:Administración solicita iniciar, observar, aprobar, rechazar u omitir
+Inicialización crea intentos pendientes según etapas activas;
+:Validar serializer; bloquear seguimiento dentro de atomic
+Rechazar registros HISTORICO para el workflow operativo;
+if (Usuario, seguimiento y tipo de registro válidos) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Ejecutar validador propio de la acción
+Inicio: pendiente, sin otra en proceso, previas obligatorias aprobadas y policy
+Aprobación: EN_PROCESO/OBSERVADA y policy;
+if (Guarda de estado y política satisfecha) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Aplicar estado, fechas y responsable
+Aprobar/rechazar: publicar evento para después del commit
+Proyecto: autoabrir siguiente solo en flujo oficial;
+:Devolver el resultado de la operación;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,57 @@
+@startuml
+' ID: DIA-POS-064
+' Nombre: Asignación y reemplazo académico
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de asignación y reemplazo académico, con decisiones, guardas y límites de evidencia.
+' Alcance: Asignaciones y elegibilidad contextual; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-USR-007, UC-USR-008, UC-POS-004, UC-POS-016, UC-POS-017
+' RN: RN-POS-104, RN-POS-116, RN-POS-117, RN-USR-107, RN-USR-108
+' Componentes: CMP-CORE-001, CMP-POS-001
+' Entidades: ENT-POS-004, ENT-POS-005, ENT-POS-006, ENT-USR-002
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Las acciones de un catálogo o ciclo son variantes por solicitud; no ejecución obligatoria de todo CRUD. Guardas académicas delegadas a la política citada.
+' Evidencia: apps/postulantes/asignaciones.py:AsignacionService.asignar_actor
+' Evidencia: apps/postulantes/asignaciones.py:AsignacionService.finalizar_asignacion
+' Evidencia: apps/postulantes/asignaciones.py:AsignacionService.reemplazar_actor
+' Evidencia: apps/postulantes/views.py:AsignacionPostulacionViewSet
+' Evidencia: apps/postulantes/views.py:AsignacionPostulacionViewSet.finalizar
+' Evidencia: apps/postulantes/views.py:AsignacionPostulacionViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.asignar
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.candidatos_asignacion
+' Evidencia: apps/usuarios/views.py:AssignmentCandidateViewSet.get_queryset
+' Evidencia: apps/usuarios/views.py:CanManageApplications.has_permission
+' Evidencia: apps/usuarios/views.py:StudentOptionViewSet.get_queryset
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_assignments.py
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_assignment_candidates_api.py
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_students_api.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-POS-064 — Asignación y reemplazo académico
+!pragma useVerticalIf on
+|Operador API|
+start
+:Solicitar la operación indicada;
+|Backend|
+:Administración consulta candidatos o solicita asignación
+El catálogo no certifica elegibilidad;
+:Validar payload y bloquear postulación, usuarios y contexto en atomic;
+if (Operador y contexto válidos) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Verificar duplicados activos, modalidad, ocupación, incompatibilidades y actor;
+if (Reglas específicas satisfechas) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Crear asignación, auditar y programar evento postcommit
+Reemplazar: finalizar anterior y asignar nuevo dentro de atomic
+Finalizar: impedir participación en evento activo;
+:Devolver el resultado de la operación;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

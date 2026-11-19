@@ -1,0 +1,69 @@
+@startuml
+' ID: DIA-USR-071
+' Nombre: Refresh compartido y reintento HTTP
+' Tipo UML: Secuencia
+' Objetivo: Documentar el comportamiento implementado de refresh compartido y reintento http, con decisiones, guardas y límites de evidencia.
+' Alcance: Autenticación y sesión; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-USR-001, UC-USR-003, UC-USR-004, UC-USR-005, UC-USR-009
+' RN: RN-USR-101, RN-USR-103, RN-USR-104, RN-USR-105, RN-USR-109
+' Componentes: CMP-CORE-001, CMP-USR-001, CMP-WEB-001
+' Entidades: ENT-USR-001, ENT-USR-002, ENT-USR-004
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: El frontend consume una promesa compartida; no es un broker. El detalle interno de SimpleJWT se delega a la dependencia/configuración, sin inventar consultas o commits del paquete.
+' Evidencia: apps/usuarios/serializers.py:LoginSerializer.validate
+' Evidencia: apps/usuarios/serializers.py:LogoutSerializer
+' Evidencia: apps/usuarios/services.py:UserCapabilitiesService.resolve
+' Evidencia: apps/usuarios/student_auth.py:authenticate_student
+' Evidencia: apps/usuarios/views.py:CustomTokenObtainPairView.post
+' Evidencia: apps/usuarios/views.py:CustomTokenRefreshView.post
+' Evidencia: apps/usuarios/views.py:LogoutView.post
+' Evidencia: apps/usuarios/views.py:MeView.get
+' Evidencia: apps/usuarios/views.py:StudentTokenObtainPairView.post
+' Evidencia: core/settings/base.py:SIMPLE_JWT
+' Evidencia: src/services/api.js
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_contract.py
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_student_login.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-USR-071 — Refresh compartido y reintento HTTP
+participant "Componente React" as FE
+participant "apiClient / interceptors" as HTTP
+participant "refreshClient" as R
+participant "API del recurso" as API
+participant CustomTokenRefreshView as JWT
+FE -> HTTP : Solicitud de recurso protegido
+HTTP -> API : Petición con Bearer access
+API --> HTTP : 401
+alt No es auth endpoint y no tiene _retry
+ HTTP -> HTTP : _retry = true
+ alt No existe refreshPromise
+  HTTP -> R : refreshAccessToken()
+  R -> JWT : POST refresh desde localStorage
+  JWT -> JWT : TokenRefreshView.post heredado
+  alt Refresh aceptado y respuesta con access
+   JWT --> R : Tokens según SIMPLE_JWT
+   R -> R : Guardar access y refresh si se recibe
+   R --> HTTP : access
+  else Falla de renovación
+   JWT --> R : Error
+   R --> HTTP : Rechazo
+  end
+ else Renovación concurrente en curso
+  HTTP -> HTTP : Esperar la misma refreshPromise
+ end
+ alt Renovación satisfactoria
+  HTTP -> API : Repetir solicitud original una vez
+  API --> HTTP : Respuesta o error
+  HTTP --> FE : Resultado de la solicitud
+ else Renovación fallida
+  HTTP -> HTTP : expireSession(): retirar tokens\ny emitir auth-session-expired
+  HTTP --> FE : Rechazo
+ end
+else Auth endpoint o solicitud ya reintentada
+ HTTP -> HTTP : No renovar; si _retry y 401, expireSession()
+ HTTP --> FE : Rechazo
+end
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

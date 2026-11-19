@@ -1,0 +1,44 @@
+@startuml DIA-NOT-020-servicios-eventos-notificaciones
+' ID: DIA-NOT-020
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Separar servicios, entrada API y políticas; solo operaciones verificadas
+' Alcance y elementos: DomainEvent, DomainEventPublisher, NotificationRecipientResolver, NotificationService
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.
+' Fuente: apps/notificaciones/events.py
+' Fuente: apps/notificaciones/services.py
+!include ../estilos/base.puml.inc
+title DIA-NOT-020 — Clases: servicios-eventos-notificaciones
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+left to right direction
+class "DomainEvent" as DomainEvent <<clase>> {
+  event_type : str
+  aggregate_type : str
+  aggregate_id : str
+  deduplication_key : str
+}
+class "DomainEventPublisher" as DomainEventPublisher <<servicio>> {
+  _handlers
+  +register(handler)
+  +publish(event)
+  +publish_after_commit(event)
+}
+class "NotificationRecipientResolver" as NotificationRecipientResolver <<clase>> {
+  DEFENSE_EVENTS
+  ASSIGNMENT_EVENTS
+  REVIEW_EVENTS
+  +resolve(event)
+}
+class "NotificationService" as NotificationService <<servicio>> {
+  +crear_notificacion(destinatario, tipo, titulo, mensaje, nivel, event_id, deduplication_key, actor, postulacion, aggregate_type, aggregate_id, metadata)
+  +crear_para_usuarios(usuarios, **kwargs)
+  +marcar_leida(notificacion, usuario)
+  +marcar_no_leida(notificacion, usuario)
+  +marcar_todas_leidas(usuario)
+  +listar_usuario(usuario, filtros)
+}
+@enduml

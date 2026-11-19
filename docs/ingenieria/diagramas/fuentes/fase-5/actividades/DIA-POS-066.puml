@@ -1,0 +1,68 @@
+@startuml
+' ID: DIA-POS-066
+' Nombre: Evaluación, consolidación y resultado
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de evaluación, consolidación y resultado, con decisiones, guardas y límites de evidencia.
+' Alcance: Evaluación y consolidación; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-007, UC-POS-021, UC-POS-022
+' RN: RN-POS-107, RN-POS-121, RN-POS-122
+' Componentes: CMP-CORE-001, CMP-POS-001
+' Entidades: ENT-POS-004, ENT-POS-005, ENT-POS-012, ENT-POS-013, ENT-POS-014
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: La consulta/recálculo de resultado no formaliza conclusión. EvaluacionDefensa no tiene campo de ciclo de estados; resultado y consolidación no son estados universales de evaluación.
+' Evidencia: apps/postulantes/defensas.py:EvaluacionDefensaService._registrar
+' Evidencia: apps/postulantes/defensas.py:EvaluacionDefensaService.calcular_resultado_final
+' Evidencia: apps/postulantes/defensas.py:EvaluacionDefensaService.consolidar_evaluacion_evento
+' Evidencia: apps/postulantes/defensas_api.py:EventoDefensaViewSet.consolidar
+' Evidencia: apps/postulantes/defensas_api.py:EventoDefensaViewSet.evaluar
+' Evidencia: apps/postulantes/defensas_api.py:ResultadoFinalView
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_defensas.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-POS-066 — Evaluación, consolidación y resultado
+!pragma useVerticalIf on
+
+start
+:Seleccionar evaluación, consolidación o resultado;
+if (Consultar/calcular resultado final) then (sí)
+ :GET con alcance COMMON\nPOST de recálculo exige administración;
+ :Policy calcula resultado\nPOST audita; GET no audita;
+ :Devolver resultado sin concluir postulación;
+ stop
+endif
+:Exigir administración y validar payload;
+if (Registrar evaluación) then (sí)
+ :Atomic: bloquear evento\nEN_CURSO/FINALIZADA, tipo soportado y quórum;
+ :Policy valida individual/consenso, evaluador y escala\nNo mezclar semánticas ni modos incompatibles;
+ if (Registro válido) then (sí)
+  :Guardar evaluación y auditoría;
+ else (no)
+  :Error y rollback;
+  stop
+ endif
+else (Consolidar)
+ :Atomic: evento FINALIZADA sin RESULTADO_FINAL\nPolicy selecciona entradas y construye consolidado;
+ if (Consolidación válida) then (sí)
+  :Guardar consolidado, auditar y registrar callback;
+  :Calcular resultado y consultar decisión de policy;
+  if (Policy indica aprobar) then (sí)
+   :WorkflowService.aprobar_etapa;
+  endif
+  if (Policy indica rechazar) then (sí)
+   :Rechazar seguimiento;
+   if (Primer intento) then (sí)
+    :Intentar nuevo seguimiento\nReintentoNoElegible se conserva solo si policy lo permite;
+   endif
+  endif
+ else (no)
+  :Error y rollback;
+  stop
+ endif
+endif
+:Devolver resultado o error de la operación;
+stop
+
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

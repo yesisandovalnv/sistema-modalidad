@@ -1,0 +1,45 @@
+@startuml
+' ID: DIA-DOC-080
+' Nombre: Estado de revisión del documento
+' Tipo UML: Estados
+' Objetivo: Documentar el comportamiento implementado de estado de revisión del documento, con decisiones, guardas y límites de evidencia.
+' Alcance: Revisión documental; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-DOC-002
+' RN: RN-DOC-102
+' Componentes: CMP-CORE-001, CMP-DOC-001
+' Entidades: ENT-DOC-003, ENT-DOC-004, ENT-DOC-005
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Códigos operados por servicio, no catálogo físico consultado. No existe aquí transición a OBS. Las operaciones que conservan el código se muestran como transiciones internas, sin acciones entry/exit definidas. Observar en APR/REC es condicional: no prueba que una política concreta admita ambos. Autoaprobación inicial pasa por aprobar_documento. requiere_correccion es otro indicador.
+' Evidencia: apps/documentos/services.py:DocumentoService.aprobar_documento
+' Evidencia: apps/documentos/services.py:DocumentoService.crear_nueva_version
+' Evidencia: apps/documentos/services.py:DocumentoService.rechazar_documento
+' Evidencia: apps/documentos/services.py:DocumentoService.registrar_observacion
+' Evidencia: apps/documentos/services.py:DocumentoService.subir_documento
+' Evidencia: apps/documentos/views.py:DocumentoPostulacionViewSet.aprobar
+' Prueba relacionada, no ejecutada: apps/documentos/test_api.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-DOC-080 — Estado de revisión del documento
+hide empty description
+state "ENV" as s0
+state "APR" as s1
+state "REC" as s2
+[*] --> s0 : T01 carga inicial\n[G01] / A01
+s0 : T02 nueva versión\n[G02] / A02
+s1 --> s0 : T03 nueva versión\n[G03] / A03
+s2 --> s0 : T04 nueva versión\n[G04] / A04
+s0 --> s1 : T05 aprobar_documento\n[G05] / A05
+s0 --> s2 : T06 rechazar_documento\n[G06] / A06
+s0 : T07 registrar_observacion\n[G07] / A07
+s1 : T08 registrar_observacion\n[G08] / A08
+s2 : T09 registrar_observacion\n[G09] / A09
+legend bottom
+Txx: contrato completo en la ficha.
+Gxx = guarda de Txx; Axx = acción de Txx.
+Son alias documentales, no variables del código.
+No se infieren transiciones a partir de choices.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

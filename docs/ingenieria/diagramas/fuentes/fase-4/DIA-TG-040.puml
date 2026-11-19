@@ -1,0 +1,30 @@
+@startuml
+' Identificador: DIA-TG-040
+' Nombre: Tesis de Grado
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-TG-001
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/modalidades/tesis_grado.py
+' Evidencia: apps/postulantes/views.py
+!include ../../estilos/base.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title DIA-TG-040 — Tesis de Grado
+actor "Administración\nfuncional" as ACT_USR_001
+rectangle "Sistema de Modalidades de Graduación\nTesis de Grado" {
+  usecase "UC-TG-001\nConcluir Tesis con acta y\ndefensa válidas" as UC_TG_001
+  usecase "UC-POS-008\nConcluir postulación\n(referencia común)" as UC_POS_008 #F1F5F9
+}
+ACT_USR_001 -- UC_TG_001
+UC_TG_001 --|> UC_POS_008
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,43 @@
+@startuml
+' ID: DIA-DOC-061
+' Nombre: Descarga con alcance y publicación vigente
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de descarga con alcance y publicación vigente, con decisiones, guardas y límites de evidencia.
+' Alcance: Lectura y descarga documental; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-DOC-003
+' RN: RN-DOC-103
+' Componentes: CMP-CORE-001, CMP-DOC-001
+' Entidades: ENT-DOC-003, ENT-DOC-004, ENT-DOC-005
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Las acciones de un catálogo o ciclo son variantes por solicitud; no ejecución obligatoria de todo CRUD. Guardas académicas delegadas a la política citada.
+' Evidencia: apps/documentos/views.py:DocumentoPostulacionViewSet.get_queryset
+' Evidencia: apps/documentos/views.py:VersionDocumentoViewSet.descargar
+' Prueba relacionada, no ejecutada: apps/documentos/test_api.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-DOC-061 — Descarga con alcance y publicación vigente
+!pragma useVerticalIf on
+|Operador API|
+start
+:Solicitar la operación indicada;
+|Backend|
+:Autenticar y filtrar documentos/versiones por queryset;
+:Aplicar vínculo al expediente y filtro adicional de memorandos publicados/vigentes;
+if (Recurso visible) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Para descarga, comprobar archivo y normalizar nombre
+Para consulta, serializar metadatos/versiones visibles;
+if (Archivo disponible si es descarga) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Devolver el resultado de la operación;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

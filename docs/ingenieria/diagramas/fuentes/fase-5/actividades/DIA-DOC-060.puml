@@ -1,0 +1,54 @@
+@startuml
+' ID: DIA-DOC-060
+' Nombre: Carga, versionado y autoaprobación específica
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de carga, versionado y autoaprobación específica, con decisiones, guardas y límites de evidencia.
+' Alcance: Carga, versiones y evidencia histórica; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-DOC-001, UC-DOC-006
+' RN: RN-DOC-101, RN-DOC-106
+' Componentes: CMP-CORE-001, CMP-DOC-001
+' Entidades: ENT-DOC-002, ENT-DOC-003, ENT-DOC-004, ENT-POS-004, ENT-USR-003
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: El storage no participa en rollback SQL. La carga histórica usa un contrato específico; no equivale a haber ejecutado el flujo ordinario. Autoaprobar no es regla universal.
+' Evidencia: apps/documentos/services.py:DocumentoService.crear_nueva_version
+' Evidencia: apps/documentos/services.py:DocumentoService.subir_documento
+' Evidencia: apps/documentos/services.py:DocumentoService.subir_documento_historico
+' Evidencia: apps/documentos/views.py:DocumentoPostulacionViewSet.subir
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.subir_documento_historico
+' Prueba relacionada, no ejecutada: apps/documentos/test_api.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_us007.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-DOC-060 — Carga, versionado y autoaprobación específica
+!pragma useVerticalIf on
+|Operador API|
+start
+:Solicitar la operación indicada;
+|Backend|
+:Validar postulación editable, tipo activo, archivo y usuario
+Carga ordinaria: solo propietario o administración;
+if (Validaciones previas satisfechas) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Atomic: bloquear postulación y documento existente
+Resolver policy, capacidad, contexto ordinario o vínculo a evento;
+if (Carga permitida por política/contexto) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Crear documento ENV si no existe
+Bloquear versiones, calcular hash/tamaño, incrementar número
+Desmarcar versiones anteriores y guardar archivo en storage;
+:Guardar nueva versión actual, ENV, requiere_correccion=False
+Auditar y registrar callback de notificación;
+:Autoaprobar solo si condición específica de carga inicial y administración
+Si hay excepción, intentar eliminar únicamente archivo recién creado;
+:Devolver el resultado de la operación;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

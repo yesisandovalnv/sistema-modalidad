@@ -1,0 +1,76 @@
+@startuml
+' ID: DIA-TD-060
+' Nombre: Recorrido nominal y conclusión: Trabajo Dirigido
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de recorrido nominal y conclusión: trabajo dirigido, con decisiones, guardas y límites de evidencia.
+' Alcance: Trabajo Dirigido; Trabajo Dirigido; usa infraestructura común con política específica.
+' UC: UC-TD-001, UC-TD-002, UC-TD-003, UC-TD-004
+' RN: RN-TD-101, RN-TD-102, RN-TD-103, RN-TD-104
+' Componentes: CMP-CORE-001, CMP-MOD-001
+' Entidades: ENT-MOD-006, ENT-MOD-007, ENT-POS-004, ENT-POS-005
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista de coordinación académica entre solicitudes; el loop no existe como un único método automático. STAGE_DATA es declaración de código, no esquema instalado. Institución interna/externa, convenio cuando corresponde y supervisor descrito no equivalen a actor API externo. Informes institucionales se registran por servicio propio. Importa políticas base de Proyecto pero no se generalizan sus reglas.
+' Evidencia: apps/modalidades/trabajo_dirigido.py:TrabajoDirigidoPolicy
+' Evidencia: apps/modalidades/trabajo_dirigido_api.py:TrabajoDirigidoOverviewView.get
+' Evidencia: apps/modalidades/trabajo_dirigido_api.py:TrabajoDirigidoOverviewView.post
+' Evidencia: apps/modalidades/trabajo_dirigido_service.py:TrabajoDirigidoService.concluir
+' Evidencia: apps/modalidades/trabajo_dirigido_service.py:TrabajoDirigidoService.configurar_institucion
+' Evidencia: apps/modalidades/trabajo_dirigido_service.py:TrabajoDirigidoService.overview
+' Evidencia: apps/modalidades/trabajo_dirigido_service.py:TrabajoDirigidoService.registrar_informe
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.aprobar_etapa
+' Prueba relacionada, no ejecutada: apps/modalidades/tests_trabajo_dirigido.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-TD-060 — Recorrido nominal y conclusión: Trabajo Dirigido
+!pragma useVerticalIf on
+|Operación administrativa (varias solicitudes)|
+start
+:Resolver expediente operativo y modalidad
+No simular este recorrido para HISTORICO;
+if (Policy y etapas activas coherentes) then (sí)
+else (no)
+:Rechazar por configuración/contexto;
+stop
+endif
+:Recorrer las etapas nominales declaradas;
+note right
+1. INSCRIPCION
+2. PERFIL_TRABAJO_DIRIGIDO
+3. DESARROLLO_TRABAJO_DIRIGIDO
+4. DOCUMENTO_FINAL
+5. REVISION_TRIBUNAL_PREVIA
+6. DEFENSA_PRIVADA
+7. DEFENSA_PUBLICA
+8. CIERRE_DOCUMENTAL
+end note
+repeat
+:Seleccionar la etapa/contexto operable
+y ejecutar sus operaciones académicas propias;
+|Backend común + policy específica|
+:Validar documentos, actores, requisitos y estado
+según la operación y la policy de esta modalidad;
+if (Guarda satisfecha) then (sí)
+:Aplicar efectos de la acción solicitada
+Aprobación/rechazo no es avance automático universal;
+else (no)
+:Devolver faltantes/error
+No dar por aprobada la etapa;
+stop
+endif
+|Operación administrativa (varias solicitudes)|
+repeat while (Quedan etapas/operaciones por tramitar) is (sí) not (no)
+|Servicio de conclusión específico|
+:TrabajoDirigidoService.concluir
+Iniciar/aprobar CIERRE_DOCUMENTAL si corresponde sin cambiar estado general
+Invocar conclusión común con nota mínima 51 y ACTA_DEFENSA_TD del intento vigente;
+if (Gates propios satisfechos) then (sí)
+:Formalizar CONCLUIDA por la ruta correspondiente;
+else (no)
+:Rechazar conclusión y conservar el resultado permitido por atomic;
+stop
+endif
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,46 @@
+@startuml
+' ID: DIA-USR-061
+' Nombre: Mantenimiento de usuarios y roles
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de mantenimiento de usuarios y roles, con decisiones, guardas y límites de evidencia.
+' Alcance: Administración de cuentas y roles; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-USR-002, UC-USR-006
+' RN: RN-USR-102, RN-USR-106
+' Componentes: CMP-CORE-001, CMP-USR-001
+' Entidades: ENT-USR-001, ENT-USR-002
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Las acciones de un catálogo o ciclo son variantes por solicitud; no ejecución obligatoria de todo CRUD. Guardas académicas delegadas a la política citada.
+' Evidencia: apps/usuarios/serializers.py:RoleAdminSerializer
+' Evidencia: apps/usuarios/serializers.py:UserAdminSerializer
+' Evidencia: apps/usuarios/views.py:RoleAdminViewSet
+' Evidencia: apps/usuarios/views.py:UserAdminViewSet
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_admin_api.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-USR-061 — Mantenimiento de usuarios y roles
+!pragma useVerticalIf on
+|Operador API|
+start
+:Solicitar la operación indicada;
+|Backend|
+:Aplicar IsAuthenticated, IsActiveUser y CanManageUsers;
+if (Operador autorizado) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Elegir la operación admitida por los mixins
+Usuario: sin DELETE; rol: destroy con captura ProtectedError;
+:Validar serializer y permiso sobre la cuenta superusuario;
+if (Datos y objeto autorizados) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Consultar o persistir la cuenta/rol mediante la vista;
+:Devolver el resultado de la operación;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

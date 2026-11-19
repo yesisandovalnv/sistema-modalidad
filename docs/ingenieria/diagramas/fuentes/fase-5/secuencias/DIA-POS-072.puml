@@ -1,0 +1,62 @@
+@startuml
+' ID: DIA-POS-072
+' Nombre: Inicio de defensa con asistencia pendiente
+' Tipo UML: Secuencia
+' Objetivo: Documentar el comportamiento implementado de inicio de defensa con asistencia pendiente, con decisiones, guardas y límites de evidencia.
+' Alcance: Ciclo de defensa, participantes y asistencia; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-006, UC-POS-018, UC-POS-019, UC-POS-020
+' RN: RN-POS-106, RN-POS-118, RN-POS-119, RN-POS-120
+' Componentes: CMP-CORE-001, CMP-POS-001, CMP-WEB-001
+' Entidades: ENT-POS-004, ENT-POS-005, ENT-POS-006, ENT-POS-012, ENT-POS-013, ENT-POS-014
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente.
+' Evidencia: apps/postulantes/defensas.py:EventoDefensaService.agregar_participante
+' Evidencia: apps/postulantes/defensas.py:EventoDefensaService.iniciar_evento_con_asistencia
+' Evidencia: apps/postulantes/defensas.py:EventoDefensaService.programar_evento
+' Evidencia: apps/postulantes/defensas.py:EventoDefensaService.registrar_asistencia
+' Evidencia: apps/postulantes/defensas.py:EventoDefensaService.validar_quorum
+' Evidencia: apps/postulantes/defensas_api.py:EventoDefensaViewSet.agregar
+' Evidencia: apps/postulantes/defensas_api.py:EventoDefensaViewSet.asistencia
+' Evidencia: apps/postulantes/defensas_api.py:EventoDefensaViewSet.get_queryset
+' Evidencia: apps/postulantes/defensas_api.py:EventoDefensaViewSet.iniciar
+' Evidencia: apps/postulantes/defensas_api.py:PostulacionEventosView.post
+' Evidencia: src/pages/postulantes/ExpedientePage.jsx
+' Evidencia: src/services/postulacionesService.js
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_defensas.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_defensas_consulta.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-POS-072 — Inicio de defensa con asistencia pendiente
+actor Administración as U
+participant "ExpedientePage /\npostulacionesService /\napiClient" as FE
+participant EventoDefensaViewSet as API
+participant "Guarda _admin / payload de\ninicio" as V
+participant EventoDefensaService as S
+participant "evento_policy" as P
+database "EventoDefensa /\nParticipanteEvento\nORM → PostgreSQL" as DB
+U -> FE : Confirmar asistencia e iniciar
+FE -> API : POST eventos-defensa/{id}/iniciar/
+API -> V : Exigir administración y validar asistencias
+API -> S : iniciar_evento_con_asistencia(...)
+group atomic exterior
+ S -> DB : Bloquear evento y participantes activos
+ S -> S : IDs exactos de pendientes; bool y sin duplicados
+ S -> S : iniciar_evento(): PROGRAMADA y fecha alcanzada
+ S -> P : validar_inicio(evento)
+ alt Error de payload, estado, fecha o policy
+  S --> API : ValidationError / rollback
+ else Condiciones válidas
+  S -> DB : Guardar EN_CURSO + fecha/usuario de inicio
+  loop Cada participante pendiente confirmado
+   S -> S : registrar_asistencia(participante, presente, usuario)
+   S -> DB : Actualizar asistencia y auditoría
+  end
+  S --> API : Evento actualizado
+ end
+end
+API --> FE : Respuesta o error DRF
+note over S,P : La fecha/participantes/quórum dependen de la modalidad.\nValidar inicio y registrar asistencia conservan el orden del código.
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

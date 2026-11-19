@@ -1,0 +1,52 @@
+@startuml DIA-POS-020-servicios-expediente
+' ID: DIA-POS-020
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Separar servicios, entrada API y políticas; solo operaciones verificadas
+' Alcance y elementos: PostulacionService, WorkflowService, AsignacionService, DecisionAcademicaEtapaService
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.
+' Fuente: apps/postulantes/asignaciones.py
+' Fuente: apps/postulantes/decisiones_academicas.py
+' Fuente: apps/postulantes/services.py
+' Fuente: apps/postulantes/workflow.py
+!include ../estilos/base.puml.inc
+title DIA-POS-020 — Clases: servicios-expediente
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+left to right direction
+class "PostulacionService" as PostulacionService <<servicio>> {
+  +crear_postulacion(*args, **kwargs)
+  +crear_postulacion_historica(*args, **kwargs)
+  +dar_de_baja(*args, **kwargs)
+  +cambiar_estado(*args, **kwargs)
+  +registrar_historial(*args, **kwargs)
+  +agregar_observacion(*args, **kwargs)
+}
+class "WorkflowService" as WorkflowService <<servicio>> {
+  CLOSING_STAGE_CODE
+  +inicializar_flujo(postulacion, usuario)
+  +iniciar_etapa(seguimiento, usuario)
+  +observar_etapa(seguimiento, usuario, observaciones)
+  +aprobar_etapa(seguimiento, usuario, observaciones, actualizar_estado_general)
+  +rechazar_etapa(seguimiento, usuario, observaciones)
+  +omitir_etapa(seguimiento, usuario, observaciones)
+}
+class "AsignacionService" as AsignacionService <<servicio>> {
+  STUDENT_ROLE_CODES
+  ADMIN_ROLE_CODES
+  DOCENTE_ROLE_CODES
+  PROJECT_GRADE_CODE
+  +asignar_actor(postulacion, usuario_asignado, tipo_participacion, designado_por, orden_cargo, seguimiento_etapa, observaciones)
+  +obtener_candidatos_elegibles(postulacion, tipo_participacion, orden_cargo, seguimiento_etapa, asignacion_actual, regla_ocupacion_actor)
+  +finalizar_asignacion(asignacion, usuario, observaciones)
+  +reemplazar_actor(asignacion_actual, nuevo_usuario, usuario_responsable, observaciones)
+  +listar_activos(postulacion, tipo_participacion)
+  +obtener_tutor_activo(postulacion)
+}
+class "DecisionAcademicaEtapaService" as DecisionAcademicaEtapaService <<servicio>> {
+  +registrar(seguimiento, codigo, resultado, registrado_por, observaciones, participantes, reemplaza_decision)
+}
+@enduml

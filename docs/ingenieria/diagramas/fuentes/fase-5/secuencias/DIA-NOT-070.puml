@@ -1,0 +1,55 @@
+@startuml
+' ID: DIA-NOT-070
+' Nombre: Callbacks después del commit y deduplicación
+' Tipo UML: Secuencia
+' Objetivo: Documentar el comportamiento implementado de callbacks después del commit y deduplicación, con decisiones, guardas y límites de evidencia.
+' Alcance: Notificación interna y lectura; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-NOT-001, UC-NOT-002
+' RN: RN-NOT-101, RN-NOT-102
+' Componentes: CMP-CORE-001, CMP-NOT-001
+' Entidades: ENT-NOT-001, ENT-USR-003
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente.
+' Evidencia: apps/notificaciones/events.py:DomainEventPublisher.publish
+' Evidencia: apps/notificaciones/events.py:DomainEventPublisher.publish_after_commit
+' Evidencia: apps/notificaciones/services.py:NotificationService.crear_notificacion
+' Evidencia: apps/notificaciones/services.py:NotificationService.listar_usuario
+' Evidencia: apps/notificaciones/services.py:NotificationService.marcar_leida
+' Evidencia: apps/notificaciones/services.py:NotificationService.procesar_evento
+' Evidencia: apps/notificaciones/views.py:NotificacionViewSet.get_queryset
+' Evidencia: apps/notificaciones/views.py:NotificacionViewSet.marcar_leida
+' Prueba relacionada, no ejecutada: apps/notificaciones/tests_api.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-NOT-070 — Callbacks después del commit y deduplicación
+participant "Servicio del dominio" as S
+participant "publish_domain_event /\nbuild_event" as EV
+participant DomainEventPublisher as PUB
+participant "Django transaction" as TX
+participant NotificationService as N
+participant "NotificationRecipientResolver\nNotificationTemplateRegistry" as R
+database "Notificacion / usuarios /\nasignaciones\nORM → PostgreSQL" as DB
+S -> EV : Construir evento con aggregate y clave
+EV -> PUB : publish_after_commit(event)
+PUB -> TX : on_commit(lambda publish(event), robust=True)
+TX --> PUB : Callback registrado (o ejecución inmediata sin atomic)
+alt Rollback de la transacción exterior
+ note over TX,DB : Callback descartado; no crea notificaciones.
+else Commit exterior exitoso
+ TX -> PUB : Ejecutar callback local síncrono
+ PUB -> PUB : publish(); registrar handler si no hay handlers
+ PUB -> N : procesar_evento(event)
+ N -> R : Resolver destinatarios activos y plantilla
+ R -> DB : Consultar vínculos y usuarios
+ R --> N : Usuarios y mensaje
+ loop Cada destinatario sin duplicado en lote
+  N -> N : crear_notificacion() con atomic propio
+  N -> DB : get_or_create(destinatario, deduplication_key)
+  DB --> N : Creada o existente
+ end
+ note over TX,N : robust=True registra fallos del callback; el commit de negocio\nya ocurrió. No se demuestra outbox persistente ni reintento automático.
+end
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

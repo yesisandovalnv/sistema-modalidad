@@ -1,0 +1,43 @@
+@startuml
+' ID: DIA-DIP-080
+' Nombre: Estado persistido de módulo de Diplomado
+' Tipo UML: Estados
+' Objetivo: Documentar el comportamiento implementado de estado persistido de módulo de diplomado, con decisiones, guardas y límites de evidencia.
+' Alcance: Vía Diplomado; Vía Diplomado; usa infraestructura común con política específica.
+' UC: UC-DIP-001, UC-DIP-002, UC-DIP-003
+' RN: RN-DIP-101, RN-DIP-102, RN-DIP-103
+' Componentes: CMP-CORE-001, CMP-MOD-001
+' Entidades: ENT-MOD-004, ENT-MOD-005, ENT-POS-004, ENT-POS-005
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: EN_PROCESO está declarado como choice sin escritor confirmado hacia el estado del módulo. El servicio permite volver a registrar resultado mientras su etapa sea operable; no se inventa una prohibición por el resultado anterior ni aprobación automática del seguimiento.
+' Evidencia: apps/modalidades/diplomado_api.py:DiplomadoOverviewView.get
+' Evidencia: apps/modalidades/diplomado_api.py:DiplomadoOverviewView.post
+' Evidencia: apps/modalidades/diplomado_service.py:DiplomadoService.conclude
+' Evidencia: apps/modalidades/diplomado_service.py:DiplomadoService.ensure_modules
+' Evidencia: apps/modalidades/diplomado_service.py:DiplomadoService.overview
+' Evidencia: apps/modalidades/diplomado_service.py:DiplomadoService.set_module_result
+' Prueba relacionada, no ejecutada: apps/modalidades/tests_diplomado.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-DIP-080 — Estado persistido de módulo de Diplomado
+hide empty description
+state "PENDIENTE" as s0
+state "APROBADO" as s1
+state "REPROBADO" as s2
+[*] --> s0 : T01 ensure_modules\n[G01] / A01
+s0 --> s1 : T02 set_module_result\n[G02] / A02
+s0 --> s2 : T03 set_module_result\n[G03] / A03
+s1 --> s1 : T04 set_module_result\n[G04] / A04
+s1 --> s2 : T05 set_module_result\n[G05] / A05
+s2 --> s1 : T06 set_module_result\n[G06] / A06
+s2 --> s2 : T07 set_module_result\n[G07] / A07
+legend bottom
+Txx: contrato completo en la ficha.
+Gxx = guarda de Txx; Axx = acción de Txx.
+Son alias documentales, no variables del código.
+No se infieren transiciones a partir de choices.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

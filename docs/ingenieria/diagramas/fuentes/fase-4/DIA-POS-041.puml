@@ -1,0 +1,48 @@
+@startuml
+' Identificador: DIA-POS-041
+' Nombre: Seguimiento de etapas
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-POS-003, UC-POS-005, UC-POS-009, UC-POS-012, UC-POS-013, UC-POS-014, UC-POS-015
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/postulantes/decisiones_academicas.py
+' Evidencia: apps/postulantes/dictamenes_revision.py
+' Evidencia: apps/postulantes/revision_tribunal.py
+' Evidencia: apps/postulantes/serializers.py
+' Evidencia: apps/postulantes/views.py
+' Evidencia: apps/postulantes/workflow.py
+!include ../../estilos/base.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title DIA-POS-041 — Seguimiento de etapas
+actor "Propietario de\npostulación" as ACT_POS_001
+actor "Usuario vinculado al\nexpediente" as ACT_POS_002
+actor "Administración\nfuncional" as ACT_USR_001
+rectangle "Sistema de Modalidades de Graduación\nSeguimiento de etapas" {
+  usecase "UC-POS-003\nEjecutar una transición de etapa" as UC_POS_003
+  usecase "UC-POS-005\nRegistrar una decisión académica\nde etapa" as UC_POS_005
+  usecase "UC-POS-009\nConsultar seguimiento de etapas" as UC_POS_009
+  usecase "UC-POS-012\nInicializar el flujo" as UC_POS_012
+  usecase "UC-POS-013\nCrear un nuevo intento de etapa" as UC_POS_013
+  usecase "UC-POS-014\nRegistrar dictamen documental" as UC_POS_014
+  usecase "UC-POS-015\nRegistrar evidencia de revisión\nprevia" as UC_POS_015
+}
+ACT_USR_001 -- UC_POS_003
+ACT_USR_001 -- UC_POS_005
+ACT_USR_001 -- UC_POS_009
+ACT_POS_001 -- UC_POS_009
+ACT_POS_002 -- UC_POS_009
+ACT_USR_001 -- UC_POS_012
+ACT_USR_001 -- UC_POS_013
+ACT_USR_001 -- UC_POS_014
+ACT_USR_001 -- UC_POS_015
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

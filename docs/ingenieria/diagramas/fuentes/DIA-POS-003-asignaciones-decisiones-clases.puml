@@ -1,0 +1,87 @@
+@startuml DIA-POS-003-asignaciones-decisiones-clases
+' ID: DIA-POS-003
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Mostrar entidades, relaciones y opcionalidad de asignaciones-decisiones
+' Alcance y elementos: AsignacionPostulacion, DecisionAcademicaEtapa, ParticipacionDecisionAcademica, PublicacionMemorandumDesignacion
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False. asignaciones es M2M con intermediaria implícita, sin nombre físico certificado.
+' Fuente: apps/postulantes/models.py
+' Fuente: core/models.py
+' Fuente: core/settings/base.py
+!include ../estilos/base.puml.inc
+title DIA-POS-003 — Clases de dominio: asignaciones-decisiones
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+left to right direction
+class "AsignacionPostulacion" as AsignacionPostulacion <<entidad>> {
+  id : BigAutoField <<PK derivada>>
+  postulacion : ForeignKey <<FK>>
+  usuario : ForeignKey <<FK>>
+  designado_por : ForeignKey <<FK>> <<NULL>>
+  seguimiento_etapa : ForeignKey <<FK>> <<NULL>>
+  tipo_participacion : CharField
+  orden_cargo : PositiveIntegerField <<NULL>>
+  fecha_designacion : DateTimeField
+  fecha_finalizacion : DateTimeField <<NULL>>
+  observaciones : TextField
+  +clean()
+  +save(*args, **kwargs)
+}
+class "DecisionAcademicaEtapa" as DecisionAcademicaEtapa <<entidad>> {
+  id : BigAutoField <<PK derivada>>
+  seguimiento_etapa : ForeignKey <<FK>>
+  registrado_por : ForeignKey <<FK>>
+  codigo : CharField
+  resultado : CharField
+  fecha_decision : DateTimeField
+  observaciones : TextField
+  +clean()
+  +save(*args, **kwargs)
+}
+class "ParticipacionDecisionAcademica" as ParticipacionDecisionAcademica <<entidad>> {
+  id : BigAutoField <<PK derivada>>
+  decision : ForeignKey <<FK>>
+  asignacion : ForeignKey <<FK>>
+  rol : CharField
+  orden : PositiveIntegerField <<NULL>>
+  +clean()
+  +save(*args, **kwargs)
+}
+class "PublicacionMemorandumDesignacion" as PublicacionMemorandumDesignacion <<entidad>> {
+  id : BigAutoField <<PK derivada>>
+  postulacion : ForeignKey <<FK>>
+  seguimiento_etapa : ForeignKey <<FK>>
+  version_documento : OneToOneField <<FK>> <<UQ>>
+  asignaciones : ManyToManyField <<M2M>>
+  publicado_por : ForeignKey <<FK>>
+  fecha_publicacion : DateTimeField
+}
+class "CustomUser" as CustomUser <<referencia>> {
+  id : BigAutoField <<PK derivada>>
+}
+class "Postulacion" as Postulacion <<referencia>> {
+  id : BigAutoField <<PK derivada>>
+}
+class "SeguimientoEtapa" as SeguimientoEtapa <<referencia>> {
+  id : BigAutoField <<PK derivada>>
+}
+class "VersionDocumento" as VersionDocumento <<referencia>> {
+  id : BigAutoField <<PK derivada>>
+}
+AsignacionPostulacion "0..*" -- "1" Postulacion : postulacion
+AsignacionPostulacion "0..*" -- "1" CustomUser : usuario
+AsignacionPostulacion "0..*" -- "0..1" CustomUser : designado_por
+AsignacionPostulacion "0..*" -- "0..1" SeguimientoEtapa : seguimiento_etapa
+DecisionAcademicaEtapa "0..*" -- "1" SeguimientoEtapa : seguimiento_etapa
+DecisionAcademicaEtapa "0..*" -- "1" CustomUser : registrado_por
+ParticipacionDecisionAcademica "0..*" -- "1" DecisionAcademicaEtapa : decision
+ParticipacionDecisionAcademica "0..*" -- "1" AsignacionPostulacion : asignacion
+PublicacionMemorandumDesignacion "0..*" -- "1" Postulacion : postulacion
+PublicacionMemorandumDesignacion "0..*" -- "1" SeguimientoEtapa : seguimiento_etapa
+PublicacionMemorandumDesignacion "0..1" -- "1" VersionDocumento : version_documento
+PublicacionMemorandumDesignacion "0..*" -- "0..*" AsignacionPostulacion : asignaciones
+PublicacionMemorandumDesignacion "0..*" -- "1" CustomUser : publicado_por
+@enduml

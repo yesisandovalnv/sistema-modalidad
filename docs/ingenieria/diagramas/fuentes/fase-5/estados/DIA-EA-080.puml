@@ -1,0 +1,41 @@
+@startuml
+' ID: DIA-EA-080
+' Nombre: Resultado del expediente de Excelencia
+' Tipo UML: Estados
+' Objetivo: Documentar el comportamiento implementado de resultado del expediente de excelencia, con decisiones, guardas y límites de evidencia.
+' Alcance: Excelencia Académica; Excelencia Académica; usa infraestructura común con política específica.
+' UC: UC-EA-001, UC-EA-002, UC-EA-003, UC-EA-004
+' RN: RN-EA-101, RN-EA-102, RN-EA-103, RN-EA-104
+' Componentes: CMP-CORE-001, CMP-MOD-001
+' Entidades: ENT-MOD-003, ENT-POS-004, ENT-POS-005
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Resultado persistido propio de Excelencia, no estado genérico de EvaluacionDefensa. DESFAVORABLE no rechaza automáticamente el seguimiento en registrar_evaluacion; permanece operable mientras la etapa siga EN_PROCESO. La conclusión requiere además etapas previas y acta.
+' Evidencia: apps/modalidades/excelencia_academica_api.py:ExcelenciaAcademicaOverviewView.get
+' Evidencia: apps/modalidades/excelencia_academica_api.py:ExcelenciaAcademicaOverviewView.post
+' Evidencia: apps/modalidades/excelencia_academica_service.py:ExcelenciaAcademicaService.concluir
+' Evidencia: apps/modalidades/excelencia_academica_service.py:ExcelenciaAcademicaService.configurar_criterio
+' Evidencia: apps/modalidades/excelencia_academica_service.py:ExcelenciaAcademicaService.overview
+' Evidencia: apps/modalidades/excelencia_academica_service.py:ExcelenciaAcademicaService.registrar_evaluacion
+' Prueba relacionada, no ejecutada: apps/modalidades/tests_excelencia_academica.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-EA-080 — Resultado del expediente de Excelencia
+hide empty description
+state "PENDIENTE" as s0
+state "FAVORABLE" as s1
+state "DESFAVORABLE" as s2
+[*] --> s0 : T01 configurar_criterio\n[G01] / A01
+s0 --> s1 : T02 registrar_evaluacion\n[G02] / A02
+s0 --> s2 : T03 registrar_evaluacion\n[G03] / A03
+s2 --> s1 : T04 registrar_evaluacion\n[G04] / A04
+s2 --> s2 : T05 registrar_evaluacion\n[G05] / A05
+legend bottom
+Txx: contrato completo en la ficha.
+Gxx = guarda de Txx; Axx = acción de Txx.
+Son alias documentales, no variables del código.
+No se infieren transiciones a partir de choices.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

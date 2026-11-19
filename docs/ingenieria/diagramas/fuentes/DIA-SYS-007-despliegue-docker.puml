@@ -1,0 +1,56 @@
+@startuml DIA-SYS-007-despliegue-docker
+' ID: DIA-SYS-007
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Separar navegador, publicaciones de puertos, red implícita y volúmenes
+' Alcance y elementos: Tres servicios, red implícita, puertos y montajes
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Infraestructura declarada de desarrollo, no contenedores observados. No se ejecutó Docker ni se leyó .env. Producción no representada como desplegada; no se afirma proxy, TLS terminado o nube.
+' Fuente: Dockerfile.backend
+' Fuente: Dockerfile.frontend
+' Fuente: core/settings/production.py
+' Fuente: docker-compose.yml
+' Fuente: docker/backend/entrypoint.sh
+' Fuente: src/config/env.js
+!include ../estilos/base.puml.inc
+title DIA-SYS-007 — Despliegue Docker de desarrollo declarado
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+
+node "Host local / Docker Engine" as Host {
+ node "Navegador" as Browser
+ frame "Red default implícita de Compose\n(no nombre runtime confirmado)" {
+  node "frontend\nnode:22-alpine\nVite 0.0.0.0:5173" as FE
+  node "backend\npython:3.12-slim\nrunserver 0.0.0.0:8000" as BE
+  database "db\npostgres:15\n5432" as PG
+ }
+ folder "Repositorio ." as Repo
+ folder "./media" as Media
+ folder "./backups" as Backup
+ storage "sistema_modalidad_data\nvolumen nombrado" as Data
+ storage "Volumen anónimo\n/app/node_modules" as Modules
+}
+Browser --> FE : host FRONTEND_PORT (15174) -> 5173
+Browser --> BE : host BACKEND_PORT (19001) -> 8000\nAxios usa VITE_API_BASE_URL localhost
+BE --> PG : DB_HOST=db / DB_PORT=5432
+PG -- Data : /var/lib/postgresql/data
+PG -- Backup : /docker-entrypoint-initdb.d : ro
+BE -- Repo : /app (bind)
+FE -- Repo : /app (bind)
+BE -- Media : /app/media (bind)
+FE -- Modules : /app/node_modules
+note right of PG
+Host DB_HOST_PORT (5540) -> 5432.
+Healthcheck pg_isready.
+end note
+note bottom of Host
+Puertos entre paréntesis = valores por defecto declarados,
+no valores efectivos de .env ni servicios observados.
+backend depende de db healthy; frontend de backend started.
+El entrypoint migra y puede crear superusuario: no ejecutado.
+Producción: configuración Django existente, topología no comprobada.
+end note
+
+@enduml

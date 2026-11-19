@@ -1,0 +1,68 @@
+@startuml
+' ID: DIA-POS-065
+' Nombre: Programar e iniciar una defensa
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de programar e iniciar una defensa, con decisiones, guardas y límites de evidencia.
+' Alcance: Ciclo de defensa, participantes y asistencia; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-006, UC-POS-018, UC-POS-019, UC-POS-020
+' RN: RN-POS-106, RN-POS-118, RN-POS-119, RN-POS-120
+' Componentes: CMP-CORE-001, CMP-POS-001
+' Entidades: ENT-POS-004, ENT-POS-005, ENT-POS-006, ENT-POS-012, ENT-POS-013, ENT-POS-014
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Las solicitudes de programación, inicio y finalización son variantes independientes; el diagrama resume sus guardas, no una transacción que abarque toda la vida de la defensa.
+' Evidencia: apps/postulantes/defensas.py:EventoDefensaService.agregar_participante
+' Evidencia: apps/postulantes/defensas.py:EventoDefensaService.iniciar_evento_con_asistencia
+' Evidencia: apps/postulantes/defensas.py:EventoDefensaService.programar_evento
+' Evidencia: apps/postulantes/defensas.py:EventoDefensaService.registrar_asistencia
+' Evidencia: apps/postulantes/defensas.py:EventoDefensaService.validar_quorum
+' Evidencia: apps/postulantes/defensas_api.py:EventoDefensaViewSet.agregar
+' Evidencia: apps/postulantes/defensas_api.py:EventoDefensaViewSet.asistencia
+' Evidencia: apps/postulantes/defensas_api.py:EventoDefensaViewSet.get_queryset
+' Evidencia: apps/postulantes/defensas_api.py:PostulacionEventosView.post
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_defensas.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_defensas_consulta.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-POS-065 — Programar e iniciar una defensa
+!pragma useVerticalIf on
+
+|Operador API|
+start
+:Seleccionar consulta o acción de defensa;
+|Backend|
+if (Consulta) then (sí)
+ :Aplicar queryset de defensas\nAdministración, propietario, asignado o participante;
+ :Devolver eventos/quórum visibles;
+ stop
+endif
+:Exigir administración y validar payload;
+if (Programar) then (sí)
+ :Atomic: bloquear seguimiento\nExigir EN_PROCESO/OBSERVADA y previas aprobadas;
+ :Policy valida fecha, tipo, asignaciones\ny ausencia de activo duplicado por tipo/intento;
+ if (Programación válida) then (sí)
+  :Crear PROGRAMADA, auditar y registrar callback;
+ else (no)
+  :Error y rollback;
+  stop
+ endif
+elseif (Iniciar) then (sí)
+ :Atomic: bloquear evento y participantes\nComprobar decisiones exactas de pendientes;
+ :Exigir PROGRAMADA, fecha alcanzada y policy de inicio;
+ if (Inicio válido) then (sí)
+  :Guardar EN_CURSO y registrar asistencias;
+ else (no)
+  :Error y rollback;
+  stop
+ endif
+elseif (Gestionar participantes) then (sí)
+ :Aplicar agregar/remover y sus guardas\nNo FINALIZADA/CANCELADA; validar asignación y duplicados;
+else (Otra acción del ciclo)
+ :Aplicar finalizar, suspender, cancelar o reprogramar\ncon la guarda específica de estado, motivo, fecha y quórum;
+endif
+:Devolver evento/participante o error de la variante;
+stop
+
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

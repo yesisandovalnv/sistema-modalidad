@@ -1,0 +1,65 @@
+@startuml
+' ID: DIA-USR-070
+' Nombre: Login por contraseña y emisión JWT
+' Tipo UML: Secuencia
+' Objetivo: Documentar el comportamiento implementado de login por contraseña y emisión jwt, con decisiones, guardas y límites de evidencia.
+' Alcance: Autenticación y sesión; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-USR-001, UC-USR-003, UC-USR-004, UC-USR-005, UC-USR-009
+' RN: RN-USR-101, RN-USR-103, RN-USR-104, RN-USR-105, RN-USR-109
+' Componentes: CMP-CORE-001, CMP-USR-001, CMP-WEB-001
+' Entidades: ENT-USR-001, ENT-USR-002, ENT-USR-004
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente.
+' Evidencia: apps/usuarios/serializers.py:LoginSerializer.validate
+' Evidencia: apps/usuarios/serializers.py:LogoutSerializer
+' Evidencia: apps/usuarios/services.py:UserCapabilitiesService.resolve
+' Evidencia: apps/usuarios/student_auth.py:authenticate_student
+' Evidencia: apps/usuarios/views.py:CustomTokenObtainPairView.post
+' Evidencia: apps/usuarios/views.py:CustomTokenRefreshView.post
+' Evidencia: apps/usuarios/views.py:LogoutView.post
+' Evidencia: apps/usuarios/views.py:MeView.get
+' Evidencia: apps/usuarios/views.py:StudentTokenObtainPairView.post
+' Evidencia: core/settings/base.py:SIMPLE_JWT
+' Evidencia: src/context/AuthProvider.jsx
+' Evidencia: src/pages/auth/LoginPage.jsx
+' Evidencia: src/services/api.js
+' Evidencia: src/services/authService.js
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_contract.py
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_student_login.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-USR-070 — Login por contraseña y emisión JWT
+actor Usuario as U
+participant "LoginPage / AuthProvider" as FE
+participant "authService / apiClient\n(Axios)" as HTTP
+participant CustomTokenObtainPairView as API
+participant LoginSerializer as SER
+participant "Django authenticate /\nCustomUser" as AUTH
+database "PostgreSQL\nconfigurado, no consultado" as DB
+U -> FE : Enviar credenciales
+FE -> HTTP : authService.login(credentials)
+HTTP -> API : POST /api/v1/auth/login/
+API -> SER : is_valid(raise_exception=True)
+SER -> AUTH : authenticate(username, password)
+AUTH -> DB : Consultar usuario mediante backend/ORM
+alt Credenciales inválidas o usuario inactivo
+ SER --> API : ValidationError
+ API --> HTTP : Respuesta de error DRF
+ HTTP --> FE : Rechazo de promesa
+else Credenciales aceptadas
+ SER --> API : validated_data.user
+ API -> AUTH : last_login = now(); save()
+ AUTH -> DB : Persistir last_login
+ API -> API : RefreshToken.for_user(user)
+ API --> HTTP : 200 refresh + access
+ HTTP --> FE : Respuesta de login
+end
+note over API,DB
+No atomic explícito en este método.
+R.U./C.I. usa StudentLoginSerializer/authenticate_student,
+con throttling propio; no se representa como authenticate.
+end note
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

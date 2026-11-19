@@ -1,0 +1,68 @@
+@startuml DIA-DOC-102-observaciones-correcciones-er
+' ID: DIA-DOC-102
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Mostrar entidades, relaciones y opcionalidad de observaciones-correcciones
+' Alcance y elementos: ObservacionDocumento, ConfirmacionCorreccionDocumento
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False.
+' Fuente: apps/documentos/models.py
+' Fuente: core/models.py
+' Fuente: core/settings/base.py
+!include ../estilos/base.puml.inc
+title DIA-DOC-102 — ER lógico: observaciones-correcciones
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+left to right direction
+entity "ObservacionDocumento" as ObservacionDocumento <<entidad>> {
+  id : BigAutoField <<PK derivada>>
+  version_documento_id : ForeignKey <<FK>>
+  usuario_id : ForeignKey <<FK>>
+  comentario : TextField
+  leida_por_estudiante : BooleanField
+  corregida : BooleanField
+  fecha_observacion : DateTimeField
+  fecha_correccion : DateTimeField <<NULL>>
+}
+entity "ConfirmacionCorreccionDocumento" as ConfirmacionCorreccionDocumento <<entidad>> {
+  id : BigAutoField <<PK derivada>>
+  postulacion_id : ForeignKey <<FK>>
+  evento_origen_id : ForeignKey <<FK>> <<NULL>>
+  version_observada_id : ForeignKey <<FK>>
+  version_corregida_id : ForeignKey <<FK>>
+  confirmado_por_id : ForeignKey <<FK>>
+  asignacion_confirmante_id : ForeignKey <<FK>> <<NULL>>
+  fecha_confirmacion : DateTimeField
+  observaciones : TextField
+}
+entity "AsignacionPostulacion" as AsignacionPostulacion <<referencia>> {
+  id : BigAutoField <<PK derivada>>
+}
+entity "CustomUser" as CustomUser <<referencia>> {
+  id : BigAutoField <<PK derivada>>
+}
+entity "EventoDefensa" as EventoDefensa <<referencia>> {
+  id : BigAutoField <<PK derivada>>
+}
+entity "Postulacion" as Postulacion <<referencia>> {
+  id : BigAutoField <<PK derivada>>
+}
+entity "VersionDocumento" as VersionDocumento <<referencia>> {
+  id : BigAutoField <<PK derivada>>
+}
+ObservacionDocumento }o--|| VersionDocumento : version_documento
+ObservacionDocumento }o--|| CustomUser : usuario
+ConfirmacionCorreccionDocumento }o--|| Postulacion : postulacion
+ConfirmacionCorreccionDocumento }o--o| EventoDefensa : evento_origen
+ConfirmacionCorreccionDocumento }o--|| VersionDocumento : version_observada
+ConfirmacionCorreccionDocumento }o--|| VersionDocumento : version_corregida
+ConfirmacionCorreccionDocumento }o--|| CustomUser : confirmado_por
+ConfirmacionCorreccionDocumento }o--o| AsignacionPostulacion : asignacion_confirmante
+note bottom of ConfirmacionCorreccionDocumento
+Restricciones seleccionadas de Meta:
+UQ(version_observada, version_corregida)
+condicional; no equivale a UQ global
+end note
+@enduml

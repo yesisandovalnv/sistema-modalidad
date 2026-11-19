@@ -1,0 +1,53 @@
+@startuml
+' Identificador: DIA-POS-040
+' Nombre: Postulaciones
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-POS-001, UC-POS-002, UC-POS-008, UC-POS-028, UC-POS-010, UC-POS-011, UC-POS-024, UC-POS-025
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/postulantes/permissions.py
+' Evidencia: apps/postulantes/serializers.py
+' Evidencia: apps/postulantes/services.py
+' Evidencia: apps/postulantes/views.py
+' Evidencia: apps/postulantes/workflow.py
+!include ../../estilos/base.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title DIA-POS-040 — Postulaciones
+actor "Propietario de\npostulación" as ACT_POS_001
+actor "Usuario vinculado al\nexpediente" as ACT_POS_002
+actor "Administración\nfuncional" as ACT_USR_001
+actor "Estudiante" as ACT_USR_002
+actor "Docente" as ACT_USR_003
+rectangle "Sistema de Modalidades de Graduación\nPostulaciones" {
+  usecase "UC-POS-001\nRegistrar una postulación con\nseguimiento" as UC_POS_001
+  usecase "UC-POS-002\nConsultar postulaciones y\nexpediente" as UC_POS_002
+  usecase "UC-POS-008\nConcluir académicamente por el\nmotor común" as UC_POS_008
+  usecase "UC-POS-028\nAdministrar estados técnicos de\npostulación" as UC_POS_028
+  usecase "UC-POS-010\nConsultar historial y\nobservaciones" as UC_POS_010
+  usecase "UC-POS-011\nRegistrar una postulación\nhistórica" as UC_POS_011
+  usecase "UC-POS-024\nCambiar estado general\nadministrativamente" as UC_POS_024
+  usecase "UC-POS-025\nRegistrar observación de\npostulación" as UC_POS_025
+}
+ACT_USR_001 -- UC_POS_001
+ACT_USR_001 -- UC_POS_002
+ACT_USR_002 -- UC_POS_002
+ACT_USR_003 -- UC_POS_002
+ACT_USR_001 -- UC_POS_008
+ACT_USR_001 -- UC_POS_028
+ACT_USR_001 -- UC_POS_010
+ACT_POS_001 -- UC_POS_010
+ACT_POS_002 -- UC_POS_010
+ACT_USR_001 -- UC_POS_011
+ACT_USR_001 -- UC_POS_024
+ACT_USR_001 -- UC_POS_025
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,76 @@
+@startuml
+' ID: DIA-POS-067
+' Nombre: Condiciones y recepción física
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de condiciones y recepción física, con decisiones, guardas y límites de evidencia.
+' Alcance: Condiciones y entrega física; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-023, UC-POS-026, UC-POS-027
+' RN: RN-POS-123, RN-POS-126, RN-POS-127
+' Componentes: CMP-CORE-001, CMP-POS-001
+' Entidades: ENT-POS-004, ENT-POS-010, ENT-POS-011
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Las acciones de un catálogo o ciclo son variantes por solicitud; no ejecución obligatoria de todo CRUD. Guardas académicas delegadas a la política citada.
+' Evidencia: apps/postulantes/complementarios.py:CondicionService
+' Evidencia: apps/postulantes/complementarios.py:CondicionService._resolver
+' Evidencia: apps/postulantes/complementarios.py:CondicionService.verificar_multiples
+' Evidencia: apps/postulantes/complementarios.py:EntregaFisicaService
+' Evidencia: apps/postulantes/complementarios.py:EntregaFisicaService.registrar_entrega
+' Evidencia: apps/postulantes/complementarios.py:EntregaFisicaService.registrar_multiples
+' Evidencia: apps/postulantes/complementarios_api.py:CondicionViewSet
+' Evidencia: apps/postulantes/complementarios_api.py:EntregaFisicaViewSet
+' Evidencia: apps/postulantes/complementarios_api.py:RelatedViewSet
+' Evidencia: apps/postulantes/complementarios_api.py:RelatedViewSet.get_queryset
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_complementarios.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-POS-067 — Condiciones y recepción física
+!pragma useVerticalIf on
+|Operador API|
+start
+:Solicitar consulta o resolución/recepción;
+|Backend|
+:Exigir IsAuthenticated;
+if (Método GET) then (consulta)
+ :RelatedViewSet.get_queryset\nAdministración: todos\nOtros: propietario o asignado, distinct;
+ :Aplicar filtros de consulta\ny devolver registros visibles;
+ stop
+else (POST)
+ :Exigir is_staff_user en la vista\ny validar payload de la operación;
+ if (Autoridad y payload válidos) then (sí)
+ else (no)
+  :Rechazar antes de invocar el servicio;
+  stop
+ endif
+endif
+if (Operación seleccionada) then (resolver condición)
+ :En atomic bloquear condición\ny validar postulación editable;
+ if (Condición PENDIENTE) then (sí)
+  :verificar -> CUMPLE / rechazar -> NO_CUMPLE\nGuardar verificador, fecha, observaciones y auditoría;
+ else (no)
+  :ValidationError / rollback;
+  stop
+ endif
+else (recepción física)
+ :En atomic bloquear entrega\ny validar postulación editable;
+ if (Cantidad recibida mayor que cero) then (sí)
+  :Reemplazar cantidad_recibida (no acumular)\nCOMPLETA si cantidad es None o recibido >= cantidad\nEn otro caso PARCIAL;
+  :Guardar receptor, fecha, observaciones y auditoría;
+ else (no)
+  :ValidationError / rollback;
+  stop
+ endif
+endif
+note right
+ Postulación editable: activa y estado distinto de CONCLUIDA/RECHAZADA.
+ Lotes: validar selección no vacía y sin duplicados,
+ bloquear postulación y filas activas de esa postulación;
+ exigir todas PENDIENTE antes de resolver/recibir en atomic.
+ Recepción individual no exige PENDIENTE: permite actualizar cantidades.
+ Creación de registros es otra variante, no paso de esta resolución.
+end note
+:Devolver resultado de la mutación;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

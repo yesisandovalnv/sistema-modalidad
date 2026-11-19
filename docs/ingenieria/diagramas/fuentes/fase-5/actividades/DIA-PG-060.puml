@@ -1,0 +1,77 @@
+@startuml
+' ID: DIA-PG-060
+' Nombre: Recorrido nominal y conclusión: Proyecto de Grado
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de recorrido nominal y conclusión: proyecto de grado, con decisiones, guardas y límites de evidencia.
+' Alcance: Proyecto de Grado; Proyecto de Grado; usa infraestructura común con política específica.
+' UC: UC-PG-001, UC-PG-002
+' RN: RN-PG-101, RN-PG-102
+' Componentes: CMP-CORE-001, CMP-MOD-001
+' Entidades: ENT-DOC-004, ENT-POS-004, ENT-POS-005, ENT-POS-006, ENT-POS-009, ENT-POS-010, ENT-POS-011
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista de coordinación académica entre solicitudes; el loop no existe como un único método automático. STAGE_DATA es declaración de código, no esquema instalado. PG_LEGACY y PG_HITOS_V1 se conservan. PROPUESTA_APROBADA es hito/decisión del régimen correspondiente, no nueva etapa. Memorandos congelan composición y evidencia; su vigencia se calcula. Evaluación admite BRUTA_100 y lectura LEGACY_PONDERADA; no volver a ponderar aportes históricos.
+' Evidencia: apps/modalidades/proyecto_grado.py:ProyectoGradoPolicy
+' Evidencia: apps/postulantes/cierre.py:CierrePostulacionService
+' Evidencia: apps/postulantes/cierre.py:CierrePostulacionService.concluir_postulacion
+' Evidencia: apps/postulantes/cierre_api.py:CierreAccionView.post
+' Evidencia: apps/postulantes/memorandums.py:MemorandumDesignacionService.publicar
+' Evidencia: apps/postulantes/proyecto_grado_workflow.py:ProyectoGradoWorkflowOrchestrator.autoabrir_siguiente
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.memorandums_designacion
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.aprobar_etapa
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_cierre.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_memorandums.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-PG-060 — Recorrido nominal y conclusión: Proyecto de Grado
+!pragma useVerticalIf on
+|Operación administrativa (varias solicitudes)|
+start
+:Resolver expediente operativo y modalidad
+No simular este recorrido para HISTORICO;
+if (Policy y etapas activas coherentes) then (sí)
+else (no)
+:Rechazar por configuración/contexto;
+stop
+endif
+:Recorrer las etapas nominales declaradas;
+note right
+1. INSCRIPCION
+2. PERFIL_PROYECTO
+3. DOCUMENTO_FINAL
+4. REVISION_TRIBUNAL_PREVIA
+5. DEFENSA_PRIVADA
+6. DEFENSA_PUBLICA
+7. REVISION_FINAL_POST_PUBLICA
+8. CIERRE_DOCUMENTAL
+end note
+repeat
+:Seleccionar la etapa/contexto operable
+y ejecutar sus operaciones académicas propias;
+|Backend común + policy específica|
+:Validar documentos, actores, requisitos y estado
+según la operación y la policy de esta modalidad;
+if (Guarda satisfecha) then (sí)
+:Aplicar efectos de la acción solicitada
+Aprobación/rechazo no es avance automático universal;
+else (no)
+:Devolver faltantes/error
+No dar por aprobada la etapa;
+stop
+endif
+|Operación administrativa (varias solicitudes)|
+repeat while (Quedan etapas/operaciones por tramitar) is (sí) not (no)
+|Servicio de conclusión específico|
+:Aprobar revisión final y cierre documental por CierrePostulacionService
+Concluir solo con cierre/etapas obligatorias aprobadas
+Reabrir cierre requiere motivo y restaura historial cuando procede;
+if (Gates propios satisfechos) then (sí)
+:Formalizar CONCLUIDA por la ruta correspondiente;
+else (no)
+:Rechazar conclusión y conservar el resultado permitido por atomic;
+stop
+endif
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,56 @@
+@startuml DIA-USR-020-autenticacion-autorizacion
+' ID: DIA-USR-020
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Separar servicios, entrada API y políticas; solo operaciones verificadas
+' Alcance y elementos: CustomTokenObtainPairView, CustomTokenRefreshView, StudentTokenObtainPairView, LogoutView, MeView, UserCapabilitiesService, IsActiveUser, IsStaff
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.
+' Fuente: apps/usuarios/services.py
+' Fuente: apps/usuarios/views.py
+' Fuente: core/permissions.py
+!include ../estilos/base.puml.inc
+title DIA-USR-020 — Clases: autenticacion-autorizacion
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+left to right direction
+class "CustomTokenObtainPairView" as CustomTokenObtainPairView <<clase>> {
+  serializer_class
+  +post(request, *args, **kwargs)
+}
+class "CustomTokenRefreshView" as CustomTokenRefreshView <<clase>> {
+  +post(request, *args, **kwargs)
+}
+class "StudentTokenObtainPairView" as StudentTokenObtainPairView <<clase>> {
+  authentication_classes
+  permission_classes
+  serializer_class
+  +post(request, *args, **kwargs)
+}
+class "LogoutView" as LogoutView <<clase>> {
+  permission_classes
+  serializer_class
+  +post(request, *args, **kwargs)
+}
+class "MeView" as MeView <<clase>> {
+  permission_classes
+  serializer_class
+  +get(request, *args, **kwargs)
+}
+class "UserCapabilitiesService" as UserCapabilitiesService <<servicio>> {
+  STUDENT_CODES
+  TEACHER_CODES
+  ADMIN_CODES
+  NAMES
+  +resolve(user)
+}
+class "IsActiveUser" as IsActiveUser <<clase>> {
+  +has_permission(request, view)
+}
+class "IsStaff" as IsStaff <<clase>> {
+  message
+  +has_permission(request, view)
+}
+@enduml

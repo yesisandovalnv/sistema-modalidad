@@ -1,0 +1,22 @@
+@startuml DIA-SYS-002-modelo-base
+' ID: DIA-SYS-002
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Identificar atributos comunes heredados sin crear una tabla BaseModel
+' Alcance y elementos: BaseModel
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.
+' Fuente: core/models.py
+!include ../estilos/base.puml.inc
+title DIA-SYS-002 — Clases: modelo-base
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+left to right direction
+class "BaseModel" as BaseModel <<clase>> {
+  created_at
+  updated_at
+  activo
+}
+@enduml

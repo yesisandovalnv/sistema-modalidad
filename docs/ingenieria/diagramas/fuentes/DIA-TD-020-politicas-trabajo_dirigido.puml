@@ -1,0 +1,78 @@
+@startuml DIA-TD-020-politicas-trabajo_dirigido
+' ID: DIA-TD-020
+' Fecha: 2026-11-01 America/La_Paz
+' Objetivo: Mostrar especialización propia de TD y herencias explícitas
+' Alcance y elementos: TrabajoDirigidoEventoPolicy, TrabajoDirigidoRevisionPolicy, TrabajoDirigidoRequisitosPolicy, TrabajoDirigidoEvaluacionPolicy, TrabajoDirigidoPolicy
+' Version: 689eeb56ac6f / desarrollo / directorio de trabajo
+' Limitaciones: Operaciones seleccionadas de las declaradas en código; no representa toda la API pública ni secuencia de ejecución. Referencias externas abreviadas. Herencia explícita en AST; asociaciones por instanciación en atributos y dependencias por anotación de tipo. No se presume igualdad académica por herencia.
+' Fuente: apps/modalidades/policies.py
+' Fuente: apps/modalidades/proyecto_grado.py
+' Fuente: apps/modalidades/trabajo_dirigido.py
+!include ../estilos/base.puml.inc
+title DIA-TD-020 — Clases: politicas-trabajo_dirigido
+footer 689eeb56ac6f / desarrollo / directorio de trabajo | lógico derivado del código / infraestructura declarada
+legend bottom left
+  Referencia externa = definición abreviada; no duplica entidad.
+  No se ha inspeccionado PostgreSQL ni el despliegue en ejecución.
+endlegend
+left to right direction
+class "TrabajoDirigidoEventoPolicy" as TrabajoDirigidoEventoPolicy <<politica>> {
+  EVENT_STAGE
+  ASSIGNMENTS
+  QUORUM
+  +obtener_seguimiento_publico_vigente(postulacion)
+  +obtener_evento_publico_finalizado(seguimiento)
+  +requiere_vinculo_evento_documento(tipo_documento)
+  +validar_vinculo_documento(postulacion, tipo_documento, evento_defensa)
+  +validar_programacion(tipo_evento, seguimiento, fecha_programada, asignaciones, **kwargs)
+  +validar_quorum(evento)
+}
+class "TrabajoDirigidoRevisionPolicy" as TrabajoDirigidoRevisionPolicy <<politica>> {
+  ETAPA
+  DOCUMENTO_FINAL
+  TIPO_EVIDENCIA
+}
+class "TrabajoDirigidoRequisitosPolicy" as TrabajoDirigidoRequisitosPolicy <<politica>> {
+  DOCUMENTS_BY_STAGE
+  +get_documentos_requeridos(fase)
+  +get_entregas_requeridas(fase)
+}
+class "TrabajoDirigidoEvaluacionPolicy" as TrabajoDirigidoEvaluacionPolicy <<politica>> {
+  +validar_solicitud_registro(modalidad_registro, evaluador, **kwargs)
+  +get_semantica_nota(evento, tipo)
+  +get_valores_registro(evento, tipo, nota)
+  +validar_registro(evaluacion)
+  +construir_consolidado(evaluacion, usuario)
+  +calcular_resultado_final(postulacion)
+}
+class "TrabajoDirigidoPolicy" as TrabajoDirigidoPolicy <<politica>> {
+  codigo
+  PROPUESTA_APROBADA
+  RESULTADO_PROPUESTA_APROBADA
+  etapas
+  +get_documentos_aplicables_para_postulacion(postulacion, codigo_etapa)
+  +get_decisiones_academicas_permitidas(codigo_etapa)
+  +get_configuracion_actores(postulacion, seguimiento)
+  +get_reglas_asignacion()
+  +usa_conclusion_academica_propia()
+  +get_revision_tribunal_previa_policy()
+}
+class "ProyectoGradoEventoPolicy" as ProyectoGradoEventoPolicy <<referencia>> {
+}
+class "ProyectoGradoRevisionTribunalPreviaPolicy" as ProyectoGradoRevisionTribunalPreviaPolicy <<referencia>> {
+}
+class "BaseRequisitosPolicy" as BaseRequisitosPolicy <<referencia>> {
+}
+class "ProyectoGradoLegacyEvaluacionPolicy" as ProyectoGradoLegacyEvaluacionPolicy <<referencia>> {
+}
+class "BaseModalidadPolicy" as BaseModalidadPolicy <<referencia>> {
+}
+ProyectoGradoEventoPolicy <|-- TrabajoDirigidoEventoPolicy
+ProyectoGradoRevisionTribunalPreviaPolicy <|-- TrabajoDirigidoRevisionPolicy
+BaseRequisitosPolicy <|-- TrabajoDirigidoRequisitosPolicy
+ProyectoGradoLegacyEvaluacionPolicy <|-- TrabajoDirigidoEvaluacionPolicy
+BaseModalidadPolicy <|-- TrabajoDirigidoPolicy
+TrabajoDirigidoPolicy --> TrabajoDirigidoEventoPolicy : evento_policy
+TrabajoDirigidoPolicy --> TrabajoDirigidoEvaluacionPolicy : evaluacion_policy
+TrabajoDirigidoPolicy --> TrabajoDirigidoRequisitosPolicy : requisitos_policy
+@enduml

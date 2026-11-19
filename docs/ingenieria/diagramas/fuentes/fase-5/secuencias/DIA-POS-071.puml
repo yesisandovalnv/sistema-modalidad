@@ -1,0 +1,66 @@
+@startuml
+' ID: DIA-POS-071
+' Nombre: Reemplazo de asignación académica
+' Tipo UML: Secuencia
+' Objetivo: Documentar el comportamiento implementado de reemplazo de asignación académica, con decisiones, guardas y límites de evidencia.
+' Alcance: Asignaciones y elegibilidad contextual; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-USR-007, UC-USR-008, UC-POS-004, UC-POS-016, UC-POS-017
+' RN: RN-POS-104, RN-POS-116, RN-POS-117, RN-USR-107, RN-USR-108
+' Componentes: CMP-CORE-001, CMP-POS-001, CMP-WEB-001
+' Entidades: ENT-POS-004, ENT-POS-005, ENT-POS-006, ENT-USR-002
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente.
+' Evidencia: apps/postulantes/asignaciones.py:AsignacionService.asignar_actor
+' Evidencia: apps/postulantes/asignaciones.py:AsignacionService.finalizar_asignacion
+' Evidencia: apps/postulantes/asignaciones.py:AsignacionService.reemplazar_actor
+' Evidencia: apps/postulantes/views.py:AsignacionPostulacionViewSet
+' Evidencia: apps/postulantes/views.py:AsignacionPostulacionViewSet.finalizar
+' Evidencia: apps/postulantes/views.py:AsignacionPostulacionViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:AsignacionPostulacionViewSet.reemplazar
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.asignar
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.candidatos_asignacion
+' Evidencia: apps/usuarios/views.py:AssignmentCandidateViewSet.get_queryset
+' Evidencia: apps/usuarios/views.py:CanManageApplications.has_permission
+' Evidencia: apps/usuarios/views.py:StudentOptionViewSet.get_queryset
+' Evidencia: src/pages/postulantes/ExpedientePage.jsx
+' Evidencia: src/services/postulacionesService.js
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_assignments.py
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_assignment_candidates_api.py
+' Prueba relacionada, no ejecutada: apps/usuarios/tests_students_api.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-POS-071 — Reemplazo de asignación académica
+actor Administración as U
+participant "ExpedientePage /\npostulacionesService /\napiClient" as FE
+participant AsignacionPostulacionViewSet as API
+participant "Permiso administrativo /\nReemplazarActorSerializer" as V
+participant AsignacionService as S
+participant "Policy / reglas de ocupación y\nactor" as P
+database "AsignacionPostulacion /\nusuarios\nORM → PostgreSQL" as DB
+participant "publish_domain_event" as EV
+U -> FE : Reemplazar persona
+FE -> API : POST asignaciones/{id}/reemplazar/
+API -> V : Validar acceso y payload
+API -> S : reemplazar_actor(...)
+group atomic exterior de reemplazar_actor
+ S -> DB : Bloquear asignación activa
+ S -> S : Exigir nuevo usuario distinto
+ S -> S : finalizar_asignacion(anterior)\nValidar antes que no participe en evento activo
+ S -> DB : Guardar activo=False y fecha_finalizacion
+ S -> EV : Registrar ASIGNACION_FINALIZADA para commit
+ S -> S : asignar_actor(nuevo, mismo cargo/contexto)
+ S -> P : Duplicados, modalidad, ocupación, incompatibilidad
+ alt Regla de la nueva asignación impide cambio
+  S --> API : ValidationError; rollback del conjunto
+ else Cambio válido
+  S -> DB : Crear asignación nueva activa y auditoría
+  S -> EV : ACTOR_ASIGNADO y ACTOR_REEMPLAZADO para commit
+  S --> API : Nueva asignación
+ end
+end
+note over DB,EV : Callbacks anidados esperan commit exterior;\nno se elimina el registro anterior.
+API --> FE : Resultado serializado o error
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,11 @@
+skinparam backgroundColor white
+skinparam defaultFontName SansSerif
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam ArrowColor #334155
+skinparam classBackgroundColor #EFF6FF
+skinparam classBackgroundColor<<referencia>> #F1F5F9
+skinparam classBackgroundColor<<politica>> #ECFDF5
+skinparam componentBackgroundColor #EFF6FF
+skinparam packageStyle rectangle

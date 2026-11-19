@@ -1,0 +1,42 @@
+@startuml
+' ID: DIA-EG-080
+' Nombre: Estado persistido del área de Examen
+' Tipo UML: Estados
+' Objetivo: Documentar el comportamiento implementado de estado persistido del área de examen, con decisiones, guardas y límites de evidencia.
+' Alcance: Examen de Grado; Examen de Grado; usa infraestructura común con política específica.
+' UC: UC-EG-001, UC-EG-002, UC-EG-003
+' RN: RN-EG-101, RN-EG-102, RN-EG-103
+' Componentes: CMP-CORE-001, CMP-MOD-001
+' Entidades: ENT-MOD-001, ENT-MOD-002, ENT-POS-004, ENT-POS-005
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: EN_PROCESO existe como choice de ExamenArea pero no se encontró escritor productivo hacia él; no se conecta por analogía con SeguimientoEtapa. Las evaluaciones individuales incompletas conservan el estado del área y no constituyen otra fase persistida.
+' Evidencia: apps/modalidades/examen_grado_api.py:ExamenGradoOverviewView.get
+' Evidencia: apps/modalidades/examen_grado_api.py:ExamenGradoOverviewView.post
+' Evidencia: apps/modalidades/examen_grado_service.py:ExamenGradoService.concluir
+' Evidencia: apps/modalidades/examen_grado_service.py:ExamenGradoService.ensure_areas
+' Evidencia: apps/modalidades/examen_grado_service.py:ExamenGradoService.overview
+' Evidencia: apps/modalidades/examen_grado_service.py:ExamenGradoService.registrar_evaluacion
+' Prueba relacionada, no ejecutada: apps/modalidades/tests_examen_grado.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-EG-080 — Estado persistido del área de Examen
+hide empty description
+state "PENDIENTE" as s0
+state "POSTERGADA" as s1
+state "APROBADA" as s2
+state "REPROBADA" as s3
+[*] --> s0 : T01 ensure_areas\n[G01] / A01
+s0 --> s2 : T02 registrar_evaluacion\n[G02] / A02
+s1 --> s2 : T03 registrar_evaluacion\n[G03] / A03
+s0 --> s1 : T04 primera evaluación completa insuficiente\n[G04] / A04
+s1 --> s3 : T05 segunda evaluación completa insuficiente\n[G05] / A05
+legend bottom
+Txx: contrato completo en la ficha.
+Gxx = guarda de Txx; Axx = acción de Txx.
+Son alias documentales, no variables del código.
+No se infieren transiciones a partir de choices.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

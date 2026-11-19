@@ -1,0 +1,77 @@
+@startuml
+' ID: DIA-PG-070
+' Nombre: Cierre documental, conclusión y reapertura de Proyecto
+' Tipo UML: Secuencia
+' Objetivo: Documentar el comportamiento implementado de cierre documental, conclusión y reapertura de proyecto, con decisiones, guardas y límites de evidencia.
+' Alcance: Proyecto de Grado; Proyecto de Grado; usa infraestructura común con política específica.
+' UC: UC-PG-001, UC-PG-002
+' RN: RN-PG-101, RN-PG-102
+' Componentes: CMP-CORE-001, CMP-MOD-001, CMP-WEB-001
+' Entidades: ENT-DOC-004, ENT-POS-004, ENT-POS-005, ENT-POS-006, ENT-POS-009, ENT-POS-010, ENT-POS-011
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Secuencia de variantes independientes, no acciones sucesivas de una sola petición. El callback postcommit se detalla en la vista de notificaciones. Exclusiva de la policy de cierre disponible; no extender a Tesis por analogía.
+' Evidencia: apps/postulantes/cierre.py:CierrePostulacionService
+' Evidencia: apps/postulantes/cierre.py:CierrePostulacionService.aprobar_cierre_documental
+' Evidencia: apps/postulantes/cierre.py:CierrePostulacionService.reabrir_cierre
+' Evidencia: apps/postulantes/cierre_api.py:CierreAccionView.post
+' Evidencia: apps/postulantes/memorandums.py:MemorandumDesignacionService.publicar
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.memorandums_designacion
+' Evidencia: src/services/postulacionesService.js
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_cierre.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_memorandums.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-PG-070 — Cierre documental, conclusión y reapertura de Proyecto
+actor Administración as U
+participant "ExpedientePage /\npostulacionesService /\napiClient" as FE
+participant CierreAccionView as API
+participant CierrePostulacionService as S
+participant "Policy de cierre de Proyecto" as P
+participant WorkflowService as W
+database "Postulación / seguimiento /\nhistorial\nORM → PostgreSQL" as DB
+U -> FE : Seleccionar una acción de cierre
+FE -> API : POST cierre/{action}/
+API -> API : Exigir administración; validar observaciones/motivo
+alt aprobar-cierre-documental
+ API -> S : aprobar_cierre_documental()
+ group atomic
+  S -> DB : Bloquear postulación
+  S -> P : evaluar_cierre_documental()
+  alt Cumple
+   S -> W : Preparar etapa si PENDIENTE\ny aprobar_etapa(actualizar_estado_general=False)
+   S -> DB : Auditar y registrar evento postcommit
+  else Faltantes
+   S --> API : ValidationError / rollback
+  end
+ end
+else concluir
+ API -> S : concluir_postulacion()
+ group atomic
+  S -> DB : Bloquear postulación
+  alt estado_actual.codigo == CONCLUIDA
+   S --> API : Retornar postulación sin cambios\nSin auditoría ni evento de conclusión
+  else No concluida
+   S -> P : puede_concluir(post)
+   alt No cumple cierre y etapas obligatorias
+    S --> API : ValidationError / rollback\nSin actualizar, auditar ni publicar
+   else Cumple
+    S -> W : _actualizar_estado_general(CONCLUIDA, strict=True)
+    S -> DB : Refrescar; auditar; consultar historial\ny registrar evento postcommit
+    S --> API : Retornar postulación concluida
+   end
+  end
+ end
+else reabrir
+ API -> S : reabrir_cierre(motivo)
+ group atomic
+  S -> DB : Bloquear postulación; exigir cierre APROBADA
+  S -> DB : Cierre EN_PROCESO; limpiar fin/responsable\nRestaurar estado anterior si hay destino válido y distinto
+  S -> DB : Auditar y registrar evento postcommit
+ end
+end
+API --> FE : Estado de cierre o error
+note over API,S : aprobar-revision-final es otra variante del mismo endpoint:\nevaluar_revision_final + preparar/aprobar etapa y auditar.\nNo se fusiona cierre aprobado con conclusión general.
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

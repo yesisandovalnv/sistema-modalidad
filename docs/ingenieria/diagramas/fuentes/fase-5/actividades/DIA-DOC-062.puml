@@ -1,0 +1,49 @@
+@startuml
+' ID: DIA-DOC-062
+' Nombre: Aprobar, rechazar u observar un documento
+' Tipo UML: Actividades
+' Objetivo: Documentar el comportamiento implementado de aprobar, rechazar u observar un documento, con decisiones, guardas y límites de evidencia.
+' Alcance: Revisión documental; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-DOC-002
+' RN: RN-DOC-102
+' Componentes: CMP-CORE-001, CMP-DOC-001
+' Entidades: ENT-DOC-003, ENT-DOC-004, ENT-DOC-005
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Las acciones de un catálogo o ciclo son variantes por solicitud; no ejecución obligatoria de todo CRUD. Guardas académicas delegadas a la política citada.
+' Evidencia: apps/documentos/services.py:DocumentoService.aprobar_documento
+' Evidencia: apps/documentos/services.py:DocumentoService.registrar_observacion
+' Evidencia: apps/documentos/views.py:DocumentoPostulacionViewSet.aprobar
+' Prueba relacionada, no ejecutada: apps/documentos/test_api.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-DOC-062 — Aprobar, rechazar u observar un documento
+!pragma useVerticalIf on
+|Operador API|
+start
+:Solicitar la operación indicada;
+|Backend|
+:Administración selecciona revisión y valida comentario/motivo según acción;
+:Atomic: bloquear documento y validar postulación editable y versión actual;
+if (Documento y versión válidos) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Aprobar/rechazar exige ENV
+Aprobar además sin observaciones pendientes
+Observar fuera de ENV solo si policy permite postaprobación;
+if (Guarda de revisión satisfecha) then (sí)
+else (no)
+:Rechazar la solicitud;
+stop
+endif
+:Aprobar: APR y corrección=False
+Rechazar: REC y corrección=True
+Observar: crear observación y corrección=True sin cambiar estado;
+:Auditar y programar notificación postcommit;
+:Devolver el resultado de la operación;
+stop
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

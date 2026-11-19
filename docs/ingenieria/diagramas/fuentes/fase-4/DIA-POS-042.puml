@@ -1,0 +1,41 @@
+@startuml
+' Identificador: DIA-POS-042
+' Nombre: Asignaciones académicas
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-POS-004, UC-USR-007, UC-USR-008, UC-POS-016, UC-POS-017
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/postulantes/asignaciones.py
+' Evidencia: apps/postulantes/views.py
+' Evidencia: apps/usuarios/views.py
+!include ../../estilos/base.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title DIA-POS-042 — Asignaciones académicas
+actor "Propietario de\npostulación" as ACT_POS_001
+actor "Usuario vinculado al\nexpediente" as ACT_POS_002
+actor "Administración\nfuncional" as ACT_USR_001
+rectangle "Sistema de Modalidades de Graduación\nAsignaciones académicas" {
+  usecase "UC-POS-004\nAsignar un actor académico" as UC_POS_004
+  usecase "UC-USR-007\nConsultar estudiantes para\npostulación" as UC_USR_007
+  usecase "UC-USR-008\nConsultar candidatos a\nasignación" as UC_USR_008
+  usecase "UC-POS-016\nConsultar asignaciones e\nhistorial de cargos" as UC_POS_016
+  usecase "UC-POS-017\nFinalizar o reemplazar\nasignación" as UC_POS_017
+}
+ACT_USR_001 -- UC_POS_004
+ACT_USR_001 -- UC_USR_007
+ACT_USR_001 -- UC_USR_008
+ACT_USR_001 -- UC_POS_016
+ACT_POS_001 -- UC_POS_016
+ACT_POS_002 -- UC_POS_016
+ACT_USR_001 -- UC_POS_017
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

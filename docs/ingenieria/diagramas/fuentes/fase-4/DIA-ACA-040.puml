@@ -1,0 +1,43 @@
+@startuml
+' Identificador: DIA-ACA-040
+' Nombre: Gestión académica
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-ACA-001, UC-ACA-002, UC-ACA-007, UC-ACA-003, UC-ACA-004, UC-ACA-005, UC-ACA-006
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/academico/serializers.py
+' Evidencia: apps/academico/views.py
+' Evidencia: apps/modalidades/policies.py
+' Evidencia: core/permissions.py
+!include ../../estilos/base.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title DIA-ACA-040 — Gestión académica
+actor "Usuario autenticado" as ACT_SYS_002
+actor "Administración\nfuncional" as ACT_USR_001
+rectangle "Sistema de Modalidades de Graduación\nGestión académica" {
+  usecase "UC-ACA-001\nActualizar una modalidad\nexistente" as UC_ACA_001
+  usecase "UC-ACA-002\nPublicar o sustituir un\ndocumento oficial de modalidad" as UC_ACA_002
+  usecase "UC-ACA-007\nConsultar periodos y requisitos" as UC_ACA_007
+  usecase "UC-ACA-003\nAdministrar periodos" as UC_ACA_003
+  usecase "UC-ACA-004\nAdministrar requisitos y\nrelaciones de modalidad" as UC_ACA_004
+  usecase "UC-ACA-005\nConsultar modalidades y\ncapacidades" as UC_ACA_005
+  usecase "UC-ACA-006\nConsultar o descargar documentos\noficiales" as UC_ACA_006
+}
+ACT_USR_001 -- UC_ACA_001
+ACT_USR_001 -- UC_ACA_002
+ACT_SYS_002 -- UC_ACA_007
+ACT_USR_001 -- UC_ACA_003
+ACT_USR_001 -- UC_ACA_004
+ACT_SYS_002 -- UC_ACA_005
+ACT_SYS_002 -- UC_ACA_006
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

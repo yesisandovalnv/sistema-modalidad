@@ -1,0 +1,77 @@
+@startuml
+' ID: DIA-POS-070
+' Nombre: Aprobación transaccional de etapa
+' Tipo UML: Secuencia
+' Objetivo: Documentar el comportamiento implementado de aprobación transaccional de etapa, con decisiones, guardas y límites de evidencia.
+' Alcance: Inicialización, inscripción y seguimiento; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-POS-003, UC-POS-005, UC-POS-008, UC-POS-009, UC-POS-012, UC-POS-013, UC-POS-014, UC-POS-015
+' RN: RN-POS-103, RN-POS-105, RN-POS-108, RN-POS-109, RN-POS-112, RN-POS-113, RN-POS-114, RN-POS-115
+' Componentes: CMP-CORE-001, CMP-POS-001, CMP-WEB-001
+' Entidades: ENT-ACA-004, ENT-DOC-004, ENT-POS-001, ENT-POS-002, ENT-POS-004, ENT-POS-005, ENT-POS-006, ENT-POS-007, ENT-POS-008, ENT-POS-015, ENT-POS-016
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente.
+' Evidencia: apps/postulantes/decisiones_academicas.py:DecisionAcademicaEtapaService.registrar
+' Evidencia: apps/postulantes/dictamenes_revision.py:DictamenRevisionDocumentoService.registrar
+' Evidencia: apps/postulantes/revision_tribunal.py:RevisionTribunalPreviaService
+' Evidencia: apps/postulantes/serializers.py:SeguimientoEtapaSerializer
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.concluir_academicamente
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.inicializar_flujo
+' Evidencia: apps/postulantes/views.py:PostulacionViewSet.nuevo_intento
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.aprobar
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.dictamenes_revision
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.get_queryset
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.informes_revision_tribunal
+' Evidencia: apps/postulantes/views.py:SeguimientoEtapaViewSet.registrar_decision
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.aprobar_etapa
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.concluir_postulacion
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.crear_nuevo_intento
+' Evidencia: apps/postulantes/workflow.py:WorkflowService.inicializar_flujo
+' Evidencia: src/pages/postulantes/ExpedientePage.jsx
+' Evidencia: src/services/postulacionesService.js
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_cierre.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_decisiones_academicas.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_dictamen_revision.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_revision_tribunal.py
+' Prueba relacionada, no ejecutada: apps/postulantes/tests_workflow.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-POS-070 — Aprobación transaccional de etapa
+actor Administración as U
+participant "ExpedientePage /\npostulacionesService" as FE
+participant apiClient as HTTP
+participant SeguimientoEtapaViewSet as API
+participant "IsWorkflowAdminOrReadOnlyOwner\nAprobarSeguimientoEtapaSerializer" as V
+participant WorkflowService as W
+participant "Policy de modalidad" as P
+database "SeguimientoEtapa / Postulacion\nORM → PostgreSQL" as DB
+participant "publish_domain_event" as EV
+U -> FE : Aprobar etapa
+FE -> HTTP : aprobarEtapa(id)
+HTTP -> API : POST seguimientos-etapa/{id}/aprobar/
+API -> V : Permiso administrativo; serializer.is_valid()
+API -> W : aprobar_etapa(seguimiento, usuario, ...)
+group atomic
+ W -> DB : select_for_update seguimiento
+ W -> W : Exigir EN_PROCESO u OBSERVADA; no cerrado
+ W -> P : validar_aprobacion_etapa(seguimiento)
+ alt Guarda no satisfecha
+  P --> W : ValidationError
+  W --> API : Propagar error / rollback
+ else Guarda satisfecha
+  W -> DB : Guardar APROBADA, fecha_fin, cerrada_por
+  W -> EV : ETAPA_APROBADA → on_commit
+  opt Condición específica de etapa final y cierre policy
+   W -> W : _actualizar_estado_general según condición del código
+  end
+  opt PROYECTO_GRADO
+   W -> W : ProyectoGradoWorkflowOrchestrator.autoabrir_siguiente()
+   note right of W : Solo configuración oficial;\nno aprobación académica automática de la siguiente.
+  end
+ end
+end
+API --> HTTP : Seguimiento actualizado o error DRF
+HTTP --> FE : Resultado
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

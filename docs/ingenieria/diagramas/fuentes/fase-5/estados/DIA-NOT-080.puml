@@ -1,0 +1,39 @@
+@startuml
+' ID: DIA-NOT-080
+' Nombre: Lectura de notificación propia
+' Tipo UML: Estados
+' Objetivo: Documentar el comportamiento implementado de lectura de notificación propia, con decisiones, guardas y límites de evidencia.
+' Alcance: Notificación interna y lectura; Compartido; las políticas conservan el alcance académico de cada modalidad.
+' UC: UC-NOT-001, UC-NOT-002
+' RN: RN-NOT-101, RN-NOT-102
+' Componentes: CMP-CORE-001, CMP-NOT-001
+' Entidades: ENT-NOT-001, ENT-USR-003
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: Booleano persistido con actualización idempotente. No se permite eliminar notificaciones por el servicio; no se modela un estado Entregada por correo.
+' Evidencia: apps/notificaciones/services.py:NotificationService.crear_notificacion
+' Evidencia: apps/notificaciones/services.py:NotificationService.listar_usuario
+' Evidencia: apps/notificaciones/services.py:NotificationService.marcar_leida
+' Evidencia: apps/notificaciones/services.py:NotificationService.marcar_no_leida
+' Evidencia: apps/notificaciones/views.py:NotificacionViewSet.get_queryset
+' Evidencia: apps/notificaciones/views.py:NotificacionViewSet.marcar_leida
+' Prueba relacionada, no ejecutada: apps/notificaciones/tests_api.py
+!include ../../../estilos/base.puml.inc
+skinparam maxMessageSize 240
+skinparam stateBackgroundColor #EFF6FF
+skinparam activityBackgroundColor #EFF6FF
+title DIA-NOT-080 — Lectura de notificación propia
+hide empty description
+state "No leída: leida=False" as s0
+state "Leída: leida=True" as s1
+[*] --> s0 : T01 crear_notificacion\n[G01] / A01
+s0 --> s1 : T02 marcar_leida o todas\n[G02] / A02
+s1 --> s0 : T03 marcar_no_leida\n[G03] / A03
+s1 --> s1 : T04 marcar_leida\n[G04] / A04
+legend bottom
+Txx: contrato completo en la ficha.
+Gxx = guarda de Txx; Axx = acción de Txx.
+Son alias documentales, no variables del código.
+No se infieren transiciones a partir de choices.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml

@@ -1,0 +1,36 @@
+@startuml
+' Identificador: DIA-DIP-040
+' Nombre: Graduación vía Diplomado
+' Objetivo: identificar objetivos y actores autorizados, con guardas detalladas en la matriz.
+' Alcance: UC-DIP-001, UC-DIP-002, UC-DIP-003
+' Elementos: actores funcionales y casos de uso; asociaciones sujetas al contexto backend.
+' Version: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02
+' Limitaciones: análisis estático; asociación no concede todas las variantes; ver ficha y matriz.
+' Evidencia: apps/modalidades/diplomado_api.py
+' Evidencia: apps/modalidades/diplomado_service.py
+!include ../../estilos/base.puml.inc
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecaseBackgroundColor #EFF6FF
+skinparam actorStyle awesome
+title DIA-DIP-040 — Graduación vía Diplomado
+actor "Administración\nfuncional" as ACT_USR_001
+actor "Estudiante" as ACT_USR_002
+actor "Docente" as ACT_USR_003
+rectangle "Sistema de Modalidades de Graduación\nGraduación vía Diplomado" {
+  usecase "UC-DIP-001\nRegistrar el resultado de un\nmódulo de Diplomado" as UC_DIP_001
+  usecase "UC-DIP-002\nConcluir graduación vía\nDiplomado" as UC_DIP_002
+  usecase "UC-DIP-003\nConsultar módulos y resultado de\nDiplomado" as UC_DIP_003
+}
+ACT_USR_001 -- UC_DIP_001
+ACT_USR_001 -- UC_DIP_002
+ACT_USR_001 -- UC_DIP_003
+ACT_USR_002 -- UC_DIP_003
+ACT_USR_003 -- UC_DIP_003
+legend bottom
+Asociación = interacción sujeta a guardas backend.
+No implica permiso para todas las variantes HTTP.
+Los cargos académicos no son operadores automáticos.
+endlegend
+footer 689eeb56ac6f / desarrollo / trabajo local / 2026-11-02
+@enduml
