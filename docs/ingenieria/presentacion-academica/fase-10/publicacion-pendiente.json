@@ -1,0 +1,12 @@
+{
+  "phase": "10",
+  "status": "RESUELTO",
+  "pending": "analisis-y-diseno.docx sigue abierto por Word; revisión corregida lista y validada en revision-analisis-y-diseno.docx",
+  "annex_final_updated": true,
+  "annex_sha256": "2f362a8f205da415fb40c8721a145be8cfe4f21c5ac82d7ad1c1c02859a45f50",
+  "expected_initial_main_sha256": "d1accf0cf52519d81d007cab6484b040931ee3760eb98231414c5b8c92a81a7b",
+  "reviewed_main_sha256": "122cd99abc14f611f4edb72a5edfe285e11297bf9f056cd6f4d34d7e95e3b98e",
+  "automatic_review_rejection": "Rechazó terminar Word PID 7692 por riesgo de perder estado sin guardar; no se terminó ese proceso",
+  "user_question_pending": "Cerrar Word manualmente o autorizar expresamente su cierre; no se infiere autorización de la espera",
+  "final_main_replaced": true
+}

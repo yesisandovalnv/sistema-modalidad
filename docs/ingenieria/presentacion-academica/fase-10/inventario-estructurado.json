@@ -1,0 +1,1265 @@
+[
+  {
+    "figure": 1,
+    "academic_id": "ACA-01",
+    "original": "DIA-SYS-001",
+    "title": "Vista general del sistema",
+    "type": "Casos de uso",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-4/DIA-SYS-001.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-4/DIA-SYS-001.svg",
+    "source_sha256": "474426d8c1a6781204419ca8d0df5340c38306118d8406fc6d758fcc46495222",
+    "svg_sha256": "95666ab861a96267931421bb48e3ad880c5831932018c01530d0b2d3dd487918",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-01--DIA-SYS-001.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-01--DIA-SYS-001.svg",
+    "title_academic": "Actores y objetivos principales del sistema",
+    "fields": {
+      "Objetivo": "Delimita el sistema y diferencia actores de cargos académicos antes de explicar tecnología.",
+      "Elementos y relaciones principales": "Siete actores funcionales y ocho objetivos representativos; asociaciones de interacción y generalizaciones hacia usuario autenticado.",
+      "Proceso o funcionalidad representada": "UC-USR-001, UC-POS-002, UC-POS-003, UC-DOC-001, UC-POS-006, UC-NOT-001, UC-REP-001, UC-ACA-005.",
+      "Interpretación técnica y relación con la implementación": "La autorización concreta se obtiene del backend y de la matriz de permisos. La vista es un resumen de los 75 objetivos, no su catálogo completo; un cargo de tutor o tribunal no concede acceso por sí mismo.",
+      "Evidencia del código": "apps/academico/views.py; ModalidadViewSet.capacidades (L142); apps/documentos/services.py; DocumentoService.subir_documento (L146); apps/documentos/views.py; DocumentoPostulacionViewSet.subir (L125); apps/modalidades/policies.py; ModalidadPolicyRegistry (L392); apps/notificaciones/services.py; NotificationService.listar_usuario (L77); apps/notificaciones/views.py; NotificacionViewSet.get_queryset (L15); apps/postulantes/defensas.py; EventoDefensaService.programar_evento (L25); apps/postulantes/defensas_api.py; PostulacionEventosView.post (L322); apps/postulantes/permissions.py; postulaciones_in_scope (L7); apps/postulantes/views.py; PostulacionViewSet.get_queryset (L116); SeguimientoEtapaViewSet.aprobar (L1001); apps/postulantes/workflow.py; WorkflowService.aprobar_etapa (L111); apps/reportes/resultados.py; ResultadoAcademicoReportService (L95); apps/reportes/views.py; ResultadosAcademicosReportView.get (L57); apps/usuarios/serializers.py; LoginSerializer.validate (L49); apps/usuarios/views.py; CustomTokenObtainPairView.post (L28)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-01--DIA-SYS-001.svg",
+        "width": 707.0,
+        "height": 1150.0,
+        "median_font": 16.0,
+        "a4_portrait": 8.9,
+        "a4_landscape": 6.1,
+        "a3_landscape": 9.7,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-4/DIA-SYS-001.md",
+    "rules": [],
+    "cases": [
+      "UC-USR-001",
+      "UC-POS-002",
+      "UC-POS-003",
+      "UC-DOC-001",
+      "UC-POS-006",
+      "UC-NOT-001",
+      "UC-REP-001",
+      "UC-ACA-005"
+    ],
+    "sources": [
+      "apps/academico/views.py",
+      "apps/documentos/services.py",
+      "apps/documentos/views.py",
+      "apps/modalidades/policies.py",
+      "apps/notificaciones/services.py",
+      "apps/notificaciones/views.py",
+      "apps/postulantes/defensas.py",
+      "apps/postulantes/defensas_api.py",
+      "apps/postulantes/permissions.py",
+      "apps/postulantes/views.py",
+      "apps/postulantes/workflow.py",
+      "apps/reportes/resultados.py",
+      "apps/reportes/views.py",
+      "apps/usuarios/serializers.py",
+      "apps/usuarios/views.py"
+    ],
+    "destination": "anexo A3"
+  },
+  {
+    "figure": 2,
+    "academic_id": "ACA-02",
+    "original": "DIA-POS-041",
+    "title": "Seguimiento de etapas",
+    "type": "Casos de uso",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-4/DIA-POS-041.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-4/DIA-POS-041.svg",
+    "source_sha256": "e5ec60edc272fba31ddfb167df43f78eca0ca6a6997ef043b23067dd2f47ffcd",
+    "svg_sha256": "59ddf9bc4f92512017e58494f4d492c170f6e86e790f3e834df5f908862698be",
+    "status": "SIN CAMBIOS",
+    "split": false,
+    "title_academic": "Casos de uso del seguimiento académico",
+    "fields": {
+      "Objetivo": "Expone la responsabilidad operativa central y separa consulta, transición, decisión y nuevo intento.",
+      "Elementos y relaciones principales": "Administración opera transiciones, inicialización, decisiones, dictámenes e informes; propietario y vinculado consultan seguimiento.",
+      "Proceso o funcionalidad representada": "UC-POS-003, UC-POS-005, UC-POS-009, UC-POS-012, UC-POS-013, UC-POS-014, UC-POS-015.",
+      "Interpretación técnica y relación con la implementación": "Una asociación con un UC no habilita todas sus variantes HTTP. La lectura contextual de dictámenes e informes se desarrolla en la ampliación de permisos de fase 7, no se deduce de las asociaciones administrativas de escritura.",
+      "Evidencia del código": "apps/postulantes/decisiones_academicas.py; DecisionAcademicaEtapaService.registrar (L111); apps/postulantes/dictamenes_revision.py; DictamenRevisionDocumentoService.registrar (L17); apps/postulantes/revision_tribunal.py; RevisionTribunalPreviaService (L16); apps/postulantes/serializers.py; SeguimientoEtapaSerializer (L282); apps/postulantes/views.py; PostulacionViewSet.inicializar_flujo (L490); PostulacionViewSet.nuevo_intento (L517); SeguimientoEtapaViewSet.aprobar (L1001); SeguimientoEtapaViewSet.dictamenes_revision (L825); SeguimientoEtapaViewSet.get_queryset (L800); SeguimientoEtapaViewSet.informes_revision_tribunal (L854); SeguimientoEtapaViewSet.registrar_decision (L946); apps/postulantes/workflow.py; WorkflowService.aprobar_etapa (L111); WorkflowService.crear_nuevo_intento (L213); WorkflowService.inicializar_flujo (L22)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/diagramas/renderizados/fase-4/DIA-POS-041.svg",
+        "width": 442.0,
+        "height": 838.0,
+        "median_font": 13.0,
+        "a4_portrait": 9.9,
+        "a4_landscape": 6.8,
+        "a3_landscape": 10.8,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-4/DIA-POS-041.md",
+    "rules": [],
+    "cases": [
+      "UC-POS-003",
+      "UC-POS-005",
+      "UC-POS-009",
+      "UC-POS-012",
+      "UC-POS-013",
+      "UC-POS-014",
+      "UC-POS-015"
+    ],
+    "sources": [
+      "apps/postulantes/decisiones_academicas.py",
+      "apps/postulantes/dictamenes_revision.py",
+      "apps/postulantes/revision_tribunal.py",
+      "apps/postulantes/serializers.py",
+      "apps/postulantes/views.py",
+      "apps/postulantes/workflow.py"
+    ],
+    "destination": "principal"
+  },
+  {
+    "figure": 3,
+    "academic_id": "ACA-03",
+    "original": "DIA-DOC-040",
+    "title": "Gestión documental",
+    "type": "Casos de uso",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-4/DIA-DOC-040.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-4/DIA-DOC-040.svg",
+    "source_sha256": "7984d0c220302e60b228d9988521d3d0f8f2934ffa4a01b82bb95a0485e166b4",
+    "svg_sha256": "aa8a4e14f5b97089f3266af25ff1440a6a924e28d04f744f05b6f4b893f0fdf5",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-03--DIA-DOC-040.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-03--DIA-DOC-040.svg",
+    "title_academic": "Casos de uso de la gestión de evidencias documentales",
+    "fields": {
+      "Objetivo": "Permite explicar carga, versiones, revisión y corrección sin mezclar sus responsabilidades.",
+      "Elementos y relaciones principales": "Propietario, vinculado, autenticado y administración se relacionan con carga, consulta, revisión, catálogos, corrección y evidencia histórica.",
+      "Proceso o funcionalidad representada": "UC-DOC-001, UC-DOC-002, UC-DOC-007, UC-DOC-008, UC-DOC-003, UC-DOC-004, UC-DOC-005, UC-DOC-006.",
+      "Interpretación técnica y relación con la implementación": "Cargar no equivale a aprobar; confirmar corrección no equivale a cambiar el estado académico. Las mutaciones heredadas pendientes de caracterización no se presentan como flujos validados.",
+      "Evidencia del código": "apps/documentos/services.py; ConfirmacionCorreccionDocumentoService.registrar (L913); DocumentoService.aprobar_documento (L492); DocumentoService.marcar_observacion_corregida (L700); DocumentoService.subir_documento (L146); DocumentoService.subir_documento_historico (L331); apps/documentos/views.py; ConfirmacionCorreccionDocumentoViewSet.create (L384); DocumentoPostulacionViewSet.aprobar (L182); DocumentoPostulacionViewSet.get_queryset (L82); DocumentoPostulacionViewSet.subir (L125); EstadoDocumentoViewSet (L34); ObservacionDocumentoViewSet.marcar_corregida (L357); TipoDocumentoViewSet (L48); VersionDocumentoViewSet.descargar (L305); apps/postulantes/views.py; EstadoPostulacionViewSet (L79); PostulacionViewSet.subir_documento_historico (L451)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-03--DIA-DOC-040.svg",
+        "width": 516.0,
+        "height": 1154.0,
+        "median_font": 16.0,
+        "a4_portrait": 8.8,
+        "a4_landscape": 6.1,
+        "a3_landscape": 9.6,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-4/DIA-DOC-040.md",
+    "rules": [],
+    "cases": [
+      "UC-DOC-001",
+      "UC-DOC-002",
+      "UC-DOC-007",
+      "UC-DOC-008",
+      "UC-DOC-003",
+      "UC-DOC-004",
+      "UC-DOC-005",
+      "UC-DOC-006"
+    ],
+    "sources": [
+      "apps/documentos/services.py",
+      "apps/documentos/views.py",
+      "apps/postulantes/views.py"
+    ],
+    "destination": "anexo A3"
+  },
+  {
+    "figure": 4,
+    "academic_id": "ACA-04",
+    "original": "DIA-POS-043",
+    "title": "Defensas y evaluaciones",
+    "type": "Casos de uso",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-4/DIA-POS-043.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-4/DIA-POS-043.svg",
+    "source_sha256": "58a9d3701041219ff7753e298a77105ee934c578edabac24f1ad2abc3500b6f2",
+    "svg_sha256": "db43aa0daa2beea8cc20b69ea5d1c4eb0fa2bd041326d858913c1d4e6a42a64e",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-04--DIA-POS-043.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-04--DIA-POS-043.svg",
+    "title_academic": "Casos de uso de defensas y evaluación",
+    "fields": {
+      "Objetivo": "Explica quién consulta y quién registra los actos académicos; evita confundir evaluador registrado con operador.",
+      "Elementos y relaciones principales": "Administración gestiona eventos, participantes, asistencia y evaluaciones; actores relacionados consultan defensas; estudiante/docente acceden a GET del resultado según alcance.",
+      "Proceso o funcionalidad representada": "UC-POS-006, UC-POS-007, UC-POS-018, UC-POS-019, UC-POS-020, UC-POS-021, UC-POS-022.",
+      "Interpretación técnica y relación con la implementación": "La nota del dibujo distingue GET de POST para recálculo. No establece una escala común para las seis modalidades ni autorización directa de todos los participantes.",
+      "Evidencia del código": "apps/postulantes/defensas.py; EvaluacionDefensaService._registrar (L202); EvaluacionDefensaService.calcular_resultado_final (L263); EvaluacionDefensaService.consolidar_evaluacion_evento (L227); EventoDefensaService.agregar_participante (L58); EventoDefensaService.programar_evento (L25); EventoDefensaService.registrar_asistencia (L142); EventoDefensaService.validar_quorum (L153); apps/postulantes/defensas_api.py; EventoDefensaViewSet.agregar (L260); EventoDefensaViewSet.asistencia (L271); EventoDefensaViewSet.consolidar (L296); EventoDefensaViewSet.evaluar (L285); EventoDefensaViewSet.get_queryset (L214); PostulacionEventosView.post (L322); ResultadoFinalView (L329)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Confirmación estática; variantes y restricciones en matriz. No certifica pruebas ni normativa. Sin include/extend no demostrados."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-04--DIA-POS-043.svg",
+        "width": 507.0,
+        "height": 1133.0,
+        "median_font": 16.0,
+        "a4_portrait": 9.0,
+        "a4_landscape": 6.2,
+        "a3_landscape": 9.8,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-4/DIA-POS-043.md",
+    "rules": [],
+    "cases": [
+      "UC-POS-006",
+      "UC-POS-007",
+      "UC-POS-018",
+      "UC-POS-019",
+      "UC-POS-020",
+      "UC-POS-021",
+      "UC-POS-022"
+    ],
+    "sources": [
+      "apps/postulantes/defensas.py",
+      "apps/postulantes/defensas_api.py"
+    ],
+    "destination": "principal"
+  },
+  {
+    "figure": 5,
+    "academic_id": "ACA-05",
+    "original": "DIA-SYS-006",
+    "title": "Componentes generales",
+    "type": "Componentes",
+    "source": "docs/ingenieria/diagramas/fuentes/DIA-SYS-006-componentes-general.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/DIA-SYS-006-componentes-general.svg",
+    "source_sha256": "e06f20f3960d53fa44fb6e6c9b291b1718a40cbfcbe247f7e5c5210be925e6ee",
+    "svg_sha256": "cb9ae81ed9a9f8d35daed10b96a8e5d40507ddda74640da372345833309debff",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-05--DIA-SYS-006.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-05--DIA-SYS-006.svg",
+    "title_academic": "Arquitectura de componentes del sistema",
+    "fields": {
+      "Objetivo": "Relaciona React, backend, políticas, persistencia, archivos y notificaciones en una sola vista arquitectónica.",
+      "Elementos y relaciones principales": "La SPA se comunica por HTTP/JSON, multipart y Bearer con APIViews/ViewSets. Los servicios usan políticas y ORM; documentos acceden a archivos y el ORM a PostgreSQL.",
+      "Proceso o funcionalidad representada": "SPA, seguridad, dominio, políticas, ORM y archivos.",
+      "Interpretación técnica y relación con la implementación": "Los componentes representan responsabilidades, no microservicios desplegados. El evento posterior al commit es interno; el dibujo no acredita broker, correo externo ni cola distribuida.",
+      "Evidencia del código": "apps/documentos/services.py; apps/notificaciones/events.py; apps/postulantes/workflow.py; apps/reportes/services.py; core/settings/base.py; core/urls.py; src/services/api.js",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6f / desarrollo / directorio de trabajo.",
+      "Limitación original que se conserva": "Vista general selectiva: las dependencias no son una secuencia ni servicios desplegables separados. No hay broker externo demostrado. FileField representa rutas/archivos, no BLOB PostgreSQL."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-05--DIA-SYS-006.svg",
+        "width": 1572.0,
+        "height": 1100.0,
+        "median_font": 16.0,
+        "a4_portrait": 4.6,
+        "a4_landscape": 6.4,
+        "a3_landscape": 10.1,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/DIA-SYS-006-componentes-general.md",
+    "rules": [],
+    "cases": [],
+    "sources": [
+      "apps/documentos/services.py",
+      "apps/notificaciones/events.py",
+      "apps/postulantes/workflow.py",
+      "apps/reportes/services.py",
+      "core/settings/base.py",
+      "core/urls.py",
+      "src/services/api.js"
+    ],
+    "destination": "anexo A3"
+  },
+  {
+    "figure": 6,
+    "academic_id": "ACA-06",
+    "original": "DIA-MOD-002",
+    "title": "Motor y modalidades",
+    "type": "Componentes",
+    "source": "docs/ingenieria/diagramas/fuentes/DIA-MOD-002-componentes-motor.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/DIA-MOD-002-componentes-motor.svg",
+    "source_sha256": "42cce8924a071c90aa599516f50025d12049dc4432b2952e2caa82321b30e35f",
+    "svg_sha256": "73f993e96b1b44179c112f47e0967eaa8aa167016633c9baf6c8bbb7c09c4071",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-06--DIA-MOD-002.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-06--DIA-MOD-002.svg",
+    "title_academic": "Motor común y especialización por modalidad",
+    "fields": {
+      "Objetivo": "Justifica reutilización técnica sin generalizar reglas académicas.",
+      "Elementos y relaciones principales": "WorkflowService, DocumentoService y servicios de defensa consultan ModalidadPolicyRegistry; el registro enlaza las seis modalidades. Trabajo Dirigido importa clases concretas de Proyecto.",
+      "Proceso o funcionalidad representada": "Motor común y seis políticas.",
+      "Interpretación técnica y relación con la implementación": "La dependencia TD→PG es de código y no identidad normativa. El registro explícito en ModalidadesConfig.ready permite localizar la especialización; la semejanza de componentes no demuestra equivalencia de gates.",
+      "Evidencia del código": "apps/documentos/services.py; apps/modalidades/apps.py; apps/modalidades/policies.py; apps/modalidades/trabajo_dirigido.py; apps/postulantes/defensas.py; apps/postulantes/workflow.py",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6f / desarrollo / directorio de trabajo.",
+      "Limitación original que se conserva": "Las flechas de registro no implican invocación simultánea de modalidades. No existe política académica de respaldo para códigos sin registro."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-06--DIA-MOD-002.svg",
+        "width": 1215.0,
+        "height": 746.0,
+        "median_font": 16.0,
+        "a4_portrait": 6.0,
+        "a4_landscape": 9.1,
+        "a3_landscape": 14.2,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/DIA-MOD-002-componentes-motor.md",
+    "rules": [],
+    "cases": [],
+    "sources": [
+      "apps/documentos/services.py",
+      "apps/modalidades/apps.py",
+      "apps/modalidades/policies.py",
+      "apps/modalidades/trabajo_dirigido.py",
+      "apps/postulantes/defensas.py",
+      "apps/postulantes/workflow.py"
+    ],
+    "destination": "principal"
+  },
+  {
+    "figure": 7,
+    "academic_id": "ACA-07",
+    "original": "DIA-SYS-007",
+    "title": "Despliegue Docker de desarrollo declarado",
+    "type": "Despliegue",
+    "source": "docs/ingenieria/diagramas/fuentes/DIA-SYS-007-despliegue-docker.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/DIA-SYS-007-despliegue-docker.svg",
+    "source_sha256": "ae4d545086219ee8ba811017280597c3d6f6df3b755a415b158fda73284f5520",
+    "svg_sha256": "34109b5ed9c78ac62bd3a9666e1e58229c950e6c9802a8b162d90b62ac03b055",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-07--DIA-SYS-007.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-07--DIA-SYS-007.svg",
+    "title_academic": "Despliegue local declarado mediante Docker Compose",
+    "fields": {
+      "Objetivo": "Separa arquitectura lógica de infraestructura comprobable y delimita desarrollo frente a producción.",
+      "Elementos y relaciones principales": "Contenedores frontend, backend y PostgreSQL, red default implícita, bind mounts del repositorio/media/backups y volúmenes de datos/node_modules.",
+      "Proceso o funcionalidad representada": "Tres servicios, red implícita, puertos y montajes.",
+      "Interpretación técnica y relación con la implementación": "Los puertos 15174→5173, 19001→8000 y 5540→5432 son valores por defecto declarados, no observación de procesos ni valores efectivos de .env. No se ejecutó el entrypoint ni se acredita una topología de producción.",
+      "Evidencia del código": "Dockerfile.backend; Dockerfile.frontend; core/settings/production.py; docker-compose.yml; docker/backend/entrypoint.sh; src/config/env.js",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6f / desarrollo / directorio de trabajo.",
+      "Limitación original que se conserva": "Infraestructura declarada de desarrollo, no contenedores observados. No se ejecutó Docker ni se leyó .env. Producción no representada como desplegada; no se afirma proxy, TLS terminado o nube."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-07--DIA-SYS-007.svg",
+        "width": 1532.0,
+        "height": 957.0,
+        "median_font": 16.0,
+        "a4_portrait": 4.7,
+        "a4_landscape": 7.3,
+        "a3_landscape": 11.2,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/DIA-SYS-007-despliegue-docker.md",
+    "rules": [],
+    "cases": [],
+    "sources": [
+      "Dockerfile.backend",
+      "Dockerfile.frontend",
+      "core/settings/production.py",
+      "docker-compose.yml",
+      "docker/backend/entrypoint.sh",
+      "src/config/env.js"
+    ],
+    "destination": "anexo A3"
+  },
+  {
+    "figure": 8,
+    "academic_id": "ACA-08",
+    "original": "DIA-POS-001",
+    "title": "Clases de dominio: postulaciones",
+    "type": "Clases",
+    "source": "docs/ingenieria/diagramas/fuentes/DIA-POS-001-postulaciones-clases.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/DIA-POS-001-postulaciones-clases.svg",
+    "source_sha256": "78af31dcf305dcd15bec9f632f7c072e41684b7f93873a260797d518b54d4ca1",
+    "svg_sha256": "0c7799735b221196939ef199395ecfebe41fceb55f3fc8dd93957ac4b88bfb7d",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-08--DIA-POS-001.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-08--DIA-POS-001.svg",
+    "title_academic": "Modelo de dominio del expediente y su historial",
+    "fields": {
+      "Objetivo": "Presenta el agregado conceptual de postulación y separa estado, historial y observación.",
+      "Elementos y relaciones principales": "Postulacion se relaciona con estudiante, modalidad y periodo obligatorios; estado_actual es opcional. HistorialEstado y Observacion referencian la postulación y al usuario.",
+      "Proceso o funcionalidad representada": "EstadoPostulacion, Postulacion, HistorialEstado, Observacion.",
+      "Interpretación técnica y relación con la implementación": "Las multiplicidades describen estructura ORM. Estado general, vigencia y tipo de registro son dimensiones distintas; no se infiere composición UML ni un workflow completo de estas asociaciones.",
+      "Evidencia del código": "apps/postulantes/models.py; core/models.py; core/settings/base.py",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6f / desarrollo / directorio de trabajo.",
+      "Limitación original que se conserva": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-08--DIA-POS-001.svg",
+        "width": 1233.0,
+        "height": 1133.0,
+        "median_font": 16.0,
+        "a4_portrait": 5.9,
+        "a4_landscape": 6.2,
+        "a3_landscape": 9.8,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/DIA-POS-001-postulaciones-clases.md",
+    "rules": [],
+    "cases": [],
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "destination": "anexo A3"
+  },
+  {
+    "figure": 9,
+    "academic_id": "ACA-09",
+    "original": "DIA-POS-002",
+    "title": "Clases de dominio: etapas",
+    "type": "Clases",
+    "source": "docs/ingenieria/diagramas/fuentes/DIA-POS-002-etapas-clases.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/DIA-POS-002-etapas-clases.svg",
+    "source_sha256": "628ede2ca0977c853e3498c4ff1fc1400ea89533a80d1c2121b14cadc6eee181",
+    "svg_sha256": "b976073a9b71a90dbf24fc1de86a862842d54785c4f1b114c6004e351d7dfc0b",
+    "status": "SIN CAMBIOS",
+    "split": false,
+    "title_academic": "Modelo de dominio del seguimiento por etapa e intento",
+    "fields": {
+      "Objetivo": "Explica por qué cada ejecución de una etapa necesita un registro de seguimiento propio.",
+      "Elementos y relaciones principales": "SeguimientoEtapa referencia una Postulacion y una EtapaModalidad; abierta_por y cerrada_por admiten ausencia. Estado, numero_intento y fechas documentan ejecución.",
+      "Proceso o funcionalidad representada": "SeguimientoEtapa.",
+      "Interpretación técnica y relación con la implementación": "La definición de etapa y su seguimiento no son la misma entidad. Las operaciones clean/save mostradas no sustituyen los servicios que autorizan transiciones; no se interpreta un nuevo intento como reinicio de la misma fila.",
+      "Evidencia del código": "apps/postulantes/models.py; core/models.py; core/settings/base.py",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6f / desarrollo / directorio de trabajo.",
+      "Limitación original que se conserva": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/diagramas/renderizados/DIA-POS-002-etapas-clases.svg",
+        "width": 594.0,
+        "height": 448.0,
+        "median_font": 13.0,
+        "a4_portrait": 9.9,
+        "a4_landscape": 12.7,
+        "a3_landscape": 20.2,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/DIA-POS-002-etapas-clases.md",
+    "rules": [],
+    "cases": [],
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "destination": "principal"
+  },
+  {
+    "figure": 10,
+    "academic_id": "ACA-10",
+    "original": "DIA-DOC-101",
+    "title": "ER lógico: documentos-versiones",
+    "type": "ER lógico",
+    "source": "docs/ingenieria/diagramas/fuentes/DIA-DOC-101-documentos-versiones-er.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/DIA-DOC-101-documentos-versiones-er.svg",
+    "source_sha256": "31edae02d73634166bc66e8c43c330348ecbec488154195eba18044cf5161bc5",
+    "svg_sha256": "7ee6eecbaef87255902b3f4a211017262fd39b35125477775dd7c98820dda5cb",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-10--DIA-DOC-101.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-10--DIA-DOC-101.svg",
+    "title_academic": "Modelo entidad–relación lógico de documentos y versiones",
+    "fields": {
+      "Objetivo": "Introduce persistencia de evidencias sin repetir como ER el modelo de clases del expediente.",
+      "Elementos y relaciones principales": "DocumentoPostulacion referencia postulación, tipo y estado, y opcionalmente evento. VersionDocumento pertenece a un documento y registra autor, número y archivo; las notas incluyen restricciones de unicidad.",
+      "Proceso o funcionalidad representada": "EstadoDocumento, TipoDocumento, DocumentoPostulacion, VersionDocumento.",
+      "Interpretación técnica y relación con la implementación": "Es un modelo ER complementario, no un tipo de diagrama UML. La unicidad documento/número de versión y las FK derivan del código; no se certifican nombres físicos de tablas ni el esquema instalado.",
+      "Evidencia del código": "apps/documentos/models.py; core/models.py; core/settings/base.py",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6f / desarrollo / directorio de trabajo.",
+      "Limitación original que se conserva": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-10--DIA-DOC-101.svg",
+        "width": 1271.0,
+        "height": 1226.0,
+        "median_font": 16.0,
+        "a4_portrait": 5.7,
+        "a4_landscape": 5.7,
+        "a3_landscape": 9.1,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/DIA-DOC-101-documentos-versiones-er.md",
+    "rules": [],
+    "cases": [],
+    "sources": [
+      "apps/documentos/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "destination": "anexo A3"
+  },
+  {
+    "figure": 11,
+    "academic_id": "ACA-11",
+    "original": "DIA-POS-105",
+    "title": "ER lógico: defensas-evaluaciones",
+    "type": "ER lógico",
+    "source": "docs/ingenieria/diagramas/fuentes/DIA-POS-105-defensas-evaluaciones-er.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/DIA-POS-105-defensas-evaluaciones-er.svg",
+    "source_sha256": "5c6eb4a17dbe8c53b1efefdffe99afbfbc377daa86ce9ed1c486b495db26a5ae",
+    "svg_sha256": "b3d7349a940e93ddc21c4232f8b1bce4e22304e45d926ec5b5410d176ddb5c18",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-11--DIA-POS-105.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-11--DIA-POS-105.svg",
+    "title_academic": "Modelo entidad–relación lógico de defensas, participantes y evaluaciones",
+    "fields": {
+      "Objetivo": "Explica integridad entre evento, participación y resultado, donde las restricciones son relevantes para auditoría.",
+      "Elementos y relaciones principales": "EventoDefensa referencia postulación y seguimiento. ParticipanteEvento vincula evento/asignación; EvaluacionDefensa referencia evento y opcionalmente participante evaluador.",
+      "Proceso o funcionalidad representada": "EventoDefensa, ParticipanteEvento, EvaluacionDefensa.",
+      "Interpretación técnica y relación con la implementación": "Las restricciones UQ condicionales no son unicidades globales. El actor que registra y el participante evaluador son referencias distintas; un valor nulo de evaluador puede corresponder a otro modo de registro según policy.",
+      "Evidencia del código": "apps/postulantes/models.py; core/models.py; core/settings/base.py",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6f / desarrollo / directorio de trabajo.",
+      "Limitación original que se conserva": "Vista lógica, no esquema instalado. PK id derivada de DEFAULT_AUTO_FIELD; campos comunes heredados y atributos escalares no mostrados se detallan en el diccionario. Referencias externas abreviadas. Cardinalidades estructurales por null/OneToOne/unique; restricciones condicionales y clean no alteran esos máximos. No se afirma composición UML ni obligatoriedad de colección M2M por blank=False."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-11--DIA-POS-105.svg",
+        "width": 1821.0,
+        "height": 1208.0,
+        "median_font": 16.0,
+        "a4_portrait": 4.0,
+        "a4_landscape": 5.8,
+        "a3_landscape": 9.2,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/DIA-POS-105-defensas-evaluaciones-er.md",
+    "rules": [],
+    "cases": [],
+    "sources": [
+      "apps/postulantes/models.py",
+      "core/models.py",
+      "core/settings/base.py"
+    ],
+    "destination": "anexo A3"
+  },
+  {
+    "figure": 12,
+    "academic_id": "ACA-12",
+    "original": "DIA-SYS-003",
+    "title": "Alta operativa frente a registro histórico",
+    "type": "Actividades",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/actividades/DIA-SYS-003.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-SYS-003.svg",
+    "source_sha256": "de5b81b31f94250f98c687187dfcf788479af145bd2ca1b5f563497de62253fc",
+    "svg_sha256": "203ba6cd887f8792aaf585b8e7203a076e1a2eeb2100d89c54ae8ba404b11e31",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-12--DIA-SYS-003.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-12--DIA-SYS-003.svg",
+    "title_academic": "Registro operativo y registro histórico de postulaciones",
+    "fields": {
+      "Objetivo": "Evita que el tribunal interprete un registro histórico como ejecución académica completa.",
+      "Elementos y relaciones principales": "La decisión de ruta separa alta histórica CONCLUIDA/CERRADA/HISTORICO sin seguimiento operativo y alta ordinaria con unicidad vigente y arranque condicionado por modalidad.",
+      "Proceso o funcionalidad representada": "Registro, consulta y estado general; Compartido; las políticas conservan el alcance académico de cada modalidad..",
+      "Interpretación técnica y relación con la implementación": "El arranque de Proyecto/Tesis usa orquestadores propios; Examen, Trabajo Dirigido y Diplomado tienen su rama; Excelencia no recibe ese autoarranque genérico. La vista describe solicitudes de alta, no una migración de datos.",
+      "Evidencia del código": "postulaciones_in_scope (L7); PostulacionService.agregar_observacion (L326); PostulacionService.cambiar_estado (L240); PostulacionService.crear_postulacion (L57); PostulacionService.crear_postulacion_historica (L129); HistorialEstadoViewSet.get_queryset (L703); ObservacionViewSet.create (L744); ObservacionViewSet.get_queryset (L731); PostulacionViewSet.create (L174); PostulacionViewSet.get_queryset (L116); PostulacionViewSet.historicas (L240); PostulacionViewSet.partial_update (L263)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-12--DIA-SYS-003.svg",
+        "width": 1826.0,
+        "height": 1377.0,
+        "median_font": 16.0,
+        "a4_portrait": 4.0,
+        "a4_landscape": 5.1,
+        "a3_landscape": 8.1,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-SYS-003.md",
+    "rules": [
+      "RN-POS-101",
+      "RN-POS-102",
+      "RN-POS-110",
+      "RN-POS-111",
+      "RN-POS-124",
+      "RN-POS-125"
+    ],
+    "cases": [
+      "UC-POS-001",
+      "UC-POS-011"
+    ],
+    "sources": [],
+    "destination": "SVG ampliado"
+  },
+  {
+    "figure": 13,
+    "academic_id": "ACA-13",
+    "original": "DIA-POS-061",
+    "title": "Inscripción, requisitos y aprobación de etapa",
+    "type": "Actividades",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/actividades/DIA-POS-061.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-POS-061.svg",
+    "source_sha256": "b7b33da97879aedfbed43ad7c98137e70eb4fdf6d69143f8d361cfcb41e3f525",
+    "svg_sha256": "b029b54a5d4c2ce2e800c4fe5fa48fb21fb3e67298dee39405cf043411433a5e",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-13--DIA-POS-061.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-13--DIA-POS-061.svg",
+    "title_academic": "Validaciones y ejecución de operaciones sobre etapas",
+    "fields": {
+      "Objetivo": "Explica el orden de autoridad, bloqueo, estado y política antes de mutar seguimiento.",
+      "Elementos y relaciones principales": "La actividad aplica serializer, atomic y bloqueo; valida tipo de registro y guardas de la operación; actualiza estado, fechas y responsable y registra efectos posteriores al commit.",
+      "Proceso o funcionalidad representada": "Inicialización, inscripción y seguimiento; Compartido; las políticas conservan el alcance académico de cada modalidad..",
+      "Interpretación técnica y relación con la implementación": "Es un resumen de variantes independientes, no obligación de iniciar, observar, aprobar y rechazar en una petición. Autoabrir la siguiente etapa de Proyecto requiere flujo oficial; no se universaliza a las demás modalidades.",
+      "Evidencia del código": "DecisionAcademicaEtapaService.registrar (L111); DictamenRevisionDocumentoService.registrar (L17); RevisionTribunalPreviaService (L16); SeguimientoEtapaSerializer (L282); PostulacionViewSet.concluir_academicamente (L477); PostulacionViewSet.inicializar_flujo (L490); PostulacionViewSet.nuevo_intento (L517); SeguimientoEtapaViewSet.aprobar (L1001); SeguimientoEtapaViewSet.dictamenes_revision (L825); SeguimientoEtapaViewSet.get_queryset (L800); SeguimientoEtapaViewSet.informes_revision_tribunal (L854); SeguimientoEtapaViewSet.registrar_decision (L946); WorkflowService._validar_etapas_anteriores_aprobadas (L342); WorkflowService.aprobar_etapa (L111); WorkflowService.concluir_postulacion (L367); WorkflowService.crear_nuevo_intento (L213); WorkflowService.inicializar_flujo (L22); WorkflowService.iniciar_etapa (L58)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Las acciones de un catálogo o ciclo son variantes por solicitud; no ejecución obligatoria de todo CRUD. Guardas académicas delegadas a la política citada."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-13--DIA-POS-061.svg",
+        "width": 768.0,
+        "height": 1273.0,
+        "median_font": 16.0,
+        "a4_portrait": 8.0,
+        "a4_landscape": 5.5,
+        "a3_landscape": 8.7,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-POS-061.md",
+    "rules": [
+      "RN-POS-103",
+      "RN-POS-105",
+      "RN-POS-108",
+      "RN-POS-109",
+      "RN-POS-112",
+      "RN-POS-113",
+      "RN-POS-114",
+      "RN-POS-115"
+    ],
+    "cases": [
+      "UC-POS-003",
+      "UC-POS-012"
+    ],
+    "sources": [],
+    "destination": "SVG ampliado"
+  },
+  {
+    "figure": 14,
+    "academic_id": "ACA-14",
+    "original": "DIA-DOC-070",
+    "title": "Carga documental, storage y rollback",
+    "type": "Secuencia",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/secuencias/DIA-DOC-070.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-DOC-070.svg",
+    "source_sha256": "64636ec308b45c113a8d1af8f93ed4d9e7236a5c6d97976bed0eac54a8602823",
+    "svg_sha256": "18a9585a78f95d924eb68b29355871103fd24bb9e9fb8bc19ce7a3fc21249c37",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-14--DIA-DOC-070.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-14--DIA-DOC-070.svg",
+    "title_academic": "Interacción para carga y versionado de documentos",
+    "fields": {
+      "Objetivo": "Expone una frontera de consistencia importante: transacción SQL frente a almacenamiento de archivos.",
+      "Elementos y relaciones principales": "La solicitud atraviesa interfaz, cliente HTTP, vista, serializer, servicio y policy; ORM y storage reciben operaciones distintas y se programa el evento posterior al commit.",
+      "Proceso o funcionalidad representada": "Carga, versiones y evidencia histórica; Compartido; las políticas conservan el alcance académico de cada modalidad..",
+      "Interpretación técnica y relación con la implementación": "La eliminación compensatoria se dibuja solo para la excepción capturada al crear nueva versión. No se afirma que el filesystem participe del rollback SQL ni que cualquier fallo exterior quede compensado automáticamente.",
+      "Evidencia del código": "DocumentoService.crear_nueva_version (L375); DocumentoService.subir_documento (L146); DocumentoService.subir_documento_historico (L331); DocumentoPostulacionViewSet.subir (L125); PostulacionViewSet.subir_documento_historico (L451); src/pages/postulantes/ExpedientePage.jsx; src/services/api.js; src/services/postulacionesService.js",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "El borrado compensatorio está en el catch de crear_nueva_version. No garantiza compensación por un rollback exterior posterior al retorno de ese método, ni atomicidad entre filesystem y PostgreSQL."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-14--DIA-DOC-070.svg",
+        "width": 2410.0,
+        "height": 1604.0,
+        "median_font": 14.0,
+        "a4_portrait": 2.6,
+        "a4_landscape": 3.8,
+        "a3_landscape": 6.1,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-DOC-070.md",
+    "rules": [
+      "RN-DOC-101",
+      "RN-DOC-106"
+    ],
+    "cases": [
+      "UC-DOC-001"
+    ],
+    "sources": [],
+    "destination": "SVG ampliado"
+  },
+  {
+    "figure": 15,
+    "academic_id": "ACA-15",
+    "original": "DIA-POS-073",
+    "title": "Consolidación y efectos académicos",
+    "type": "Secuencia",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/secuencias/DIA-POS-073.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-POS-073.svg",
+    "source_sha256": "afdf4b8df361449769bf1ebe7003aea008d8a6187e3bf8d238d09533b8cedb42",
+    "svg_sha256": "0e18ed1bf68a937b72c9cbd0f3dcc49123b0054e710acc486dac47ed40ede000",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-15--DIA-POS-073.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-15--DIA-POS-073.svg",
+    "title_academic": "Interacción para consolidación de evaluación y efectos académicos",
+    "fields": {
+      "Objetivo": "Relaciona consolidación, policy y workflow, incluyendo reintento y rollback.",
+      "Elementos y relaciones principales": "Administración invoca consolidación; el servicio bloquea un evento FINALIZADA sin resultado final, construye el consolidado mediante policy y puede aprobar/rechazar seguimiento y solicitar reintento.",
+      "Proceso o funcionalidad representada": "Evaluación y consolidación; Compartido; las políticas conservan el alcance académico de cada modalidad..",
+      "Interpretación técnica y relación con la implementación": "Las ramas dependen de la policy. Conservar rechazo sin reintento solo ocurre si esta lo permite; no se introduce fórmula 30/70 universal ni un lifecycle ficticio de EvaluacionDefensa.",
+      "Evidencia del código": "EvaluacionDefensaService._registrar (L202); EvaluacionDefensaService.calcular_resultado_final (L263); EvaluacionDefensaService.consolidar_evaluacion_evento (L227); EventoDefensaViewSet.consolidar (L296); EventoDefensaViewSet.evaluar (L285); ResultadoFinalView (L329); src/pages/postulantes/ExpedientePage.jsx; src/services/postulacionesService.js",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-15--DIA-POS-073.svg",
+        "width": 1778.0,
+        "height": 1640.0,
+        "median_font": 14.0,
+        "a4_portrait": 3.6,
+        "a4_landscape": 3.8,
+        "a3_landscape": 5.9,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-POS-073.md",
+    "rules": [
+      "RN-POS-107",
+      "RN-POS-121",
+      "RN-POS-122"
+    ],
+    "cases": [
+      "UC-POS-007"
+    ],
+    "sources": [],
+    "destination": "SVG ampliado"
+  },
+  {
+    "figure": 16,
+    "academic_id": "ACA-16",
+    "original": "DIA-POS-074",
+    "title": "Conclusión común validada por modalidad",
+    "type": "Secuencia",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/secuencias/DIA-POS-074.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-POS-074.svg",
+    "source_sha256": "4fc51e5eea4ea3b289b92ed918eb8e5ae31cd383b80edc9b36a9b81d324c13dd",
+    "svg_sha256": "5ea238931a70fb87ef974080fd45b2a6f9e2313897e217df2448ffa729bbba16",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-16--DIA-POS-074.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-16--DIA-POS-074.svg",
+    "title_academic": "Interacción de conclusión académica mediante el motor común",
+    "fields": {
+      "Objetivo": "Separa concluir de actualizar administrativamente un estado o de aprobar una sola etapa.",
+      "Elementos y relaciones principales": "Vista administrativa, WorkflowService, policy, ORM e historial colaboran dentro de atomic. Ya CONCLUIDA retorna; las demás postulaciones se validan antes de actualizar y publicar para on_commit.",
+      "Proceso o funcionalidad representada": "Inicialización, inscripción y seguimiento; Compartido; las políticas conservan el alcance académico de cada modalidad..",
+      "Interpretación técnica y relación con la implementación": "Se lee observaciones sin atribuir un validador explícito no implementado. El método no cambia vigencia; los servicios específicos de cierre no se consideran aliases universales de esta secuencia.",
+      "Evidencia del código": "DecisionAcademicaEtapaService.registrar (L111); DictamenRevisionDocumentoService.registrar (L17); RevisionTribunalPreviaService (L16); SeguimientoEtapaSerializer (L282); PostulacionViewSet.concluir_academicamente (L477); PostulacionViewSet.inicializar_flujo (L490); PostulacionViewSet.nuevo_intento (L517); SeguimientoEtapaViewSet.aprobar (L1001); SeguimientoEtapaViewSet.dictamenes_revision (L825); SeguimientoEtapaViewSet.get_queryset (L800); SeguimientoEtapaViewSet.informes_revision_tribunal (L854); SeguimientoEtapaViewSet.registrar_decision (L946); WorkflowService.aprobar_etapa (L111); WorkflowService.concluir_postulacion (L367); WorkflowService.crear_nuevo_intento (L213); WorkflowService.inicializar_flujo (L22); src/pages/postulantes/ExpedientePage.jsx; src/services/postulacionesService.js",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Vista selectiva de implementación; no certifica ejecución funcional, datos instalados ni normativa vigente."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-16--DIA-POS-074.svg",
+        "width": 1598.0,
+        "height": 1308.0,
+        "median_font": 14.0,
+        "a4_portrait": 4.0,
+        "a4_landscape": 4.7,
+        "a3_landscape": 7.4,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-POS-074.md",
+    "rules": [
+      "RN-POS-103",
+      "RN-POS-105",
+      "RN-POS-108",
+      "RN-POS-109",
+      "RN-POS-112",
+      "RN-POS-113",
+      "RN-POS-114",
+      "RN-POS-115"
+    ],
+    "cases": [
+      "UC-POS-008"
+    ],
+    "sources": [],
+    "destination": "SVG ampliado"
+  },
+  {
+    "figure": 17,
+    "academic_id": "ACA-17",
+    "original": "DIA-POS-081",
+    "title": "Ciclo técnico de un seguimiento",
+    "type": "Estados",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/estados/DIA-POS-081.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-POS-081.svg",
+    "source_sha256": "706cd8540b4bbb3d3166f1adb9373d387289430d20621f3c7e594d5686002631",
+    "svg_sha256": "2356e0d69e24ccd57c7dcc2b8a791f04a1a1a4932b6e895f7fa23b49110b04d3",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-17--DIA-POS-081.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-17--DIA-POS-081.svg",
+    "title_academic": "Estados técnicos del seguimiento académico",
+    "fields": {
+      "Objetivo": "Permite diferenciar intento pendiente, operación en curso, observación y resultados de etapa.",
+      "Elementos y relaciones principales": "PENDIENTE, EN_PROCESO, OBSERVADA, APROBADA, RECHAZADA y OMITIDA se conectan por operaciones verificadas. T11 permite reabrir cierre solo en Proyecto.",
+      "Proceso o funcionalidad representada": "Inicialización, inscripción y seguimiento; Compartido; las políticas conservan el alcance académico de cada modalidad..",
+      "Interpretación técnica y relación con la implementación": "Gxx y Axx son alias documentales; sus guardas/acciones completas están en la ficha. Omitir requiere las condiciones de la operación y no se interpreta como aprobar. Un nuevo intento es otra instancia, no una flecha inventada de vuelta a pendiente.",
+      "Evidencia del código": "CierrePostulacionService.reabrir_cierre (L163); DecisionAcademicaEtapaService.registrar (L111); DictamenRevisionDocumentoService.registrar (L17); RevisionTribunalPreviaService (L16); SeguimientoEtapaSerializer (L282); PostulacionViewSet.concluir_academicamente (L477); PostulacionViewSet.inicializar_flujo (L490); PostulacionViewSet.nuevo_intento (L517); SeguimientoEtapaViewSet.aprobar (L1001); SeguimientoEtapaViewSet.dictamenes_revision (L825); SeguimientoEtapaViewSet.get_queryset (L800); SeguimientoEtapaViewSet.informes_revision_tribunal (L854); SeguimientoEtapaViewSet.registrar_decision (L946); WorkflowService.aprobar_etapa (L111); WorkflowService.concluir_postulacion (L367); WorkflowService.crear_nuevo_intento (L213); WorkflowService.inicializar_flujo (L22); WorkflowService.iniciar_etapa (L58); WorkflowService.observar_etapa (L87); WorkflowService.omitir_etapa (L187); WorkflowService.rechazar_etapa (L159)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Un único objeto SeguimientoEtapa. Nuevo intento crea otro PENDIENTE y deja el anterior RECHAZADA; no se dibuja como vuelta del mismo objeto. La excepción de reapertura pertenece al cierre de Proyecto, no al motor genérico de todas las etapas."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-17--DIA-POS-081.svg",
+        "width": 1219.0,
+        "height": 783.0,
+        "median_font": 14.0,
+        "a4_portrait": 5.2,
+        "a4_landscape": 7.9,
+        "a3_landscape": 12.4,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-POS-081.md",
+    "rules": [
+      "RN-POS-103",
+      "RN-POS-105",
+      "RN-POS-108",
+      "RN-POS-109",
+      "RN-POS-112",
+      "RN-POS-113",
+      "RN-POS-114",
+      "RN-POS-115"
+    ],
+    "cases": [
+      "UC-POS-003",
+      "UC-POS-013"
+    ],
+    "sources": [],
+    "destination": "anexo A3"
+  },
+  {
+    "figure": 18,
+    "academic_id": "ACA-18",
+    "original": "DIA-DOC-080",
+    "title": "Estado de revisión del documento",
+    "type": "Estados",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/estados/DIA-DOC-080.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-DOC-080.svg",
+    "source_sha256": "6be9831dbba5acc7803a66ccd973af7337e1a9c1bb7c70e72dab76aa76114d16",
+    "svg_sha256": "7e1c056f5c21fdf1ca8cfed444c51a2e6f1b61f24d1d8b87746725f5c7b3aaf3",
+    "status": "SIN CAMBIOS",
+    "split": false,
+    "title_academic": "Estados de revisión y observaciones del documento",
+    "fields": {
+      "Objetivo": "Separa revisión documental, nueva versión y necesidad de corrección.",
+      "Elementos y relaciones principales": "ENV, APR y REC representan el estado de revisión. Nueva versión puede devolver a ENV; aprobar/rechazar parten de ENV. Las observaciones se muestran como transiciones internas.",
+      "Proceso o funcionalidad representada": "Revisión documental; Compartido; las políticas conservan el alcance académico de cada modalidad..",
+      "Interpretación técnica y relación con la implementación": "Observar no crea un cuarto estado OBS del ciclo mostrado. Las condiciones de observar documentos APR/REC dependen de policy. El indicador de actualidad de la versión es otra dimensión y se consulta en su anexo específico.",
+      "Evidencia del código": "DocumentoService.aprobar_documento (L492); DocumentoService.crear_nueva_version (L375); DocumentoService.rechazar_documento (L562); DocumentoService.registrar_observacion (L632); DocumentoService.subir_documento (L146); DocumentoPostulacionViewSet.aprobar (L182)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Códigos operados por servicio, no catálogo físico consultado. No existe aquí transición a OBS. Las operaciones que conservan el código se muestran como transiciones internas, sin acciones entry/exit definidas. Observar en APR/REC es condicional: no prueba que una política concreta admita ambos. Autoaprobación inicial pasa por aprobar_documento. requiere_correccion es otro indicador."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-DOC-080.svg",
+        "width": 624.0,
+        "height": 556.0,
+        "median_font": 13.0,
+        "a4_portrait": 9.4,
+        "a4_landscape": 10.3,
+        "a3_landscape": 16.2,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-DOC-080.md",
+    "rules": [
+      "RN-DOC-102"
+    ],
+    "cases": [
+      "UC-DOC-002"
+    ],
+    "sources": [],
+    "destination": "principal"
+  },
+  {
+    "figure": 19,
+    "academic_id": "ACA-19",
+    "original": "DIA-POS-082",
+    "title": "Ciclo de evento de defensa",
+    "type": "Estados",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/estados/DIA-POS-082.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-POS-082.svg",
+    "source_sha256": "8bd78d28b2080caf2d8b9109a1389529063db958712e8ad34bdb3a6362578438",
+    "svg_sha256": "67c07b9b60d9f2658380f99a5ae7ea8eaaca2a038218bfc4a0ce6704925168e7",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-19--DIA-POS-082.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-19--DIA-POS-082.svg",
+    "title_academic": "Estados del evento de defensa",
+    "fields": {
+      "Objetivo": "Permite explicar programación, ejecución, suspensión, cancelación y reprogramación sin equipararlas al estado de etapa.",
+      "Elementos y relaciones principales": "PROGRAMADA→EN_CURSO→FINALIZADA es una ruta; existen suspensión/cancelación y reprogramación desde PROGRAMADA o SUSPENDIDA según guardas.",
+      "Proceso o funcionalidad representada": "Ciclo de defensa, participantes y asistencia; Compartido; las políticas conservan el alcance académico de cada modalidad..",
+      "Interpretación técnica y relación con la implementación": "Las flechas no sustituyen fecha, quórum y policy. No se dibuja reapertura genérica desde FINALIZADA/CANCELADA; aprobar una evaluación y finalizar un evento son acciones distintas.",
+      "Evidencia del código": "EventoDefensaService._cerrar (L173); EventoDefensaService.agregar_participante (L58); EventoDefensaService.finalizar_evento (L162); EventoDefensaService.iniciar_evento (L103); EventoDefensaService.programar_evento (L25); EventoDefensaService.registrar_asistencia (L142); EventoDefensaService.reprogramar_evento (L187); EventoDefensaService.validar_quorum (L153); EventoDefensaViewSet.agregar (L260); EventoDefensaViewSet.asistencia (L271); EventoDefensaViewSet.get_queryset (L214); PostulacionEventosView.post (L322)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "No se añade reapertura de FINALIZADA/CANCELADA. Asistencia y evaluación son dimensiones separadas: registrar evaluación admite EN_CURSO/FINALIZADA, consolidar requiere FINALIZADA. No se inventa estado EVALUADA del evento."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-19--DIA-POS-082.svg",
+        "width": 964.0,
+        "height": 807.0,
+        "median_font": 14.0,
+        "a4_portrait": 6.6,
+        "a4_landscape": 7.6,
+        "a3_landscape": 12.0,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-POS-082.md",
+    "rules": [
+      "RN-POS-106",
+      "RN-POS-118",
+      "RN-POS-119",
+      "RN-POS-120"
+    ],
+    "cases": [
+      "UC-POS-006"
+    ],
+    "sources": [],
+    "destination": "anexo A3"
+  },
+  {
+    "figure": 20,
+    "academic_id": "ACA-20",
+    "original": "DIA-PG-070",
+    "title": "Cierre documental, conclusión y reapertura de Proyecto",
+    "type": "Secuencia",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/secuencias/DIA-PG-070.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-PG-070.svg",
+    "source_sha256": "2abc03be5e90cd40bbc7647bfd33e3676b8ad0ae6039ef35e0016262ff2c4aa1",
+    "svg_sha256": "d04ae00b030555d7f7aeca90dc78adc7d0a6132c2f5ed0f671472b450a8964fe",
+    "status": "ADAPTADA",
+    "split": true,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-20--DIA-PG-070.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-20--DIA-PG-070.svg",
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-20--DIA-PG-070.svg",
+        "width": 1436.0,
+        "height": 952.0,
+        "median_font": 14.0,
+        "a4_portrait": 4.4,
+        "a4_landscape": 6.5,
+        "a3_landscape": 10.2,
+        "outside": []
+      },
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-20--DIA-PG-070_001.svg",
+        "width": 1436.0,
+        "height": 1016.0,
+        "median_font": 14.0,
+        "a4_portrait": 4.4,
+        "a4_landscape": 6.1,
+        "a3_landscape": 9.6,
+        "outside": []
+      },
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-20--DIA-PG-070_002.svg",
+        "width": 1436.0,
+        "height": 703.0,
+        "median_font": 14.0,
+        "a4_portrait": 4.4,
+        "a4_landscape": 6.8,
+        "a3_landscape": 10.5,
+        "outside": []
+      }
+    ],
+    "title_academic": "Proyecto de Grado: cierre documental, conclusión y reapertura",
+    "fields": {
+      "Objetivo": "Justifica la particularidad de Proyecto frente a la conclusión común y conserva la corrección de idempotencia.",
+      "Elementos y relaciones principales": "Las variantes aprobar cierre, concluir y reabrir colaboran con CierrePostulacionService y policy. Concluir distingue retorno ya concluido, rechazo por gates y actualización válida.",
+      "Proceso o funcionalidad representada": "Proyecto de Grado; Proyecto de Grado; usa infraestructura común con política específica..",
+      "Interpretación técnica y relación con la implementación": "Los recorridos anticipados no reciben auditoría ni evento de conclusión del servicio. El motivo de reapertura y el estado de cierre se validan antes de cambiarlo; esta secuencia no se traslada a Tesis por analogía.",
+      "Evidencia del código": "CierrePostulacionService (L103); CierrePostulacionService.aprobar_cierre_documental (L143); CierrePostulacionService.reabrir_cierre (L163); CierreAccionView.post (L40); MemorandumDesignacionService.publicar (L56); PostulacionViewSet.memorandums_designacion (L304); src/services/postulacionesService.js",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Secuencia de variantes independientes, no acciones sucesivas de una sola petición. El callback postcommit se detalla en la vista de notificaciones. Exclusiva de la policy de cierre disponible; no extender a Tesis por analogía."
+    },
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-PG-070.md",
+    "rules": [
+      "RN-PG-101",
+      "RN-PG-102"
+    ],
+    "cases": [
+      "UC-PG-002"
+    ],
+    "sources": [],
+    "destination": "anexo A3"
+  },
+  {
+    "figure": 21,
+    "academic_id": "ACA-21",
+    "original": "DIA-TG-060",
+    "title": "Recorrido nominal y conclusión: Tesis de Grado",
+    "type": "Actividades",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/actividades/DIA-TG-060.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-TG-060.svg",
+    "source_sha256": "03c35d4319e8c45b4fed8413da86e6b2e0515826d224be6534dda94c9fc2ac75",
+    "svg_sha256": "61a2eb3a6be902d2bc60b8a944071a0c11f03e2818b121651f1975d0c70deed1",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-21--DIA-TG-060.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-21--DIA-TG-060.svg",
+    "title_academic": "Tesis de Grado: recorrido nominal y conclusión específica",
+    "fields": {
+      "Objetivo": "Explica temática, perfil, revisiones y cierre académico propios sin adoptar el cierre documental de Proyecto.",
+      "Elementos y relaciones principales": "La nota enumera ocho etapas nominales; las solicitudes se coordinan con policy y backend común. La conclusión exige pública aprobada, consolidado aprobatorio y ACTA_DEFENSA actual APR, sin corrección, vinculada a pública finalizada.",
+      "Proceso o funcionalidad representada": "Tesis de Grado; Tesis de Grado; usa infraestructura común con política específica..",
+      "Interpretación técnica y relación con la implementación": "El bucle es coordinación humana entre solicitudes, no un método que ejecute todas las etapas ni una transacción única. Temática y perfil permanecen actos diferentes; no se aplica semántica legacy de Proyecto.",
+      "Evidencia del código": "TesisGradoPolicy (L345); TesisGradoPolicy.validar_conclusion_academica (L809); TesisGradoWorkflowOrchestrator.inicializar_proceso (L53); PostulacionViewSet.concluir_academicamente (L477); WorkflowService.aprobar_etapa (L111)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Vista de coordinación académica entre solicitudes; el loop no existe como un único método automático. STAGE_DATA es declaración de código, no esquema instalado. Temática y perfil son actos distintos. Dictámenes Tutor/Tribunal se registran con administración y evidencias propias. Evaluación admite consenso o individual bajo su policy y escalas BRUTA_100/MODALIDAD_ESPECIFICA; no aplicar semántica legacy de Proyecto."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-21--DIA-TG-060.svg",
+        "width": 1950.0,
+        "height": 1568.0,
+        "median_font": 16.0,
+        "a4_portrait": 3.7,
+        "a4_landscape": 4.5,
+        "a3_landscape": 7.1,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-TG-060.md",
+    "rules": [
+      "RN-TG-101"
+    ],
+    "cases": [
+      "UC-TG-001"
+    ],
+    "sources": [],
+    "destination": "SVG ampliado"
+  },
+  {
+    "figure": 22,
+    "academic_id": "ACA-22",
+    "original": "DIA-TD-060",
+    "title": "Recorrido nominal y conclusión: Trabajo Dirigido",
+    "type": "Actividades",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/actividades/DIA-TD-060.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-TD-060.svg",
+    "source_sha256": "5c2b1db1c37f556cb564d59978d74dce2e9dfc6010fc0f0faaa12862c41d39aa",
+    "svg_sha256": "ffed6ace87ae7f7f772a13174ead15a2a681f30f987dfc3040ac840419580ae0",
+    "status": "ADAPTADA",
+    "split": false,
+    "academic_source": "docs/ingenieria/presentacion-academica/fase-9/fuentes/ACA-22--DIA-TD-060.puml",
+    "academic_svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-22--DIA-TD-060.svg",
+    "title_academic": "Trabajo Dirigido: recorrido institucional y conclusión",
+    "fields": {
+      "Objetivo": "Permite relacionar ejecución institucional, informes y conclusión sin ocultar dependencias del motor común.",
+      "Elementos y relaciones principales": "La nota separa perfil, desarrollo institucional, documento final, revisión previa, defensas y cierre. TrabajoDirigidoService prepara el cierre cuando corresponde e invoca conclusión común bajo sus guardas.",
+      "Proceso o funcionalidad representada": "Trabajo Dirigido; Trabajo Dirigido; usa infraestructura común con política específica..",
+      "Interpretación técnica y relación con la implementación": "La institución y el supervisor descrito no constituyen integración externa ni usuario API automático. La nota mínima 51 y ACTA_DEFENSA_TD del intento vigente pertenecen a este recorrido, no a las demás modalidades.",
+      "Evidencia del código": "TrabajoDirigidoPolicy (L287); TrabajoDirigidoOverviewView.get (L27); TrabajoDirigidoOverviewView.post (L30); TrabajoDirigidoService.concluir (L105); TrabajoDirigidoService.configurar_institucion (L17); TrabajoDirigidoService.overview (L59); TrabajoDirigidoService.registrar_informe (L41); WorkflowService.aprobar_etapa (L111)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Vista de coordinación académica entre solicitudes; el loop no existe como un único método automático. STAGE_DATA es declaración de código, no esquema instalado. Institución interna/externa, convenio cuando corresponde y supervisor descrito no equivalen a actor API externo. Informes institucionales se registran por servicio propio. Importa políticas base de Proyecto pero no se generalizan sus reglas."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-22--DIA-TD-060.svg",
+        "width": 2046.0,
+        "height": 1568.0,
+        "median_font": 16.0,
+        "a4_portrait": 3.5,
+        "a4_landscape": 4.5,
+        "a3_landscape": 7.1,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-TD-060.md",
+    "rules": [
+      "RN-TD-101",
+      "RN-TD-102",
+      "RN-TD-103",
+      "RN-TD-104"
+    ],
+    "cases": [
+      "UC-TD-003"
+    ],
+    "sources": [],
+    "destination": "SVG ampliado"
+  },
+  {
+    "figure": 23,
+    "academic_id": "ACA-23",
+    "original": "DIA-EG-080",
+    "title": "Estado persistido del área de Examen",
+    "type": "Estados",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/estados/DIA-EG-080.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-EG-080.svg",
+    "source_sha256": "2c8a44ae4f382e09e8d8cd1a54fc3b9eb5f7905786fc52ea5012276809093f33",
+    "svg_sha256": "304f8984a44ba895c9bf28858ee0409f5d0bc88cbf44fb0f5245d66fc3ee1b33",
+    "status": "SIN CAMBIOS",
+    "split": false,
+    "title_academic": "Examen de Grado: estados del área evaluada",
+    "fields": {
+      "Objetivo": "Contrasta la evaluación por áreas e intentos con las defensas de Proyecto/Tesis.",
+      "Elementos y relaciones principales": "El área parte PENDIENTE; evaluación completa suficiente permite APROBADA. La primera insuficiente produce POSTERGADA y una segunda insuficiente, REPROBADA.",
+      "Proceso o funcionalidad representada": "Examen de Grado; Examen de Grado; usa infraestructura común con política específica..",
+      "Interpretación técnica y relación con la implementación": "La ficha concreta las guardas de evaluación, intentos y escala; el código exige mínimo 61 por área y trata el segundo intento con su plazo propio. Son estados del área, no del expediente completo ni una defensa 30/70.",
+      "Evidencia del código": "ExamenGradoOverviewView.get (L27); ExamenGradoOverviewView.post (L33); ExamenGradoService.concluir (L139); ExamenGradoService.ensure_areas (L22); ExamenGradoService.overview (L34); ExamenGradoService.registrar_evaluacion (L59)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "EN_PROCESO existe como choice de ExamenArea pero no se encontró escritor productivo hacia él; no se conecta por analogía con SeguimientoEtapa. Las evaluaciones individuales incompletas conservan el estado del área y no constituyen otra fase persistida."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-EG-080.svg",
+        "width": 630.0,
+        "height": 633.0,
+        "median_font": 13.0,
+        "a4_portrait": 9.4,
+        "a4_landscape": 9.0,
+        "a3_landscape": 14.3,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-EG-080.md",
+    "rules": [
+      "RN-EG-101",
+      "RN-EG-102",
+      "RN-EG-103"
+    ],
+    "cases": [
+      "UC-EG-001"
+    ],
+    "sources": [],
+    "destination": "principal"
+  },
+  {
+    "figure": 24,
+    "academic_id": "ACA-24",
+    "original": "DIA-EA-080",
+    "title": "Resultado del expediente de Excelencia",
+    "type": "Estados",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/estados/DIA-EA-080.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-EA-080.svg",
+    "source_sha256": "9208b3a596b0add33900d91ebb982bf7e481d051d9d3934c3dea233368b688f9",
+    "svg_sha256": "0df27e450e15fcafa496c1e6ace01ca8cab6004392e221d6df860211c1e39929",
+    "status": "SIN CAMBIOS",
+    "split": false,
+    "title_academic": "Excelencia Académica: resultado de la evaluación según criterio",
+    "fields": {
+      "Objetivo": "Representa una modalidad que no debe explicarse mediante una defensa numérica universal.",
+      "Elementos y relaciones principales": "Configurar criterio crea el expediente PENDIENTE; registrar evaluación puede producir FAVORABLE o DESFAVORABLE y admite las reevaluaciones dibujadas.",
+      "Proceso o funcionalidad representada": "Excelencia Académica; Excelencia Académica; usa infraestructura común con política específica..",
+      "Interpretación técnica y relación con la implementación": "La evaluación por rendimiento documenta mínimo 80; calidad no admite nota numérica. DESFAVORABLE no implica rechazo automático de la etapa. FAVORABLE tampoco sustituye acta y demás gates de conclusión.",
+      "Evidencia del código": "ExcelenciaAcademicaOverviewView.get (L27); ExcelenciaAcademicaOverviewView.post (L33); ExcelenciaAcademicaService.concluir (L106); ExcelenciaAcademicaService.configurar_criterio (L21); ExcelenciaAcademicaService.overview (L36); ExcelenciaAcademicaService.registrar_evaluacion (L69)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "Resultado persistido propio de Excelencia, no estado genérico de EvaluacionDefensa. DESFAVORABLE no rechaza automáticamente el seguimiento en registrar_evaluacion; permanece operable mientras la etapa siga EN_PROCESO. La conclusión requiere además etapas previas y acta."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-EA-080.svg",
+        "width": 522.0,
+        "height": 603.0,
+        "median_font": 13.0,
+        "a4_portrait": 11.3,
+        "a4_landscape": 9.5,
+        "a3_landscape": 15.0,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-EA-080.md",
+    "rules": [
+      "RN-EA-101",
+      "RN-EA-102",
+      "RN-EA-103",
+      "RN-EA-104"
+    ],
+    "cases": [
+      "UC-EA-001",
+      "UC-EA-002"
+    ],
+    "sources": [],
+    "destination": "principal"
+  },
+  {
+    "figure": 25,
+    "academic_id": "ACA-25",
+    "original": "DIA-DIP-080",
+    "title": "Estado persistido de módulo de Diplomado",
+    "type": "Estados",
+    "source": "docs/ingenieria/diagramas/fuentes/fase-5/estados/DIA-DIP-080.puml",
+    "svg_original": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-DIP-080.svg",
+    "source_sha256": "2d8a411b309ce62083cae81be1a795df8b35757cef003362845ee7c9f21d5006",
+    "svg_sha256": "c786e330c94ba67fd1687db5f31df9d255366d89d5c898d9faa8f7abd68980ca",
+    "status": "SIN CAMBIOS",
+    "split": false,
+    "title_academic": "Vía Diplomado: estados del resultado de un módulo",
+    "fields": {
+      "Objetivo": "Separa la calificación del módulo de la aprobación de SeguimientoEtapa, corregida en UC-DIP-001.",
+      "Elementos y relaciones principales": "PENDIENTE, APROBADO y REPROBADO reciben transiciones de set_module_result; las revisiones de nota conservan o cambian el resultado conforme a sus guardas.",
+      "Proceso o funcionalidad representada": "Vía Diplomado; Vía Diplomado; usa infraestructura común con política específica..",
+      "Interpretación técnica y relación con la implementación": "La aprobación del módulo requiere nota mayor que 65 y contexto operable. Guardar el módulo no aprueba el seguimiento; el quinto módulo es Taller de Investigación. No se infiere reapertura libre de etapas cerradas.",
+      "Evidencia del código": "DiplomadoOverviewView.get (L27); DiplomadoOverviewView.post (L30); DiplomadoService.conclude (L85); DiplomadoService.ensure_modules (L31); DiplomadoService.overview (L71); DiplomadoService.set_module_result (L40)",
+      "Fuentes y versión": "PlantUML · SVG · Ficha técnica. Versión documental: 689eeb56ac6ff26b6e6487b3fd7100b9c484ea19 / desarrollo / directorio de trabajo 2026-11-02.",
+      "Limitación original que se conserva": "EN_PROCESO está declarado como choice sin escritor confirmado hacia el estado del módulo. El servicio permite volver a registrar resultado mientras su etapa sea operable; no se inventa una prohibición por el resultado anterior ni aprobación automática del seguimiento."
+    },
+    "pages": [
+      {
+        "path": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-DIP-080.svg",
+        "width": 490.0,
+        "height": 609.0,
+        "median_font": 13.0,
+        "a4_portrait": 12.0,
+        "a4_landscape": 9.4,
+        "a3_landscape": 14.8,
+        "outside": []
+      }
+    ],
+    "ficha": "docs/ingenieria/diagramas/fichas/fase-5/DIA-DIP-080.md",
+    "rules": [
+      "RN-DIP-101",
+      "RN-DIP-102",
+      "RN-DIP-103"
+    ],
+    "cases": [
+      "UC-DIP-001"
+    ],
+    "sources": [],
+    "destination": "principal"
+  }
+]

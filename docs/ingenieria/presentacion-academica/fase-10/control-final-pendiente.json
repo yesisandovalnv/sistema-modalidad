@@ -1,0 +1,18 @@
+{
+  "errors": [],
+  "markdown_links_checked": 88,
+  "outside_files_checked": 2518,
+  "visually_reviewed_pages": 57,
+  "reviewed_main_pages": 28,
+  "final_annex_pages": 29,
+  "figure20_annex_pages": [
+    24,
+    25,
+    26
+  ],
+  "final_annex_matches_reviewed_copy": true,
+  "main_final_name_pending_word_lock": true,
+  "original_diagrams_preserved": 118,
+  "product_tests_executed": false,
+  "physical_print_verified": false
+}

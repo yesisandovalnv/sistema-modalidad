@@ -1,0 +1,222 @@
+[
+  {
+    "figure": 2,
+    "part": 1,
+    "paper": "A4",
+    "orientation": "portrait",
+    "width_mm": 128.7,
+    "height_mm": 244.0,
+    "body_pt_estimate": 10.73,
+    "svg": "docs/ingenieria/diagramas/renderizados/fase-4/DIA-POS-041.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/originales-revisados/DIA-POS-041.png"
+  },
+  {
+    "figure": 4,
+    "part": 1,
+    "paper": "A4",
+    "orientation": "portrait",
+    "width_mm": 109.19,
+    "height_mm": 244.0,
+    "body_pt_estimate": 9.77,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-04--DIA-POS-043.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-04--DIA-POS-043.png"
+  },
+  {
+    "figure": 6,
+    "part": 1,
+    "paper": "A4",
+    "orientation": "landscape",
+    "width_mm": 245.0,
+    "height_mm": 150.43,
+    "body_pt_estimate": 9.15,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-06--DIA-MOD-002.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-06--DIA-MOD-002.png"
+  },
+  {
+    "figure": 9,
+    "part": 1,
+    "paper": "A4",
+    "orientation": "landscape",
+    "width_mm": 208.17,
+    "height_mm": 157.0,
+    "body_pt_estimate": 12.91,
+    "svg": "docs/ingenieria/diagramas/renderizados/DIA-POS-002-etapas-clases.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/originales-revisados/DIA-POS-002-etapas-clases.png"
+  },
+  {
+    "figure": 18,
+    "part": 1,
+    "paper": "A4",
+    "orientation": "landscape",
+    "width_mm": 176.2,
+    "height_mm": 157.0,
+    "body_pt_estimate": 10.41,
+    "svg": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-DOC-080.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/originales-revisados/DIA-DOC-080.png"
+  },
+  {
+    "figure": 23,
+    "part": 1,
+    "paper": "A4",
+    "orientation": "portrait",
+    "width_mm": 158.0,
+    "height_mm": 158.75,
+    "body_pt_estimate": 9.24,
+    "svg": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-EG-080.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/originales-revisados/DIA-EG-080.png"
+  },
+  {
+    "figure": 24,
+    "part": 1,
+    "paper": "A4",
+    "orientation": "portrait",
+    "width_mm": 158.0,
+    "height_mm": 182.52,
+    "body_pt_estimate": 11.15,
+    "svg": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-EA-080.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/originales-revisados/DIA-EA-080.png"
+  },
+  {
+    "figure": 25,
+    "part": 1,
+    "paper": "A4",
+    "orientation": "portrait",
+    "width_mm": 158.0,
+    "height_mm": 196.37,
+    "body_pt_estimate": 11.88,
+    "svg": "docs/ingenieria/diagramas/renderizados/fase-5/DIA-DIP-080.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/originales-revisados/DIA-DIP-080.png"
+  },
+  {
+    "figure": 1,
+    "part": 1,
+    "paper": "A3",
+    "orientation": "portrait",
+    "width_mm": 225.63,
+    "height_mm": 367.0,
+    "body_pt_estimate": 14.47,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-01--DIA-SYS-001.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-01--DIA-SYS-001.png"
+  },
+  {
+    "figure": 3,
+    "part": 1,
+    "paper": "A3",
+    "orientation": "portrait",
+    "width_mm": 164.1,
+    "height_mm": 367.0,
+    "body_pt_estimate": 14.42,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-03--DIA-DOC-040.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-03--DIA-DOC-040.png"
+  },
+  {
+    "figure": 5,
+    "part": 1,
+    "paper": "A3",
+    "orientation": "landscape",
+    "width_mm": 348.7,
+    "height_mm": 244.0,
+    "body_pt_estimate": 10.06,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-05--DIA-SYS-006.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-05--DIA-SYS-006.png"
+  },
+  {
+    "figure": 7,
+    "part": 1,
+    "paper": "A3",
+    "orientation": "landscape",
+    "width_mm": 368.0,
+    "height_mm": 229.88,
+    "body_pt_estimate": 10.89,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-07--DIA-SYS-007.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-07--DIA-SYS-007.png"
+  },
+  {
+    "figure": 8,
+    "part": 1,
+    "paper": "A3",
+    "orientation": "landscape",
+    "width_mm": 265.54,
+    "height_mm": 244.0,
+    "body_pt_estimate": 9.77,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-08--DIA-POS-001.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-08--DIA-POS-001.png"
+  },
+  {
+    "figure": 10,
+    "part": 1,
+    "paper": "A3",
+    "orientation": "landscape",
+    "width_mm": 252.96,
+    "height_mm": 244.0,
+    "body_pt_estimate": 9.03,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-10--DIA-DOC-101.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-10--DIA-DOC-101.png"
+  },
+  {
+    "figure": 11,
+    "part": 1,
+    "paper": "A3",
+    "orientation": "landscape",
+    "width_mm": 367.82,
+    "height_mm": 244.0,
+    "body_pt_estimate": 9.16,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-11--DIA-POS-105.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-11--DIA-POS-105.png"
+  },
+  {
+    "figure": 17,
+    "part": 1,
+    "paper": "A3",
+    "orientation": "landscape",
+    "width_mm": 368.0,
+    "height_mm": 236.38,
+    "body_pt_estimate": 11.98,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-17--DIA-POS-081.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-17--DIA-POS-081.png"
+  },
+  {
+    "figure": 19,
+    "part": 1,
+    "paper": "A3",
+    "orientation": "landscape",
+    "width_mm": 291.47,
+    "height_mm": 244.0,
+    "body_pt_estimate": 12.0,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-19--DIA-POS-082.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-19--DIA-POS-082.png"
+  },
+  {
+    "figure": 20,
+    "part": 1,
+    "paper": "A3",
+    "orientation": "landscape",
+    "width_mm": 368.0,
+    "height_mm": 243.97,
+    "body_pt_estimate": 10.17,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-20--DIA-PG-070.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-20--DIA-PG-070.png"
+  },
+  {
+    "figure": 20,
+    "part": 2,
+    "paper": "A3",
+    "orientation": "landscape",
+    "width_mm": 344.87,
+    "height_mm": 244.0,
+    "body_pt_estimate": 9.53,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-20--DIA-PG-070_001.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-20--DIA-PG-070_001.png"
+  },
+  {
+    "figure": 20,
+    "part": 3,
+    "paper": "A3",
+    "orientation": "landscape",
+    "width_mm": 368.0,
+    "height_mm": 180.16,
+    "body_pt_estimate": 10.17,
+    "svg": "docs/ingenieria/presentacion-academica/fase-9/svg/ACA-20--DIA-PG-070_002.svg",
+    "png_fallback": "docs/ingenieria/presentacion-academica/fase-9/png/ACA-20--DIA-PG-070_002.png"
+  }
+]

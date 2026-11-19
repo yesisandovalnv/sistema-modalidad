@@ -1,0 +1,20 @@
+{
+  "phase": 10,
+  "status": "COMPLETADA",
+  "figures": 25,
+  "main_pages": 28,
+  "annex_pages": 29,
+  "main_images": 8,
+  "annex_images": 12,
+  "large_svg_figures": 7,
+  "figure20_pages": [
+    24,
+    25,
+    26
+  ],
+  "files_sha256": {
+    "analisis-y-diseno.docx": "122cd99abc14f611f4edb72a5edfe285e11297bf9f056cd6f4d34d7e95e3b98e",
+    "anexos-uml.docx": "2f362a8f205da415fb40c8721a145be8cfe4f21c5ac82d7ad1c1c02859a45f50"
+  },
+  "physical_print_verified": false
+}

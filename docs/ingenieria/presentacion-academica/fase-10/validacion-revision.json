@@ -1,0 +1,35 @@
+{
+  "errors": [],
+  "documents": {
+    "revision-analisis-y-diseno.docx": {
+      "zip_crc": "OK",
+      "xml": "OK",
+      "images": 8,
+      "native_svg": 8,
+      "figure_ids": 25,
+      "external_local_links": 82,
+      "bookmarks": 40,
+      "sha256": "122cd99abc14f611f4edb72a5edfe285e11297bf9f056cd6f4d34d7e95e3b98e"
+    },
+    "revision-anexos-uml.docx": {
+      "zip_crc": "OK",
+      "xml": "OK",
+      "images": 12,
+      "native_svg": 12,
+      "figure_ids": 25,
+      "external_local_links": 78,
+      "bookmarks": 25,
+      "sha256": "2f362a8f205da415fb40c8721a145be8cfe4f21c5ac82d7ad1c1c02859a45f50"
+    }
+  },
+  "figures": 25,
+  "main_images": 8,
+  "annex_figures": 10,
+  "annex_images": 12,
+  "svg_only_figures": 7,
+  "outside_files_checked": 2518,
+  "head": "689eeb56ac6ff26b6e6487b3fd7100b9c484ea19",
+  "branch": "desarrollo",
+  "product_tests_executed": false,
+  "physical_print_checked": false
+}
