@@ -2128,6 +2128,7 @@ export default function ExpedientePage() {
             orientationAcademicDecision={orientationAcademicDecision}
             onRegisterAcademicDecision={openAcademicDecision}
             onOpenDocumentUpload={openContextualDocumentUpload}
+            onOpenDefense={openDefense}
             documentActionPending={documentTypes.loading}
             onProgramDefense={openCurrentDefenseProgramming}
             directedConclusion={isTrabajoDirigido ? directedConclusionState : null}
@@ -2574,6 +2575,33 @@ function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, ci
       && String(defense.seguimiento_etapa) === String(currentStage.id)
       && defense.activo !== false)
     : null
+  const profileDefenseCandidates = isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO'
+    && currentStage?.activo !== false && currentStage?.id != null && currentStage?.numero_intento != null
+    ? defenses.filter((defense) => defense.tipo_evento === 'DEFENSA_PERFIL'
+      && String(defense.seguimiento_etapa) === String(currentStage.id)
+      && Number(defense.numero_intento) === Number(currentStage.numero_intento)
+      && defense.estado !== 'CANCELADA'
+      && defense.activo !== false)
+    : []
+  const profileDefense = profileDefenseCandidates.length === 1 ? profileDefenseCandidates[0] : null
+  const privateDefenseCandidates = isProjectGrade && currentStage?.codigo === 'DEFENSA_PRIVADA'
+    && currentStage?.id != null && currentStage?.numero_intento != null
+    ? defenses.filter((defense) => defense.tipo_evento === 'DEFENSA_PRIVADA'
+      && String(defense.seguimiento_etapa) === String(currentStage.id)
+      && Number(defense.numero_intento) === Number(currentStage.numero_intento)
+      && defense.estado !== 'CANCELADA'
+      && defense.activo !== false)
+    : []
+  const privateDefense = privateDefenseCandidates.length === 1 ? privateDefenseCandidates[0] : null
+  const publicDefenseCandidates = isProjectGrade && currentStage?.codigo === 'DEFENSA_PUBLICA'
+    && currentStage?.id != null && currentStage?.numero_intento != null
+    ? defenses.filter((defense) => defense.tipo_evento === 'DEFENSA_PUBLICA'
+      && String(defense.seguimiento_etapa) === String(currentStage.id)
+      && Number(defense.numero_intento) === Number(currentStage.numero_intento)
+      && defense.estado !== 'CANCELADA'
+      && defense.activo !== false)
+    : []
+  const publicDefense = publicDefenseCandidates.length === 1 ? publicDefenseCandidates[0] : null
   const profileEvaluation = profileDefense?.evaluaciones?.some((item) => item.tipo_evaluacion !== 'RESULTADO_FINAL')
   const profileDefenseAction = profileDefense ? {
     codigo: 'CONSULTAR_DEFENSA_PERFIL',
@@ -2718,7 +2746,17 @@ function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, ci
               ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onRegisterTribunalReport}>{nextAction.accion_label}</button>
             : thesisAuthoritiesAction && onManageMissingActors ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onManageMissingActors}>Completar autoridades</button>
             : canOpenDefenseProgramming ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onProgramDefense}>{nextAction.accion_label || 'Ir a gestionar'}</button>
-          : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'REGISTRAR_DICTAMEN' && onOpenDictamen ? onOpenDictamen : (nextAction.codigo === 'GESTIONAR_ACTORES' || canOpenPrivateSecretary) ? (event) => { event.preventDefault(); if (canOpenPrivateSecretary) event.stopPropagation(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' ? 'Consultar revisión del Tribunal' : nextAction.accion_label || 'Ir a gestionar'}</a>}
+          : profileDefenseAction && profileDefense && onOpenDefense
+            ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={(event) => { event.preventDefault(); onOpenDefense(profileDefense) }}>{nextAction.accion_label}</button>
+            : isProjectGrade && currentStage?.codigo === 'DEFENSA_PRIVADA'
+              && nextAction.destino === '#defensas' && nextAction.estado === 'DISPONIBLE'
+              && privateDefense && onOpenDefense
+              ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={(event) => { event.preventDefault(); onOpenDefense(privateDefense) }}>{nextAction.accion_label || 'Ir a gestionar'}</button>
+            : isProjectGrade && currentStage?.codigo === 'DEFENSA_PUBLICA'
+              && nextAction.destino === '#defensas' && nextAction.estado === 'DISPONIBLE'
+              && publicDefense && onOpenDefense
+              ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={(event) => { event.preventDefault(); onOpenDefense(publicDefense) }}>{nextAction.accion_label || 'Ir a gestionar'}</button>
+            : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'REGISTRAR_DICTAMEN' && onOpenDictamen ? onOpenDictamen : (nextAction.codigo === 'GESTIONAR_ACTORES' || canOpenPrivateSecretary) ? (event) => { event.preventDefault(); if (canOpenPrivateSecretary) event.stopPropagation(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' ? 'Consultar revisión del Tribunal' : nextAction.accion_label || 'Ir a gestionar'}</a>}
       {nextAction.codigo === 'APROBAR_ETAPA' && stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
     </section>}
     {!hideRequirements && stageRequirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">

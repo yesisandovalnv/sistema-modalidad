@@ -3473,6 +3473,228 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('button', { name: 'Aprobar Perfil de Proyecto' })).not.toBeInTheDocument()
   })
 
+  it('abre directamente la única Defensa de Perfil del intento y etapa activos', async () => {
+    const profileStage = { id: 110, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', numero_intento: 2, activo: true }
+    const matchingDefense = {
+      ...defenseRows[2], id: 181, postulacion: 7, postulacion_modalidad_codigo: 'PROYECTO_GRADO',
+      seguimiento_etapa: profileStage.id, etapa_codigo: profileStage.codigo, numero_intento: 2,
+      estado: 'PROGRAMADA', estado_display: 'Programada', activo: true,
+    }
+    const otherStageDefense = { ...matchingDefense, id: 182, seguimiento_etapa: 109 }
+    const otherAttemptDefense = { ...matchingDefense, id: 183, numero_intento: 1 }
+    postulacionesService.obtenerDefensas.mockResolvedValue({
+      count: 3, next: null, previous: null, results: [otherStageDefense, otherAttemptDefense, matchingDefense],
+    })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, etapa_actual: profileStage, etapas: [profileStage], orientacion_etapa_actual: {
+        tipo_evento: 'DEFENSA_PERFIL', mensaje: 'Gestiona la Defensa de Perfil.', requisitos: [],
+        siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa de Perfil', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a gestionar' },
+      } },
+    })
+    renderDefenseManagerPage('resumen')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ir a la defensa' }))
+    const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    expect(within(detail).getByText('Programada')).toBeInTheDocument()
+    expect(within(detail).getByText('Defensa de perfil')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Ver defensa' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['cancelada', (defense) => ({ ...defense, estado: 'CANCELADA', estado_display: 'Cancelada' }), true],
+    ['inactiva', (defense) => ({ ...defense, activo: false }), true],
+    ['etapa inactiva', (defense) => defense, false],
+  ])('conserva la navegación genérica si la Defensa de Perfil está %s', async (_caseName, transform, stageActive) => {
+    const profileStage = { id: 110, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', numero_intento: 2, activo: stageActive }
+    const matchingDefense = {
+      ...defenseRows[2], id: 184, postulacion: 7, postulacion_modalidad_codigo: 'PROYECTO_GRADO',
+      seguimiento_etapa: profileStage.id, etapa_codigo: profileStage.codigo, numero_intento: 2,
+      estado: 'PROGRAMADA', estado_display: 'Programada', activo: true,
+    }
+    const defense = transform(matchingDefense)
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defense] })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, etapa_actual: profileStage, etapas: [profileStage], orientacion_etapa_actual: {
+        tipo_evento: 'DEFENSA_PERFIL', mensaje: 'Gestiona la Defensa de Perfil.', requisitos: [],
+        siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa de Perfil', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a gestionar' },
+      } },
+    })
+    renderDefenseManagerPage('resumen')
+
+    expect(await screen.findByRole('link', { name: 'Ir a gestionar' })).toHaveAttribute('href', '#defensas')
+    expect(screen.queryByRole('dialog', { name: 'Detalle de defensa' })).not.toBeInTheDocument()
+  })
+
+  it('conserva la navegación genérica si hay más de una Defensa de Perfil válida', async () => {
+    const profileStage = { id: 110, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', numero_intento: 2, activo: true }
+    const matchingDefense = {
+      ...defenseRows[2], id: 185, postulacion: 7, postulacion_modalidad_codigo: 'PROYECTO_GRADO',
+      seguimiento_etapa: profileStage.id, etapa_codigo: profileStage.codigo, numero_intento: 2,
+      estado: 'PROGRAMADA', estado_display: 'Programada', activo: true,
+    }
+    postulacionesService.obtenerDefensas.mockResolvedValue({
+      count: 2, next: null, previous: null, results: [matchingDefense, { ...matchingDefense, id: 186 }],
+    })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, etapa_actual: profileStage, etapas: [profileStage], orientacion_etapa_actual: {
+        tipo_evento: 'DEFENSA_PERFIL', mensaje: 'Gestiona la Defensa de Perfil.', requisitos: [],
+        siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa de Perfil', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a gestionar' },
+      } },
+    })
+    renderDefenseManagerPage('resumen')
+
+    expect(await screen.findByRole('link', { name: 'Ir a gestionar' })).toHaveAttribute('href', '#defensas')
+    expect(screen.queryByRole('dialog', { name: 'Detalle de defensa' })).not.toBeInTheDocument()
+  })
+
+  it.each(['TESIS_GRADO', 'TRABAJO_DIRIGIDO'])('no activa el acceso directo de Defensa de Perfil para %s', async (modality) => {
+    const profileStage = { id: 110, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', numero_intento: 2, activo: true }
+    const matchingDefense = {
+      ...defenseRows[2], id: 187, postulacion: 7, postulacion_modalidad_codigo: modality,
+      seguimiento_etapa: profileStage.id, etapa_codigo: profileStage.codigo, numero_intento: 2,
+      estado: 'PROGRAMADA', estado_display: 'Programada', activo: true,
+    }
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [matchingDefense] })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: modality, nombre: modality } },
+      flujo: { ...response.flujo, modalidad: { id: 2, codigo: modality, nombre: modality }, etapa_actual: profileStage, etapas: [profileStage], orientacion_etapa_actual: {
+        tipo_evento: 'DEFENSA_PERFIL', mensaje: 'Gestiona la Defensa de Perfil.', requisitos: [],
+        siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa de Perfil', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a gestionar' },
+      } },
+    })
+    renderDefenseManagerPage('resumen')
+
+    expect(await screen.findByRole('link', { name: 'Ir a gestionar' })).toHaveAttribute('href', '#defensas')
+    expect(screen.queryByRole('button', { name: 'Ir a la defensa' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Detalle de defensa' })).not.toBeInTheDocument()
+  })
+
+  it('abre directamente la Defensa Privada vinculada a la etapa e intento activos', async () => {
+    const privateStage = { id: 120, codigo: 'DEFENSA_PRIVADA', nombre: 'Defensa Privada', estado: 'EN_PROCESO', numero_intento: 2, activo: true }
+    const matchingDefense = { ...defenseRows[1], id: 182, seguimiento_etapa: privateStage.id, etapa_codigo: privateStage.codigo, numero_intento: 2 }
+    const otherStageDefense = { ...matchingDefense, id: 183, seguimiento_etapa: 119 }
+    const otherAttemptDefense = { ...matchingDefense, id: 184, numero_intento: 1 }
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 3, next: null, previous: null, results: [otherStageDefense, otherAttemptDefense, matchingDefense] })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, etapa_actual: privateStage, etapas: [privateStage], orientacion_etapa_actual: {
+        tipo_evento: 'DEFENSA_PRIVADA', mensaje: 'La defensa está programada.', requisitos: [],
+        siguiente_accion: { codigo: 'PROGRAMAR_EVENTO', titulo: 'Programar defensa', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a gestionar' },
+      } },
+    })
+    renderDefenseManagerPage('resumen')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ir a gestionar' }))
+    const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    expect(within(detail).getByText('Programada')).toBeInTheDocument()
+    expect(within(detail).getByText('Defensa privada')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Ver defensa' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['cancelada', (defense) => ({ ...defense, estado: 'CANCELADA', estado_display: 'Cancelada' })],
+    ['ambigua', (defense) => ({ ...defense, id: defense.id + 1 })],
+  ])('mantiene la navegación a la lista si la Defensa Privada es %s', async (_caseName, transform) => {
+    const privateStage = { id: 120, codigo: 'DEFENSA_PRIVADA', nombre: 'Defensa Privada', estado: 'EN_PROCESO', numero_intento: 2, activo: true }
+    const matchingDefense = { ...defenseRows[1], id: 182, seguimiento_etapa: privateStage.id, etapa_codigo: privateStage.codigo, numero_intento: 2 }
+    const candidates = _caseName === 'ambigua' ? [matchingDefense, transform(matchingDefense)] : [transform(matchingDefense)]
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: candidates.length, next: null, previous: null, results: candidates })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, etapa_actual: privateStage, etapas: [privateStage], orientacion_etapa_actual: {
+        tipo_evento: 'DEFENSA_PRIVADA', mensaje: 'La defensa está programada.', requisitos: [],
+        siguiente_accion: { codigo: _caseName === 'ambigua' ? 'PROGRAMAR_EVENTO' : 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa Privada', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a gestionar' },
+      } },
+    })
+    renderDefenseManagerPage('resumen')
+
+    expect(await screen.findByRole('link', { name: 'Ir a gestionar' })).toHaveAttribute('href', '#defensas')
+    expect(screen.queryByRole('dialog', { name: 'Detalle de defensa' })).not.toBeInTheDocument()
+  })
+
+  it.each(['TESIS_GRADO', 'TRABAJO_DIRIGIDO'])('no activa el acceso directo de Defensa Privada para %s', async (modality) => {
+    const privateStage = { id: 120, codigo: 'DEFENSA_PRIVADA', nombre: 'Defensa Privada', estado: 'EN_PROCESO', numero_intento: 2, activo: true }
+    const matchingDefense = { ...defenseRows[1], id: 182, seguimiento_etapa: privateStage.id, etapa_codigo: privateStage.codigo, numero_intento: 2 }
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [matchingDefense] })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: modality, nombre: modality } },
+      flujo: { ...response.flujo, modalidad: { id: 2, codigo: modality, nombre: modality }, etapa_actual: privateStage, etapas: [privateStage], orientacion_etapa_actual: {
+        tipo_evento: 'DEFENSA_PRIVADA', mensaje: 'La defensa está programada.', requisitos: [],
+        siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa Privada', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a gestionar' },
+      } },
+    })
+    renderDefenseManagerPage('resumen')
+
+    expect(await screen.findByRole('link', { name: 'Ir a gestionar' })).toHaveAttribute('href', '#defensas')
+    expect(screen.queryByRole('button', { name: 'Ir a gestionar' })).not.toBeInTheDocument()
+  })
+
+  it('abre directamente la Defensa Pública vinculada a la etapa e intento activos', async () => {
+    const publicStage = { id: 130, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'EN_PROCESO', numero_intento: 2, activo: true }
+    const matchingDefense = { ...defenseRows[0], id: 190, seguimiento_etapa: publicStage.id, etapa_codigo: publicStage.codigo, numero_intento: 2, estado: 'PROGRAMADA', estado_display: 'Programada' }
+    const otherStageDefense = { ...matchingDefense, id: 191, seguimiento_etapa: 129 }
+    const otherAttemptDefense = { ...matchingDefense, id: 192, numero_intento: 1 }
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 3, next: null, previous: null, results: [otherStageDefense, otherAttemptDefense, matchingDefense] })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, etapa_actual: publicStage, etapas: [publicStage], orientacion_etapa_actual: {
+        tipo_evento: 'DEFENSA_PUBLICA', mensaje: 'La defensa está programada.', requisitos: [],
+        siguiente_accion: { codigo: 'PROGRAMAR_EVENTO', titulo: 'Programar defensa', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a gestionar' },
+      } },
+    })
+    renderDefenseManagerPage('resumen')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ir a gestionar' }))
+    const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    expect(within(detail).getByRole('heading', { name: 'Defensa pública' })).toBeInTheDocument()
+    expect(within(detail).getByText('Programada')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Ver defensa' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['cancelada', (defense) => ({ ...defense, estado: 'CANCELADA', estado_display: 'Cancelada' }), 'GESTIONAR_DEFENSA'],
+    ['ambigua', (defense) => ({ ...defense, id: defense.id + 1 }), 'GESTIONAR_DEFENSA'],
+  ])('mantiene la navegación a la lista si la Defensa Pública es %s', async (_caseName, transform, actionCode) => {
+    const publicStage = { id: 130, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'EN_PROCESO', numero_intento: 2, activo: true }
+    const matchingDefense = { ...defenseRows[0], id: 190, seguimiento_etapa: publicStage.id, etapa_codigo: publicStage.codigo, numero_intento: 2, estado: 'PROGRAMADA', estado_display: 'Programada' }
+    const candidates = _caseName === 'ambigua' ? [matchingDefense, transform(matchingDefense)] : [transform(matchingDefense)]
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: candidates.length, next: null, previous: null, results: candidates })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: { ...response.flujo, etapa_actual: publicStage, etapas: [publicStage], orientacion_etapa_actual: {
+        tipo_evento: 'DEFENSA_PUBLICA', mensaje: 'Gestiona la Defensa Pública.', requisitos: [],
+        siguiente_accion: { codigo: actionCode, titulo: 'Gestionar Defensa Pública', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a gestionar' },
+      } },
+    })
+    renderDefenseManagerPage('resumen')
+
+    expect(await screen.findByRole('link', { name: 'Ir a gestionar' })).toHaveAttribute('href', '#defensas')
+    expect(screen.queryByRole('dialog', { name: 'Detalle de defensa' })).not.toBeInTheDocument()
+  })
+
+  it.each(['TESIS_GRADO', 'TRABAJO_DIRIGIDO'])('no activa el acceso directo de Defensa Pública para %s', async (modality) => {
+    const publicStage = { id: 130, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'EN_PROCESO', numero_intento: 2, activo: true }
+    const matchingDefense = { ...defenseRows[0], id: 190, seguimiento_etapa: publicStage.id, etapa_codigo: publicStage.codigo, numero_intento: 2, estado: 'PROGRAMADA' }
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [matchingDefense] })
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: { id: 2, codigo: modality, nombre: modality } },
+      flujo: { ...response.flujo, modalidad: { id: 2, codigo: modality, nombre: modality }, etapa_actual: publicStage, etapas: [publicStage], orientacion_etapa_actual: {
+        tipo_evento: 'DEFENSA_PUBLICA', mensaje: 'Gestiona la Defensa Pública.', requisitos: [],
+        siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa Pública', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Ir a gestionar' },
+      } },
+    })
+    renderDefenseManagerPage('resumen')
+
+    expect(await screen.findByRole('link', { name: 'Ir a gestionar' })).toHaveAttribute('href', '#defensas')
+    expect(screen.queryByRole('button', { name: 'Ir a gestionar' })).not.toBeInTheDocument()
+  })
+
   it('muestra espera administrativa al estudiante cuando la Defensa de Perfil está en curso', async () => {
     const profileStage = { id: 11, codigo: 'PERFIL_PROYECTO', nombre: 'Perfil de Proyecto', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
     const profileDefense = { ...defenseRows[2], seguimiento_etapa: 11, estado: 'EN_CURSO', estado_display: 'En curso' }
