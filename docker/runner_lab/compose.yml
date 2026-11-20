@@ -1,0 +1,50 @@
+name: sm-runner-lab-${LAB_INSTANCE_ID:?Set LAB_INSTANCE_ID in lab.env.local}
+
+services:
+  postgres-lab:
+    image: postgres:15.18
+    environment:
+      POSTGRES_USER: lab_infra_admin
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/lab_admin_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+      PGDATA: /var/lib/postgresql/data
+      LAB_INIT_SCOPE: runner-lab-11a1
+    ports:
+      - "127.0.0.1:5542:5432"
+    volumes:
+      - lab_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    secrets:
+      - lab_admin_password
+      - lab_executor_password
+    networks:
+      - lab_only
+    healthcheck:
+      test: [CMD, pg_isready, -h, /var/run/postgresql, -p, "5432", -U, lab_infra_admin, -d, postgres]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: "no"
+    labels:
+      sm.scope: runner-lab-11a1
+
+volumes:
+  lab_data:
+    name: sm-runner-lab-${LAB_INSTANCE_ID:?Set LAB_INSTANCE_ID}_data
+    labels:
+      sm.scope: runner-lab-11a1
+
+networks:
+  lab_only:
+    name: sm-runner-lab-${LAB_INSTANCE_ID:?Set LAB_INSTANCE_ID}_network
+    internal: true
+    driver: bridge
+    labels:
+      sm.scope: runner-lab-11a1
+
+secrets:
+  lab_admin_password:
+    file: ./secrets.local/admin_password
+  lab_executor_password:
+    file: ./secrets.local/executor_password

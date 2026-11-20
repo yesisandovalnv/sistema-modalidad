@@ -1,0 +1,7 @@
+# Send only dependency metadata and this Dockerfile, never .env or credentials.
+**
+!requirements.txt
+!docker/
+!docker/runner_lab/
+!docker/runner_lab/Dockerfile.runner
+!docker/runner_lab/Dockerfile.runner.dockerignore

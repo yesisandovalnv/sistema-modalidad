@@ -1,0 +1,48 @@
+# Standalone client only. Does not declare or manage PostgreSQL or its volume.
+name: sm-runner-lab-${LAB_INSTANCE_ID:?Use the accredited lab.env.local}
+services:
+  runner:
+    image: sm-runner-lab-python:local
+    build:
+      context: ../..
+      dockerfile: docker/runner_lab/Dockerfile.runner
+    profiles: [validation]
+    user: "10001:10001"
+    read_only: true
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 2
+    environment:
+      DJANGO_SETTINGS_MODULE: settings_runner_lab_container
+      PYTHON_DOTENV_DISABLED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=128m,mode=1777
+      - /app/.tmp_test_media:rw,nosuid,nodev,size=128m,mode=1777
+    volumes:
+      - ../../test_runner.py:/app/test_runner.py:ro
+      - ../../test_runner_unit.py:/app/test_runner_unit.py:ro
+      - ../../testing_backend:/app/testing_backend:ro
+      - ../../settings_runner_lab_container.py:/app/settings_runner_lab_container.py:ro
+      - ../../settings_runner_lab_functional.py:/app/settings_runner_lab_functional.py:ro
+      - ../../apps:/app/apps:ro
+      - ../../core:/app/core:ro
+      - ./readonly_probe.py:/app/lab_readonly_probe.py:ro
+      - ./review_contracts.py:/app/review_contracts.py:ro
+      - ./runner_lab_smoke.py:/app/runner_lab_smoke.py:ro
+      - ./lab.env.local:/run/config/lab.env:ro
+    secrets: [lab_executor_password]
+    networks: [lab_only]
+    restart: "no"
+    labels:
+      sm.scope: runner-lab-client
+networks:
+  lab_only:
+    external: true
+    name: sm-runner-lab-${LAB_INSTANCE_ID:?Use the accredited lab identity}_network
+secrets:
+  lab_executor_password:
+    file: ./secrets.local/executor_password

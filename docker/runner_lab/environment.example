@@ -1,0 +1,4 @@
+# Template only. Copy to lab.env.local; generate NEW secrets, never copy .env.
+LAB_INSTANCE_ID=REPLACE_WITH_12_LOWERCASE_HEX
+# Record from the NEW cluster after authorized startup. Never copy the old ID.
+LAB_SYSTEM_IDENTIFIER=
