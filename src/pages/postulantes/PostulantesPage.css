@@ -1,0 +1,101 @@
+/* Group 6.1: opt-in presentation; shared components and other pages keep their styles. */
+.institutional-postulantes .institutional-header header > div,
+.institutional-postulantes .app-filter-panel > label {
+  min-width: 0;
+}
+
+.institutional-postulantes .institutional-header h1 {
+  overflow-wrap: anywhere;
+}
+
+.institutional-postulantes > :is([role='status'], [role='alert']) {
+  border-radius: var(--institutional-radius);
+  padding: var(--institutional-space);
+  box-shadow: var(--card-shadow);
+}
+
+.institutional-postulantes :is(a, textarea):focus-visible {
+  outline: 2px solid var(--primary-dark);
+  outline-offset: 3px;
+}
+
+html.dark .institutional-postulantes :is(a, textarea):focus-visible {
+  outline-color: var(--primary-light);
+}
+
+/* Group 6.2: the existing card order, actions and status mapping are retained. */
+.institutional-postulantes .postulation-card {
+  padding: var(--institutional-space);
+  border-top: 4px solid var(--neutral);
+}
+
+.institutional-postulantes .postulation-card[data-modalidad='PROYECTO_GRADO'] { border-top-color: var(--primary); }
+.institutional-postulantes .postulation-card[data-modalidad='TESIS_GRADO'] { border-top-color: var(--evaluation); }
+.institutional-postulantes .postulation-card[data-modalidad='TRABAJO_DIRIGIDO'] { border-top-color: var(--delivery); }
+.institutional-postulantes .postulation-card[data-modalidad='EXAMEN_GRADO'] { border-top-color: var(--document); }
+.institutional-postulantes .postulation-card[data-modalidad='EXCELENCIA_ACADEMICA'] { border-top-color: var(--institutional-gold); }
+.institutional-postulantes .postulation-card[data-modalidad='GRADUACION_VIA_DIPLOMADO'] { border-top-color: var(--success); }
+
+.institutional-postulantes .postulation-card h2,
+.institutional-postulantes .postulation-card-data dd {
+  overflow-wrap: anywhere;
+}
+
+.institutional-postulantes .postulation-card-data {
+  margin-top: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.institutional-postulantes .postulation-card-data dd {
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
+
+.institutional-postulantes .postulation-card-action {
+  min-height: 2.75rem;
+  max-width: 100%;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.625rem;
+}
+
+.institutional-postulantes .postulation-card-action:hover {
+  background: var(--primary-soft);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.institutional-postulantes .postulation-card-actions > a {
+  background: var(--primary-soft);
+}
+
+/* Group 6.3: local dialog content only; overlay geometry and lifecycle stay unchanged. */
+.institutional-postulantes [role='dialog'] > div {
+  border-radius: var(--institutional-radius);
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+}
+
+.institutional-postulantes [role='dialog'] :is(form, label, dl > div) {
+  min-width: 0;
+}
+
+.institutional-postulantes [role='dialog'] :is(label, dd, p) {
+  overflow-wrap: anywhere;
+}
+
+.institutional-postulantes [role='dialog'] dd {
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
+
+.institutional-postulantes [role='dialog'] :is(input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.75rem;
+}
+
+.institutional-postulantes [role='dialog'] form > .flex {
+  flex-wrap: wrap;
+}
