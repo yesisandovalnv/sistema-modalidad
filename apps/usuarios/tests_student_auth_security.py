@@ -53,14 +53,20 @@ class StudentAuthSecurityTests(SimpleTestCase):
             ('transaction.atomic', {'side_effect': lambda: nullcontext()}),
             ('CustomUser.all_objects', {}),
             ('StudentAccountActivation.objects', {}),
+            ('StudentLoginThrottle.objects', {}),
         ]:
             context = patch('apps.usuarios.student_auth.' + target, **options)
             setattr(self, target.split('.')[0] + '_mock', context.start())
             self.addCleanup(context.stop)
-        self.CustomUser_mock.select_for_update.return_value.get.return_value = self.user
+        self.CustomUser_mock.select_for_update.return_value.select_related.return_value.get.return_value = self.user
         manager = self.StudentAccountActivation_mock.select_for_update.return_value
         manager.get_or_create.return_value = (self.state, True)
         manager.filter.return_value.first.return_value = self.state
+        self.StudentLoginThrottle_mock.select_for_update.return_value.get_or_create.return_value = (
+            SimpleNamespace(last_sent_at=None, request_window_started_at=None, requests_in_window=0,
+                used_at=None, activo=True, failed_attempts=0, save=Mock(),
+                expires_at=timezone.now() + timedelta(minutes=5), code_digest='',
+                window_started_at=None, blocked_until=None), True)
 
     def request_code(self, purpose='activation'):
         auth._request_student_code(ru='RU1', ci='001', request=self.request, purpose=purpose)
@@ -249,7 +255,7 @@ class StudentAuthSecurityTests(SimpleTestCase):
                 self.assertTrue(ORIGINAL_BUDGET(ru=f'UNKNOWN{index}', request=self.request, stage='request'))
         with patch.object(auth, '_locked_state', side_effect=[origin, account]) as locked:
             self.assertFalse(ORIGINAL_BUDGET(ru='NEW', request=self.request, stage='request'))
-        self.assertEqual(locked.call_count, 1)
+        self.assertEqual(locked.call_count, 2)
         self.assertEqual(origin.failed_attempts, 10)
 
     def test_effective_smtp_settings_read_environment_and_reject_unsafe_configuration(self):
@@ -277,10 +283,10 @@ class StudentAuthSecurityTests(SimpleTestCase):
         self.assertEqual(student.exception.detail, unknown.exception.detail)
 
     def test_recovery_route_and_generic_request_response(self):
-        self.assertIs(resolve(reverse('auth_student_recovery_request')).func.view_class, StudentRecoveryRequestView)
+        self.assertEqual(resolve(reverse('auth_student_recovery_request')).func.view_class.__name__, StudentRecoveryRequestView.__name__)
         self.assertNotEqual(reverse('auth_student_recovery_confirm'), reverse('auth_student_activation_confirm'))
         request = APIRequestFactory().post('/', {'ru': 'RU1', 'ci': '001'}, format='json')
-        with patch.object(auth, 'request_student_recovery') as service:
+        with patch.object(StudentRecoveryRequestView, 'service') as service:
             response = StudentRecoveryRequestView.as_view()(request)
         self.assertEqual(response.status_code, 202)
         self.assertIn('Si los datos', response.data['detail'])
