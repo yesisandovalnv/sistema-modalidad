@@ -211,7 +211,13 @@ class ProyectoGradoRequisitosTests(TestCase):
     def test_documentos_aplicables_en_etapa_documento_final(self):
         """Verificar que DOCUMENTO_FINAL sigue siendo aplicable en su etapa."""
         resultado = self.policy.get_documentos_aplicables_en_etapa("DOCUMENTO_FINAL")
-        self.assertEqual(resultado, ("DOCUMENTO_FINAL", "OBSERVACIONES_DEFENSA_PERFIL"))
+        self.assertEqual(resultado, ("DOCUMENTO_FINAL", "INFORME_FINAL_TUTOR", "OBSERVACIONES_DEFENSA_PERFIL"))
+
+    def test_informe_final_tutor_ya_no_es_aplicable_en_cierre_documental(self):
+        self.assertEqual(
+            self.policy.get_documentos_aplicables_en_etapa("CIERRE_DOCUMENTAL"),
+            ("ACTA_DEFENSA",),
+        )
 
     def test_revision_final_post_publica_ofrece_exactamente_hoja_aprobacion(self):
         resultado = self.policy.get_documentos_aplicables_en_etapa("REVISION_FINAL_POST_PUBLICA")
@@ -579,7 +585,7 @@ class ProyectoGradoDocumentosAplicablesTests(TestCase):
         self.assertEqual(response.data["data"]["codigos_faltantes"], [codes[2]])
         self.assertIn(codes[2], response.data["message"])
 
-    def test_endpoint_de_cierre_expone_solo_acta_e_informe_final_tutor(self):
+    def test_endpoint_de_cierre_expone_solo_acta(self):
         self._activar_cierre()
         self.client.force_authenticate(self.admin)
 
@@ -589,13 +595,25 @@ class ProyectoGradoDocumentosAplicablesTests(TestCase):
         self.assertEqual(response.data["etapa_actual"], "CIERRE_DOCUMENTAL")
         self.assertEqual(
             {item["codigo"] for item in response.data["documentos_aplicables"]},
-            {"ACTA_DEFENSA", "INFORME_FINAL_TUTOR"},
+            {"ACTA_DEFENSA"},
         )
         self.assertNotIn("DOCUMENTO_FINAL", {item["codigo"] for item in response.data["documentos_aplicables"]})
         self.assertNotIn("HOJA_APROBACION", {item["codigo"] for item in response.data["documentos_aplicables"]})
 
-    def test_carga_ordinaria_permite_informe_y_rechaza_tipo_ajeno(self):
-        self._activar_cierre()
+    def test_carga_ordinaria_permite_informe_en_documento_final_y_rechaza_tipo_ajeno(self):
+        etapa_final = EtapaModalidad.objects.create(
+            modalidad=self.postulacion.modalidad,
+            codigo="DOCUMENTO_FINAL",
+            nombre="Documento Final",
+            orden=3,
+            obligatoria=True,
+            origen_normativo="Normativa",
+        )
+        SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=etapa_final,
+            estado="EN_PROCESO",
+        )
         service = DocumentoService()
         archivo = SimpleUploadedFile("informe-tutor.pdf", b"%PDF-1.4", content_type="application/pdf")
 

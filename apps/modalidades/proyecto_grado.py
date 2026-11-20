@@ -630,11 +630,11 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
     def get_documentos_aplicables_en_etapa(self, codigo_etapa: str) -> tuple:
         documentos = super().get_documentos_aplicables_en_etapa(codigo_etapa)
         if codigo_etapa == "DOCUMENTO_FINAL":
-            return (*documentos, "OBSERVACIONES_DEFENSA_PERFIL")
+            return (*documentos, "INFORME_FINAL_TUTOR", "OBSERVACIONES_DEFENSA_PERFIL")
         if codigo_etapa == "REVISION_FINAL_POST_PUBLICA":
             return (*documentos, "HOJA_APROBACION")
         if codigo_etapa == "CIERRE_DOCUMENTAL":
-            return (*documentos, "ACTA_DEFENSA", "INFORME_FINAL_TUTOR")
+            return (*documentos, "ACTA_DEFENSA")
         return documentos
     def get_revision_tribunal_previa_policy(self): return ProyectoGradoRevisionTribunalPreviaPolicy()
     def _evaluar_requisitos_inscripcion(self, postulacion):

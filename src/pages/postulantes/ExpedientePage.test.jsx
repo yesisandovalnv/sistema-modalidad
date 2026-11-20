@@ -3374,9 +3374,53 @@ describe('ExpedientePage US-008', () => {
       },
     })
     renderApplicationManagerPage()
-    await screen.findByText('Cargar Documento Final del Proyecto de Grado')
-    expect(screen.getAllByText('Carga el documento completo del Proyecto de Grado para continuar con la revisión correspondiente.').length).toBeGreaterThan(0)
+    const nextAction = await screen.findByText('Completar documentos de Documento Final')
+    expect(within(nextAction.closest('section')).getByText('Pendiente')).toBeInTheDocument()
+    expect(screen.getAllByText('Presente o corrija los documentos obligatorios de Documento Final.').length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { name: 'Requisitos de Documento Final' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Documentación de Documento Final' })).toBeInTheDocument()
+    expect(screen.getByText('0 de 2 cumplidos')).toBeInTheDocument()
+    expect(screen.getAllByText('No presentado')).toHaveLength(2)
+    expect(screen.getByText('Documento Final del Proyecto de Grado')).toBeInTheDocument()
+    expect(screen.getByText('Informe Final del Tutor')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Aprobar Documento Final' })).not.toBeInTheDocument()
+  })
+
+  it('muestra el estado real de los dos documentos y conserva Gestionar documentos en Documento Final', async () => {
+    const documentStage = {
+      ...projectStageResponse('DOCUMENTO_FINAL'),
+      flujo: {
+        ...projectStageResponse('DOCUMENTO_FINAL').flujo,
+        orientacion_etapa_actual: {
+          mensaje: 'Carga el Documento Final requerido para esta etapa.',
+          requisitos: [],
+          siguiente_accion: {
+            codigo: 'COMPLETAR_DOCUMENTOS', titulo: 'Cargar Documento Final',
+            descripcion: 'Carga el Documento Final para que pueda ser revisado por la administración.',
+            estado: 'PENDIENTE', estado_display: 'Pendiente', destino: '#documentos', accion_label: 'Ir a documentos',
+          },
+        },
+      },
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(documentStage)
+    postulacionesService.obtenerDocumentos.mockResolvedValue({ count: 2, next: null, previous: null, results: [
+      { id: 31, tipo_documento_codigo: 'DOCUMENTO_FINAL', estado_codigo: 'ENV', estado_nombre: 'Enviado', activo: true, requiere_correccion: false, versiones: [{ id: 301, es_version_actual: true, activo: true }] },
+      { id: 32, tipo_documento_codigo: 'INFORME_FINAL_TUTOR', estado_codigo: 'APR', estado_nombre: 'Aprobado', activo: true, requiere_correccion: false, versiones: [{ id: 302, es_version_actual: true, activo: true }] },
+    ] })
+    postulacionesService.obtenerDocumentosAplicables.mockResolvedValue({ documentos_aplicables: [
+      { id: 31, codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final del Proyecto de Grado', capacidad_carga: { permitida: true } },
+      { id: 32, codigo: 'INFORME_FINAL_TUTOR', nombre: 'Informe Final del Tutor', capacidad_carga: { permitida: true } },
+    ] })
+    renderApplicationUploadManagerPage('resumen')
+
+    expect(await screen.findByText('Completar documentos de Documento Final')).toBeInTheDocument()
+    expect(screen.getByText('1 de 2 cumplidos')).toBeInTheDocument()
+    const documentRequirements = screen.getByRole('heading', { name: 'Documentación de Documento Final' }).closest('section')
+    expect(within(documentRequirements).getByText('Documento Final del Proyecto de Grado').closest('li')).toHaveTextContent('Pendiente de revisión administrativa')
+    expect(within(documentRequirements).getByText('Informe Final del Tutor').closest('li')).toHaveTextContent('Aprobado')
+    const manageDocuments = screen.getByRole('button', { name: 'Gestionar documentos' })
+    await userEvent.click(manageDocuments)
+    expect(await screen.findByRole('dialog', { name: 'Cargar documentos' })).toBeInTheDocument()
   })
 
   it('muestra aprobar Documento Final solo con orientación APROBAR_ETAPA', async () => {
@@ -3429,7 +3473,7 @@ describe('ExpedientePage US-008', () => {
     selectInitialTab('documentos')
     render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 
-    expect(await screen.findByText('Cargar Documento Final del Proyecto de Grado')).toBeInTheDocument()
+    expect(await screen.findByText('Completar documentos de Documento Final')).toBeInTheDocument()
     await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
     const uploadDialog = screen.getByRole('dialog', { name: 'Cargar documentos' })
     const file = new File(['%PDF-1.4'], 'documento-final.pdf', { type: 'application/pdf' })
@@ -3446,7 +3490,7 @@ describe('ExpedientePage US-008', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Resumen' }))
     expect(await screen.findByRole('button', { name: 'Aprobar Documento Final del Proyecto de Grado' })).toBeInTheDocument()
     await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
-    expect(screen.queryByText('Cargar Documento Final del Proyecto de Grado')).not.toBeInTheDocument()
+    expect(screen.queryByText('Completar documentos de Documento Final')).not.toBeInTheDocument()
     expect(postulacionesService.obtenerDocumentos).toHaveBeenCalledTimes(2)
     expect(postulacionesService.inicializarFlujo).not.toHaveBeenCalled()
     expect(postulacionesService.aprobarEtapa).not.toHaveBeenCalled()
@@ -3477,7 +3521,7 @@ describe('ExpedientePage US-008', () => {
     selectInitialTab('documentos')
     render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 
-    await screen.findByText('Cargar Documento Final del Proyecto de Grado')
+    await screen.findByText('Completar documentos de Documento Final')
     await userEvent.click(await screen.findByRole('button', { name: 'Cargar documento' }))
     const uploadDialog = screen.getByRole('dialog', { name: 'Cargar documentos' })
     await userEvent.upload(await within(uploadDialog).findByLabelText('Documento Final'), new File(['%PDF-1.4'], 'documento-final.pdf', { type: 'application/pdf' }))
@@ -4823,9 +4867,8 @@ describe('ExpedientePage US-008', () => {
     expect(await screen.findByText('Cargar documentos', { selector: 'p' })).toBeInTheDocument()
     const summary = document.getElementById('panel-resumen')
     const actaRequirement = within(summary).getByText(/Acta de Defensa/i).closest('li')
-    const tutorReportRequirement = within(summary).getByText(/Informe Final del Tutor/i).closest('li')
     expect(actaRequirement).toHaveTextContent('Pendiente')
-    expect(tutorReportRequirement).toHaveTextContent('Pendiente')
+    expect(within(summary).queryByText(/Informe Final del Tutor/i)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Gestionar documentos' }))
 
     expect(window.location.hash).toBe('#documentos')

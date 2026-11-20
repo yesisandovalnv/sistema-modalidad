@@ -87,7 +87,7 @@ const ORIENTATION_TO_DEFENSE_ACTION = {
   CONSOLIDAR_RESULTADO: 'consolidar_resultado',
 }
 const DEFENSE_WARNING = 'Los datos de defensa, quórum y evaluación mostrados por el sistema son registros técnicos y no sustituyen convocatoria formal, acta firmada, legalización ni resultado académico institucional.'
-const CLOSURE_TRACKING_DOCUMENT_CODES = ['ACTA_DEFENSA', 'INFORME_FINAL_TUTOR']
+const CLOSURE_TRACKING_DOCUMENT_CODES = ['ACTA_DEFENSA']
 
 function closureDocumentCode(item) {
   return typeof item === 'string' ? item : item?.codigo || item?.code
@@ -637,6 +637,27 @@ export default function ExpedientePage() {
     : resultado
   const tribunalReviewStage = (flujo.etapas || []).find((stage) => stage.codigo === 'REVISION_TRIBUNAL_PREVIA')
   const documentRows = documents.data?.results || []
+  const isProjectFinalDocumentStage = isProjectGrade && currentStage?.codigo === 'DOCUMENTO_FINAL'
+  const projectFinalDocumentRequirements = isProjectFinalDocumentStage
+    ? [
+        { codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final del Proyecto de Grado' },
+        { codigo: 'INFORME_FINAL_TUTOR', nombre: 'Informe Final del Tutor' },
+      ].map(({ codigo, nombre }) => {
+        const document = documentRows.find((row) => row.activo !== false && row.tipo_documento_codigo === codigo)
+        const currentVersion = document?.versiones?.some((version) => version.es_version_actual && version.activo !== false)
+        const approved = Boolean(document && document.estado_codigo === 'APR' && !document.requiere_correccion && currentVersion)
+        const status = !document
+          ? 'No presentado'
+          : document.requiere_correccion || ['OBS', 'REC'].includes(document.estado_codigo)
+            ? 'Requiere corrección'
+            : document.estado_codigo !== 'APR'
+              ? 'Pendiente de revisión administrativa'
+              : !currentVersion
+                ? 'Sin versión vigente'
+                : 'Aprobado'
+        return { tipo: 'DOCUMENTO', codigo, nombre, cumplido: approved, estado_display: status }
+      })
+    : []
   const tribunalReviewDocuments = getTribunalReviewDocuments(modalityCode)
   const finalDocument = documentRows.find((document) => document.tipo_documento_codigo === tribunalReviewDocuments.finalDocumentCode)
   const currentFinalVersion = finalDocument?.versiones?.find((version) => version.es_version_actual && version.activo !== false)
@@ -2178,7 +2199,16 @@ export default function ExpedientePage() {
                   }}
                 />
               </div>}
-            </> : null}
+            </> : isProjectFinalDocumentStage && !documents.loading && !documents.error ? <InscriptionDocumentsSection
+              embedded
+              requirements={projectFinalDocumentRequirements}
+              completed={projectFinalDocumentRequirements.filter((item) => item.cumplido).length}
+              total={projectFinalDocumentRequirements.length}
+              title="Requisitos de Documento Final"
+              documentationTitle="Documentación de Documento Final"
+              titleId="documento-final-requirements-title"
+              documentationTitleId="documento-final-documents-title"
+            /> : null}
             onCompleteAuthorities={() => setTeamAssignment({ mode: 'PUBLIC_AUTHORITIES', stageId: currentStage.id, submitting: false, error: '' })}
             onManageActors={openActorManagement}
             canOpenProfileTutor={canOpenProfileTutor}
@@ -2489,14 +2519,14 @@ function clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, cur
         descripcion: clarify(orientation.siguiente_accion.descripcion),
       }
     : null
-  if (action?.codigo === 'COMPLETAR_DOCUMENTOS' && orientation.siguiente_accion?.titulo === 'Cargar Documento Final') {
-    action.titulo = 'Cargar Documento Final del Proyecto de Grado'
-    action.descripcion = 'Carga el documento completo del Proyecto de Grado para continuar con la revisión correspondiente.'
+  if (action?.codigo === 'COMPLETAR_DOCUMENTOS') {
+    action.titulo = 'Completar documentos de Documento Final'
+    action.descripcion = 'Presente o corrija los documentos obligatorios de Documento Final.'
   }
   return {
     ...orientation,
-    mensaje: action?.codigo === 'COMPLETAR_DOCUMENTOS' && orientation.siguiente_accion?.titulo === 'Cargar Documento Final'
-      ? 'Carga el documento completo del Proyecto de Grado para continuar con la revisión correspondiente.'
+    mensaje: action?.codigo === 'COMPLETAR_DOCUMENTOS'
+      ? 'Presente o corrija los documentos obligatorios de Documento Final.'
       : clarify(orientation.mensaje),
     siguiente_accion: action,
   }
@@ -2808,16 +2838,16 @@ function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, ci
   </Card>
 }
 
-function InscriptionDocumentsSection({ requirements, completed, total, embedded = false }) {
+function InscriptionDocumentsSection({ requirements, completed, total, embedded = false, title = 'Requisitos de Inscripción', documentationTitle = 'Documentación de Inscripción', titleId = 'inscription-requirements-title', documentationTitleId = 'inscription-documents-title' }) {
   const Heading = embedded ? 'h3' : 'h2'
   const Subheading = embedded ? 'h4' : 'h3'
-  return <Card className={embedded ? 'overflow-hidden rounded-none border-0 bg-transparent p-0 shadow-none' : 'overflow-hidden'} aria-labelledby="inscription-requirements-title">
+  return <Card className={embedded ? 'overflow-hidden rounded-none border-0 bg-transparent p-0 shadow-none' : 'overflow-hidden'} aria-labelledby={titleId}>
     <div className="flex flex-wrap items-baseline justify-between gap-3">
-      <Heading id="inscription-requirements-title" className="text-xl font-bold">Requisitos de Inscripción</Heading>
+      <Heading id={titleId} className="text-xl font-bold">{title}</Heading>
       <p className="font-semibold text-slate-700 dark:text-slate-200">{completed} de {total} cumplidos</p>
     </div>
-    <section className={embedded ? 'mt-3' : 'mt-6 border-t border-slate-200 pt-5 dark:border-slate-700'} aria-labelledby="inscription-documents-title">
-      <Subheading id="inscription-documents-title" className="text-sm font-bold uppercase tracking-[0.16em] text-slate-600 dark:text-slate-300">Documentación de Inscripción</Subheading>
+    <section className={embedded ? 'mt-3' : 'mt-6 border-t border-slate-200 pt-5 dark:border-slate-700'} aria-labelledby={documentationTitleId}>
+      <Subheading id={documentationTitleId} className="text-sm font-bold uppercase tracking-[0.16em] text-slate-600 dark:text-slate-300">{documentationTitle}</Subheading>
       <ul className={embedded ? 'mt-3 space-y-2' : 'mt-4 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-700 dark:border-slate-700'}>
         {requirements.map((item) => <li key={item.codigo} className={embedded
           ? 'flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 dark:border-sky-800 dark:bg-slate-900/60'
