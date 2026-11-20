@@ -9,6 +9,7 @@ from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
+from apps.documentos.services import DocumentoService
 from apps.modalidades.policies import ModalidadPolicyRegistry
 from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
 from apps.notificaciones.events import EventTypes
@@ -228,21 +229,91 @@ class ProyectoGradoAutoaperturaTests(TestCase):
         self.assertEqual(carta["estado_display"], "Pendiente de revisión administrativa")
         self.assertEqual(orientation["siguiente_accion"]["codigo"], "GESTIONAR_DOCUMENTOS")
 
-    def test_tres_documentos_aprobados_por_estudiante_y_foler_recibido_permiten_aprobar(self):
+    @patch("apps.postulantes.workflow.publish_domain_event")
+    def test_tres_documentos_y_folder_completos_aprueban_inscripcion_y_abren_perfil(self, publish):
         inscription = self._start_inscription()
         self._complete_inscription_documents()
         self._receive_yellow_folder()
 
-        orientation = self._serialize_flow(self.admin)["orientacion_etapa_actual"]
-        self.assertEqual(orientation["requisitos_cumplidos"], 4)
-        self.assertEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
-        student_flow = self._serialize_flow(self.student)
-        self.assertEqual(student_flow["etapa_actual"]["acciones_permitidas"], [])
-        self.assertIsNone(student_flow["orientacion_etapa_actual"]["siguiente_accion"])
-        approved = WorkflowService.aprobar_etapa(inscription, self.admin)
-
-        self.assertEqual(approved.estado, "APROBADA")
+        inscription.refresh_from_db()
+        self.assertEqual(inscription.estado, "APROBADA")
         self.assertEqual(self.etapas()["PERFIL_PROYECTO"].estado, "EN_PROCESO")
+        self.assertEqual(self._serialize_flow(self.admin)["etapa_actual"]["codigo"], "PERFIL_PROYECTO")
+        event_types = [call.args[0] for call in publish.call_args_list]
+        self.assertEqual(event_types.count(EventTypes.ETAPA_APROBADA), 1)
+        self.assertEqual(event_types.count(EventTypes.ETAPA_INICIADA), 2)
+
+    def test_ultimo_documento_no_aprueba_mientras_folder_esta_pendiente(self):
+        inscription = self._start_inscription()
+        self._complete_inscription_documents(
+            status_overrides={"CARTA_SOLICITUD_PROYECTO": "ENV"},
+        )
+        document = DocumentoPostulacion.objects.get(
+            postulacion=self.postulacion,
+            tipo_documento__codigo="CARTA_SOLICITUD_PROYECTO",
+        )
+        DocumentoService().aprobar_documento(document, self.admin)
+
+        inscription.refresh_from_db()
+        self.assertEqual(inscription.estado, "EN_PROCESO")
+        self.assertEqual(self.etapas()["PERFIL_PROYECTO"].estado, "PENDIENTE")
+
+    def test_folder_completo_no_aprueba_mientras_documento_esta_pendiente(self):
+        inscription = self._start_inscription()
+        self._complete_inscription_documents(missing_code="CARTA_SOLICITUD_PROYECTO")
+        self._receive_yellow_folder()
+
+        inscription.refresh_from_db()
+        self.assertEqual(inscription.estado, "EN_PROCESO")
+        self.assertEqual(self.etapas()["PERFIL_PROYECTO"].estado, "PENDIENTE")
+
+    def test_aprobar_ultimo_documento_con_folder_completo_finaliza_inscripcion(self):
+        self._start_inscription()
+        self._complete_inscription_documents(
+            status_overrides={"HISTORIAL_PRERREQ": "ENV"},
+        )
+        self._receive_yellow_folder()
+        document = DocumentoPostulacion.objects.get(
+            postulacion=self.postulacion,
+            tipo_documento__codigo="HISTORIAL_PRERREQ",
+        )
+        DocumentoService().aprobar_documento(document, self.admin)
+
+        stages = self.etapas()
+        self.assertEqual(stages["INSCRIPCION"].estado, "APROBADA")
+        self.assertEqual(stages["PERFIL_PROYECTO"].estado, "EN_PROCESO")
+
+    def test_error_al_abrir_perfil_revierta_aprobacion_y_recepcion_final(self):
+        self._start_inscription()
+        self._complete_inscription_documents()
+        delivery = EntregaFisicaService.crear(
+            self.postulacion, EntregaFisica.Tipo.FOLDER_AMARILLO,
+            "Fólder amarillo rotulado", self.admin, cantidad=1,
+        )
+        with patch.object(
+            ProyectoGradoWorkflowOrchestrator,
+            "autoabrir_siguiente",
+            side_effect=RuntimeError("No se pudo abrir Perfil de Proyecto"),
+        ):
+            with self.assertRaisesMessage(RuntimeError, "No se pudo abrir Perfil de Proyecto"):
+                EntregaFisicaService.registrar_entrega(delivery, 1, self.admin)
+
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.estado, EntregaFisica.Estado.PENDIENTE)
+        self.assertEqual(self.etapas()["INSCRIPCION"].estado, "EN_PROCESO")
+        self.assertEqual(self.etapas()["PERFIL_PROYECTO"].estado, "PENDIENTE")
+
+    def test_repetir_coordinador_no_duplica_aprobacion_ni_seguimiento(self):
+        from apps.postulantes.inscripcion_auto import InscripcionAutoFinalizacionService
+
+        self._start_inscription()
+        self._complete_inscription_documents()
+        self._receive_yellow_folder()
+        InscripcionAutoFinalizacionService.intentar_finalizar(self.postulacion, self.admin)
+
+        self.assertEqual(self.etapas()["INSCRIPCION"].estado, "APROBADA")
+        self.assertEqual(self.etapas()["PERFIL_PROYECTO"].estado, "EN_PROCESO")
+        self.assertEqual(self.postulacion.seguimientos_etapa.filter(etapa__codigo="PERFIL_PROYECTO").count(), 1)
 
     def test_orientacion_actualiza_progreso_desde_cero_hasta_cuatro(self):
         self._start_inscription()
@@ -257,10 +328,8 @@ class ProyectoGradoAutoaperturaTests(TestCase):
             self.assertNotEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
 
         self._receive_yellow_folder()
-        orientation = self._serialize_flow(self.admin)["orientacion_etapa_actual"]
-        self.assertEqual(orientation["requisitos_cumplidos"], 4)
-        self.assertEqual(orientation["siguiente_accion"]["codigo"], "APROBAR_ETAPA")
-        self.assertIn("aprobar", WorkflowService.obtener_acciones_permitidas(self.etapas()["INSCRIPCION"]))
+        self.assertEqual(self.etapas()["INSCRIPCION"].estado, "APROBADA")
+        self.assertEqual(self._serialize_flow(self.admin)["etapa_actual"]["codigo"], "PERFIL_PROYECTO")
 
     def test_inscripcion_ya_aprobada_no_se_reinterpreta_por_el_nuevo_gate(self):
         self._start_inscription()

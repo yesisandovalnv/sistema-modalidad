@@ -109,7 +109,7 @@ class Command(BaseCommand):
 
         EvaluacionDefensa.objects.filter(evento__postulacion__in=postulacion_ids).delete()
         ParticipanteEvento.objects.filter(evento__postulacion__in=postulacion_ids).delete()
-        EventoDefensa.objects.filter(postulacion__in=postulacion_ids).delete()
+        self._delete_rescheduled_defenses(postulacion_ids)
 
         ParticipacionDecisionAcademica.all_objects.filter(
             decision__seguimiento_etapa__postulacion__in=postulacion_ids,
@@ -123,6 +123,18 @@ class Command(BaseCommand):
 
         deleted_count, _ = Postulacion.all_objects.filter(pk__in=postulacion_ids).delete()
         return deleted_count
+
+    def _delete_rescheduled_defenses(self, postulacion_ids):
+        """Delete replacement events before their protected source events."""
+        remaining = EventoDefensa.objects.filter(postulacion__in=postulacion_ids)
+        while remaining.exists():
+            leaves = remaining.exclude(reprogramaciones__in=remaining)
+            deleted, _ = leaves.delete()
+            if not deleted:
+                raise CommandError(
+                    "No se pudieron eliminar las defensas: hay una cadena de "
+                    "reprogramaciones circular o una referencia protegida externa."
+                )
 
     def _collect_counts(self):
         return {

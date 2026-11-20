@@ -30,25 +30,47 @@ class MemorandumDesignacionService:
 
     @classmethod
     def es_vigente(cls, publicacion):
+        from apps.documentos.models import DocumentoPostulacion
+
+        seguimiento = publicacion.seguimiento_etapa
+        if (
+            not seguimiento.activo
+            or seguimiento.postulacion_id != publicacion.postulacion_id
+            or seguimiento.etapa.codigo != "PERFIL_PROYECTO"
+            or not publicacion.postulacion.seguimientos_etapa.filter(pk=seguimiento.pk, activo=True).exists()
+        ):
+            return False
+        seguimiento_actual = publicacion.postulacion.seguimientos_etapa.filter(
+            activo=True, etapa__codigo="PERFIL_PROYECTO",
+        ).order_by("-numero_intento", "-pk").first()
+        if not seguimiento_actual or seguimiento_actual.pk != seguimiento.pk:
+            return False
         try:
-            actuales = cls.composicion_actual(publicacion.postulacion, publicacion.seguimiento_etapa)
+            actuales = cls.composicion_actual(publicacion.postulacion, seguimiento)
         except ValidationError:
             return False
+        tutores = list(AsignacionPostulacion.objects.filter(
+            postulacion=publicacion.postulacion, seguimiento_etapa__isnull=True,
+            tipo_participacion="TUTOR", activo=True,
+        ))
+        if len(tutores) != 1:
+            return False
         actuales_ids = {item.pk for item in actuales}
+        actuales_ids.add(tutores[0].pk)
         publicados = list(publicacion.asignaciones.all())
         publicados_ids = {item.pk for item in publicados}
-        legacy_tutores = [
-            item for item in publicados
-            if item.pk not in actuales_ids
-            and item.tipo_participacion == "TUTOR"
-            and item.postulacion_id == publicacion.postulacion_id
-            and item.seguimiento_etapa_id is None
-        ]
+        version = publicacion.version_documento
+        documento = version.documento
         return (
             publicacion.activo
-            and actuales_ids.issubset(publicados_ids)
-            and len(publicados_ids - actuales_ids) == len(legacy_tutores)
-            and len(legacy_tutores) in (0, 1)
+            and publicacion.postulacion.vigencia == Postulacion.VigenciaChoices.VIGENTE
+            and actuales_ids == publicados_ids
+            and documento.postulacion_id == publicacion.postulacion_id
+            and documento.tipo_documento.codigo == cls.TIPO_DOCUMENTO
+            and documento.activo and documento.estado.codigo == "APR"
+            and not documento.requiere_correccion
+            and version.activo and version.es_version_actual
+            and DocumentoPostulacion.objects.filter(pk=documento.pk, versiones=version).exists()
         )
 
     @classmethod
@@ -60,9 +82,20 @@ class MemorandumDesignacionService:
         if postulacion.modalidad.codigo != "PROYECTO_GRADO":
             raise ValidationError("El memorándum de designación solo aplica a Proyecto de Grado.")
         seguimiento = SeguimientoEtapa.objects.select_for_update().select_related("etapa").get(pk=seguimiento.pk)
-        if seguimiento.postulacion_id != postulacion.pk or seguimiento.etapa.codigo != "PERFIL_PROYECTO":
+        if (
+            seguimiento.postulacion_id != postulacion.pk
+            or seguimiento.etapa.codigo != "PERFIL_PROYECTO"
+            or not seguimiento.activo
+            or not postulacion.seguimientos_etapa.filter(pk=seguimiento.pk, activo=True).exists()
+        ):
             raise ValidationError({"seguimiento_etapa": ["Debe corresponder al Perfil de Proyecto de la postulación."]})
         asignaciones = cls.composicion_actual(postulacion, seguimiento)
+        tutores = list(AsignacionPostulacion.objects.filter(
+            postulacion=postulacion, seguimiento_etapa__isnull=True,
+            tipo_participacion="TUTOR", activo=True,
+        ))
+        if len(tutores) != 1:
+            raise ValidationError({"asignaciones": ["Se requiere una designación vigente del Tutor."]})
         tipo = TipoDocumento.objects.filter(codigo=cls.TIPO_DOCUMENTO, activo=True).first()
         if not tipo:
             raise ValidationError({"archivo": ["El tipo documental del memorándum no está configurado."]})
@@ -78,7 +111,7 @@ class MemorandumDesignacionService:
             postulacion=postulacion, seguimiento_etapa=seguimiento,
             version_documento=version, publicado_por=usuario,
         )
-        publicacion.asignaciones.set(asignaciones)
+        publicacion.asignaciones.set([*asignaciones, tutores[0]])
         AuditLog.objects.create(
             usuario=usuario, accion="PUBLISH_ASSIGNMENT_MEMORANDUM", modulo="ASIGNACIONES",
             descripcion=f"Memorándum {publicacion.pk} publicado para {postulacion.codigo} con versión {version.pk}.",

@@ -25,7 +25,7 @@ class TesisDefensaPrivadaTest(TestCase):
         SeguimientoEtapa.objects.filter(postulacion=self.post, etapa__orden__lte=self.s['REVISION_TRIBUNAL'].etapa.orden).update(estado='APROBADA')
         self.private = self.s['DEFENSA_PRIVADA']; WorkflowService.iniciar_etapa(self.private, self.admin)
         theme = self.s['TEMATICA_TESIS']
-        self.trib = [AsignacionPostulacion.objects.create(postulacion=self.post, usuario=self.people[n], tipo_participacion='TRIBUNAL', seguimiento_etapa=theme, designado_por=self.admin) for n in (1,2,3)]
+        self.trib = [AsignacionPostulacion.objects.create(postulacion=self.post, usuario=self.people[n], tipo_participacion='TRIBUNAL', seguimiento_etapa=theme, orden_cargo=order, designado_por=self.admin) for order, n in enumerate((1,2,3), start=1)]
         self.secretary = AsignacionPostulacion.objects.create(postulacion=self.post, usuario=self.people[4], tipo_participacion='DOCENTE_MODALIDAD', designado_por=self.admin)
 
     def event(self):
@@ -106,6 +106,48 @@ class TesisDefensaPrivadaTest(TestCase):
         EventoDefensaService.finalizar_evento(event, self.admin)
         evaluation = EvaluacionDefensaService.registrar_evaluacion_privada(event, self.admin, 'SUFICIENTE', nota=Decimal('30'), modalidad_registro='CONSENSO')
         self.assertEqual(evaluation.nota_numerica, Decimal('30'))
+
+    def test_resultado_directo_tesis_privada_conserva_escala_ponderacion_y_transicion(self):
+        event = self.event()
+        updated = EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+            event, self.admin, resultado='SUFICIENTE', nota=Decimal('95'),
+            semantica_nota='BRUTA_100',
+        )
+        source = updated.evaluaciones.get(tipo_evaluacion='PRIVADA')
+        consolidated = updated.evaluaciones.get(tipo_evaluacion='RESULTADO_FINAL')
+        self.assertEqual(updated.estado, EventoDefensa.Estado.FINALIZADA)
+        self.assertIsNotNone(updated.fecha_fin_real)
+        self.assertEqual(updated.participantes.count(), 0)
+        self.assertEqual(source.nota_numerica, Decimal('95'))
+        self.assertEqual(source.ponderacion, Decimal('30.00'))
+        self.assertEqual(source.aporte_ponderado, Decimal('28.50'))
+        self.assertEqual(consolidated.aporte_ponderado, Decimal('28.50'))
+        self.private.refresh_from_db()
+        self.assertEqual(self.private.estado, SeguimientoEtapa.EstadoChoices.APROBADA)
+
+    def test_resultado_directo_tesis_privada_acepta_escala_especifica_sin_doble_ponderacion(self):
+        event = self.event()
+        updated = EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+            event, self.admin, resultado='SUFICIENTE', nota=Decimal('25'),
+            semantica_nota='MODALIDAD_ESPECIFICA',
+        )
+        result = updated.evaluaciones.get(tipo_evaluacion='RESULTADO_FINAL')
+        self.assertEqual(result.nota_numerica, Decimal('25'))
+        self.assertEqual(result.aporte_ponderado, Decimal('25'))
+        self.assertEqual(updated.participantes.count(), 0)
+
+    def test_resultado_directo_tesis_publica_sigue_bloqueado_por_gate(self):
+        public = self.s['DEFENSA_PUBLICA']
+        public.estado = SeguimientoEtapa.EstadoChoices.EN_PROCESO
+        public.save(update_fields=['estado'])
+        private = self.s['DEFENSA_PRIVADA']
+        private.estado = SeguimientoEtapa.EstadoChoices.APROBADA
+        private.save(update_fields=['estado'])
+        with self.assertRaisesMessage(ValidationError, 'Defensa Privada finalizada con resultado SUFICIENTE'):
+            EventoDefensaService.programar_evento(
+                self.post, public, 'DEFENSA_PUBLICA', timezone.now()-timedelta(minutes=1),
+                self.admin, lugar='Auditorio',
+            )
 
     def test_reprogramar_cancelada_conserva_historial_sin_heredar_participantes_ni_evaluaciones(self):
         event = self.event()

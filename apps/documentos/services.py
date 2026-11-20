@@ -283,6 +283,12 @@ class DocumentoService:
                         )
                         or (
                             tipo_documento.codigo == "ACTA_DEFENSA"
+                            and postulacion.modalidad.codigo == "PROYECTO_GRADO"
+                            and es_carga_especial
+                            and evento_defensa is not None
+                        )
+                        or (
+                            tipo_documento.codigo == "ACTA_DEFENSA"
                             and postulacion.modalidad.codigo == "TESIS_GRADO"
                             and self._puede_autoaprobar_acta_tesis(
                                 postulacion, evento_defensa, policy,
@@ -517,6 +523,9 @@ class DocumentoService:
         self._validar_usuario_administrativo(usuario)
 
         with transaction.atomic():
+            if documento.postulacion.modalidad.codigo in {"PROYECTO_GRADO", "TESIS_GRADO"}:
+                # Mantén el mismo orden de locks que la carga de versiones y el coordinador.
+                Postulacion.objects.select_for_update().get(pk=documento.postulacion_id)
             documento = DocumentoPostulacion.objects.select_for_update().select_related(
                 "postulacion", "estado"
             ).get(pk=documento.pk)
@@ -556,6 +565,13 @@ class DocumentoService:
 
             publish_domain_event(EventTypes.DOCUMENTO_APROBADO, documento, usuario, documento.postulacion,
                 {"documento": documento.tipo_documento.nombre}, f"DOCUMENTO_APROBADO:{documento.pk}:{version_actual.pk}")
+
+            from apps.postulantes.inscripcion_auto import InscripcionAutoFinalizacionService
+
+            InscripcionAutoFinalizacionService.intentar_finalizar(
+                documento.postulacion,
+                usuario,
+            )
 
             return documento
 

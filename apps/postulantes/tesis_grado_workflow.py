@@ -68,3 +68,36 @@ class TesisGradoWorkflowOrchestrator:
             WorkflowService.iniciar_etapa(inscripcion, usuario)
 
         return list(WorkflowService.obtener_seguimientos_ordenados(postulacion))
+
+    @classmethod
+    @transaction.atomic
+    def autoabrir_siguiente(cls, seguimiento_aprobado: SeguimientoEtapa, usuario):
+        """Abre mecánicamente la etapa oficial siguiente después de Inscripción."""
+        postulacion = Postulacion.objects.select_for_update().select_related("modalidad").get(
+            pk=seguimiento_aprobado.postulacion_id,
+        )
+        if not cls._es_flujo_oficial(postulacion):
+            return None
+        try:
+            indice = cls.ETAPAS.index(seguimiento_aprobado.etapa.codigo)
+        except ValueError:
+            return None
+        if indice == len(cls.ETAPAS) - 1:
+            return None
+
+        siguiente_codigo = cls.ETAPAS[indice + 1]
+        siguiente = (
+            postulacion.seguimientos_etapa.select_for_update()
+            .select_related("etapa", "postulacion__modalidad")
+            .filter(etapa__codigo=siguiente_codigo, activo=True)
+            .order_by("-numero_intento", "-pk")
+            .first()
+        )
+        if not siguiente:
+            raise ValidationError(f"No existe seguimiento activo para {siguiente_codigo}.")
+        if siguiente.estado != SeguimientoEtapa.EstadoChoices.PENDIENTE:
+            return siguiente
+
+        from apps.postulantes.workflow import WorkflowService
+
+        return WorkflowService.iniciar_etapa(siguiente, usuario)

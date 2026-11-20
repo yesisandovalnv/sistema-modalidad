@@ -10,7 +10,7 @@ import { formatCodeLabel } from '../../lib/utils'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { postulacionesService } from '../../services/postulacionesService'
 
-const emptyForm = { codigo: '', estudiante: '', modalidad: '', periodo: '', observaciones_generales: '', tipo_registro: 'SEGUIMIENTO' }
+const emptyForm = { estudiante: '', modalidad: '', periodo: '', observaciones_generales: '', tipo_registro: 'SEGUIMIENTO' }
 const duplicateCodeMessage = 'El código ingresado ya se encuentra registrado en otra postulación. Por favor, ingrese un código diferente.'
 const cardActionClass = 'inline-flex min-h-9 items-center gap-1.5 rounded px-1.5 text-sm font-semibold text-sky-700 transition-colors hover:text-sky-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:text-sky-300 dark:hover:text-sky-200 dark:focus-visible:ring-offset-slate-900'
 const statusBadgeBaseClass = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold'
@@ -223,7 +223,7 @@ export default function PostulantesPage() {
   const save = async (event) => {
     event.preventDefault()
     if (saving) return
-    const required = editing ? ['codigo'] : ['codigo', 'estudiante', 'modalidad', 'periodo']
+    const required = editing ? ['codigo'] : ['estudiante', 'modalidad', 'periodo']
     const localErrors = Object.fromEntries(
       required
         .filter((name) => !String(form[name] || '').trim())
@@ -241,7 +241,6 @@ export default function PostulantesPage() {
       codigo: form.codigo,
       observaciones_generales: form.observaciones_generales,
     } : {
-      codigo: form.codigo,
       estudiante: Number(form.estudiante),
       modalidad: Number(form.modalidad),
       periodo: Number(form.periodo),
@@ -403,7 +402,7 @@ export default function PostulantesPage() {
           {data.results?.map((item) => (
             <article key={item.id} className="rounded-xl border bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
               <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-y-0">
-                <h2 className="min-w-0 text-lg font-bold">{item.codigo}</h2>
+                <h2 className="min-w-0 text-lg font-bold">{studentLabel(item)}</h2>
                 <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
                   <Link className={cardActionClass} to={`/postulaciones/${item.id}`}>
                     <FolderOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -536,9 +535,9 @@ export default function PostulantesPage() {
           onClose={() => { if (!saving) { setSelected(null); setForm(null) } }}
         >
           <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={save}>
-            <FormField error={fieldErrors.codigo}>
+            {editing && <FormField error={fieldErrors.codigo}>
               <Field label="Código" required value={form.codigo} onChange={(event) => change('codigo', event.target.value)} />
-            </FormField>
+            </FormField>}
             {editing ? (
               <div className="rounded-lg border bg-slate-50 p-4 sm:col-span-2 dark:border-slate-800 dark:bg-slate-950">
                 <p className="text-sm font-semibold">Datos de solo lectura</p>

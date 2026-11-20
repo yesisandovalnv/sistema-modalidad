@@ -4,8 +4,6 @@ import { Button } from '../../components/ui/button'
 import { humanizeRequirementCode, postulacionesService } from '../../services/postulacionesService'
 import { formatCodeLabel } from '../../lib/utils'
 
-const LEGAL_WARNING = 'El cierre registrado en el sistema corresponde al cierre técnico/documental del expediente y no sustituye el acta oficial, firmas, legalización, titulación ni procesamiento universitario posterior.'
-
 const ACTIONS = {
   revision: { title: 'Aprobar revisión final', confirm: '¿Confirmas la aprobación técnica de la revisión final?', method: 'aprobarRevisionFinal', field: 'observaciones' },
   cierre: { title: 'Aprobar cierre documental', confirm: '¿Confirmas la aprobación del cierre técnico/documental?', method: 'aprobarCierreDocumental', field: 'observaciones' },
@@ -24,28 +22,13 @@ function ClosureStatus({ children }) {
   return <span className="inline-flex max-w-full rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-sm font-medium text-slate-700 [overflow-wrap:anywhere] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">{children}</span>
 }
 
-function closureWarnings(cierre) {
-  const groups = { CONDICION: cierre.condiciones_faltantes, ENTREGA: cierre.entregas_faltantes, DOCUMENTO: cierre.documentos_faltantes }
-  return (cierre.advertencias_normativas || []).filter((warning) => {
-    const match = /^(CONDICION|ENTREGA|DOCUMENTO):([^:\s]+)$/.exec(warning)
-    return !match || !groups[match[1]]?.includes(match[2])
-  }).map((warning) => {
-    const match = /^(CONDICION|ENTREGA|DOCUMENTO):([^:\s]+)$/.exec(warning)
-    if (match) return `${formatCodeLabel(match[1])} pendiente: ${humanizeRequirementCode(match[2])}`
-    return warning
-      .replace(/\b(CONDICION|ENTREGA|DOCUMENTO):/g, (_, type) => `${formatCodeLabel(type)}: `)
-      .replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g, humanizeRequirementCode)
-      .replaceAll('TipoDocumento', 'tipo de documento')
-  })
-}
-
 function FieldErrors({ fields }) {
   const entries = Object.entries(fields || {}).filter(([, messages]) => messages)
   if (!entries.length) return null
   return <ul className="mt-2 list-disc pl-5 text-sm text-red-600">{entries.flatMap(([field, messages]) => (Array.isArray(messages) ? messages : [messages]).map((message) => <li key={`${field}-${message}`}>{field}: {String(message)}</li>))}</ul>
 }
 
-export default function TechnicalClosure({ postulacion, initialClosure, resultado, stages = [], canManage, refreshToken = 0, onChanged }) {
+export default function TechnicalClosure({ postulacion, initialClosure, resultado, stages = [], canManage, refreshToken = 0, onChanged, showAcademicResult = true, compactPendingSummary = !showAcademicResult }) {
   const [state, setState] = useState({ data: initialClosure?.data || null, loading: false, error: initialClosure?.error || '' })
   const [action, setAction] = useState(null)
   const controller = useRef(null)
@@ -93,10 +76,8 @@ export default function TechnicalClosure({ postulacion, initialClosure, resultad
   const closureStage = stages.find((item) => item.codigo === 'CIERRE_DOCUMENTAL')
   const reviewStage = stages.find((item) => item.codigo === 'REVISION_FINAL_POST_PUBLICA')
   const currentStage = stages.find((item) => item.codigo === cierre?.etapa_actual)
-  const warnings = cierre ? closureWarnings(cierre) : []
   return <Card className="min-w-0" aria-labelledby="cierre-tecnico-title">
     <h2 id="cierre-tecnico-title" className="text-xl font-bold">Cierre técnico</h2>
-    <p role="note" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">{LEGAL_WARNING}</p>
     {state.loading && <p role="status" className="mt-4 text-sm">Cargando cierre técnico…</p>}
     {state.error && <div className="mt-4"><p role="alert" className="text-sm text-red-600">{state.error}</p><Button className="mt-2" variant="secondary" onClick={load}>Reintentar</Button></div>}
     {!state.loading && !state.error && cierre && <>
@@ -105,17 +86,21 @@ export default function TechnicalClosure({ postulacion, initialClosure, resultad
         <div><dt className="text-slate-500">Etapa actual</dt><dd className="font-semibold">{currentStage?.nombre || formatCodeLabel(cierre.etapa_actual) || 'Sin etapa pendiente'}</dd></div>
         <div><dt className="text-slate-500">Revisión final</dt><dd><ClosureStatus>{cierre.revision_final_aprobada ? 'Aprobada' : 'Pendiente'}</ClosureStatus></dd></div>
         <div><dt className="text-slate-500">Cierre documental</dt><dd><ClosureStatus>{cierre.cierre_documental_aprobado ? 'Aprobado' : 'Pendiente'}</ClosureStatus></dd></div>
-        <div><dt className="text-slate-500">Nota final</dt><dd className="text-xl font-bold tabular-nums">{resultado?.data?.nota_final ?? 'Pendiente'}</dd></div>
-        <div><dt className="text-slate-500">Clasificación</dt><dd className="font-semibold leading-relaxed">{formatCodeLabel(resultado?.data?.clasificacion) || 'Pendiente'}</dd></div>
+        {showAcademicResult && <div><dt className="text-slate-500">Nota final</dt><dd className="text-xl font-bold tabular-nums">{resultado?.data?.nota_final ?? 'Pendiente'}</dd></div>}
+        {showAcademicResult && <div><dt className="text-slate-500">Clasificación</dt><dd className="font-semibold leading-relaxed">{formatCodeLabel(resultado?.data?.clasificacion) || 'Pendiente'}</dd></div>}
         <div><dt className="text-slate-500">Responsable revisión</dt><dd className="font-medium">{reviewStage?.cerrada_por_nombre || 'No registrado'}</dd></div>
         <div><dt className="text-slate-500">Responsable cierre</dt><dd className="font-medium">{closureStage?.cerrada_por_nombre || 'No registrado'}</dd></div>
       </dl>
-      <div className="mt-6 grid gap-5 border-t border-slate-200 pt-5 dark:border-slate-700 xl:grid-cols-2">
-        <List title="Condiciones pendientes" items={cierre.condiciones_faltantes} requirements empty="Todas las condiciones técnicas están cumplidas." />
-        <List title="Entregas pendientes" items={cierre.entregas_faltantes} requirements empty="Todas las entregas técnicas están completas." />
-        <List title="Documentos pendientes" items={cierre.documentos_faltantes} requirements empty="No hay documentos técnicos faltantes." />
+      <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
+        {compactPendingSummary ? <div role="region" className="flex items-center gap-2 text-sm" aria-label="Documentos pendientes">
+          <span className="text-slate-600 dark:text-slate-300">Documentos pendientes</span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium tabular-nums text-slate-700 dark:bg-slate-800 dark:text-slate-200">{cierre.documentos_faltantes?.length || 0}</span>
+        </div> : <div className="grid gap-5 xl:grid-cols-2">
+          <List title="Condiciones pendientes" items={cierre.condiciones_faltantes} requirements empty="Todas las condiciones técnicas están cumplidas." />
+          <List title="Entregas pendientes" items={cierre.entregas_faltantes} requirements empty="Todas las entregas técnicas están completas." />
+          <List title="Documentos pendientes" items={cierre.documentos_faltantes} requirements empty="No hay documentos técnicos faltantes." />
+        </div>}
       </div>
-      {warnings.length > 0 && <div className="mt-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"><List title="Advertencias normativas" items={warnings} /></div>}
       {canManage && <div className="mt-6 flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-700">
         {cierre.puede_aprobar_revision_final && !cierre.revision_final_aprobada && <Button onClick={() => setAction({ kind: 'revision', submitting: false, fields: {}, error: '' })}>Aprobar revisión final</Button>}
         {cierre.puede_aprobar_cierre && !cierre.cierre_documental_aprobado && <Button onClick={() => setAction({ kind: 'cierre', submitting: false, fields: {}, error: '' })}>Aprobar cierre documental</Button>}

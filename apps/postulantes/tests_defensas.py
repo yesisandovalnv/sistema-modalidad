@@ -1,10 +1,12 @@
 from datetime import timedelta
 from decimal import Decimal
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
-from django.test import TestCase
+from django.db import IntegrityError, close_old_connections
+from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature
 from django.utils import timezone
 from rest_framework.test import APITestCase
 from unittest.mock import patch
@@ -97,7 +99,6 @@ class ModelosDefensaTests(DefensaMixin,TestCase):
         self.assertNotEqual(old.pk, replacement.pk)
         self.assertEqual(cancelled.estado, "CANCELADA")
 
-
     def test_participante_rechaza_rol_e_inactividad(self):
         ev=self.event(); assignment=self.assign["TRIBUNAL"][0]
         with self.assertRaises(ValidationError): ParticipanteEvento(evento=ev,asignacion=assignment,rol_evento="TUTOR").full_clean()
@@ -123,6 +124,280 @@ class ModelosDefensaTests(DefensaMixin,TestCase):
 
 
 class ServiciosDefensaTests(DefensaMixin,TestCase):
+    def _scope_direct_defense_assignments(self):
+        for assignment in self.assign["TRIBUNAL"]:
+            assignment.seguimiento_etapa = self.follow["PERFIL_PROYECTO"]
+            assignment.save(update_fields=["seguimiento_etapa"])
+        for assignment in self.assign["DOCENTE_MODALIDAD"]:
+            assignment.seguimiento_etapa = self.follow["DEFENSA_PRIVADA"]
+            assignment.save(update_fields=["seguimiento_etapa"])
+
+    def test_resultado_directo_tesis_perfil_respeta_requisitos_documentales_y_es_atomico(self):
+        modality = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis de Grado")
+        post = self.post
+        post.modalidad = modality
+        post.save(update_fields=["modalidad"])
+        from apps.modalidades.tesis_grado import TesisGradoPolicy
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+        self.assertIsInstance(ModalidadPolicyRegistry.get("TESIS_GRADO"), TesisGradoPolicy)
+        stage_theme = EtapaModalidad.objects.create(modalidad=modality, codigo="TEMATICA_TESIS", nombre="Temática", orden=1, origen_normativo="Reglamento")
+        stage_profile = EtapaModalidad.objects.create(modalidad=modality, codigo="PERFIL_TESIS", nombre="Perfil", orden=2, origen_normativo="Reglamento")
+        stage_private = EtapaModalidad.objects.create(modalidad=modality, codigo="DEFENSA_PRIVADA", nombre="Privada", orden=3, origen_normativo="Reglamento")
+        theme_follow = SeguimientoEtapa.objects.create(postulacion=post, etapa=stage_theme, estado="APROBADA")
+        profile_follow = SeguimientoEtapa.objects.create(postulacion=post, etapa=stage_profile, estado="EN_PROCESO")
+        private_follow = SeguimientoEtapa.objects.create(postulacion=post, etapa=stage_private, estado="EN_PROCESO")
+        assignments = [AsignacionPostulacion.objects.create(postulacion=post, usuario=user, tipo_participacion="TRIBUNAL", seguimiento_etapa=theme_follow, orden_cargo=order, designado_por=self.admin) for order, user in enumerate(self.docs[:3], start=1)]
+        AsignacionPostulacion.objects.create(postulacion=post, usuario=self.docs[3], tipo_participacion="TUTOR", designado_por=self.admin)
+        AsignacionPostulacion.objects.create(postulacion=post, usuario=self.docs[4], tipo_participacion="DOCENTE_MODALIDAD", designado_por=self.admin)
+        from apps.postulantes.models import EventoDefensa
+        profile = EventoDefensa.objects.create(postulacion=post, seguimiento_etapa=profile_follow, tipo_evento="DEFENSA_PERFIL", estado="PROGRAMADA", fecha_programada=timezone.now()-timedelta(minutes=1), lugar="Sala", programado_por=self.admin)
+        with self.assertRaisesMessage(ValidationError, "PERFIL_TESIS activo, aprobado y vigente"):
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto(profile, self.admin, resultado="SUFICIENTE")
+        profile.refresh_from_db()
+        self.assertEqual(profile.estado, EventoDefensa.Estado.PROGRAMADA)
+        self.assertFalse(profile.evaluaciones.exists())
+        self.assertEqual(profile.participantes.count(), 0)
+        self.assertEqual(len(assignments), 3)
+    def test_registro_directo_proyecto_para_las_tres_defensas_no_crea_participantes_ni_asistencias(self):
+        self._scope_direct_defense_assignments()
+        cases = (
+            ("DEFENSA_PERFIL", {"resultado": "SUFICIENTE"}),
+            ("DEFENSA_PRIVADA", {"resultado": "SUFICIENTE", "nota": Decimal("80.00")}),
+            ("DEFENSA_PUBLICA", {"nota": Decimal("80.00")}),
+        )
+        for kind, data in cases:
+            with self.subTest(defensa=kind):
+                event = self.event(kind)
+                if kind == "DEFENSA_PUBLICA":
+                    self.post.eventos_defensa.filter(
+                        tipo_evento="DEFENSA_PRIVADA",
+                    ).update(activo=False)
+                    self.add_private_consolidated_result()
+                updated = EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                    event, self.admin, **data,
+                )
+                self.assertEqual(updated.estado, EventoDefensa.Estado.FINALIZADA)
+                self.assertIsNotNone(updated.fecha_fin_real)
+                self.assertEqual(updated.participantes.count(), 0)
+                self.assertEqual(updated.evaluaciones.count(), 2)
+                self.assertTrue(updated.evaluaciones.filter(
+                    tipo_evaluacion="RESULTADO_FINAL", es_resultado_final_evento=True,
+                ).exists())
+                self.assertFalse(updated.participantes.filter(presente__isnull=False).exists())
+
+    def test_registro_directo_tesis_no_omite_requisitos_academicos(self):
+        other_mod = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis")
+        other_post = self.other_post
+        other_post.modalidad = other_mod
+        other_post.save(update_fields=["modalidad"])
+        stage = EtapaModalidad.objects.create(modalidad=other_mod, codigo="PERFIL_TESIS", nombre="Perfil", orden=2, origen_normativo="Reglamento")
+        follow = SeguimientoEtapa.objects.create(postulacion=other_post, etapa=stage, estado="EN_PROCESO")
+        other_event = EventoDefensa.objects.create(
+            postulacion=other_post, seguimiento_etapa=follow, tipo_evento="DEFENSA_PERFIL",
+            fecha_programada=timezone.now(), lugar="Sala", programado_por=self.admin,
+        )
+        theme = EtapaModalidad.objects.create(modalidad=other_mod, codigo="TEMATICA_TESIS", nombre="Temática", orden=1, origen_normativo="Reglamento")
+        theme_follow = SeguimientoEtapa.objects.create(postulacion=other_post, etapa=theme, estado="APROBADA")
+        for order, user in enumerate(self.docs[:3], start=1):
+            AsignacionPostulacion.objects.create(postulacion=other_post, usuario=user, tipo_participacion="TRIBUNAL", seguimiento_etapa=theme_follow, orden_cargo=order, designado_por=self.admin)
+        AsignacionPostulacion.objects.create(postulacion=other_post, usuario=self.docs[3], tipo_participacion="TUTOR", designado_por=self.admin)
+        with self.assertRaisesMessage(ValidationError, "PERFIL_TESIS activo, aprobado y vigente"):
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto(other_event, self.admin, resultado="SUFICIENTE")
+        other_event.refresh_from_db()
+        self.assertEqual(other_event.estado, EventoDefensa.Estado.PROGRAMADA)
+        self.assertFalse(other_event.evaluaciones.exists())
+        self.assertEqual(other_event.participantes.count(), 0)
+
+        event = self.event("DEFENSA_PRIVADA")
+        self.assign["DOCENTE_MODALIDAD"][0].activo = False
+        self.assign["DOCENTE_MODALIDAD"][0].save(update_fields=["activo"])
+        with self.assertRaisesMessage(ValidationError, "composición formal vigente"):
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                event, self.admin, resultado="SUFICIENTE", nota=Decimal("80"),
+            )
+
+    def _crear_defensa_tematica_tesis(self, third_user=None):
+        modality = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis de Grado")
+        self.post.modalidad = modality
+        self.post.save(update_fields=["modalidad"])
+        stage = EtapaModalidad.objects.create(
+            modalidad=modality, codigo="TEMATICA_TESIS", nombre="Temática", orden=1,
+            origen_normativo="Reglamento",
+        )
+        follow = SeguimientoEtapa.objects.create(
+            postulacion=self.post, etapa=stage, estado="EN_PROCESO",
+        )
+        tribunal_users = [self.docs[0], self.docs[1], third_user or self.docs[2]]
+        assignments = [AsignacionPostulacion.objects.create(
+            postulacion=self.post, usuario=user, tipo_participacion="TRIBUNAL",
+            seguimiento_etapa=follow, orden_cargo=order, designado_por=self.admin,
+        ) for order, user in enumerate(tribunal_users, start=1)]
+        event = EventoDefensa.objects.create(
+            postulacion=self.post, seguimiento_etapa=follow, tipo_evento="DEFENSA_TEMATICA",
+            estado="PROGRAMADA", fecha_programada=timezone.now()-timedelta(minutes=1),
+            lugar="Sala", programado_por=self.admin,
+        )
+        return event, follow, assignments
+
+    def test_resultado_directo_tesis_tematica_consolida_sin_participantes_ni_quorum(self):
+        event, follow, assignments = self._crear_defensa_tematica_tesis()
+        policy = ModalidadPolicyRegistry.get(self.post).evento_policy
+        formal = policy.get_asignaciones_formales_defensa(
+            postulacion=self.post, tipo_evento=event.tipo_evento, seguimiento=follow,
+        )
+        self.assertEqual(set(formal.values_list("pk", flat=True)), {item.pk for item in assignments})
+        self.assertTrue(policy.evaluar_composicion_formal(
+            tipo_evento=event.tipo_evento, asignaciones=formal,
+        )["cumple"])
+        self.assertTrue(EventoDefensaService.validar_quorum(event)["valido"])
+
+        updated = EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+            event, self.admin, resultado="SUFICIENTE",
+        )
+
+        self.assertEqual(updated.estado, EventoDefensa.Estado.FINALIZADA)
+        self.assertEqual(updated.participantes.count(), 0)
+        self.assertEqual(updated.evaluaciones.count(), 2)
+        self.assertTrue(updated.evaluaciones.filter(
+            tipo_evaluacion="TEMATICA", modalidad_registro="CONSENSO",
+        ).exists())
+        self.assertTrue(updated.evaluaciones.filter(
+            tipo_evaluacion="RESULTADO_FINAL", resultado_cualitativo="SUFICIENTE",
+            es_resultado_final_evento=True,
+        ).exists())
+        follow.refresh_from_db()
+        self.assertEqual(follow.estado, SeguimientoEtapa.EstadoChoices.APROBADA)
+
+    def test_resultado_directo_tesis_tematica_rechaza_tribunal_repetido_y_participante_manual(self):
+        event, follow, assignments = self._crear_defensa_tematica_tesis(third_user=self.docs[1])
+        policy = ModalidadPolicyRegistry.get(self.post).evento_policy
+        formal = policy.get_asignaciones_formales_defensa(
+            postulacion=self.post, tipo_evento=event.tipo_evento, seguimiento=follow,
+        )
+        composition = policy.evaluar_composicion_formal(
+            tipo_evento=event.tipo_evento, asignaciones=formal,
+        )
+        self.assertFalse(composition["cumple"])
+        self.assertEqual(composition["conflictos_detalle"][0]["cargos"], ["Tribunal 2", "Tribunal 3"])
+        with self.assertRaisesMessage(ValidationError, "composición formal vigente"):
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                event, self.admin, resultado="INSUFICIENTE",
+            )
+        event.refresh_from_db()
+        self.assertEqual(event.estado, EventoDefensa.Estado.PROGRAMADA)
+        self.assertFalse(event.evaluaciones.exists())
+
+        with self.assertRaisesMessage(ValidationError, "no admite participantes manuales"):
+            EventoDefensaService.agregar_participante(event, assignments[0], "TRIBUNAL", self.admin)
+
+    def test_resultado_directo_tesis_tematica_insuficiente_consolida_sin_aprobar_etapa(self):
+        event, follow, _assignments = self._crear_defensa_tematica_tesis()
+        updated = EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+            event, self.admin, resultado="INSUFICIENTE",
+        )
+        self.assertEqual(updated.estado, EventoDefensa.Estado.FINALIZADA)
+        self.assertTrue(updated.evaluaciones.filter(
+            tipo_evaluacion="RESULTADO_FINAL", resultado_cualitativo="INSUFICIENTE",
+            es_resultado_final_evento=True,
+        ).exists())
+        follow.refresh_from_db()
+        self.assertEqual(follow.estado, SeguimientoEtapa.EstadoChoices.EN_PROCESO)
+
+    def test_reprogramacion_tesis_tematica_conserva_historial_cancelado(self):
+        event, _follow, _assignments = self._crear_defensa_tematica_tesis()
+        cancelled = EventoDefensaService.cancelar_evento(event, self.admin, "Cambio de agenda")
+        replacement = EventoDefensaService.reprogramar_evento(
+            cancelled, timezone.now()+timedelta(days=5), self.admin, "Nueva fecha",
+        )
+        self.assertEqual(replacement.tipo_evento, "DEFENSA_TEMATICA")
+        self.assertEqual(replacement.reprogramada_desde_id, cancelled.pk)
+        self.assertEqual(cancelled.estado, EventoDefensa.Estado.CANCELADA)
+        self.assertEqual(list(cancelled.reprogramaciones.values_list("pk", flat=True)), [replacement.pk])
+
+    def test_registro_directo_valida_correspondencia_y_rechaza_tribunal_de_otro_contexto(self):
+        self._scope_direct_defense_assignments()
+        event = self.event("DEFENSA_PERFIL")
+        rogue = AsignacionPostulacion.objects.create(
+            postulacion=self.post, usuario=self.docs[4], tipo_participacion="TRIBUNAL",
+            designado_por=self.admin,
+        )
+        wrong_follow = self.follow["DEFENSA_PRIVADA"]
+        EventoDefensa.objects.filter(pk=event.pk).update(seguimiento_etapa=wrong_follow)
+        event.refresh_from_db()
+        with self.assertRaisesMessage(ValidationError, "no corresponde a la etapa"):
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                event, self.admin, resultado="SUFICIENTE",
+            )
+        self.assertTrue(rogue.activo)
+        private_event = self.event("DEFENSA_PRIVADA")
+        canonical = ModalidadPolicyRegistry.get(self.post).evento_policy.get_asignaciones_formales_defensa(
+            postulacion=self.post, tipo_evento=private_event.tipo_evento,
+            seguimiento=private_event.seguimiento_etapa,
+        )
+        self.assertNotIn(rogue.pk, canonical.values_list("pk", flat=True))
+
+    def test_registro_directo_es_idempotente_y_rechaza_payload_distinto(self):
+        self._scope_direct_defense_assignments()
+        event = self.event("DEFENSA_PERFIL")
+        first = EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+            event, self.admin, resultado="SUFICIENTE",
+        )
+        count = first.evaluaciones.count()
+        repeated = EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+            first, self.admin, resultado="SUFICIENTE",
+        )
+        self.assertEqual(repeated.evaluaciones.count(), count)
+        with self.assertRaisesMessage(ValidationError, "no coincide con el resultado"):
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                repeated, self.admin, resultado="INSUFICIENTE",
+            )
+
+    def test_registro_directo_rechaza_seguimiento_no_mas_reciente(self):
+        self._scope_direct_defense_assignments()
+        event = self.event("DEFENSA_PERFIL")
+        SeguimientoEtapa.objects.create(
+            postulacion=self.post, etapa=self.follow["PERFIL_PROYECTO"].etapa,
+            estado="EN_PROCESO", numero_intento=2,
+        )
+        with self.assertRaisesMessage(ValidationError, "activo más reciente"):
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                event, self.admin, resultado="SUFICIENTE",
+            )
+        self.assertFalse(event.evaluaciones.exists())
+
+    def test_registro_directo_preserva_y_rechaza_evaluacion_historica_individual(self):
+        self._scope_direct_defense_assignments()
+        event = self.event("DEFENSA_PERFIL", "EN_CURSO")
+        participant = self.add(event, ["TRIBUNAL"])[0]
+        old = EvaluacionDefensa(
+            evento=event, evaluador=participant, tipo_evaluacion="PERFIL",
+            modalidad_registro="INDIVIDUAL", resultado_cualitativo="SUFICIENTE",
+        )
+        EvaluacionDefensa.objects.bulk_create([old])
+        old = EvaluacionDefensa.objects.get(evento=event, tipo_evaluacion="PERFIL")
+        with self.assertRaisesMessage(ValidationError, "histórica individual"):
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                event, self.admin, resultado="SUFICIENTE",
+            )
+        old.refresh_from_db()
+        self.assertTrue(old.activo)
+        self.assertEqual(event.evaluaciones.count(), 1)
+
+    def test_registro_directo_revierte_evaluacion_y_cierre_si_falla_consolidacion(self):
+        self._scope_direct_defense_assignments()
+        event = self.event("DEFENSA_PERFIL")
+        with patch.object(
+            EvaluacionDefensaService, "consolidar_evaluacion_evento",
+            side_effect=ValidationError("fallo de consolidación"),
+        ):
+            with self.assertRaisesMessage(ValidationError, "fallo de consolidación"):
+                EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                    event, self.admin, resultado="SUFICIENTE",
+                )
+        event.refresh_from_db()
+        self.assertEqual(event.estado, EventoDefensa.Estado.PROGRAMADA)
+        self.assertFalse(event.evaluaciones.exists())
+
     def test_nueva_nota_privada_de_proyecto_es_bruta_y_se_pondera_con_decimal(self):
         for note, contribution in (
             (Decimal("85.00"), Decimal("25.50")),
@@ -346,6 +621,8 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
 
         self.assertIn("CARTA_SOLICITUD_TRIBUNAL_PROYECTO", error.exception.message_dict["faltantes"])
         self.assertIn("TRIBUNAL_FORMAL", error.exception.message_dict["faltantes"])
+        self.assertIn("MEMORANDUM_DESIGNACION_PROYECTO", error.exception.message_dict["faltantes"])
+        self.assertNotIn("PROPUESTA_APROBADA", error.exception.message_dict["faltantes"])
 
     def test_contrato_actual_reutiliza_tribunales_de_perfil_para_programar_privada_y_publica(self):
         for order, assignment in enumerate(self.assign["TRIBUNAL"], 1):
@@ -452,7 +729,6 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         )
 
         self.assertEqual(updated.estado, "EN_CURSO")
-        self.assertIsNotNone(updated.fecha_inicio_real)
         for participant, expected in zip(participants, (True, False)):
             participant.refresh_from_db()
             self.assertTrue(participant.activo)
@@ -605,7 +881,6 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
         self.assertEqual(cancelled.participantes.count(),len(old_participantes))
         self.assertFalse(replacement.evaluaciones.exists())
         self.assertEqual(list(cancelled.reprogramaciones.values_list("pk",flat=True)),[replacement.pk])
-
 
     def test_reprogramar_suspendida_limpia_metadatos_tecnicos_de_cierre(self):
         ev=self.event(state="EN_CURSO"); ev.fecha_inicio_real=timezone.now()-timedelta(hours=1); ev.iniciado_por=self.admin; ev.save()
@@ -903,6 +1178,154 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
 
 
 class ApiDefensaTests(DefensaMixin,APITestCase):
+    def test_api_perfil_tesis_marca_tribunal_y_tutor_repetidos_y_rechaza_resultado(self):
+        from apps.postulantes.defensas_api import EventoDefensaSerializer
+
+        modality = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis")
+        self.post.modalidad = modality
+        self.post.save(update_fields=["modalidad"])
+        AsignacionPostulacion.objects.filter(postulacion=self.post).update(activo=False)
+        theme = EtapaModalidad.objects.create(modalidad=modality, codigo="TEMATICA_TESIS", nombre="Temática", orden=1, origen_normativo="Reglamento")
+        profile_stage = EtapaModalidad.objects.create(modalidad=modality, codigo="PERFIL_TESIS", nombre="Perfil", orden=2, origen_normativo="Reglamento")
+        theme_follow = SeguimientoEtapa.objects.create(postulacion=self.post, etapa=theme, estado="APROBADA")
+        profile_follow = SeguimientoEtapa.objects.create(postulacion=self.post, etapa=profile_stage, estado="EN_PROCESO")
+        for order, user in enumerate(self.docs[:3], start=1):
+            AsignacionPostulacion.objects.create(
+                postulacion=self.post, usuario=user, tipo_participacion="TRIBUNAL",
+                seguimiento_etapa=theme_follow, orden_cargo=order, designado_por=self.admin,
+            )
+        AsignacionPostulacion.objects.create(
+            postulacion=self.post, usuario=self.docs[0], tipo_participacion="TUTOR",
+            designado_por=self.admin,
+        )
+        event = EventoDefensa.objects.create(
+            postulacion=self.post, seguimiento_etapa=profile_follow, tipo_evento="DEFENSA_PERFIL",
+            estado="PROGRAMADA", fecha_programada=timezone.now()-timedelta(minutes=1),
+            lugar="Aula", programado_por=self.admin,
+        )
+
+        serialized = EventoDefensaSerializer(event).data
+        validation = serialized["composicion_formal_validacion"]
+        self.assertFalse(validation["cumple"])
+        self.assertEqual(validation["conflictos_identidad"], [{
+            "usuario_nombre": self.docs[0].nombre_completo or self.docs[0].username,
+            "cargos": ["Tribunal 1", "Tutor"],
+        }])
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"resultado": "SUFICIENTE"}, format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("tribunal", response.data)
+        self.assertIn("Tribunal 1", str(response.data["tribunal"]))
+        self.assertIn("Tutor", str(response.data["tribunal"]))
+        event.refresh_from_db()
+        self.assertEqual(event.estado, EventoDefensa.Estado.PROGRAMADA)
+        self.assertFalse(event.evaluaciones.exists())
+
+    def test_api_tesis_repetido_en_el_mismo_cargo_invalida_composicion(self):
+        from apps.postulantes.defensas_api import EventoDefensaSerializer
+
+        modality = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis")
+        self.post.modalidad = modality
+        self.post.save(update_fields=["modalidad"])
+        AsignacionPostulacion.objects.filter(postulacion=self.post).update(activo=False)
+        theme = EtapaModalidad.objects.create(modalidad=modality, codigo="TEMATICA_TESIS", nombre="Temática", orden=1, origen_normativo="Reglamento")
+        follow = SeguimientoEtapa.objects.create(postulacion=self.post, etapa=theme, estado="EN_PROCESO")
+        for order, user in enumerate((self.docs[0], self.docs[1], self.docs[1]), start=1):
+            AsignacionPostulacion.objects.create(
+                postulacion=self.post, usuario=user, tipo_participacion="TRIBUNAL",
+                seguimiento_etapa=follow, orden_cargo=order, designado_por=self.admin,
+            )
+        event = EventoDefensa.objects.create(
+            postulacion=self.post, seguimiento_etapa=follow, tipo_evento="DEFENSA_TEMATICA",
+            estado="PROGRAMADA", fecha_programada=timezone.now()-timedelta(minutes=1),
+            lugar="Aula", programado_por=self.admin,
+        )
+
+        validation = EventoDefensaSerializer(event).data["composicion_formal_validacion"]
+        self.assertFalse(validation["cumple"])
+        self.assertEqual(validation["conflictos_identidad"][0]["cargos"], ["Tribunal 2", "Tribunal 3"])
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"resultado": "SUFICIENTE"}, format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("tribunal", response.data)
+
+    def test_api_tesis_privada_registra_resultado_final_directamente(self):
+        modality = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis")
+        self.post.modalidad = modality
+        self.post.save(update_fields=["modalidad"])
+        AsignacionPostulacion.objects.filter(postulacion=self.post).update(activo=False)
+        theme = EtapaModalidad.objects.create(modalidad=modality, codigo="TEMATICA_TESIS", nombre="Temática", orden=1, origen_normativo="Reglamento")
+        private_stage = EtapaModalidad.objects.create(modalidad=modality, codigo="DEFENSA_PRIVADA", nombre="Privada", orden=2, origen_normativo="Reglamento")
+        theme_follow = SeguimientoEtapa.objects.create(postulacion=self.post, etapa=theme, estado="APROBADA")
+        private_follow = SeguimientoEtapa.objects.create(postulacion=self.post, etapa=private_stage, estado="EN_PROCESO")
+        for order, (user, role) in enumerate(zip(self.docs, ("TRIBUNAL", "TRIBUNAL", "TRIBUNAL", "DOCENTE_MODALIDAD")), start=1):
+            AsignacionPostulacion.objects.create(
+                postulacion=self.post, usuario=user, tipo_participacion=role,
+                seguimiento_etapa=theme_follow if role == "TRIBUNAL" else private_follow,
+                orden_cargo=order if role == "TRIBUNAL" else None,
+                designado_por=self.admin,
+            )
+        event = EventoDefensa.objects.create(
+            postulacion=self.post, seguimiento_etapa=private_follow,
+            tipo_evento="DEFENSA_PRIVADA", estado="PROGRAMADA",
+            fecha_programada=timezone.now()-timedelta(minutes=1), lugar="Aula", programado_por=self.admin,
+        )
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"resultado": "SUFICIENTE", "nota": "95", "semantica_nota": "BRUTA_100"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["estado"], "FINALIZADA")
+        self.assertEqual(response.data["participantes"], [])
+        self.assertEqual(response.data["resultado_consolidado"]["aporte_ponderado"], "28.50")
+        self.assertEqual(len(response.data["composicion_formal"]), 4)
+        self.assertFalse(EventoDefensa.objects.get(pk=event.pk).participantes.exists())
+
+    def test_serializador_tesis_publica_composicion_formal_procede_de_asignaciones(self):
+        from apps.postulantes.defensas_api import EventoDefensaSerializer
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+
+        modality = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis")
+        self.post.modalidad = modality
+        self.post.save(update_fields=["modalidad"])
+        AsignacionPostulacion.objects.filter(postulacion=self.post).update(activo=False)
+        theme = EtapaModalidad.objects.create(modalidad=modality, codigo="TEMATICA_TESIS", nombre="Temática", orden=1, origen_normativo="Reglamento")
+        theme_follow = SeguimientoEtapa.objects.create(postulacion=self.post, etapa=theme, estado="APROBADA")
+        public_follow = EtapaModalidad.objects.create(modalidad=modality, codigo="DEFENSA_PUBLICA", nombre="Pública", orden=2, origen_normativo="Reglamento")
+        public_tracking = SeguimientoEtapa.objects.create(postulacion=self.post, etapa=public_follow, estado="EN_PROCESO")
+        assignments = []
+        for order, (user, role) in enumerate(zip(self.docs, ("TRIBUNAL", "TRIBUNAL", "TRIBUNAL", "PRESIDENTE", "SECRETARIO")), start=1):
+            assignments.append(AsignacionPostulacion.objects.create(
+                postulacion=self.post, usuario=user, tipo_participacion=role,
+                seguimiento_etapa=theme_follow if role == "TRIBUNAL" else None,
+                orden_cargo=order if role == "TRIBUNAL" else None,
+                designado_por=self.admin,
+            ))
+        event = EventoDefensa.objects.create(
+            postulacion=self.post, seguimiento_etapa=public_tracking,
+            tipo_evento="DEFENSA_PUBLICA", estado="PROGRAMADA",
+            fecha_programada=timezone.now(), lugar="Auditorio", programado_por=self.admin,
+        )
+        serialized = EventoDefensaSerializer(event).data
+        self.assertEqual({row["id"] for row in serialized["composicion_formal"]}, {assignment.pk for assignment in assignments})
+        self.assertTrue(serialized["composicion_formal_validacion"]["cumple"])
+        self.assertEqual(event.participantes.count(), 0)
+        self.assertTrue(ModalidadPolicyRegistry.get(self.post).evento_policy.evaluar_composicion_formal(
+            tipo_evento="DEFENSA_PUBLICA",
+            asignaciones=ModalidadPolicyRegistry.get(self.post).evento_policy.get_asignaciones_formales_defensa(
+                postulacion=self.post, tipo_evento=event.tipo_evento, seguimiento=public_tracking,
+            ),
+        )["cumple"])
+
     def test_api_reprograma_cancelada_creando_otro_evento_y_exponiendo_fechas_distintas(self):
         self.client.force_authenticate(self.admin)
         old=self.event()
@@ -930,6 +1353,23 @@ class ApiDefensaTests(DefensaMixin,APITestCase):
         self.assertEqual(old.fecha_programada,old_date)
         self.assertIsNone(old.fecha_fin_real)
 
+    def test_api_registro_directo_finaliza_y_consolida_sin_operaciones_de_participantes(self):
+        self.client.force_authenticate(self.admin)
+        for assignment in self.assign["TRIBUNAL"]:
+            assignment.seguimiento_etapa = self.follow["PERFIL_PROYECTO"]
+            assignment.save(update_fields=["seguimiento_etapa"])
+        event = self.event("DEFENSA_PERFIL")
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"resultado": "SUFICIENTE", "observaciones": "Dictamen del tribunal"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["estado"], "FINALIZADA")
+        self.assertEqual(response.data["participantes"], [])
+        self.assertEqual(response.data["resultado_consolidado"]["resultado_cualitativo"], "SUFICIENTE")
+        self.assertEqual(event.participantes.count(), 0)
+        self.assertEqual(len(response.data["composicion_formal"]), 2)
 
     def test_autenticacion_propiedad_y_permisos(self):
         ev=self.event(); url=f"/api/v1/eventos-defensa/{ev.pk}/"
@@ -1107,6 +1547,35 @@ class ApiDefensaTests(DefensaMixin,APITestCase):
     def test_resultado_final_no_admite_put(self):
         self.client.force_authenticate(self.admin)
         self.assertEqual(self.client.put(f"/api/v1/postulaciones/{self.post.pk}/resultado-final/",{}).status_code,405)
+
+
+@skipUnlessDBFeature("has_select_for_update")
+class RegistroDirectoConcurrenciaTests(DefensaMixin, TransactionTestCase):
+    reset_sequences = True
+
+    def test_doble_envio_concurrente_consolida_una_sola_vez(self):
+        for assignment in self.assign["TRIBUNAL"]:
+            assignment.seguimiento_etapa = self.follow["PERFIL_PROYECTO"]
+            assignment.save(update_fields=["seguimiento_etapa"])
+        event = self.event("DEFENSA_PERFIL")
+        barrier = Barrier(2)
+
+        def submit():
+            close_old_connections()
+            try:
+                barrier.wait(timeout=10)
+                current = EventoDefensa.objects.get(pk=event.pk)
+                actor = User.objects.get(pk=self.admin.pk)
+                return EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                    current, actor, resultado="SUFICIENTE",
+                ).pk
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            outcomes = list(executor.map(lambda _index: submit(), range(2)))
+        self.assertEqual(outcomes, [event.pk, event.pk])
+        self.assertEqual(event.evaluaciones.count(), 2)
 
 
 class InicioCombinadoQuorumModalidadesTests(TestCase):

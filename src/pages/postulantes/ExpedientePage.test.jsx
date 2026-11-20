@@ -53,7 +53,7 @@ vi.mock('../../services/postulacionesService', () => ({
     obtenerExamenGrado: vi.fn(), concluirExamenGrado: vi.fn(), obtenerExcelenciaAcademica: vi.fn(), concluirExcelenciaAcademica: vi.fn(), obtenerDiplomado: vi.fn(), obtenerTrabajoDirigido: vi.fn(), registrarInformeTrabajoDirigido: vi.fn(), concluirTrabajoDirigido: vi.fn(),
     obtenerVersiones: vi.fn(), descargarVersion: vi.fn(), obtenerObservaciones: vi.fn(), obtenerTiposDocumento: vi.fn(), obtenerTiposDocumentosHistoricos: vi.fn(), cargarDocumento: vi.fn(), subirDocumentoHistorico: vi.fn(),
     aprobarDocumento: vi.fn(), rechazarDocumento: vi.fn(), observarDocumento: vi.fn(), marcarObservacionCorregida: vi.fn(),
-    obtenerDefensas: vi.fn(), obtenerQuorumDefensa: vi.fn(), programarDefensa: vi.fn(), iniciarDefensa: vi.fn(),
+    obtenerDefensas: vi.fn(), obtenerQuorumDefensa: vi.fn(), programarDefensa: vi.fn(), iniciarDefensa: vi.fn(), registrarResultadoDirectoDefensa: vi.fn(),
     finalizarDefensa: vi.fn(), suspenderDefensa: vi.fn(), cancelarDefensa: vi.fn(), reprogramarDefensa: vi.fn(),
     registrarEvaluacionDefensa: vi.fn(), consolidarEvaluacionDefensa: vi.fn(), obtenerDefensa: vi.fn(), concluirAcademicamente: vi.fn(),
     obtenerAsignacionesCandidatas: vi.fn(), agregarParticipanteDefensa: vi.fn(), retirarParticipanteDefensa: vi.fn(), registrarAsistenciaDefensa: vi.fn(),
@@ -175,6 +175,17 @@ const response = {
     error: '',
   },
 }
+
+const expedienteIdentityCases = [
+  ['PROYECTO_GRADO', 'Proyecto de Grado'],
+  ['TESIS_GRADO', 'Tesis de Grado'],
+  ['TRABAJO_DIRIGIDO', 'Trabajo Dirigido'],
+  ['EXAMEN_GRADO', 'Examen de Grado'],
+  ['EXCELENCIA_ACADEMICA', 'Excelencia Acad\u00e9mica'],
+  ['GRADUACION_VIA_DIPLOMADO', 'Graduaci\u00f3n V\u00eda Diplomado'],
+].flatMap(([modalidadCodigo, modalidadNombre]) => ['SEGUIMIENTO', 'HISTORICO'].map((tipoRegistro) => ({
+  modalidadCodigo, modalidadNombre, tipoRegistro,
+})))
 
 const thesisPostPublicResponse = {
   ...response,
@@ -581,6 +592,70 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.reprogramarDefensa.mockResolvedValue({ ...defenseRows[1], fecha_programada: '2026-09-01T10:00:00Z' })
   })
 
+  it('mantiene visible el expediente y permite volver si el detalle de defensa PG llega incompleto', async () => {
+    const incompleteDefense = { ...defenseRows[2], estado: 'PROGRAMADA', participantes: [] }
+    delete incompleteDefense.evaluaciones
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [incompleteDefense] })
+    selectInitialTab('defensas')
+    renderDefenseManagerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+    const dialog = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('No se pudo cargar el detalle completo')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Volver al expediente' }))
+    expect(screen.queryByRole('dialog', { name: 'Detalle de defensa' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Defensas' })).toBeVisible()
+  })
+
+  it.each([
+    ['Defensa de Perfil', defenseRows[2]],
+    ['Defensa Privada', defenseRows[1]],
+    ['Defensa Pública', defenseRows[0]],
+  ])('abre el detalle PG de %s dentro del expediente', async (_label, defense) => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defense] })
+    selectInitialTab('defensas')
+    renderDefenseManagerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    expect(within(dialog).getByRole('heading', { name: defense.tipo_display })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Defensas' })).toBeVisible()
+  })
+
+  it('contiene una excepción del detalle PG, conserva el expediente y permite regresar', async () => {
+    const defenseWithRenderFailure = {
+      ...defenseRows[2],
+      estado: 'PROGRAMADA',
+    }
+    const privateMarker = 'PRIVATE_TEST_MESSAGE'
+    Object.defineProperty(defenseWithRenderFailure, 'composicion_formal', {
+      get() { throw new Error(privateMarker) },
+    })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defenseWithRenderFailure] })
+    selectInitialTab('defensas')
+    renderDefenseManagerPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Detalle de defensa' })
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('No se pudo abrir el detalle de la defensa')
+    expect(screen.getByRole('tab', { name: 'Defensas' })).toBeVisible()
+    const diagnostic = consoleError.mock.calls.find(([message]) => message === 'Error al renderizar el detalle de defensa de Proyecto de Grado')
+    expect(diagnostic).toBeDefined()
+    expect(diagnostic[1].componentStack).toContain('DefenseDetail')
+    expect(JSON.stringify(diagnostic[1])).not.toContain(privateMarker)
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Volver al expediente' }))
+    expect(screen.queryByRole('dialog', { name: 'Detalle de defensa' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Defensas' })).toBeVisible()
+  })
+
   const directedConclusionResponse = ({ concluded = false, blocked = false, nota = '91.25' } = {}) => {
     const stage = { id: 901, codigo: 'CIERRE_DOCUMENTAL', nombre: 'Cierre Documental', orden: 8, estado: 'APROBADA', activo: true, acciones_permitidas: [] }
     const result = { nota_final: nota, clasificacion: 'APROBACION_PLENA_CON_FELICITACION' }
@@ -842,7 +917,7 @@ describe('ExpedientePage US-008', () => {
 
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: 'EXP-007' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /Ana P/ })).toBeInTheDocument()
     expect(screen.getByText('Trabajo Dirigido')).toBeInTheDocument()
     expect(screen.queryByText('Expediente de Proyecto de Grado')).not.toBeInTheDocument()
   })
@@ -1386,7 +1461,7 @@ describe('ExpedientePage US-008', () => {
     renderPage()
     expect(screen.getByRole('status')).toHaveTextContent(/Cargando/)
     expect(await screen.findByRole('heading', { name: 'Estado actual de tu proceso académico' })).toBeInTheDocument()
-    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+    expect(screen.getByText(/Ana P/)).toBeInTheDocument()
     expect(screen.getByText('RU-300 - Ana Pérez')).toBeInTheDocument()
     expect(screen.getByText('Proyecto de Grado')).toBeInTheDocument()
     expect(screen.getByText('Gestión 2026 - Semestre II')).toBeInTheDocument()
@@ -1399,11 +1474,14 @@ describe('ExpedientePage US-008', () => {
     expect(screen.getByText('0 de 3 etapas completadas')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('tab', { name: 'Resultado y cierre' }))
     expect(screen.getByRole('heading', { name: 'Resultado académico técnico' })).toBeInTheDocument()
-    expect(screen.getAllByText('24,00')).toHaveLength(2)
-    expect(screen.getAllByText('60,00').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('84,00').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Registro con escala anterior')).toHaveLength(2)
+    expect(screen.getAllByText('24,00')).toHaveLength(1)
+    expect(screen.queryByText('60,00')).not.toBeInTheDocument()
+    expect(screen.getAllByText('84,00')).toHaveLength(1)
+    expect(screen.getAllByText('Registro con escala anterior')).toHaveLength(1)
     expect(screen.getAllByText('Nota de Defensa Privada').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Aporte de Defensa Privada')).not.toBeInTheDocument()
+    expect(screen.queryByText('Nota de Defensa Pública')).not.toBeInTheDocument()
+    expect(screen.queryByText('Aporte de Defensa Pública')).not.toBeInTheDocument()
     expect(screen.queryByText('0')).not.toBeInTheDocument()
     expect(screen.queryByRole('note', { name: 'Límites normativos' })).not.toBeInTheDocument()
     expect(screen.queryByText(/nota privada es el aporte consensuado/i)).not.toBeInTheDocument()
@@ -1462,12 +1540,16 @@ describe('ExpedientePage US-008', () => {
 
   it('muestra solo la pestaña activa y conserva el encabezado principal', async () => {
     const { container } = renderPage()
-    const header = await screen.findByRole('heading', { name: 'EXP-007' })
+    const header = await screen.findByRole('heading', { name: /Ana P/ })
     const summaryPanel = container.querySelector('#panel-resumen')
     const documentsPanel = container.querySelector('#panel-documentos')
     const actorsPanel = container.querySelector('#panel-actores')
 
     expect(header).toBeVisible()
+    expect(screen.queryByText('EXP-007')).not.toBeInTheDocument()
+    expect(screen.getByText('RU-300 - Ana P\u00e9rez')).toBeVisible()
+    expect(screen.getByText('Proyecto de Grado')).toBeVisible()
+    expect(screen.getByText('Gesti\u00f3n 2026 - Semestre II')).toBeVisible()
     expect(summaryPanel).toBeVisible()
     expect(documentsPanel).not.toBeVisible()
     expect(actorsPanel).not.toBeVisible()
@@ -1488,11 +1570,46 @@ describe('ExpedientePage US-008', () => {
     expect(header).toBeVisible()
   })
 
+  it.each(expedienteIdentityCases)(
+    'oculta el código largo en la cabecera para $modalidadCodigo / $tipoRegistro',
+    async ({ modalidadCodigo, modalidadNombre, tipoRegistro }) => {
+      postulacionesService.obtenerExpediente.mockResolvedValue({
+        ...response,
+        detalle: {
+          ...response.detalle,
+          tipo_registro: tipoRegistro,
+          modalidad_detalle: { id: 1, codigo: modalidadCodigo, nombre: modalidadNombre },
+        },
+        flujo: {
+          ...response.flujo,
+          modalidad: { id: 1, codigo: modalidadCodigo, nombre: modalidadNombre },
+        },
+      })
+
+      renderPage()
+
+      expect(await screen.findByRole('heading', { name: /RU-300 - Ana P/ })).toBeVisible()
+      expect(screen.queryByText('EXP-007')).not.toBeInTheDocument()
+      expect(screen.getAllByText(modalidadNombre).length).toBeGreaterThan(0)
+      expect(screen.getByText('Gesti\u00f3n 2026 - Semestre II')).toBeVisible()
+      if (tipoRegistro === 'HISTORICO') expect(screen.getByText(/Registro hist/)).toBeVisible()
+    },
+  )
+
+  it('oculta el código en el encabezado de la vista estudiantil', async () => {
+    renderStudentPage()
+
+    expect(await screen.findByRole('heading', { name: 'Proyecto de Grado' })).toBeVisible()
+    expect(screen.queryByText('EXP-007')).not.toBeInTheDocument()
+    expect(screen.getByText('RU-300 - Ana P\u00e9rez')).toBeVisible()
+    expect(screen.getByText('Gesti\u00f3n 2026 - Semestre II')).toBeVisible()
+  })
+
   it('selecciona la pestaña indicada por el hash al abrir el expediente', async () => {
     window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}#actores`)
     const { container } = renderPage()
 
-    await screen.findByRole('heading', { name: 'EXP-007' })
+    await screen.findByRole('heading', { name: /Ana P/ })
 
     expect(screen.getByRole('tab', { name: 'Actores' })).toHaveAttribute('aria-selected', 'true')
     expect(container.querySelector('#panel-actores')).toBeVisible()
@@ -1501,7 +1618,7 @@ describe('ExpedientePage US-008', () => {
 
   it('actualiza la pestaña activa al recorrer el historial del navegador', async () => {
     const { container } = renderPage()
-    await screen.findByRole('heading', { name: 'EXP-007' })
+    await screen.findByRole('heading', { name: /Ana P/ })
     await userEvent.click(screen.getByRole('tab', { name: 'Documentos' }))
     await userEvent.click(screen.getByRole('tab', { name: 'Actores' }))
 
@@ -1601,7 +1718,7 @@ describe('ExpedientePage US-008', () => {
     if (service === 'excelencia') postulacionesService.obtenerExcelenciaAcademica.mockResolvedValue({ criterios: [], documentos_requeridos: [] })
 
     const { container } = renderApplicationManagerPage()
-    await screen.findByRole('heading', { name: 'EXP-007' })
+    await screen.findByRole('heading', { name: /Ana P/ })
 
     if (!service) {
       expect(screen.queryByRole('tab', { name: 'Modalidad' })).not.toBeInTheDocument()
@@ -2542,6 +2659,65 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.registrarDecisionAcademica).not.toHaveBeenCalled()
   }, 15000)
 
+  it('recarga el expediente tras publicar el memorándum y muestra Programar defensa al volver al resumen', async () => {
+    const contracts = profileContracts({
+      assignedTribunals: [
+        { id: 51, name: 'Tribunal Uno', order: 1 },
+        { id: 52, name: 'Tribunal Dos', order: 2 },
+        { id: 53, name: 'Tribunal Tres', order: 3 },
+      ],
+      tutorAssigned: true,
+    })
+    const pendingFlow = {
+      ...contracts.flow,
+      orientacion_etapa_actual: {
+        mensaje: 'Publica el memorándum oficial de designación.',
+        requisitos: [{ tipo: 'DOCUMENTO', codigo: 'MEMORANDUM_DESIGNACION_PROYECTO', nombre: 'Memorándum oficial de designación', cumplido: false, estado: 'PENDIENTE', estado_display: 'Pendiente' }],
+        siguiente_accion: { codigo: 'PUBLICAR_MEMORANDUM', titulo: 'Publicar memorándum oficial', estado: 'PENDIENTE', accion_label: 'Gestionar actores', destino: '#actores' },
+      },
+    }
+    const readyFlow = {
+      ...contracts.flow,
+      orientacion_etapa_actual: {
+        mensaje: 'Los actores requeridos están completos. Programa la defensa respetando la anticipación mínima.',
+        requisitos: [],
+        siguiente_accion: { codigo: 'PROGRAMAR_EVENTO', titulo: 'Programar defensa', descripcion: 'Los actores requeridos están completos. Programa la defensa respetando la anticipación mínima.', estado: 'DISPONIBLE', accion_label: 'Programar defensa', destino: '#defensas' },
+      },
+    }
+    postulacionesService.obtenerExpediente
+      .mockResolvedValueOnce({ ...response, flujo: pendingFlow })
+      .mockResolvedValue({ ...response, flujo: readyFlow })
+    postulacionesService.obtenerMemorandumsDesignacion
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ id: 8, vigente: true, version: { id: 81, numero_version: 1, nombre_original: 'memorandum.pdf' } }])
+
+    renderAssignmentManagerPage('resumen')
+
+    let summary = (await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })).parentElement
+    expect(within(summary).getByText('Publicar memorándum oficial')).toBeInTheDocument()
+    expect(within(summary).getByText(/Memorándum oficial de designación/)).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Actores' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Gestionar actores' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Gestionar actores — Perfil de Proyecto' })
+    const file = new File(['%PDF-1.4'], 'memorandum.pdf', { type: 'application/pdf' })
+    await userEvent.upload(within(dialog).getByLabelText('Archivo'), file)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Publicar memorándum' }))
+
+    await waitFor(() => expect(postulacionesService.publicarMemorandumDesignacion).toHaveBeenCalledWith(7, 22, file))
+    expect(await within(dialog).findByText(/Documento publicado y vigente/)).toBeInTheDocument()
+    await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(postulacionesService.obtenerMemorandumsDesignacion).toHaveBeenCalledTimes(2))
+    expect(postulacionesService.registrarDecisionAcademica).not.toHaveBeenCalled()
+    expect(postulacionesService.registrarEvaluacionDefensa).not.toHaveBeenCalled()
+
+    await userEvent.click(within(dialog).getAllByRole('button', { name: 'Cerrar' }).at(-1))
+    summary = (await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })).parentElement
+    expect(within(summary).getAllByText('Programar defensa')).toHaveLength(2)
+    expect(within(summary).queryByText('Publicar memorándum oficial')).not.toBeInTheDocument()
+    expect(within(summary).queryByText(/Memorándum oficial de designación/)).not.toBeInTheDocument()
+  })
+
   it('ofrece publicar una nueva versión cuando ya existe un memorándum vigente', async () => {
     const contracts = profileContracts({ assignedTribunals: [
       { id: 51, name: 'Tribunal Uno', order: 1 },
@@ -3108,7 +3284,7 @@ describe('ExpedientePage US-008', () => {
     if (hasPermission) renderApplicationManagerPage('documentos')
     else renderOwnerPage('documentos')
 
-    await screen.findByText('EXP-007')
+    await screen.findByText(/Ana P/)
     expect(screen.queryByRole('button', { name: 'Aprobar etapa' })).not.toBeInTheDocument()
   })
 
@@ -3469,7 +3645,14 @@ describe('ExpedientePage US-008', () => {
     renderDefenseManagerPage('resumen')
 
     expect(await screen.findByText('Continuar Defensa de Perfil programada')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Ir a la defensa' })).toHaveAttribute('href', '#defensas')
+    const openDefenseButton = screen.getByRole('button', { name: 'Ir a la defensa' })
+    await userEvent.click(openDefenseButton)
+    const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    expect(within(detail).getByText('Programada')).toBeInTheDocument()
+    expect(within(detail).getByText('Defensa de perfil')).toBeInTheDocument()
+    expect(postulacionesService.obtenerQuorumDefensa).toHaveBeenCalledWith(profileDefense.id, expect.any(AbortSignal))
+    await userEvent.click(within(detail).getByRole('button', { name: 'Cerrar' }))
+    expect(screen.queryByRole('dialog', { name: 'Detalle de defensa' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Aprobar Perfil de Proyecto' })).not.toBeInTheDocument()
   })
 
@@ -4970,7 +5153,8 @@ describe('ExpedientePage US-008', () => {
     renderDefenseManagerPage()
 
     await screen.findByRole('heading', { name: 'Defensas' })
-    expect(screen.queryByRole('button', { name: 'Programar Defensa privada' })).not.toBeInTheDocument()
+    if (estado === 'CANCELADA') expect(await screen.findByRole('button', { name: 'Programar Defensa privada' })).toBeInTheDocument()
+    else expect(screen.queryByRole('button', { name: 'Programar Defensa privada' })).not.toBeInTheDocument()
   })
 
   it.each(['TESIS_GRADO', 'TRABAJO_DIRIGIDO'])('dirige %s desde una cancelación a la reprogramación relacionada', async (modalidad) => {
@@ -5030,7 +5214,7 @@ describe('ExpedientePage US-008', () => {
     renderPage()
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
-    expect(await screen.findByText('EXP-007')).toBeInTheDocument()
+    expect(await screen.findByText(/Ana P/)).toBeInTheDocument()
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2)
   })
 
@@ -5042,7 +5226,7 @@ describe('ExpedientePage US-008', () => {
       cierre: { data: { advertencias_normativas: [], condiciones_faltantes: [], entregas_faltantes: [], documentos_faltantes: [] }, error: '' },
     })
     renderPage()
-    await screen.findByText('EXP-008')
+    await screen.findByRole('heading', { name: 'No registrado' })
     expect(screen.getAllByText('No registrado').length).toBeGreaterThanOrEqual(5)
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   })
@@ -5055,7 +5239,7 @@ describe('ExpedientePage US-008', () => {
       flujo: { ...response.flujo, modalidad: { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' } },
     })
     renderPage('resultado-y-cierre')
-    await screen.findByText('EXP-007')
+    await screen.findByText(/Ana P/)
     expect(screen.queryByRole('heading', { name: 'Cierre técnico' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Condiciones y entregas técnicas' })).not.toBeInTheDocument()
     expect(screen.queryByRole('note', { name: 'Límites normativos' })).not.toBeInTheDocument()
@@ -5069,7 +5253,7 @@ describe('ExpedientePage US-008', () => {
       resultado: { data: { nota_privada: '20.00', nota_publica: '80.00', aporte_publica: '56.00', nota_final: '76.00', clasificacion: 'APROBACION_PLENA', resultado: 'APROBACION_PLENA', limitacion_normativa: '' }, error: '' },
     })
     renderPage('resultado-y-cierre')
-    await screen.findByText('EXP-007')
+    await screen.findByText(/Ana P/)
     const result = (await screen.findByRole('heading', { name: 'Resultado académico técnico' })).parentElement
     expect(within(result).getAllByText('/ 100')).toHaveLength(2)
     expect(within(result).getByText('Aporte pública')).toBeInTheDocument()
@@ -5280,9 +5464,12 @@ describe('ExpedientePage US-008', () => {
     expect(screen.queryByRole('heading', { name: 'Conclusión de la postulación pendiente' })).not.toBeInTheDocument()
   })
 
-  it('distingue nota bruta, aportes, ponderaciones y clasificación de Proyecto nuevo', async () => {
+  it('muestra solo nota privada, nota final y clasificación de Proyecto nuevo', async () => {
+    const closureStage = { id: 14, codigo: 'CIERRE_DOCUMENTAL', nombre: 'Cierre documental', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+    postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue({ soportada: true, configuracion_valida: true, cierre_soportado: true })
     postulacionesService.obtenerExpediente.mockResolvedValue({
       ...response,
+      flujo: { ...response.flujo, etapa_actual: closureStage, etapas: [...response.flujo.etapas, closureStage] },
       resultado: { data: {
         nota_privada: '85.00', aporte_privada: '25.50', semantica_privada: 'BRUTA_100',
         nota_publica: '95.00', aporte_publica: '66.50', semantica_publica: 'BRUTA_100',
@@ -5294,20 +5481,31 @@ describe('ExpedientePage US-008', () => {
     const result = (await screen.findByRole('heading', { name: 'Resultado académico técnico' })).parentElement
     await within(result).findByText('Nota de Defensa Privada')
     expect(within(result).getByText('85,00')).toBeInTheDocument()
-    expect(within(result).getAllByText('/ 100')).toHaveLength(3)
-    expect(within(result).getByText('Aporte de Defensa Privada')).toBeInTheDocument()
-    expect(within(result).getByText('Nota de Defensa Pública')).toBeInTheDocument()
-    expect(within(result).getByText('Aporte de Defensa Pública')).toBeInTheDocument()
+    expect(within(result).getAllByText('/ 100')).toHaveLength(2)
+    expect(within(result).queryByText('Aporte de Defensa Privada')).not.toBeInTheDocument()
+    expect(within(result).queryByText('Nota de Defensa Pública')).not.toBeInTheDocument()
+    expect(within(result).queryByText('Aporte de Defensa Pública')).not.toBeInTheDocument()
     expect(within(result).getByText('Nota Final')).toBeInTheDocument()
-    expect(within(result).getAllByText('Calificación')).toHaveLength(2)
-    expect(within(result).getByText('25,50')).toBeInTheDocument()
-    expect(within(result).getByText('66,50')).toBeInTheDocument()
-    expect(within(result).getAllByText('Ponderación 30%')).toHaveLength(1)
-    expect(within(result).getAllByText('Ponderación 70%')).toHaveLength(1)
-    expect(within(result).getByText('/ 30')).toBeInTheDocument()
-    expect(within(result).getByText('/ 70')).toBeInTheDocument()
+    expect(within(result).getAllByText('Calificación')).toHaveLength(1)
+    expect(within(result).queryByText('25,50')).not.toBeInTheDocument()
+    expect(within(result).queryByText('66,50')).not.toBeInTheDocument()
+    expect(within(result).queryByText('Ponderación 30%')).not.toBeInTheDocument()
+    expect(within(result).queryByText('Ponderación 70%')).not.toBeInTheDocument()
+    expect(within(result).queryByText('/ 30')).not.toBeInTheDocument()
+    expect(within(result).queryByText('/ 70')).not.toBeInTheDocument()
     expect(within(result).getByText('92,00')).toBeInTheDocument()
     expect(within(result).getByText('APROBACIÓN PLENA CON FELICITACIÓN')).toBeInTheDocument()
+
+    const closureSection = screen.getByRole('heading', { name: 'Cierre técnico' }).closest('details')
+    const closure = screen.getByRole('heading', { name: 'Cierre técnico' }).parentElement
+    expect(within(closure).getByText('En proceso')).toBeInTheDocument()
+    expect(within(closure).queryByText('Nota final')).not.toBeInTheDocument()
+    expect(within(closure).queryByText('92,00')).not.toBeInTheDocument()
+    expect(within(closure).queryByText('Aprobación plena con felicitación')).not.toBeInTheDocument()
+    const conditionsSummary = await within(closureSection).findByText(/Condiciones técnicas/)
+    const deliveriesSummary = within(closureSection).getByText(/Entregas técnicas/)
+    expect(conditionsSummary.closest('details')).not.toHaveAttribute('open')
+    expect(deliveriesSummary.closest('details')).not.toHaveAttribute('open')
   })
 
   it('orienta a cargar el Acta cuando la Defensa Pública de Tesis ya está aprobada', async () => {
@@ -5433,7 +5631,7 @@ describe('ExpedientePage US-008', () => {
   it.each(['resumen', 'documentos'])('Acta contextual Tesis: no abre por hash %s', async (hash) => {
     prepareContextualThesisActa()
     renderOwnerPage(hash)
-    await screen.findByRole('heading', { name: 'EXP-007' })
+    await screen.findByRole('heading', { name: /Ana P/ })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(postulacionesService.cargarDocumento).not.toHaveBeenCalled()
   })
@@ -5571,7 +5769,7 @@ describe('ExpedientePage US-008', () => {
     }
     postulacionesService.obtenerExpediente.mockResolvedValueOnce(partial).mockResolvedValueOnce(response)
     renderPage('resultado-y-cierre')
-    expect(await screen.findByText('EXP-007')).toBeInTheDocument()
+    expect(await screen.findByText(/Ana P/)).toBeInTheDocument()
     expect(screen.getByText('Resultado final todavía no disponible')).toBeInTheDocument()
     expect(screen.getByText('Estado de cierre técnico todavía no disponible')).toBeInTheDocument()
     expect(screen.queryByRole('note', { name: 'Límites normativos' })).not.toBeInTheDocument()
@@ -6945,7 +7143,7 @@ describe('ExpedientePage US-008', () => {
   it.each(['actores', 'resumen'])('no abre autoridades de Tesis automáticamente por hash %s', async (hash) => {
     postulacionesService.obtenerExpediente.mockResolvedValue(thesisPublicAuthoritiesResponse())
     renderAssignmentManagerPage(hash)
-    await screen.findByRole('heading', { name: 'EXP-007' })
+    await screen.findByRole('heading', { name: /Ana P/ })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
   })
@@ -7156,7 +7354,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerExpediente.mockResolvedValue({ ...response, flujo: contracts.flow })
     postulacionesService.asignarActor.mockRejectedValue({ status: 400, message: 'Revisa los datos de la asignación.', fields: { usuario: ['El candidato ya está asignado.'] } })
     const { container } = renderAssignmentManagerPage()
-    await waitFor(() => expect(container.querySelector('h1')?.textContent).toBe('EXP-007'))
+    await waitFor(() => expect(container.querySelector('h1')?.textContent).toContain('Ana'))
     const actors = container.querySelector('[aria-labelledby="actores-title"]')
     expect(actors).not.toBeNull()
     await act(async () => {
@@ -7221,7 +7419,7 @@ describe('ExpedientePage US-008', () => {
     renderPage('actores')
     expect(await screen.findByRole('alert')).toHaveTextContent('Debes iniciar sesión para consultar los actores.')
     expect(screen.getByText('No hay participaciones anteriores registradas.')).toBeInTheDocument()
-    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+    expect(screen.getByText(/Ana P/)).toBeInTheDocument()
     postulacionesService.obtenerActores.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar participación actual' }))
     expect(await screen.findByText('No hay participaciones vigentes registradas.')).toBeInTheDocument()
@@ -7324,7 +7522,7 @@ describe('ExpedientePage US-008', () => {
 
   it('presenta la cancelación separada del fin real y ofrece reprogramar desde una defensa cancelada', async () => {
     const cancelled = {
-      ...defenseRows[2], estado: 'CANCELADA', estado_display: 'Cancelada',
+      ...defenseRows[2], postulacion_modalidad_codigo: 'PROYECTO_GRADO', estado: 'CANCELADA', estado_display: 'Cancelada',
       fecha_inicio_real: null, fecha_fin_real: null, fecha_cancelacion: '2026-09-20T12:00:00Z',
       reprogramada_desde: null, reprogramaciones: [],
       evaluaciones: [], resultado_consolidado: null,
@@ -7340,6 +7538,9 @@ describe('ExpedientePage US-008', () => {
   })
 
   it.each([
+    ['PROYECTO_GRADO', 'DEFENSA_PERFIL', true],
+    ['PROYECTO_GRADO', 'DEFENSA_PRIVADA', true],
+    ['PROYECTO_GRADO', 'DEFENSA_PUBLICA', true],
     ['TESIS_GRADO', 'DEFENSA_TEMATICA', true],
     ['TESIS_GRADO', 'DEFENSA_PERFIL', true],
     ['TESIS_GRADO', 'DEFENSA_PRIVADA', true],
@@ -7348,10 +7549,13 @@ describe('ExpedientePage US-008', () => {
     ['TRABAJO_DIRIGIDO', 'DEFENSA_PRIVADA', true],
     ['TRABAJO_DIRIGIDO', 'DEFENSA_PUBLICA', true],
     ['TRABAJO_DIRIGIDO', 'DEFENSA_TEMATICA', false],
+    ['EXAMEN_GRADO', 'DEFENSA_PRIVADA', false],
   ])('ofrece reprogramar canceladas según modalidad y tipo real (%s, %s)', async (modalidad, tipo, expected) => {
     const modalityNames = {
+      PROYECTO_GRADO: 'Proyecto de Grado',
       TESIS_GRADO: 'Tesis de Grado',
       TRABAJO_DIRIGIDO: 'Trabajo Dirigido',
+      EXAMEN_GRADO: 'Examen de Grado',
     }
     const cancelled = {
       ...defenseRows[2], id: 885, tipo_evento: tipo, estado: 'CANCELADA', estado_display: 'Cancelada',
@@ -8143,7 +8347,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerDefensas.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
     renderPage()
     expect(await screen.findByText('No se registraron defensas.')).toBeInTheDocument()
-    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+    expect(screen.getByText(/Ana P/)).toBeInTheDocument()
   })
 
   it.each([
@@ -8155,7 +8359,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerDefensas.mockRejectedValueOnce({ status, message }).mockResolvedValueOnce(defensesResponse)
     renderPage('defensas')
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
-    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+    expect(screen.getByText(/Ana P/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar defensas' }))
     expect(await screen.findByText('Defensa pública')).toBeInTheDocument()
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
@@ -8204,7 +8408,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerHistorial.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
     renderPage('historial')
     expect(await screen.findByText('No se registraron cambios de estado.')).toBeInTheDocument()
-    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+    expect(screen.getByText(/Ana P/)).toBeInTheDocument()
   })
 
   it.each([
@@ -8216,7 +8420,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerHistorial.mockRejectedValueOnce({ status, message }).mockResolvedValueOnce(historyResponse)
     renderPage('historial')
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
-    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+    expect(screen.getByText(/Ana P/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar historial' }))
     expect(await screen.findByText('Estado inicial → Registrada')).toBeInTheDocument()
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
@@ -8453,7 +8657,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerDocumentos.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
     renderPage('documentos')
     expect(await screen.findByText('No se registraron documentos.')).toBeInTheDocument()
-    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+    expect(screen.getByText(/Ana P/)).toBeInTheDocument()
   })
 
   it('muestra versiones vacías, incluidos campos opcionales ausentes', async () => {
@@ -8511,7 +8715,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerDocumentos.mockRejectedValueOnce({ status, message }).mockResolvedValueOnce(documentsResponse)
     renderPage('documentos')
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
-    expect(screen.getByText('EXP-007')).toBeInTheDocument()
+    expect(screen.getByText(/Ana P/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Reintentar documentos' }))
     expect(await screen.findByText(/Informe final/)).toBeInTheDocument()
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(1)
@@ -8533,7 +8737,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(response)
     const auth = { user: { id: 3, rol: { codigo: 'EST' } }, roleCode: 'EST', hasPermission: () => false }
     render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
-    await screen.findByText('EXP-007')
+    await screen.findByText(/Ana P/)
 
     expect(screen.queryByRole('button', { name: 'Cargar documento' })).not.toBeInTheDocument()
   })
@@ -9435,7 +9639,7 @@ describe('ExpedientePage US-008', () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(tribunalResponse)
     postulacionesService.obtenerDocumentos.mockResolvedValue(tribunalDocuments)
     const managed = renderWorkflowManagerPage()
-    await screen.findByRole('heading', { name: 'EXP-007' })
+    await screen.findByRole('heading', { name: /Ana P/ })
     await waitFor(() => expect(screen.getByText('No existen informes registrados para esta etapa.')).toBeInTheDocument(), { timeout: 10000 })
     await userEvent.click(screen.getByRole('tab', { name: 'Resumen' }))
     expect(screen.getByRole('button', { name: 'Registrar informe del tribunal' })).toBeInTheDocument()
@@ -9858,7 +10062,7 @@ describe('ExpedientePage US-008', () => {
       .mockResolvedValueOnce([...initialTribunals, { id: 23, usuario: 41, tipo_participacion: 'TRIBUNAL', orden_cargo: 3, activo: true }])
 
     const { container } = renderWorkflowAssignmentManagerPage('informes-etapa')
-    await waitFor(() => expect(container.querySelector('h1')?.textContent).toBe('EXP-007'))
+    await waitFor(() => expect(container.querySelector('h1')?.textContent).toContain('Ana'))
     await userEvent.click(await screen.findByRole('tab', { name: 'Resumen' }))
     await act(async () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Registrar informe del tribunal' }))
@@ -10880,46 +11084,29 @@ describe('ExpedientePage US-008', () => {
       expect(await screen.findByText('Programada')).toBeInTheDocument()
     })
 
-    it('integra participantes, autoridades, asistencia y reintento de quórum en Defensa Pública de Tesis', async () => {
-      const publicStage = { id: 215, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
-      const orientation = {
-        mensaje: 'Gestiona los participantes de la Defensa Pública.',
-        requisitos: [],
-        siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa Pública', estado: 'DISPONIBLE', destino: '#defensas', accion_label: 'Gestionar Defensa Pública' },
-      }
-      const publicDefense = {
+    it('usa el resultado directo para la Defensa Pública de Tesis sin participantes ni quórum', async () => {
+      const stage = { id: 215, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+      const orientation = { mensaje: 'Registra el resultado de la Defensa Pública.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa Pública', estado: 'DISPONIBLE', destino: '#defensas' } }
+      const defense = {
         id: 216, postulacion: 7, postulacion_modalidad_codigo: 'TESIS_GRADO', tipo_evento: 'DEFENSA_PUBLICA',
-        tipo_display: 'Defensa pública', numero_intento: 1, estado: 'EN_CURSO', estado_display: 'En curso',
+        tipo_display: 'Defensa pública', numero_intento: 1, estado: 'PROGRAMADA', estado_display: 'Programada',
         fecha_programada: '2026-10-25T14:00:00Z', lugar: 'Auditorio', modalidad_display: 'Presencial',
-        etapa_codigo: 'DEFENSA_PUBLICA', etapa_nombre: 'Defensa Pública',
-        participantes: [
-          { id: 921, asignacion: 31, usuario_nombre: 'Tribunal Uno', rol_evento: 'TRIBUNAL', rol_display: 'Tribunal', convocado: true, presente: null, activo: true },
-          { id: 922, asignacion: 32, usuario_nombre: 'Presidente Uno', rol_evento: 'PRESIDENTE', rol_display: 'Presidente', convocado: true, presente: true, activo: true },
-          { id: 923, asignacion: 33, usuario_nombre: 'Secretario Uno', rol_evento: 'SECRETARIO', rol_display: 'Secretario', convocado: true, presente: true, activo: true },
+        etapa_codigo: 'DEFENSA_PUBLICA', etapa_nombre: 'Defensa Pública', participantes: [],
+        composicion_formal: [
+          { id: 31, usuario_nombre: 'Tribunal Uno', tipo_participacion: 'TRIBUNAL', rol_display: 'Tribunal', orden_cargo: 1 },
+          { id: 32, usuario_nombre: 'Presidente Uno', tipo_participacion: 'PRESIDENTE', rol_display: 'Presidente' },
+          { id: 33, usuario_nombre: 'Secretario Uno', tipo_participacion: 'SECRETARIO', rol_display: 'Secretario' },
         ],
+        composicion_formal_validacion: { cumple: true, conflictos_identidad: [], requisitos: [] },
+        configuracion_numerica: { minimo: 1, maximo: 100, ponderacion: 70, semantica_nota: 'BRUTA_100' },
         evaluaciones: [], resultado_consolidado: null,
       }
-      const thesis = thesisResponseFor('DEFENSA_PUBLICA', orientation, {
-        flujo: { ...thesisResponseFor('DEFENSA_PUBLICA', orientation).flujo, etapas: [publicStage], etapa_actual: publicStage },
-      })
+      const thesis = thesisResponseFor('DEFENSA_PUBLICA', orientation, { flujo: { ...thesisResponseFor('DEFENSA_PUBLICA', orientation).flujo, etapas: [stage], etapa_actual: stage } })
       postulacionesService.obtenerExpediente.mockResolvedValue(thesis)
-      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [publicDefense] })
-      let attendanceRecorded = false
-      postulacionesService.obtenerDefensa.mockImplementation(async () => ({
-        ...publicDefense,
-        participantes: publicDefense.participantes.map((participant) => participant.id === 921 && attendanceRecorded
-          ? { ...participant, presente: false }
-          : participant),
-      }))
-      postulacionesService.obtenerQuorumDefensa
-        .mockRejectedValueOnce({ message: 'No se pudo consultar el quórum.' })
-        .mockResolvedValue({ valido: true, conteos: { TRIBUNAL: 1, PRESIDENTE: 1, SECRETARIO: 1 }, faltantes: {}, detalle: { TRIBUNAL: 1 } })
-      postulacionesService.registrarAsistenciaDefensa
-        .mockRejectedValueOnce({ message: 'No se pudo registrar la asistencia.' })
-        .mockImplementation(async () => {
-          attendanceRecorded = true
-          return { id: 921, presente: false }
-        })
+      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defense] })
+      const updated = { ...defense, estado: 'FINALIZADA', resultado_consolidado: { tipo_evaluacion: 'RESULTADO_FINAL', nota_numerica: '80.00' } }
+      postulacionesService.registrarResultadoDirectoDefensa.mockResolvedValue(updated)
+      postulacionesService.obtenerDefensa.mockResolvedValue(updated)
       renderThesis('defensas')
 
       await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
@@ -10927,53 +11114,109 @@ describe('ExpedientePage US-008', () => {
       expect(within(detail).getByText('Tribunal Uno')).toBeInTheDocument()
       expect(within(detail).getByText('Presidente Uno')).toBeInTheDocument()
       expect(within(detail).getByText('Secretario Uno')).toBeInTheDocument()
-      expect(window.location.hash).toBe('#defensas')
-      expect(document.getElementById('panel-defensas')).toBeVisible()
-      expect(within(detail).getByText(/Quórum:\s*No disponible/)).toBeInTheDocument()
-      await userEvent.click(within(detail).getByRole('button', { name: 'Reintentar quórum' }))
-      await waitFor(() => expect(within(detail).getByText(/Quórum:\s*Válido/)).toBeInTheDocument())
-
-      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar asistencia' }))
-      const attendance = screen.getByRole('dialog', { name: 'Registrar asistencia' })
-      await userEvent.selectOptions(within(attendance).getByLabelText('Asistencia'), 'false')
-      await userEvent.click(within(attendance).getByRole('button', { name: 'Guardar asistencia' }))
-      expect(await within(attendance).findByRole('alert')).toHaveTextContent('No se pudo registrar la asistencia.')
-      await userEvent.click(within(attendance).getByRole('button', { name: 'Guardar asistencia' }))
-      await waitFor(() => expect(postulacionesService.registrarAsistenciaDefensa).toHaveBeenCalledTimes(2))
-      expect(postulacionesService.registrarAsistenciaDefensa).toHaveBeenLastCalledWith(216, 921, false, '', expect.any(AbortSignal))
-      expect(await within(detail).findByText('Tribunal · Convocado · Ausente')).toBeInTheDocument()
-      expect(window.location.hash).toBe('#defensas')
-      expect(document.getElementById('panel-defensas')).toBeVisible()
+      expect(within(detail).queryByRole('button', { name: 'Agregar participante' })).not.toBeInTheDocument()
+      expect(within(detail).queryByRole('button', { name: 'Registrar asistencia' })).not.toBeInTheDocument()
+      expect(within(detail).queryByText(/Qu.rum:/)).not.toBeInTheDocument()
+      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar resultado y finalizar' }))
+      await userEvent.type(within(detail).getByLabelText(/Nota bruta/), '80')
+      await userEvent.click(within(detail).getByRole('button', { name: 'Guardar resultado' }))
+      await waitFor(() => expect(postulacionesService.registrarResultadoDirectoDefensa).toHaveBeenCalledWith(
+        216, { resultado: '', observaciones: '', nota: '80', semantica_nota: 'BRUTA_100' }, expect.any(AbortSignal),
+        { includeFieldErrors: true },
+      ))
+      expect(postulacionesService.obtenerQuorumDefensa).not.toHaveBeenCalled()
+      expect(postulacionesService.registrarAsistenciaDefensa).not.toHaveBeenCalled()
     })
 
-    it('presenta el formulario estándar con modos académicos para Defensa Privada de Tesis', async () => {
-      const orientation = {
-        mensaje: 'Gestiona el resultado de la Defensa Privada.',
-        requisitos: [],
-        siguiente_accion: { codigo: 'REGISTRAR_EVALUACION', titulo: 'Registrar resultado', estado: 'DISPONIBLE', destino: '#defensas' },
-      }
-      const privateDefense = {
-        id: 216, postulacion: 7, postulacion_modalidad_codigo: 'TESIS_GRADO', tipo_evento: 'DEFENSA_PRIVADA',
-        tipo_display: 'Defensa privada', estado: 'EN_CURSO', estado_display: 'En curso',
-        fecha_programada: '2026-10-25T14:00:00Z', lugar: 'Aula', modalidad_display: 'Presencial',
-        etapa_codigo: 'DEFENSA_PRIVADA', etapa_nombre: 'Defensa Privada',
-        participantes: [{ id: 921, asignacion: 31, usuario_nombre: 'Tribunal Uno', rol_evento: 'TRIBUNAL', activo: true, presente: true }],
+    it('usa composición formal y resultado directo para Defensa de Temática sin participantes ni quórum', async () => {
+      const stage = { id: 211, codigo: 'TEMATICA_TESIS', nombre: 'Temática de Tesis', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+      const orientation = { tipo_evento: 'DEFENSA_TEMATICA', mensaje: 'Registra el resultado de la Defensa de Temática.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa de Temática', estado: 'DISPONIBLE', destino: '#defensas' } }
+      const defense = {
+        id: 212, postulacion: 7, postulacion_modalidad_codigo: 'TESIS_GRADO', tipo_evento: 'DEFENSA_TEMATICA',
+        tipo_display: 'Defensa de temática', numero_intento: 1, estado: 'PROGRAMADA', estado_display: 'Programada',
+        fecha_programada: '2026-10-25T14:00:00Z', lugar: 'Sala', modalidad_display: 'Presencial',
+        etapa_codigo: 'TEMATICA_TESIS', etapa_nombre: 'Temática de Tesis', participantes: [],
+        composicion_formal: [
+          { id: 31, usuario_nombre: 'Tribunal Uno', tipo_participacion: 'TRIBUNAL', rol_display: 'Tribunal', orden_cargo: 1 },
+          { id: 32, usuario_nombre: 'Tribunal Dos', tipo_participacion: 'TRIBUNAL', rol_display: 'Tribunal', orden_cargo: 2 },
+          { id: 33, usuario_nombre: 'Tribunal Tres', tipo_participacion: 'TRIBUNAL', rol_display: 'Tribunal', orden_cargo: 3 },
+        ],
+        composicion_formal_validacion: { cumple: true, conflictos_identidad: [], requisitos: [] },
         evaluaciones: [], resultado_consolidado: null,
       }
-      const thesis = thesisResponseFor('DEFENSA_PRIVADA', orientation)
+      const thesis = thesisResponseFor('TEMATICA_TESIS', orientation, { flujo: { ...thesisResponseFor('TEMATICA_TESIS', orientation).flujo, etapas: [stage], etapa_actual: stage } })
       postulacionesService.obtenerExpediente.mockResolvedValue(thesis)
-      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [privateDefense] })
-      postulacionesService.obtenerQuorumDefensa.mockResolvedValue({ valido: true, conteos: { TRIBUNAL: 1 }, faltantes: {}, detalle: { TRIBUNAL: 1 } })
+      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defense] })
+      const updated = { ...defense, estado: 'FINALIZADA', resultado_consolidado: { tipo_evaluacion: 'RESULTADO_FINAL', resultado_cualitativo: 'SUFICIENTE' } }
+      postulacionesService.registrarResultadoDirectoDefensa.mockResolvedValue(updated)
+      postulacionesService.obtenerDefensa.mockResolvedValue(updated)
       renderThesis('defensas')
 
       await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
       const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
-      expect(within(detail).getAllByRole('button', { name: 'Registrar evaluación' })).toHaveLength(1)
-      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar evaluación' }))
-      expect(screen.getByLabelText('Modo')).toBeInTheDocument()
-      expect(screen.getByRole('option', { name: 'Por consenso' })).toBeInTheDocument()
-      expect(screen.getByRole('option', { name: 'Individual' })).toBeInTheDocument()
-      expect(screen.queryByRole('dialog', { name: 'Registrar resultado de la defensa' })).not.toBeInTheDocument()
+      expect(within(detail).getByText('Tribunal Uno')).toBeInTheDocument()
+      expect(within(detail).getByText('Tribunal Dos')).toBeInTheDocument()
+      expect(within(detail).getByText('Tribunal Tres')).toBeInTheDocument()
+      expect(within(detail).queryByRole('button', { name: 'Agregar participante' })).not.toBeInTheDocument()
+      expect(within(detail).queryByRole('button', { name: 'Registrar asistencia' })).not.toBeInTheDocument()
+      expect(within(detail).queryByText(/Qu.rum:/)).not.toBeInTheDocument()
+      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar resultado y finalizar' }))
+      await userEvent.click(within(detail).getByRole('button', { name: 'Guardar resultado' }))
+      await waitFor(() => expect(postulacionesService.registrarResultadoDirectoDefensa).toHaveBeenCalledWith(
+        212, { resultado: 'SUFICIENTE', observaciones: '' }, expect.any(AbortSignal),
+        { includeFieldErrors: true },
+      ))
+      expect(postulacionesService.obtenerQuorumDefensa).not.toHaveBeenCalled()
+      expect(postulacionesService.registrarAsistenciaDefensa).not.toHaveBeenCalled()
+    })
+
+    it('usa resultado directo cualitativo para Defensa de Perfil de Tesis', async () => {
+      const orientation = { mensaje: 'Registra el resultado del Perfil.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar defensa', estado: 'DISPONIBLE', destino: '#defensas' } }
+      const defense = {
+        id: 215, postulacion: 7, postulacion_modalidad_codigo: 'TESIS_GRADO', tipo_evento: 'DEFENSA_PERFIL',
+        estado: 'PROGRAMADA', estado_display: 'Programada', fecha_programada: '2026-10-25T14:00:00Z',
+        lugar: 'Aula', modalidad_display: 'Presencial', etapa_codigo: 'PERFIL_TESIS', etapa_nombre: 'Perfil de Tesis',
+        participantes: [], composicion_formal: [{ id: 31, usuario_nombre: 'Tribunal Uno', rol_display: 'Tribunal' }, { id: 34, usuario_nombre: 'Tutor Uno', rol_display: 'Tutor' }],
+        composicion_formal_validacion: { cumple: true, conflictos_identidad: [], requisitos: [] },
+        evaluaciones: [], resultado_consolidado: null,
+      }
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('PERFIL_TESIS', orientation))
+      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defense] })
+      renderThesis('defensas')
+      await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+      const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar resultado y finalizar' }))
+      expect(within(detail).getByLabelText('Resultado')).toBeInTheDocument()
+      expect(within(detail).getByText('Tribunal Uno')).toBeInTheDocument()
+      expect(within(detail).getByText('Tutor Uno')).toBeInTheDocument()
+      expect(within(detail).queryByText(/Quórum:/)).not.toBeInTheDocument()
+      expect(postulacionesService.obtenerQuorumDefensa).not.toHaveBeenCalled()
+    })
+
+    it('presenta resultado directo para Defensa Privada de Tesis y mantiene escala de policy', async () => {
+      const orientation = { mensaje: 'Registra el resultado de la Defensa Privada.', requisitos: [], siguiente_accion: { codigo: 'REGISTRAR_EVALUACION', titulo: 'Registrar resultado', estado: 'DISPONIBLE', destino: '#defensas' } }
+      const defense = {
+        id: 216, postulacion: 7, postulacion_modalidad_codigo: 'TESIS_GRADO', tipo_evento: 'DEFENSA_PRIVADA',
+        tipo_display: 'Defensa privada', estado: 'PROGRAMADA', estado_display: 'Programada',
+        fecha_programada: '2026-10-25T14:00:00Z', lugar: 'Aula', modalidad_display: 'Presencial',
+        etapa_codigo: 'DEFENSA_PRIVADA', etapa_nombre: 'Defensa Privada', participantes: [],
+        composicion_formal: [{ id: 31, usuario_nombre: 'Tribunal Uno', rol_display: 'Tribunal' }, { id: 32, usuario_nombre: 'Tribunal Dos', rol_display: 'Tribunal' }, { id: 34, usuario_nombre: 'Secretario Uno', rol_display: 'Docente de modalidad' }],
+        composicion_formal_validacion: { cumple: true, conflictos_identidad: [], requisitos: [] },
+        configuracion_numerica: { minimo: 0, maximo: 30, ponderacion: 30, semantica_nota: 'MODALIDAD_ESPECIFICA' },
+        evaluaciones: [], resultado_consolidado: null,
+      }
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('DEFENSA_PRIVADA', orientation))
+      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defense] })
+      renderThesis('defensas')
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+      const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar resultado y finalizar' }))
+      expect(within(detail).getByText('Tribunal Uno')).toBeInTheDocument()
+      expect(within(detail).queryByRole('button', { name: 'Agregar participante' })).not.toBeInTheDocument()
+      expect(within(detail).queryByText(/Qu.rum:/)).not.toBeInTheDocument()
+      expect(within(detail).getByLabelText(/Nota/)).toHaveAttribute('max', '30')
+      expect(postulacionesService.obtenerQuorumDefensa).not.toHaveBeenCalled()
     })
 
     it('reanuda evaluaciones individuales de Defensa Privada de Tesis sin ofrecer consenso', async () => {
@@ -11017,48 +11260,52 @@ describe('ExpedientePage US-008', () => {
       expect(postulacionesService.consolidarEvaluacionDefensa).not.toHaveBeenCalled()
     })
 
-    it('registra Defensa Pública de Tesis desde el detalle y muestra la respuesta canónica', async () => {
+    it('registra Defensa Pública de Tesis con resultado directo y muestra la respuesta canónica', async () => {
       const orientation = {
-        mensaje: 'Registra la evaluación de la Defensa Pública.',
+        mensaje: 'Registra el resultado de la Defensa Pública.',
         requisitos: [],
-        siguiente_accion: { codigo: 'REGISTRAR_EVALUACION', titulo: 'Registrar evaluación', estado: 'DISPONIBLE', destino: '#defensas' },
+        siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar Defensa Pública', estado: 'DISPONIBLE', destino: '#defensas' },
       }
       const publicDefense = {
         id: 217, postulacion: 7, postulacion_modalidad_codigo: 'TESIS_GRADO', tipo_evento: 'DEFENSA_PUBLICA',
         tipo_display: 'Defensa pública', estado: 'EN_CURSO', estado_display: 'En curso',
         fecha_programada: '2026-10-26T14:00:00Z', lugar: 'Auditorio', modalidad_display: 'Presencial',
         etapa_codigo: 'DEFENSA_PUBLICA', etapa_nombre: 'Defensa Pública',
-        participantes: [{ id: 931, asignacion: 41, usuario_nombre: 'Tribunal Uno', rol_evento: 'TRIBUNAL', activo: true, presente: true }],
+        participantes: [],
+        composicion_formal: [
+          { id: 931, usuario_nombre: 'Tribunal Uno', tipo_participacion: 'TRIBUNAL', rol_display: 'Tribunal', orden_cargo: 1 },
+          { id: 932, usuario_nombre: 'Tribunal Dos', tipo_participacion: 'TRIBUNAL', rol_display: 'Tribunal', orden_cargo: 2 },
+          { id: 933, usuario_nombre: 'Tribunal Tres', tipo_participacion: 'TRIBUNAL', rol_display: 'Tribunal', orden_cargo: 3 },
+          { id: 934, usuario_nombre: 'Presidente Uno', tipo_participacion: 'PRESIDENTE', rol_display: 'Presidente' },
+          { id: 935, usuario_nombre: 'Secretario Uno', tipo_participacion: 'SECRETARIO', rol_display: 'Secretario' },
+        ],
+        composicion_formal_validacion: { cumple: true, conflictos_identidad: [], requisitos: [] },
+        configuracion_numerica: { minimo: 1, maximo: 100, ponderacion: 70, semantica_nota: 'BRUTA_100' },
         evaluaciones: [], resultado_consolidado: null,
       }
       const evaluatedDefense = {
         ...publicDefense,
-        evaluaciones: [{
-          id: 302, evento: 217, tipo_evaluacion: 'PUBLICA', modalidad_registro: 'CONSENSO',
-          resultado_cualitativo: '', nota_numerica: '80.00', es_resultado_final_evento: false,
-        }],
+        estado: 'FINALIZADA', estado_display: 'Finalizada',
+        resultado_consolidado: { tipo_evaluacion: 'RESULTADO_FINAL', nota_numerica: '80.00' },
       }
       postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('DEFENSA_PUBLICA', orientation))
       postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [publicDefense] })
       postulacionesService.obtenerQuorumDefensa.mockResolvedValue({ valido: true, conteos: { TRIBUNAL: 3, PRESIDENTE: 1, SECRETARIO: 1 }, faltantes: {}, detalle: {} })
-      postulacionesService.registrarEvaluacionDefensa.mockResolvedValue(evaluatedDefense.evaluaciones[0])
-      postulacionesService.obtenerDefensa.mockResolvedValue(evaluatedDefense)
+      postulacionesService.registrarResultadoDirectoDefensa.mockResolvedValue(evaluatedDefense)
       renderThesis('defensas')
 
       await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
       const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
-      expect(within(detail).getAllByRole('button', { name: 'Registrar evaluación' })).toHaveLength(1)
-      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar evaluación' }))
-      const input = screen.getByLabelText('Nota pública (1–100)')
+      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar resultado y finalizar' }))
+      const input = within(detail).getByLabelText(/Nota bruta/)
       await userEvent.type(input, '80')
-      await userEvent.click(screen.getByRole('button', { name: 'Registrar' }))
+      await userEvent.click(within(detail).getByRole('button', { name: 'Guardar resultado' }))
 
-      expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledTimes(1)
-      expect(postulacionesService.registrarEvaluacionDefensa).toHaveBeenCalledWith(217, 'publica', {
-        observaciones: '', modalidad_registro: 'CONSENSO', nota: '80',
-      }, expect.any(AbortSignal))
-      expect(await within(detail).findByText('Evaluación consensuada registrada')).toBeInTheDocument()
-      expect(within(detail).getByText('Nota: 80.00')).toBeInTheDocument()
+      await waitFor(() => expect(postulacionesService.registrarResultadoDirectoDefensa).toHaveBeenCalledWith(
+        217, { resultado: '', observaciones: '', nota: '80', semantica_nota: 'BRUTA_100' }, expect.any(AbortSignal),
+        { includeFieldErrors: true },
+      ))
+      expect(await within(detail).findByText('Resultado: Consolidado')).toBeInTheDocument()
       expect(window.location.hash).toBe('#defensas')
       expect(document.getElementById('panel-defensas')).toBeVisible()
     })

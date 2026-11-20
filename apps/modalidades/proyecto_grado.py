@@ -41,7 +41,7 @@ def _propuesta_aprobada_hitos(postulacion, seguimiento):
     ).exists()
 
 
-def _faltantes_predefensa_perfil(seguimiento):
+def _faltantes_predefensa_perfil(seguimiento, *, exigir_memorandum=True):
     postulacion = seguimiento.postulacion
     faltantes = []
     for codigo in (
@@ -58,14 +58,19 @@ def _faltantes_predefensa_perfil(seguimiento):
     )
     if set(tribunales.values_list("orden_cargo", flat=True)) != {1, 2, 3}:
         faltantes.append("TRIBUNAL_FORMAL")
-    if not _propuesta_aprobada_hitos(postulacion, seguimiento):
-        faltantes.append("PROPUESTA_APROBADA")
     if not postulacion.asignaciones.filter(
         activo=True,
         tipo_participacion="TUTOR",
         seguimiento_etapa__isnull=True,
     ).exists():
         faltantes.append("TUTOR")
+    if exigir_memorandum:
+        from apps.postulantes.memorandums import MemorandumDesignacionService
+        publicaciones = postulacion.publicaciones_memorandum_designacion.filter(
+            activo=True, seguimiento_etapa=seguimiento,
+        ).select_related("seguimiento_etapa__etapa", "version_documento__documento__tipo_documento", "version_documento__documento__estado")
+        if not any(MemorandumDesignacionService.es_vigente(item) for item in publicaciones):
+            faltantes.append("MEMORANDUM_DESIGNACION_PROYECTO")
     return faltantes
 
 
@@ -98,6 +103,40 @@ class ProyectoGradoEventoPolicy(BaseEventoPolicy):
             "nombres_asignaciones": dict(self.ASSIGNMENT_NAMES),
             "anticipacion_minima_horas": self.MINIMUM_NOTICE_HOURS.get(tipo_evento),
         }
+    def get_asignaciones_formales_defensa(self, *, postulacion, tipo_evento, seguimiento):
+        """Return the canonical formal assignments applicable to this PG defense.
+
+        The tribunal is designated in PERFIL_PROYECTO; private modality faculty is
+        stage scoped; public authorities may be postulation wide or public-stage scoped.
+        """
+        from apps.postulantes.models import AsignacionPostulacion
+
+        base = AsignacionPostulacion.objects.filter(
+            postulacion=postulacion, activo=True,
+            usuario__is_active=True, usuario__activo=True,
+        )
+        if tipo_evento == "DEFENSA_PERFIL":
+            tribunal_context = seguimiento
+        else:
+            tribunal_context = postulacion.seguimientos_etapa.filter(
+                activo=True, etapa__codigo="PERFIL_PROYECTO",
+            ).order_by("-numero_intento", "-pk").first()
+        tribunal = base.filter(
+            tipo_participacion="TRIBUNAL", seguimiento_etapa=tribunal_context,
+        ) if tribunal_context else base.none()
+        if tipo_evento == "DEFENSA_PERFIL":
+            return tribunal
+        if tipo_evento == "DEFENSA_PRIVADA":
+            docente_modalidad = base.filter(
+                tipo_participacion="DOCENTE_MODALIDAD", seguimiento_etapa=seguimiento,
+            )
+            return tribunal | docente_modalidad
+        if tipo_evento == "DEFENSA_PUBLICA":
+            autoridades = base.filter(
+                tipo_participacion__in=("PRESIDENTE", "SECRETARIO"),
+            ).filter(Q(seguimiento_etapa__isnull=True) | Q(seguimiento_etapa=seguimiento))
+            return tribunal | autoridades
+        return base.none()
     def _asignaciones_composicion_publica(self, asignaciones, seguimiento):
         contexto_autoridades = Q(seguimiento_etapa__isnull=True)
         if seguimiento is not None:
@@ -907,23 +946,6 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
                     },
                     "conflictos_identidad": [],
                 }
-            if not self._propuesta_aprobada(postulacion, seguimiento):
-                return {
-                    "operacion": "ORIENTAR_ETAPA",
-                    "mensaje": "Registra la decisión académica de la propuesta.",
-                    "requisitos": [{
-                        "tipo": "DECISION_ACADEMICA", "codigo": self.PROPUESTA_APROBADA,
-                        "nombre": "Propuesta aprobada", "cumplido": False,
-                        "estado": "PENDIENTE", "estado_display": "Pendiente", "destino": "#decisiones-academicas",
-                    }],
-                    "siguiente_accion": {
-                        "codigo": "REGISTRAR_DECISION", "titulo": "Registrar decisión académica",
-                        "descripcion": "Registra el resultado de la propuesta con la composición formal del tribunal.",
-                        "estado": "PENDIENTE", "estado_display": "Pendiente",
-                        "destino": "#decisiones-academicas", "accion_label": "Registrar decisión",
-                    },
-                    "conflictos_identidad": [],
-                }
             tutor = postulacion.asignaciones.filter(
                 activo=True, tipo_participacion="TUTOR", seguimiento_etapa__isnull=True,
             ).exists()
@@ -940,6 +962,40 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
                         "codigo": "GESTIONAR_ACTORES", "titulo": "Asignar Tutor",
                         "descripcion": "La propuesta está aprobada. Asigna el Tutor.", "estado": "PENDIENTE",
                         "estado_display": "Pendiente", "destino": "#actores", "accion_label": "Gestionar actores",
+                    },
+                    "conflictos_identidad": [],
+                }
+            faltantes = _faltantes_predefensa_perfil(seguimiento)
+            if "MEMORANDUM_DESIGNACION_PROYECTO" in faltantes:
+                return {
+                    "operacion": "ORIENTAR_ETAPA",
+                    "mensaje": "Publica el memorándum oficial vigente para confirmar las designaciones.",
+                    "requisitos": [{
+                        "tipo": "DOCUMENTO", "codigo": "MEMORANDUM_DESIGNACION_PROYECTO",
+                        "nombre": "Memorándum oficial de designación", "cumplido": False,
+                        "estado": "PENDIENTE", "estado_display": "Pendiente",
+                        "destino": "#actores",
+                    }],
+                    "siguiente_accion": {
+                        "codigo": "GESTIONAR_ACTORES", "titulo": "Publicar memorándum oficial",
+                        "descripcion": "Publica el memorándum correspondiente a las asignaciones actuales.",
+                        "estado": "PENDIENTE", "estado_display": "Pendiente",
+                        "destino": "#actores", "accion_label": "Gestionar actores",
+                    },
+                    "conflictos_identidad": [],
+                }
+            if not faltantes:
+                return {
+                    "operacion": "ORIENTAR_ETAPA",
+                    "tipo_evento": "DEFENSA_PERFIL",
+                    "mensaje": "Los actores requeridos est\u00e1n completos. Programa la defensa respetando la anticipaci\u00f3n m\u00ednima.",
+                    "requisitos": [],
+                    "siguiente_accion": {
+                        "codigo": "PROGRAMAR_EVENTO", "titulo": "Programar defensa",
+                        "descripcion": "Los actores requeridos est\u00e1n completos. Programa la defensa respetando la anticipaci\u00f3n m\u00ednima.",
+                        "estado": "DISPONIBLE", "estado_display": "Disponible",
+                        "destino": "#defensas", "accion_label": "Programar defensa",
+                        "operacion": "PROGRAMAR_EVENTO", "tipo_evento": "DEFENSA_PERFIL",
                     },
                     "conflictos_identidad": [],
                 }
@@ -1060,7 +1116,7 @@ class ProyectoGradoPolicy(BaseModalidadPolicy):
                 seguimiento.postulacion.regimen_workflow == "PG_HITOS_V1"
                 and seguimiento.postulacion.tipo_registro != "HISTORICO"
             ):
-                faltantes = _faltantes_predefensa_perfil(seguimiento)
+                faltantes = _faltantes_predefensa_perfil(seguimiento, exigir_memorandum=False)
                 if faltantes:
                     raise ValidationError({"faltantes": faltantes})
             evento = seguimiento.eventos_defensa.filter(

@@ -99,7 +99,6 @@ class TestCrearPostulacion(APITestCase):
         response = self.client.post(
             "/api/v1/postulaciones/",
             {
-                "codigo": "POST-001",
                 "estudiante": self.estudiante.id,
                 "modalidad": self.modalidad.id,
                 "periodo": self.periodo.id,
@@ -108,7 +107,8 @@ class TestCrearPostulacion(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data["codigo"], "POST-001")
+        self.assertRegex(response.data["codigo"], r"^[0-9A-F]{30}$")
+        self.assertLessEqual(len(response.data["codigo"]), 30)
         self.assertEqual(response.data["vigencia"], Postulacion.VigenciaChoices.VIGENTE)
         self.assertEqual(response.data["tipo_registro"], Postulacion.TipoRegistroChoices.SEGUIMIENTO)
         self.assertEqual(response.data["estado_actual_detalle"]["codigo"], "EN_PROCESO")
@@ -228,7 +228,6 @@ class TestCrearPostulacion(APITestCase):
         response = self.client.post(
             "/api/v1/postulaciones/historicas/",
             {
-                "codigo": "HIST-2022-001",
                 "estudiante": self.estudiante_sin_admin.id,
                 "modalidad": self.modalidad.id,
                 "periodo": self.periodo.id,
@@ -238,6 +237,7 @@ class TestCrearPostulacion(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertRegex(response.data["codigo"], r"^[0-9A-F]{30}$")
         historico = Postulacion.objects.get(pk=response.data["id"])
         self.assertEqual(historico.tipo_registro, Postulacion.TipoRegistroChoices.HISTORICO)
         self.assertEqual(historico.regimen_workflow, Postulacion.RegimenWorkflowChoices.PG_LEGACY)
@@ -384,9 +384,10 @@ class TestCrearPostulacion(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["estado_actual_detalle"]["codigo"], "EN_PROCESO")
+        postulacion = Postulacion.objects.get(pk=response.data["id"])
         self.assertTrue(
             HistorialEstado.objects.filter(
-                postulacion__codigo="POST-002",
+                postulacion=postulacion,
                 estado_nuevo=self.estado_registrada,
             ).exists()
         )
@@ -1547,6 +1548,33 @@ class TestVigenciaConstraint(TransactionTestCase):
             Postulacion.vigentes().filter(estudiante=self.estudiante).count(),
             1,
         )
+
+    def test_codigos_generados_concurrentemente_son_unicos(self) -> None:
+        """Creaciones simultáneas de estudiantes distintos obtienen códigos distintos."""
+        estudiantes = [
+            User.objects.create_user(username=f"codigo_concurrente_{index}")
+            for index in range(2)
+        ]
+
+        def crear(estudiante_id: int) -> str:
+            close_old_connections()
+            try:
+                estudiante = User.objects.get(pk=estudiante_id)
+                return PostulacionService.crear_postulacion({
+                    "usuario": estudiante,
+                    "estudiante": estudiante,
+                    "modalidad": self.modalidad,
+                    "periodo": self.periodo,
+                }).codigo
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            codigos = list(executor.map(crear, [item.pk for item in estudiantes]))
+
+        self.assertEqual(len(codigos), 2)
+        self.assertEqual(len(set(codigos)), 2)
+        self.assertTrue(all(len(codigo) <= 30 for codigo in codigos))
 
 
 class TestSeguridadPropietario(APITestCase):

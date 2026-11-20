@@ -32,6 +32,7 @@ from apps.postulantes.models import (
     PublicacionMemorandumDesignacion,
     SeguimientoEtapa,
 )
+from apps.postulantes.defensas import EventoDefensaService
 from apps.usuarios.models import CustomUser
 
 
@@ -420,6 +421,116 @@ class ResetTestDataCommandTests(TestCase):
         self.assertEqual(Postulacion.all_objects.count(), 0)
         self.assertEqual(SeguimientoEtapa.all_objects.count(), 0)
         self.assertEqual(AsignacionPostulacion.all_objects.count(), 0)
+
+    def test_20_elimina_cadena_de_defensas_reprogramadas(self):
+        original = EventoDefensaService.cancelar_evento(
+            self.evento, self.docente, "Cambio de fecha inicial",
+        )
+        replacement_1 = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=self.seguimiento,
+            tipo_evento=original.tipo_evento,
+            numero_intento=original.numero_intento,
+            estado=EventoDefensa.Estado.CANCELADA,
+            fecha_programada=timezone.now(),
+            fecha_cancelacion=timezone.now(),
+            lugar="Aula 1",
+            modalidad_evento=EventoDefensa.ModalidadEvento.PRESENCIAL,
+            programado_por=self.docente,
+            reprogramada_desde=original,
+        )
+        replacement_2 = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=self.seguimiento,
+            tipo_evento=original.tipo_evento,
+            numero_intento=original.numero_intento,
+            estado=EventoDefensa.Estado.CANCELADA,
+            fecha_programada=timezone.now(),
+            fecha_cancelacion=timezone.now(),
+            lugar="Aula 1",
+            modalidad_evento=EventoDefensa.ModalidadEvento.PRESENCIAL,
+            programado_por=self.docente,
+            reprogramada_desde=replacement_1,
+        )
+        replacement_3 = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=self.seguimiento,
+            tipo_evento=original.tipo_evento,
+            numero_intento=original.numero_intento,
+            estado=EventoDefensa.Estado.PROGRAMADA,
+            fecha_programada=timezone.now(),
+            lugar="Aula 1",
+            modalidad_evento=EventoDefensa.ModalidadEvento.PRESENCIAL,
+            programado_por=self.docente,
+            reprogramada_desde=replacement_2,
+        )
+
+        self.assertEqual(replacement_1.reprogramada_desde_id, original.pk)
+        self.assertEqual(replacement_2.reprogramada_desde_id, replacement_1.pk)
+        self.assertEqual(replacement_3.reprogramada_desde_id, replacement_2.pk)
+
+        self._run_reset(confirm=True)
+
+        self.assertEqual(EventoDefensa.objects.count(), 0)
+        self.assertEqual(Postulacion.all_objects.count(), 0)
+
+    def test_21_cadena_reprogramada_se_revierte_completa_si_falla_reset(self):
+        original = EventoDefensaService.cancelar_evento(
+            self.evento, self.docente, "Cambio de fecha inicial",
+        )
+        EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=self.seguimiento,
+            tipo_evento=original.tipo_evento,
+            numero_intento=original.numero_intento,
+            estado=EventoDefensa.Estado.PROGRAMADA,
+            fecha_programada=timezone.now(),
+            lugar="Aula 1",
+            modalidad_evento=EventoDefensa.ModalidadEvento.PRESENCIAL,
+            programado_por=self.docente,
+            reprogramada_desde=original,
+        )
+        before_event_ids = set(EventoDefensa.objects.values_list("pk", flat=True))
+        before_postulation_ids = set(Postulacion.all_objects.values_list("pk", flat=True))
+
+        with mock.patch(
+            "apps.postulantes.management.commands.reset_test_data.Command._assert_master_data_preserved",
+            side_effect=CommandError("simulated failure after transactional deletes"),
+        ):
+            with self.assertRaisesMessage(CommandError, "simulated failure"):
+                self._run_reset(confirm=True)
+
+        self.assertEqual(set(EventoDefensa.objects.values_list("pk", flat=True)), before_event_ids)
+        self.assertEqual(set(Postulacion.all_objects.values_list("pk", flat=True)), before_postulation_ids)
+        self.assertEqual(
+            EventoDefensa.objects.get(pk=max(before_event_ids)).reprogramada_desde_id,
+            original.pk,
+        )
+
+    def test_22_reset_repetido_elimina_cadena_reprogramada_idempotentemente(self):
+        original = EventoDefensaService.cancelar_evento(
+            self.evento, self.docente, "Cambio de fecha inicial",
+        )
+        replacement = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=self.seguimiento,
+            tipo_evento=original.tipo_evento,
+            numero_intento=original.numero_intento,
+            estado=EventoDefensa.Estado.PROGRAMADA,
+            fecha_programada=timezone.now(),
+            lugar="Aula 1",
+            modalidad_evento=EventoDefensa.ModalidadEvento.PRESENCIAL,
+            programado_por=self.docente,
+            reprogramada_desde=original,
+        )
+        replacement_id = replacement.pk
+
+        self._run_reset(confirm=True)
+        self._run_reset(confirm=True)
+
+        self.assertFalse(EventoDefensa.objects.filter(pk__in=(original.pk, replacement_id)).exists())
+        self.assertEqual(EventoDefensa.objects.count(), 0)
+        self.assertEqual(Postulacion.all_objects.count(), 0)
 
     def test_19_conserva_grupos_y_permisos_de_usuarios(self):
         group = Group.objects.create(name="reset-test-preserved-group")

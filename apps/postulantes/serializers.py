@@ -58,6 +58,14 @@ class PostulacionSerializer(serializers.ModelSerializer):
     updated_at = serializers.DateTimeField(read_only=True)
     activo = serializers.BooleanField(read_only=True)
 
+    def get_fields(self):
+        fields = super().get_fields()
+        # En altas el código es generado por el servicio; en edición se mantiene
+        # la capacidad existente de modificarlo.
+        if not self.instance:
+            fields["codigo"].read_only = True
+        return fields
+
     class Meta:
         """Configuración del serializer para el modelo Postulacion."""
 

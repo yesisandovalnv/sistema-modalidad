@@ -70,6 +70,104 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
         "DEFENSA_PUBLICA": "DEFENSA_PUBLICA",
     }
 
+    DIRECT_RESULT_TYPES = {"DEFENSA_TEMATICA", "DEFENSA_PERFIL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"}
+
+    def get_asignaciones_formales_defensa(self, *, postulacion, tipo_evento, seguimiento):
+        """Return the current formal Tesis assignments applicable to this act."""
+        from django.db.models import Q
+        from apps.postulantes.models import AsignacionPostulacion
+
+        base = AsignacionPostulacion.objects.filter(
+            postulacion=postulacion, activo=True,
+            usuario__is_active=True, usuario__activo=True,
+        )
+        thematic = postulacion.seguimientos_etapa.filter(
+            activo=True, etapa__codigo="TEMATICA_TESIS",
+        ).order_by("-numero_intento", "-pk").first()
+        tribunal_q = (
+            Q(tipo_participacion="TRIBUNAL", seguimiento_etapa=thematic)
+            if thematic else Q(pk__in=[])
+        )
+        if tipo_evento == "DEFENSA_TEMATICA":
+            return base.filter(tribunal_q)
+        if tipo_evento == "DEFENSA_PERFIL":
+            return base.filter(
+                tribunal_q | (
+                    Q(tipo_participacion="TUTOR")
+                    & (Q(seguimiento_etapa__isnull=True) | Q(seguimiento_etapa=seguimiento))
+                ),
+            )
+        if tipo_evento == "DEFENSA_PRIVADA":
+            return base.filter(
+                tribunal_q | (
+                    Q(tipo_participacion="DOCENTE_MODALIDAD")
+                    & (Q(seguimiento_etapa__isnull=True) | Q(seguimiento_etapa=seguimiento))
+                ),
+            )
+        if tipo_evento == "DEFENSA_PUBLICA":
+            return base.filter(
+                tribunal_q | (
+                    Q(tipo_participacion__in=("PRESIDENTE", "SECRETARIO"))
+                    & (Q(seguimiento_etapa__isnull=True) | Q(seguimiento_etapa=seguimiento))
+                ),
+            )
+        return base.none()
+
+    def evaluar_composicion_formal(self, *, tipo_evento, asignaciones):
+        rows = list(asignaciones)
+        roles = {"DEFENSA_TEMATICA": {"TRIBUNAL": 3},
+                 "DEFENSA_PERFIL": {"TRIBUNAL": 3, "TUTOR": 1},
+                 "DEFENSA_PRIVADA": {"TRIBUNAL": 2, "DOCENTE_MODALIDAD": 1},
+                 "DEFENSA_PUBLICA": dict(self.PUBLIC_REQUIRED_ACTORS)}.get(tipo_evento, {})
+        users_by_role = {role: {a.usuario_id for a in rows if a.tipo_participacion == role} for role in roles}
+        assignments_by_user = {}
+        for assignment in rows:
+            if assignment.tipo_participacion not in roles:
+                continue
+            assignments_by_user.setdefault(assignment.usuario_id, []).append(assignment)
+        conflicts = []
+        conflict_details = []
+        conflicting_roles = set()
+        for user_id, assignments_for_user in assignments_by_user.items():
+            if len(assignments_for_user) < 2:
+                continue
+            assigned_roles = [item.tipo_participacion for item in assignments_for_user]
+            conflicts.append(sorted(set(assigned_roles)))
+            conflicting_roles.update(assigned_roles)
+            conflict_details.append({
+                "usuario_id": user_id,
+                "cargos": [
+                    f"{item.get_tipo_participacion_display()} {item.orden_cargo}"
+                    if item.orden_cargo else item.get_tipo_participacion_display()
+                    for item in sorted(assignments_for_user, key=lambda row: (row.tipo_participacion, row.orden_cargo or 0, row.pk))
+                ],
+            })
+        requirements = {role: {
+            "actual": len(users_by_role[role]), "minimo": minimum,
+            "cumplido": len(users_by_role[role]) >= minimum,
+            "conflicto_identidad": role in conflicting_roles,
+        } for role, minimum in roles.items()}
+        return {"cumple": all(item["cumplido"] and not item["conflicto_identidad"] for item in requirements.values()),
+                "requisitos": requirements, "conflictos": conflicts,
+                "conflictos_detalle": conflict_details}
+
+    def validar_resultado_directo(self, *, evento, tipo, resultado, nota, semantica_nota):
+        if evento.tipo_evento == "DEFENSA_PUBLICA":
+            TesisGradoPolicy.validar_gate_publica(evento.postulacion)
+        if evento.tipo_evento in {"DEFENSA_TEMATICA", "DEFENSA_PERFIL", "DEFENSA_PRIVADA"} and not resultado:
+            raise ValidationError({"resultado": "La defensa requiere resultado cualitativo."})
+        if evento.tipo_evento == "DEFENSA_PUBLICA" and resultado:
+            raise ValidationError({"resultado": "La Defensa Pública de Tesis se registra mediante nota numérica."})
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+        evaluation_policy = ModalidadPolicyRegistry.get(evento.postulacion).evaluacion_policy
+        if tipo in {"PRIVADA", "PUBLICA"}:
+            semantic = semantica_nota or evaluation_policy.get_semantica_nota(evento=evento, tipo=tipo)
+            if not evaluation_policy.admite_semantica_entrada(evento=evento, tipo=tipo, semantica=semantic):
+                raise ValidationError({"semantica_nota": "La semántica de nota no está habilitada para esta defensa de Tesis."})
+            if nota is None:
+                raise ValidationError({"nota": "La defensa requiere una nota numérica."})
+
+
     def get_tipos_evento(self):
         return tuple(self.EVENT_STAGE)
 
@@ -114,6 +212,8 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
                 raise ValidationError("La nueva Defensa Privada debe programarse dentro de las dos semanas posteriores al intento insuficiente.")
 
     def validar_participante(self, *, evento, asignacion, rol_evento, **kwargs):
+        if evento.tipo_evento == "DEFENSA_TEMATICA":
+            raise ValidationError("La Defensa de Temática usa composición formal y no admite participantes manuales.")
         if evento.tipo_evento == "DEFENSA_PUBLICA":
             if rol_evento not in {"TRIBUNAL", "PRESIDENTE", "SECRETARIO"}:
                 raise ValidationError("La Defensa Pública de Tesis solo admite Tribunal, Presidente y Secretario.")
@@ -152,8 +252,7 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
     def validar_quorum(self, evento):
         presentes = evento.participantes.filter(activo=True, presente=True)
         if evento.tipo_evento == "DEFENSA_TEMATICA":
-            tribunales = presentes.filter(rol_evento="TRIBUNAL").count()
-            return {"valido": tribunales == 3, "faltantes": {"TRIBUNAL": max(0, 3-tribunales)}, "detalle": {"TRIBUNAL": tribunales}}
+            return {"valido": True, "faltantes": {}, "detalle": {"quorum_tecnico_requerido": False}}
         if evento.tipo_evento == "DEFENSA_PRIVADA":
             tribunales = presentes.filter(rol_evento="TRIBUNAL").count()
             secretario = presentes.filter(rol_evento="DOCENTE_MODALIDAD").count()

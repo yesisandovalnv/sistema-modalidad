@@ -74,13 +74,28 @@ function normalizeDefenses(error, quorum = false) {
   return { status, message: `No se pudo consultar ${resource}. Comprueba tu conexión e intenta nuevamente.` }
 }
 
-function normalizeDefenseAction(error) {
+function defenseFieldErrorMessage(value) {
+  if (Array.isArray(value)) return value.map(defenseFieldErrorMessage).filter(Boolean).join(' ')
+  if (value && typeof value === 'object') return Object.values(value).map(defenseFieldErrorMessage).filter(Boolean).join(' ')
+  return typeof value === 'string' ? value : ''
+}
+
+function normalizeDefenseAction(error, { includeFieldErrors = false } = {}) {
   if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
   const status = error?.response?.status
   const data = error?.response?.data
   const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
   const detail = Array.isArray(data) ? data : fields.detail || fields.non_field_errors
   const backendMessage = Array.isArray(detail) ? detail.join(' ') : detail
+  if (status === 400 && includeFieldErrors && !backendMessage) {
+    const fieldMessage = Object.entries(fields).map(([field, value]) => {
+      const detail = defenseFieldErrorMessage(value)
+      if (!detail) return ''
+      const label = field === 'tribunal' ? 'Composición del tribunal' : field
+      return `${label}: ${detail}`
+    }).filter(Boolean).join(' ')
+    if (fieldMessage) return { status, message: fieldMessage, fields }
+  }
   if (status === 400) return { status, message: backendMessage || 'No se pudo completar la acción. Revisa los datos y el estado técnico de la defensa.', fields }
   if (status === 401) return { status, message: 'Debes iniciar sesión para administrar defensas.' }
   if (status === 403) return { status, message: 'No tienes autorización para administrar defensas.' }
@@ -176,11 +191,11 @@ async function complementaryRequest(method, url, payload, signal) {
   catch (error) { throw normalizeComplementary(error) }
 }
 
-async function defenseAction(url, payload, signal) {
+async function defenseAction(url, payload, signal, options = {}) {
   try {
     return (await apiClient.post(url, payload, { signal })).data
   } catch (error) {
-    throw normalizeDefenseAction(error)
+    throw normalizeDefenseAction(error, options)
   }
 }
 
@@ -605,6 +620,9 @@ export const postulacionesService = {
   },
   consolidarEvaluacionDefensa(evento, signal) {
     return defenseAction(`/api/v1/eventos-defensa/${evento}/evaluaciones/consolidar/`, {}, signal)
+  },
+  registrarResultadoDirectoDefensa(evento, payload, signal, options) {
+    return defenseAction(`/api/v1/eventos-defensa/${evento}/resultado-directo/`, payload, signal, options)
   },
   obtenerCondiciones(postulacion, signal) {
     return complementaryRequest('get', '/api/v1/gestion-complementaria/condiciones/', { postulacion }, signal)

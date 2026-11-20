@@ -18,6 +18,7 @@ export default function ClosureRequirements({
   titleId = 'controles-cierre-title',
   createLabel = 'Preparar recepción',
   embedded = false,
+  collapseDetailsByDefault = false,
 }) {
   const [state, setState] = useState({ conditions: null, deliveries: null, loading: true, error: '' })
   const [action, setAction] = useState(null)
@@ -234,7 +235,7 @@ export default function ClosureRequirements({
     {state.loading && <p role="status" className="mt-4 text-sm">Cargando condiciones y entregas…</p>}
     {state.error && <div className="mt-4"><p role="alert" className="text-sm text-red-600">{state.error}</p><Button className="mt-2" variant="secondary" onClick={load}>Reintentar</Button></div>}
     {!state.loading && !state.error && <div className={`mt-5 grid items-start gap-4 ${showConditions ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
-      {showConditions && <details open={!conditionsComplete} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+      {showConditions && <details open={!collapseDetailsByDefault && !conditionsComplete} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
         <summary className="cursor-pointer list-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">{conditionsComplete ? '✓ ' : ''}Condiciones técnicas <span className="font-normal text-slate-500">{completedConditions}/{conditions.length} cumplidas · Ver detalle</span></summary>
         {canManage && <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <label className="inline-flex items-center gap-2 text-sm">
@@ -280,7 +281,7 @@ export default function ClosureRequirements({
           </li>
         })}</ul>}
       </details>}
-      <details open={!deliveriesComplete} className={`rounded-lg border border-slate-200 p-4 dark:border-slate-700 ${embedded ? 'bg-white/70 dark:bg-slate-900/60' : ''}`}>
+      <details open={!collapseDetailsByDefault && !deliveriesComplete} className={`rounded-lg border border-slate-200 p-4 dark:border-slate-700 ${embedded ? 'bg-white/70 dark:bg-slate-900/60' : ''}`}>
         <summary className="cursor-pointer list-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">{deliveriesComplete ? '✓ ' : ''}{deliveryHeading} <span className="font-normal text-slate-500">{completedDeliveries}/{deliveries.length} completas · Ver detalle</span></summary>
         {canManage && <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <label className="inline-flex items-center gap-2 text-sm">

@@ -98,6 +98,8 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
     etapa_nombre = serializers.CharField(source="seguimiento_etapa.etapa.nombre", read_only=True)
     hoja_observaciones = serializers.SerializerMethodField()
     configuracion_numerica = serializers.SerializerMethodField()
+    composicion_formal = serializers.SerializerMethodField()
+    composicion_formal_validacion = serializers.SerializerMethodField()
     reprogramada_desde_detalle = serializers.SerializerMethodField()
     reprogramaciones = serializers.SerializerMethodField()
 
@@ -111,6 +113,7 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
             "fecha_programada": anterior.fecha_programada,
             "fecha_cancelacion": anterior.fecha_cancelacion,
             "activo": anterior.activo,
+            "activo": anterior.activo,
         }
 
     def get_reprogramaciones(self, obj):
@@ -119,8 +122,59 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
             "estado": nueva.estado,
             "fecha_programada": nueva.fecha_programada,
             "activo": nueva.activo,
+            "activo": nueva.activo,
         } for nueva in obj.reprogramaciones.order_by("fecha_programada", "pk")]
 
+    def get_composicion_formal(self, obj):
+        if obj.postulacion.modalidad.codigo not in {"PROYECTO_GRADO", "TESIS_GRADO"}:
+            return []
+        assignments = self._get_composicion_formal_asignaciones(obj)
+        return [{
+            "id": item.pk,
+            "usuario_nombre": _nombre_usuario(item.usuario),
+            "tipo_participacion": item.tipo_participacion,
+            "rol_display": item.get_tipo_participacion_display(),
+            "orden_cargo": item.orden_cargo,
+        } for item in assignments.order_by("tipo_participacion", "orden_cargo", "pk")]
+
+    def _get_composicion_formal_asignaciones(self, obj):
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+        policy = ModalidadPolicyRegistry.get(obj.postulacion)
+        return policy.evento_policy.get_asignaciones_formales_defensa(
+            postulacion=obj.postulacion,
+            tipo_evento=obj.tipo_evento,
+            seguimiento=obj.seguimiento_etapa,
+        ).select_related("usuario", "seguimiento_etapa__etapa")
+
+    def get_composicion_formal_validacion(self, obj):
+        if obj.postulacion.modalidad.codigo != "TESIS_GRADO":
+            return None
+        from apps.modalidades.policies import ModalidadPolicyRegistry
+
+        policy = ModalidadPolicyRegistry.get(obj.postulacion).evento_policy
+        assignments = list(self._get_composicion_formal_asignaciones(obj))
+        composition = policy.evaluar_composicion_formal(
+            tipo_evento=obj.tipo_evento, asignaciones=assignments,
+        )
+        users = {item.usuario_id: item.usuario for item in assignments}
+        return {
+            "cumple": composition["cumple"],
+            "conflictos_identidad": [{
+                "usuario_nombre": _nombre_usuario(users[item["usuario_id"]]),
+                "cargos": item["cargos"],
+            } for item in composition["conflictos_detalle"]],
+            "requisitos": [{
+                "cargo": AsignacionPostulacion.TipoParticipacionChoices(role).label,
+                **requirement,
+            } for role, requirement in composition["requisitos"].items()],
+        }
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Keep the existing API shape for Proyecto de Grado and other modalities.
+        if instance.postulacion.modalidad.codigo != "TESIS_GRADO":
+            data.pop("composicion_formal_validacion", None)
+        return data
 
     def get_configuracion_numerica(self, obj) -> dict | None:
         from apps.modalidades.policies import ModalidadPolicyRegistry
@@ -158,6 +212,7 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
             "estado_display", "fecha_programada", "fecha_inicio_real", "fecha_fin_real", "fecha_cancelacion", "lugar",
             "modalidad_evento", "modalidad_display", "enlace_virtual", "observaciones", "activo",
             "participantes", "evaluaciones", "resultado_consolidado",
+            "composicion_formal", "composicion_formal_validacion",
             "reprogramada_desde", "reprogramada_desde_detalle", "reprogramaciones",
             "hoja_observaciones",
             "configuracion_numerica",
@@ -198,6 +253,12 @@ class EvaluarPayload(serializers.Serializer):
     evaluador=serializers.PrimaryKeyRelatedField(queryset=ParticipanteEvento.objects.all(), required=False, allow_null=True)
     modalidad_registro=serializers.ChoiceField(choices=EvaluacionDefensa.ModalidadRegistro.choices, required=False)
     observaciones=serializers.CharField(required=False,allow_blank=True,default="")
+
+class ResultadoDirectoProyectoPayload(serializers.Serializer):
+    resultado=serializers.ChoiceField(choices=("SUFICIENTE", "INSUFICIENTE"), required=False, allow_blank=True, default="")
+    nota=serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100, required=False, allow_null=True)
+    semantica_nota=serializers.ChoiceField(choices=("BRUTA_100", "MODALIDAD_ESPECIFICA"), required=False)
+    observaciones=serializers.CharField(required=False, allow_blank=True, default="")
 class ResultadoFinalSerializer(serializers.Serializer):
     nota_privada=serializers.DecimalField(max_digits=5,decimal_places=2,allow_null=True)
     nota_publica=serializers.DecimalField(max_digits=5,decimal_places=2,allow_null=True)
@@ -268,6 +329,17 @@ class EventoDefensaViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(self.get_serializer(evento).data)
     @action(detail=True,methods=["post"])
     def finalizar(self,r,pk=None): self._admin(); return Response(self.get_serializer(self._call(EventoDefensaService.finalizar_evento,self.get_object(),r.user)).data)
+    @action(detail=True, methods=["post"], url_path="resultado-directo")
+    def resultado_directo(self, r, pk=None):
+        self._admin()
+        evento = self.get_object()
+        s = ResultadoDirectoProyectoPayload(data=r.data)
+        s.is_valid(raise_exception=True)
+        updated = self._call(
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto,
+            evento, r.user, **s.validated_data,
+        )
+        return Response(self.get_serializer(updated).data)
     @extend_schema(
         responses={200: QuorumDefensaSerializer},
         description="Verificación exclusivamente técnica de presencia y faltantes; no certifica validez institucional.",

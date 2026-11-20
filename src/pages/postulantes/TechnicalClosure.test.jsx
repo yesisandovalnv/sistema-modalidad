@@ -54,6 +54,9 @@ describe('TechnicalClosure', () => {
     ]} />)
 
     expect(screen.getByText('En proceso')).toBeVisible()
+    expect(within(screen.getByText('Etapa actual').parentElement).getByText('Cierre documental')).toBeVisible()
+    expect(within(screen.getByText('Revisión final').parentElement).getByText('Pendiente')).toBeVisible()
+    expect(within(screen.getByText('Cierre documental', { selector: 'dt' }).parentElement).getByText('Pendiente')).toBeVisible()
     expect(screen.getByText('Aprobación plena con felicitación')).toBeVisible()
     expect(screen.getByText('95')).toBeVisible()
     expect(screen.getByText('María Pérez')).toBeVisible()
@@ -72,15 +75,47 @@ describe('TechnicalClosure', () => {
     const documents = screen.getByRole('region', { name: 'Documentos pendientes' })
     expect(within(documents).getByText('1')).toBeVisible()
     expect(within(documents).getByText('Acta de Defensa')).toBeVisible()
-    const warnings = screen.getByRole('region', { name: 'Advertencias normativas' })
-    expect(within(warnings).getAllByRole('listitem')).toHaveLength(5)
-    expect(within(warnings).getByText('La cantidad normativa de Ejemplares impresos permanece pendiente; no se calcula automáticamente.')).toBeVisible()
-    expect(within(warnings).getByText('Acta de Defensa no está configurada como tipo de documento inequívoco.')).toBeVisible()
-    expect(within(warnings).getByText('Documento pendiente: Hoja de Aprobación')).toBeVisible()
-    expect(within(warnings).getByText('Condición: Plan de estudios requiere verificación institucional.')).toBeVisible()
-    expect(within(warnings).getByText('Advertencia crítica: verificar firmas originales.')).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'Advertencias normativas' })).not.toBeInTheDocument()
+    expect(screen.queryByText('El cierre registrado en el sistema corresponde al cierre técnico/documental del expediente y no sustituye el acta oficial, firmas, legalización, titulación ni procesamiento universitario posterior.')).not.toBeInTheDocument()
+    expect(screen.queryByText('La cantidad normativa de Ejemplares impresos permanece pendiente; no se calcula automáticamente.')).not.toBeInTheDocument()
+    expect(initialClosure.data.advertencias_normativas).toContain('La cantidad normativa de EJEMPLARES_IMPRESOS permanece pendiente; no se calcula automáticamente.')
     expect(screen.queryByText('CONDICION:PLAN_ESTUDIOS', { exact: true })).not.toBeInTheDocument()
     expect(initialClosure).toEqual(original)
+  })
+
+  it('puede ocultar nota final y clasificación repetidas sin ocultar datos operativos', () => {
+    render(<TechnicalClosure
+      postulacion={7}
+      initialClosure={closure('CIERRE_DOCUMENTAL')}
+      resultado={{ data: { nota_final: 95, clasificacion: 'APROBACION_PLENA_CON_FELICITACION' } }}
+      stages={[{ codigo: 'CIERRE_DOCUMENTAL', nombre: 'Cierre documental' }]}
+      showAcademicResult={false}
+    />)
+
+    expect(screen.queryByText('Nota final')).not.toBeInTheDocument()
+    expect(screen.queryByText('Aprobación plena con felicitación')).not.toBeInTheDocument()
+    expect(screen.getByText('En proceso')).toBeVisible()
+    expect(screen.getByText('Cierre documental', { selector: 'dd' })).toBeVisible()
+    expect(screen.getByRole('region', { name: 'Documentos pendientes' })).toBeVisible()
+  })
+
+  it('resume pendientes para Proyecto de Grado sin duplicar condiciones ni entregas', () => {
+    const initialClosure = closure('CIERRE_DOCUMENTAL')
+    Object.assign(initialClosure.data, {
+      condiciones_faltantes: ['PLAN_ESTUDIOS'],
+      entregas_faltantes: ['EJEMPLARES_IMPRESOS'],
+      documentos_faltantes: ['ACTA_DEFENSA', 'INFORME_FINAL'],
+    })
+    render(<TechnicalClosure postulacion={7} initialClosure={initialClosure} compactPendingSummary />)
+
+    expect(screen.queryByRole('region', { name: 'Condiciones pendientes' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Entregas pendientes' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Documentos pendientes' })).toHaveTextContent('2')
+    expect(screen.queryByText('Acta de Defensa')).not.toBeInTheDocument()
+    expect(screen.queryByText('Informe final')).not.toBeInTheDocument()
+    expect(initialClosure.data.condiciones_faltantes).toEqual(['PLAN_ESTUDIOS'])
+    expect(initialClosure.data.entregas_faltantes).toEqual(['EJEMPLARES_IMPRESOS'])
+    expect(initialClosure.data.documentos_faltantes).toEqual(['ACTA_DEFENSA', 'INFORME_FINAL'])
   })
 
   it('omite solo las advertencias ya representadas y conserva los grupos vacíos', () => {
@@ -93,7 +128,7 @@ describe('TechnicalClosure', () => {
     expect(screen.getByText('Todas las entregas técnicas están completas.')).toBeVisible()
     expect(screen.getByText('Sin etapa pendiente')).toBeVisible()
     expect(screen.getAllByText('0')).toHaveLength(3)
-    expect(screen.getByRole('note')).toHaveTextContent('no sustituye el acta oficial')
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 
   it('respeta permisos y capacidades y permite cancelar sin enviar cambios', async () => {

@@ -233,13 +233,16 @@ class EventoDefensaService:
 class EvaluacionDefensaService:
     @staticmethod
     @transaction.atomic
-    def _registrar(evento,usuario,tipo,resultado="",nota=None,evaluador=None,modalidad_registro=None,observaciones="",semantica_nota=None):
+    def _registrar(evento,usuario,tipo,resultado="",nota=None,evaluador=None,modalidad_registro=None,observaciones="",semantica_nota=None, *, omitir_quorum=False, permitir_programada=False):
         evento=EventoDefensa.objects.select_for_update().select_related("postulacion").get(pk=evento.pk)
         EventoDefensaService._validar_postulacion_editable(evento.postulacion)
         policy=ModalidadPolicyRegistry.get(evento.postulacion)
         if tipo not in policy.get_tipos_evaluacion(): raise ValidationError("La modalidad no soporta este tipo de evaluación.")
-        if evento.estado not in (EventoDefensa.Estado.EN_CURSO,EventoDefensa.Estado.FINALIZADA): raise ValidationError("El evento no puede evaluarse.")
-        if not EventoDefensaService.validar_quorum(evento)["valido"]: raise ValidationError("No se puede registrar la evaluación sin quórum técnico válido.")
+        estados_evaluables = (EventoDefensa.Estado.EN_CURSO, EventoDefensa.Estado.FINALIZADA)
+        if permitir_programada:
+            estados_evaluables += (EventoDefensa.Estado.PROGRAMADA,)
+        if evento.estado not in estados_evaluables: raise ValidationError("El evento no puede evaluarse.")
+        if not omitir_quorum and not EventoDefensaService.validar_quorum(evento)["valido"]: raise ValidationError("No se puede registrar la evaluación sin quórum técnico válido.")
         modalidad_registro = modalidad_registro or policy.evaluacion_policy.get_modalidad_registro_por_defecto(evento=evento, tipo=tipo)
         policy.evaluacion_policy.validar_solicitud_registro(modalidad_registro=modalidad_registro, evaluador=evaluador, evento=evento, tipo=tipo)
         existentes = evento.evaluaciones.filter(tipo_evaluacion=tipo)
@@ -255,6 +258,166 @@ class EvaluacionDefensaService:
     registrar_evaluacion_tematica=staticmethod(lambda evento,usuario,resultado,evaluador=None,modalidad_registro=None,observaciones="": EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.TEMATICA,resultado,None,evaluador,modalidad_registro,observaciones))
     registrar_evaluacion_privada=staticmethod(lambda evento,usuario,resultado,nota=None,evaluador=None,modalidad_registro=None,observaciones="",semantica_nota=None: EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PRIVADA,resultado,nota,evaluador,modalidad_registro,observaciones,semantica_nota))
     registrar_evaluacion_publica=staticmethod(lambda evento,usuario,nota,evaluador=None,modalidad_registro=None,observaciones="",semantica_nota=None: EvaluacionDefensaService._registrar(evento,usuario,EvaluacionDefensa.Tipo.PUBLICA,"",nota,evaluador,modalidad_registro,observaciones,semantica_nota))
+
+    @staticmethod
+    @transaction.atomic
+    def registrar_resultado_directo_proyecto(evento, usuario, resultado="", nota=None, observaciones="", semantica_nota=None):
+        """Registers and consolidates a supported defense without attendance records."""
+        evento = EventoDefensa.objects.select_for_update().select_related(
+            "postulacion__modalidad", "seguimiento_etapa__etapa",
+        ).get(pk=evento.pk)
+        modalidad_codigo = evento.postulacion.modalidad.codigo
+        direct_types = {
+            "PROYECTO_GRADO": {"DEFENSA_PERFIL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"},
+            "TESIS_GRADO": {"DEFENSA_TEMATICA", "DEFENSA_PERFIL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"},
+        }
+        if evento.tipo_evento not in direct_types.get(modalidad_codigo, set()):
+            raise ValidationError("El registro directo no está habilitado para esta modalidad y defensa.")
+        EventoDefensaService._validar_postulacion_editable(evento.postulacion)
+        policy = ModalidadPolicyRegistry.get(evento.postulacion)
+        if not policy.evento_policy or evento.tipo_evento not in policy.evento_policy.get_tipos_evento():
+            raise ValidationError("Tipo de defensa no admitido para registro directo.")
+        policy.evento_policy.validar_correspondencia_evento_etapa(evento)
+        seguimiento = SeguimientoEtapa.objects.select_for_update().select_related("etapa").get(
+            pk=evento.seguimiento_etapa_id,
+        )
+        if seguimiento.postulacion_id != evento.postulacion_id or not seguimiento.activo:
+            raise ValidationError("La defensa requiere un seguimiento vigente de la misma postulación.")
+        seguimiento_actual = SeguimientoEtapa.objects.filter(
+            postulacion_id=evento.postulacion_id,
+            etapa_id=seguimiento.etapa_id,
+            activo=True,
+        ).order_by("-numero_intento", "-pk").first()
+        if not seguimiento_actual or seguimiento_actual.pk != seguimiento.pk:
+            raise ValidationError("La defensa no pertenece al seguimiento activo más reciente de la etapa.")
+        if evento.numero_intento != seguimiento.numero_intento:
+            raise ValidationError("La defensa no corresponde al intento vigente de la etapa.")
+        if not evento.activo:
+            raise ValidationError("La defensa debe estar activa para registrar el resultado.")
+        consolidaciones = evento.evaluaciones.filter(
+            tipo_evaluacion=EvaluacionDefensa.Tipo.RESULTADO_FINAL,
+            es_resultado_final_evento=True,
+        )
+        if consolidaciones.count() > 1:
+            raise ValidationError("El evento tiene más de un resultado consolidado; requiere revisión administrativa.")
+        tipo_por_evento = {
+            EventoDefensa.Tipo.DEFENSA_TEMATICA: EvaluacionDefensa.Tipo.TEMATICA,
+            EventoDefensa.Tipo.DEFENSA_PERFIL: EvaluacionDefensa.Tipo.PERFIL,
+            EventoDefensa.Tipo.DEFENSA_PRIVADA: EvaluacionDefensa.Tipo.PRIVADA,
+            EventoDefensa.Tipo.DEFENSA_PUBLICA: EvaluacionDefensa.Tipo.PUBLICA,
+        }
+        tipo = tipo_por_evento[evento.tipo_evento]
+        asignaciones = policy.evento_policy.get_asignaciones_formales_defensa(
+            postulacion=evento.postulacion, tipo_evento=evento.tipo_evento,
+            seguimiento=seguimiento,
+        ).select_for_update()
+        if modalidad_codigo == "TESIS_GRADO":
+            requisitos = policy.evento_policy.evaluar_composicion_formal(
+                tipo_evento=evento.tipo_evento, asignaciones=asignaciones,
+            )
+        else:
+            requisitos = policy.evento_policy.evaluar_requisitos_programacion(
+                tipo_evento=evento.tipo_evento,
+                seguimiento=seguimiento,
+                asignaciones=asignaciones,
+            )
+        if not requisitos["cumple"]:
+            conflictos = requisitos.get("conflictos_detalle", [])
+            if conflictos:
+                nombres = {item.usuario_id: item.usuario.nombre_completo or item.usuario.username for item in asignaciones}
+                detalle = "; ".join(
+                    f"{nombres.get(item['usuario_id'], 'Una persona')} ocupa {', '.join(item['cargos'])}"
+                    for item in conflictos
+                )
+                raise ValidationError({
+                    "tribunal": f"La composición formal contiene identidades repetidas: {detalle}. Corrige las asignaciones antes de registrar el resultado."
+                })
+            raise ValidationError({"tribunal": "La composición formal vigente no cumple los requisitos de esta defensa."})
+        if modalidad_codigo == "TESIS_GRADO":
+            policy.evento_policy.validar_resultado_directo(
+                evento=evento, tipo=tipo, resultado=resultado, nota=nota,
+                semantica_nota=semantica_nota,
+            )
+
+        fuente_qs = evento.evaluaciones.filter(tipo_evaluacion=tipo, es_resultado_final_evento=False)
+        fuentes = list(fuente_qs.select_for_update().order_by("pk"))
+        consenso = [e for e in fuentes if e.modalidad_registro == EvaluacionDefensa.ModalidadRegistro.CONSENSO]
+        if len(consenso) > 1:
+            raise ValidationError("El evento tiene evaluaciones consensuadas duplicadas; requiere revisión administrativa.")
+        if fuentes and not consenso:
+            raise ValidationError({"evaluacion": "Existe una evaluación histórica individual. No se sobrescribe; debe resolverse mediante el flujo académico correspondiente."})
+        if consenso and len(fuentes) != 1:
+            raise ValidationError({"evaluacion": "Hay evaluaciones históricas incompatibles con el consenso. No se modificaron."})
+
+        if consolidaciones.exists():
+            consolidada = consolidaciones.select_for_update().get()
+            fuente = consenso[0] if consenso else None
+            if not fuente or not EvaluacionDefensaService._consolidado_coherente(fuente, consolidada):
+                raise ValidationError("El resultado consolidado no tiene una evaluación consensuada fuente coherente.")
+            if (
+                evento.estado != EventoDefensa.Estado.FINALIZADA
+                or not evento.fecha_fin_real
+                or not evento.cerrado_por_id
+            ):
+                raise ValidationError("El resultado consolidado requiere un evento finalizado con cierre trazable.")
+            if resultado and resultado != fuente.resultado_cualitativo:
+                raise ValidationError("La solicitud no coincide con el resultado ya consolidado.")
+            if nota is not None and nota != fuente.nota_numerica:
+                raise ValidationError("La solicitud no coincide con la nota ya consolidada.")
+            if evento.estado != EventoDefensa.Estado.FINALIZADA:
+                raise ValidationError("Existe un resultado consolidado en un evento que no está finalizado.")
+            estado_permitido = (SeguimientoEtapa.EstadoChoices.APROBADA, SeguimientoEtapa.EstadoChoices.RECHAZADA)
+            if seguimiento.estado not in estado_permitido:
+                raise ValidationError("El estado académico no concuerda con el resultado consolidado.")
+            return evento
+
+        if evento.estado not in (EventoDefensa.Estado.PROGRAMADA, EventoDefensa.Estado.EN_CURSO, EventoDefensa.Estado.FINALIZADA):
+            raise ValidationError("Solo se puede registrar directamente una defensa programada o en curso.")
+        if evento.estado == EventoDefensa.Estado.PROGRAMADA and timezone.now() < evento.fecha_programada:
+            raise ValidationError("La defensa todavía no llega a su fecha y hora programadas.")
+        if seguimiento.estado not in (SeguimientoEtapa.EstadoChoices.EN_PROCESO, SeguimientoEtapa.EstadoChoices.OBSERVADA):
+            raise ValidationError("El seguimiento académico no está habilitado para registrar este resultado.")
+        evaluacion_existente = consenso[0] if consenso else None
+        if evaluacion_existente and (
+            (resultado and resultado != evaluacion_existente.resultado_cualitativo)
+            or (nota is not None and nota != evaluacion_existente.nota_numerica)
+        ):
+            raise ValidationError("La solicitud no coincide con la evaluación consensuada ya registrada.")
+        if not evaluacion_existente:
+            EvaluacionDefensaService._registrar(
+            evento, usuario, tipo, resultado=resultado, nota=nota,
+                modalidad_registro=EvaluacionDefensa.ModalidadRegistro.CONSENSO,
+                observaciones=observaciones, semantica_nota=semantica_nota,
+                omitir_quorum=True, permitir_programada=True,
+            )
+
+        if evento.estado != EventoDefensa.Estado.FINALIZADA:
+            evento.estado = EventoDefensa.Estado.FINALIZADA
+            evento.fecha_fin_real = timezone.now()
+            evento.cerrado_por = usuario
+            evento.save()
+            _audit(usuario, "FINISH", f"Evento {evento.pk} finalizado mediante registro directo.")
+            publish_domain_event(
+                EventTypes.DEFENSA_FINALIZADA, evento, usuario, evento.postulacion, {},
+                f"DEFENSA_FINALIZADA:{evento.pk}:{evento.fecha_fin_real.isoformat()}",
+            )
+        consolidada = EvaluacionDefensaService.consolidar_evaluacion_evento(evento, usuario)
+        evento.refresh_from_db()
+        evento._resultado_directo_consolidado = consolidada
+        return evento
+
+    @staticmethod
+    def _consolidado_coherente(fuente, consolidado):
+        return (
+            consolidado.tipo_evaluacion == EvaluacionDefensa.Tipo.RESULTADO_FINAL
+            and consolidado.es_resultado_final_evento
+            and consolidado.modalidad_registro == fuente.modalidad_registro
+            and consolidado.semantica_nota == fuente.semantica_nota
+            and consolidado.resultado_cualitativo == fuente.resultado_cualitativo
+            and consolidado.nota_numerica == fuente.nota_numerica
+            and consolidado.ponderacion == fuente.ponderacion
+            and consolidado.aporte_ponderado == fuente.aporte_ponderado
+        )
 
     @staticmethod
     @transaction.atomic

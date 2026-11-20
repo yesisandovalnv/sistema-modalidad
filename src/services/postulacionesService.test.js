@@ -707,6 +707,18 @@ describe('postulacionesService', () => {
     expect(apiClient.post).toHaveBeenCalledWith(`/api/v1/postulaciones/7/cierre/${action}/`, payload, { signal })
   })
 
+  it('expone el error de composicion del tribunal para resultado directo de Tesis', async () => {
+    const data = { tribunal: ['La composicion formal contiene identidades repetidas: Raul ocupa Tribunal 1, Tutor.'] }
+    apiClient.post.mockRejectedValue({ response: { status: 400, data } })
+    await expect(postulacionesService.registrarResultadoDirectoDefensa(
+      81, { resultado: 'SUFICIENTE' }, undefined, { includeFieldErrors: true },
+    )).rejects.toEqual({
+      status: 400,
+      message: 'Composición del tribunal: La composicion formal contiene identidades repetidas: Raul ocupa Tribunal 1, Tutor.',
+      fields: data,
+    })
+  })
+
   it('consulta cierre y normaliza conflictos con campos funcionales', async () => {
     const signal = new AbortController().signal
     apiClient.get.mockResolvedValueOnce({ data: { concluida: false } })

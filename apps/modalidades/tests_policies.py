@@ -16,7 +16,7 @@ from apps.modalidades.proyecto_grado import ProyectoGradoPolicy
 from apps.modalidades.trabajo_dirigido import TrabajoDirigidoPolicy
 from apps.modalidades.tesis_grado import TesisGradoPolicy
 from apps.modalidades.validators import ModalidadConfigurationValidator
-from apps.postulantes.models import EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.models import DecisionAcademicaEtapa, EstadoPostulacion, EventoDefensa, Postulacion, SeguimientoEtapa
 from apps.postulantes.workflow import WorkflowService
 from apps.academico.models import Periodo
 from apps.usuarios.models import CustomUser, Role
@@ -326,8 +326,9 @@ class ProyectoGradoOrientacionDocumentalPerfilTests(TestCase):
         self.assertEqual(orientacion["siguiente_accion"]["codigo"], "GESTIONAR_ACTORES")
         self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Completar Tribunal de Perfil")
 
-    def test_despues_de_propuesta_y_tutor_orienta_a_presentar_perfil(self):
+    def test_documentos_actores_y_memorandum_orientan_a_programar_sin_decision_academica(self):
         self._documento(self.carta, self.aprobado)
+        self._documento(self.perfil, self.aprobado)
         docente_role = Role.objects.create(codigo="DOC_ORIENTACION", nombre="Docente")
         docentes = [
             CustomUser.objects.create_user(username=f"doc-orientacion-{indice}", role=docente_role)
@@ -345,16 +346,16 @@ class ProyectoGradoOrientacionDocumentalPerfilTests(TestCase):
             designado_por=docentes[3],
         )
 
-        with patch.object(self.policy, "_propuesta_aprobada", return_value=True):
+        with patch("apps.modalidades.proyecto_grado._faltantes_predefensa_perfil", return_value=[]):
             orientacion = self._orientacion()
 
-        self.assertEqual([item["codigo"] for item in orientacion["requisitos"]], [
-            "CARTA_SOLICITUD_TRIBUNAL_PROYECTO",
-            "PERFIL_ACADEMICO_PROYECTO",
-        ])
-        self.assertTrue(orientacion["requisitos"][0]["cumplido"])
-        self.assertFalse(orientacion["requisitos"][1]["cumplido"])
-        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "COMPLETAR_DOCUMENTOS")
+        self.assertEqual(orientacion["siguiente_accion"]["codigo"], "PROGRAMAR_EVENTO")
+        self.assertEqual(orientacion["siguiente_accion"]["tipo_evento"], "DEFENSA_PERFIL")
+        self.assertEqual(orientacion["siguiente_accion"]["titulo"], "Programar defensa")
+        self.assertIn("anticipación mínima", orientacion["siguiente_accion"]["descripcion"])
+        self.assertFalse(DecisionAcademicaEtapa.objects.filter(
+            seguimiento_etapa=self.seguimiento, codigo="PROPUESTA_APROBADA",
+        ).exists())
 
     def test_modalidad_sin_documentos_aplicables_no_inventa_orientacion(self):
         class SinDocumentosPolicy(BaseModalidadPolicy):
@@ -618,3 +619,55 @@ class ProyectoGradoDocumentosAplicablesTests(TestCase):
                 SimpleUploadedFile("acta.pdf", b"%PDF-1.4", content_type="application/pdf"),
                 self.admin,
             )
+
+    def test_acta_de_proyecto_cargada_por_admin_se_autoaprueba_con_defensa_finalizada(self):
+        self._activar_cierre()
+        etapa_publica = EtapaModalidad.objects.create(
+            modalidad=self.postulacion.modalidad,
+            codigo="DEFENSA_PUBLICA",
+            nombre="Defensa Pública",
+            orden=6,
+            obligatoria=True,
+            origen_normativo="Normativa",
+        )
+        seguimiento_publico = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion,
+            etapa=etapa_publica,
+            estado="APROBADA",
+        )
+        evento = EventoDefensa.objects.create(
+            postulacion=self.postulacion,
+            seguimiento_etapa=seguimiento_publico,
+            tipo_evento="DEFENSA_PUBLICA",
+            estado="FINALIZADA",
+            fecha_programada="2026-11-01T10:00:00Z",
+            fecha_inicio_real="2026-11-01T10:00:00Z",
+            fecha_fin_real="2026-11-01T12:00:00Z",
+            lugar="Aula magna",
+            programado_por=self.admin,
+        )
+
+        version = DocumentoService().subir_documento(
+            self.postulacion,
+            self.acta,
+            SimpleUploadedFile("acta.pdf", b"%PDF-1.4 acta", content_type="application/pdf"),
+            self.admin,
+            evento_defensa=evento,
+        )
+
+        version.documento.refresh_from_db()
+        self.assertEqual(version.documento.estado.codigo, "APR")
+        self.assertEqual(version.documento.evento_defensa_id, evento.pk)
+
+    def test_informe_final_tutor_administrativo_conserva_autoaprobacion(self):
+        self._activar_cierre()
+
+        version = DocumentoService().subir_documento(
+            self.postulacion,
+            self.informe,
+            SimpleUploadedFile("informe-tutor.pdf", b"%PDF-1.4 informe", content_type="application/pdf"),
+            self.admin,
+        )
+
+        version.documento.refresh_from_db()
+        self.assertEqual(version.documento.estado.codigo, "APR")

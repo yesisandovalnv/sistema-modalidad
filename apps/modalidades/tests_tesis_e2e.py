@@ -40,13 +40,10 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
     def complete_event(self, stage, event_type, evaluation_type):
         event = EventoDefensaService.programar_evento(self.post, stage, event_type, timezone.now() - timedelta(minutes=1), self.admin, lugar="Aula de defensa")
         if event_type == "DEFENSA_TEMATICA":
-            for assignment in self.tribunal_assignments:
-                participant = EventoDefensaService.agregar_participante(event, assignment, "TRIBUNAL", self.admin)
-                # asistencia se registra con el evento en curso.
+            return EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                event, self.admin, resultado="SUFICIENTE",
+            )
         EventoDefensaService.iniciar_evento(event, self.admin)
-        if event_type == "DEFENSA_TEMATICA":
-            for participant in event.participantes.all():
-                EventoDefensaService.registrar_asistencia(participant, True, self.admin)
         event = EventoDefensaService.finalizar_evento(event, self.admin)
         if evaluation_type == "TEMATICA":
             EvaluacionDefensaService.registrar_evaluacion_tematica(event, self.admin, "SUFICIENTE")
@@ -89,6 +86,74 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         EvaluacionDefensaService.registrar_evaluacion_privada(event, self.admin, "SUFICIENTE", nota=note, modalidad_registro="CONSENSO")
         EvaluacionDefensaService.consolidar_evaluacion_evento(event, self.admin)
         return event
+
+    def test_defensa_perfil_admite_resultado_directo_sin_participantes_ni_quorum(self):
+        for code in ("CARTA_SOLICITUD", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ"):
+            self.upload_and_approve(code)
+        WorkflowService.iniciar_etapa(self.stages["INSCRIPCION"], self.admin)
+        WorkflowService.aprobar_etapa(self.stages["INSCRIPCION"], self.admin)
+
+        thematic = self.stages["TEMATICA_TESIS"]
+        WorkflowService.iniciar_etapa(thematic, self.admin)
+        self.tribunal_assignments = [
+            AsignacionService.asignar_actor(
+                self.post, teacher, "TRIBUNAL", self.admin,
+                orden_cargo=index, seguimiento_etapa=thematic,
+            )
+            for index, teacher in enumerate(self.teachers[:3], 1)
+        ]
+        self.complete_event(thematic, "DEFENSA_TEMATICA", "TEMATICA")
+        AsignacionService.asignar_actor(self.post, self.teachers[3], "TUTOR", self.admin)
+        self.upload_and_approve("PERFIL_TESIS")
+        self.upload_and_approve("INFORME_TUTOR_TESIS")
+
+        profile = WorkflowService.iniciar_etapa(self.stages["PERFIL_TESIS"], self.admin)
+        event = EventoDefensaService.programar_evento(
+            self.post, profile, "DEFENSA_PERFIL", timezone.now() - timedelta(minutes=1),
+            self.admin, lugar="Aula de defensa",
+        )
+        updated = EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+            event, self.admin, resultado="SUFICIENTE",
+        )
+
+        self.assertEqual(updated.estado, "FINALIZADA")
+        self.assertEqual(updated.participantes.count(), 0)
+        self.assertTrue(updated.evaluaciones.filter(
+            tipo_evaluacion="RESULTADO_FINAL", resultado_cualitativo="SUFICIENTE",
+        ).exists())
+        profile.refresh_from_db()
+        self.assertEqual(profile.estado, "APROBADA")
+
+    def test_defensa_publica_admite_resultado_directo_con_gates_y_composicion_formal(self):
+        private, _final_version, secretary = self.reach_private()
+        private_event = self.complete_private(private, secretary, Decimal("20"))
+        president = AsignacionService.asignar_actor(
+            self.post, self.teachers[4], "PRESIDENTE", self.admin,
+        )
+        public_secretary = AsignacionService.asignar_actor(
+            self.post, self.teachers[3], "SECRETARIO", self.admin,
+        )
+        public = WorkflowService.iniciar_etapa(self.stages["DEFENSA_PUBLICA"], self.admin)
+        event = EventoDefensaService.programar_evento(
+            self.post, public, "DEFENSA_PUBLICA", timezone.now() - timedelta(minutes=1),
+            self.admin, lugar="Auditorio",
+        )
+        updated = EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+            event, self.admin, nota=Decimal("90"), semantica_nota="BRUTA_100",
+        )
+
+        self.assertTrue(private_event.evaluaciones.filter(
+            tipo_evaluacion="RESULTADO_FINAL", resultado_cualitativo="SUFICIENTE",
+        ).exists())
+        self.assertTrue(president.activo)
+        self.assertTrue(public_secretary.activo)
+        self.assertEqual(updated.estado, "FINALIZADA")
+        self.assertEqual(updated.participantes.count(), 0)
+        self.assertEqual(updated.evaluaciones.get(
+            tipo_evaluacion="RESULTADO_FINAL",
+        ).nota_numerica, Decimal("90.00"))
+        public.refresh_from_db()
+        self.assertEqual(public.estado, "APROBADA")
 
     def test_recorrido_real_habilita_defensa_privada_solo_despues_de_revision_tribunal(self):
         for code in ("CARTA_SOLICITUD", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ"):

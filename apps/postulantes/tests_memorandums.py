@@ -13,6 +13,7 @@ from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDo
 from apps.postulantes.memorandums import MemorandumDesignacionService
 from apps.postulantes.models import (
     AsignacionPostulacion,
+    DecisionAcademicaEtapa,
     EstadoPostulacion,
     Postulacion,
     PublicacionMemorandumDesignacion,
@@ -98,10 +99,13 @@ class MemorandumDesignacionTests(TestCase):
     def test_publicacion_congela_composicion_y_deja_de_ser_vigente_si_cambia(self):
         publicacion = self._publicar()
 
+        self.assertFalse(DecisionAcademicaEtapa.objects.filter(
+            seguimiento_etapa=self.seguimiento,
+        ).exists())
         self.assertTrue(MemorandumDesignacionService.es_vigente(publicacion))
         self.assertEqual(
             set(publicacion.asignaciones.values_list("pk", flat=True)),
-            {item.pk for item in self.tribunales},
+            {item.pk for item in [*self.tribunales, self.tutor]},
         )
         publicacion.version_documento.documento.refresh_from_db()
         self.assertEqual(publicacion.version_documento.documento.estado.codigo, "APR")
@@ -116,28 +120,35 @@ class MemorandumDesignacionTests(TestCase):
         self.assertFalse(publicacion.activo)
         self.assertTrue(MemorandumDesignacionService.es_vigente(nueva))
 
-    def test_publicacion_no_requiere_tutor_y_solo_respalda_los_tres_tribunales(self):
+    def test_publicacion_requiere_tutor_y_respalda_toda_la_designacion(self):
         self.tutor.activo = False
         self.tutor.save(update_fields=["activo"])
 
-        publicacion = self._publicar()
+        with self.assertRaises(ValidationError):
+            self._publicar()
 
-        self.assertTrue(MemorandumDesignacionService.es_vigente(publicacion))
-        self.assertEqual(
-            set(publicacion.asignaciones.values_list("pk", flat=True)),
-            {item.pk for item in self.tribunales},
-        )
-
-    def test_publicacion_historica_con_tutor_sigue_vigente_si_cambia_el_tutor(self):
+    def test_cambio_de_tutor_invalida_memorandum_vigente(self):
         publicacion = self._publicar()
-        publicacion.asignaciones.add(self.tutor)
         self.assertTrue(MemorandumDesignacionService.es_vigente(publicacion))
 
         self.tutor.activo = False
         self.tutor.save(update_fields=["activo"])
         self._asignar(self.docentes[4], "TUTOR")
 
-        self.assertTrue(MemorandumDesignacionService.es_vigente(publicacion))
+        self.assertFalse(MemorandumDesignacionService.es_vigente(publicacion))
+
+    def test_memorandum_de_seguimiento_que_dejo_de_ser_actual_no_es_vigente(self):
+        publicacion = self._publicar()
+        seguimiento_actual = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion, etapa=self.seguimiento.etapa,
+            numero_intento=self.seguimiento.numero_intento + 1,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+        )
+        self.seguimiento.activo = False
+        self.seguimiento.save(update_fields=["activo"])
+
+        self.assertFalse(MemorandumDesignacionService.es_vigente(publicacion))
+        self.assertEqual(seguimiento_actual.etapa.codigo, "PERFIL_PROYECTO")
 
     def test_rechaza_composicion_incompleta_y_usuario_no_administrativo(self):
         self.tribunales[2].activo = False
@@ -231,9 +242,9 @@ class MemorandumDesignacionTests(TestCase):
         self.tutor.save(update_fields=["activo"])
         self._asignar(self.docentes[4], "TUTOR")
         response = client.get(f"/api/v1/postulaciones/{self.postulacion.pk}/memorandums-designacion/")
-        self.assertEqual([item["id"] for item in response.data], [publicacion.pk])
+        self.assertEqual(response.data, [])
         download = client.get(f"/api/v1/documentos/versiones/{publicacion.version_documento_id}/descargar/")
-        self.assertEqual(download.status_code, 200, getattr(download, "data", None))
+        self.assertEqual(download.status_code, 404)
 
         self.tribunales[2].activo = False
         self.tribunales[2].save(update_fields=["activo"])

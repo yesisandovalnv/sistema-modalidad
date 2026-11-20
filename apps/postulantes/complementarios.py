@@ -81,6 +81,8 @@ class EntregaFisicaService:
     @staticmethod
     @transaction.atomic
     def registrar_entrega(entrega, cantidad_recibida, usuario, observaciones=""):
+        if entrega.postulacion.modalidad.codigo in {"PROYECTO_GRADO", "TESIS_GRADO"}:
+            Postulacion.objects.select_for_update().get(pk=entrega.postulacion_id)
         obj=EntregaFisica.objects.select_for_update().get(pk=entrega.pk)
         _validar_postulacion_editable(obj.postulacion)
         if cantidad_recibida <= 0: raise ValidationError("La cantidad recibida debe ser mayor que cero.")
@@ -88,7 +90,11 @@ class EntregaFisicaService:
         # Sin cantidad institucional definida, el registro administrativo explícito
         # completa la entrega; no infiere una cantidad normativa.
         obj.estado=obj.Estado.COMPLETA if obj.cantidad is None or cantidad_recibida>=obj.cantidad else obj.Estado.PARCIAL
-        obj.save(); _audit(usuario,"REGISTER_PHYSICAL_DELIVERY",f"Entrega {obj.pk}: {cantidad_recibida} recibidos."); return obj
+        obj.save(); _audit(usuario,"REGISTER_PHYSICAL_DELIVERY",f"Entrega {obj.pk}: {cantidad_recibida} recibidos.")
+        from apps.postulantes.inscripcion_auto import InscripcionAutoFinalizacionService
+
+        InscripcionAutoFinalizacionService.intentar_finalizar(obj.postulacion, usuario)
+        return obj
 
     @staticmethod
     @transaction.atomic

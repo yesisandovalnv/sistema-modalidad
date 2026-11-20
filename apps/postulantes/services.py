@@ -1,3 +1,4 @@
+import secrets
 from typing import Any
 
 from django.core.exceptions import ValidationError
@@ -54,6 +55,24 @@ class PostulacionService:
         )
 
     @staticmethod
+    def _crear_con_codigo_unico(**datos: Any) -> Postulacion:
+        """Crea una postulación con un token opaco y reintenta colisiones.
+
+        La restricción UNIQUE de la base de datos arbitra solicitudes concurrentes;
+        si dos generadores llegaran a producir el mismo token, el perdedor reintenta.
+        """
+        for _ in range(5):
+            codigo = secrets.token_hex(15).upper()
+            try:
+                with transaction.atomic():
+                    return Postulacion.objects.create(codigo=codigo, **datos)
+            except IntegrityError:
+                # Solo reintentar cuando la colisión fue efectivamente del código.
+                if not Postulacion.objects.filter(codigo=codigo).exists():
+                    raise
+        raise ValidationError("No se pudo generar un código único para la postulación.")
+
+    @staticmethod
     def crear_postulacion(*args: Any, **kwargs: Any) -> Postulacion:
         """Crea una nueva postulación con estado inicial y trazabilidad.
 
@@ -69,12 +88,11 @@ class PostulacionService:
         estudiante = datos.get("estudiante")
         modalidad = datos.get("modalidad")
         periodo = datos.get("periodo")
-        codigo = datos.get("codigo")
         observaciones_generales = datos.get("observaciones_generales")
 
         if not isinstance(usuario, CustomUser):
             raise ValidationError("El usuario responsable de la creación es obligatorio.")
-        if not estudiante or not modalidad or not periodo or not codigo:
+        if not estudiante or not modalidad or not periodo:
             raise ValidationError("Faltan datos obligatorios para crear la postulación.")
 
         with transaction.atomic():
@@ -88,15 +106,13 @@ class PostulacionService:
                 raise ValidationError("El estudiante ya tiene una postulación vigente.")
 
             try:
-                with transaction.atomic():
-                    postulacion = Postulacion.objects.create(
-                        codigo=codigo,
-                        estudiante=estudiante,
-                        modalidad=modalidad,
-                        periodo=periodo,
-                        observaciones_generales=observaciones_generales,
-                        estado_actual=estado_inicial,
-                    )
+                postulacion = PostulacionService._crear_con_codigo_unico(
+                    estudiante=estudiante,
+                    modalidad=modalidad,
+                    periodo=periodo,
+                    observaciones_generales=observaciones_generales,
+                    estado_actual=estado_inicial,
+                )
             except IntegrityError as exc:
                 if not PostulacionService._es_conflicto_postulacion_vigente(exc):
                     raise
@@ -136,12 +152,11 @@ class PostulacionService:
         estudiante = datos.get("estudiante")
         modalidad = datos.get("modalidad")
         periodo = datos.get("periodo")
-        codigo = datos.get("codigo")
         observaciones_generales = datos.get("observaciones_generales")
 
         if not is_staff_user(usuario):
             raise ValidationError("Solo un usuario administrativo puede crear postulaciones históricas.")
-        if not estudiante or not modalidad or not periodo or not codigo:
+        if not estudiante or not modalidad or not periodo:
             raise ValidationError("Faltan datos obligatorios para crear la postulación histórica.")
 
         with transaction.atomic():
@@ -150,8 +165,7 @@ class PostulacionService:
             if not estado_final:
                 raise ValidationError("No existe el estado final CONCLUIDA.")
             try:
-                historico = Postulacion.objects.create(
-                    codigo=codigo,
+                historico = PostulacionService._crear_con_codigo_unico(
                     estudiante=estudiante,
                     modalidad=modalidad,
                     periodo=periodo,

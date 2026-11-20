@@ -257,6 +257,31 @@ describe('ClosureRequirements', () => {
     expect(deliveriesSummary).toHaveTextContent('2/2 completas')
   })
 
+  it('mantiene contraídos los grupos pendientes cuando se solicita el resumen compacto', async () => {
+    postulacionesService.obtenerEntregas.mockResolvedValue(deliveries)
+    render(<ClosureRequirements postulacion={7} canManage collapseDetailsByDefault />)
+
+    const conditionsSummary = await screen.findByText(/Condiciones técnicas/)
+    const deliveriesSummary = screen.getByText(/Entregas técnicas/)
+    expect(conditionsSummary.closest('details')).not.toHaveAttribute('open')
+    expect(deliveriesSummary.closest('details')).not.toHaveAttribute('open')
+    expect(conditionsSummary).toHaveTextContent('0/2 cumplidas')
+    expect(deliveriesSummary).toHaveTextContent('0/2 completas')
+    expect(screen.getByText('Admisión completa')).not.toBeVisible()
+    expect(screen.getByText('Ejemplares impresos')).not.toBeVisible()
+
+    await userEvent.click(conditionsSummary)
+    const admissionCondition = screen.getByText('Admisión completa').closest('li')
+    expect(admissionCondition).toBeVisible()
+    expect(within(admissionCondition).getByRole('button', { name: 'Verificar' })).toBeVisible()
+
+    await userEvent.click(deliveriesSummary)
+    expect(screen.getByText('Ejemplares impresos')).toBeVisible()
+    expect(screen.getByText('Cantidad técnica requerida: 2')).toBeVisible()
+    expect(screen.getByText(/no certifica una cantidad normativa oficial/)).toBeVisible()
+    expect(screen.getAllByRole('button', { name: 'Registrar/actualizar entrega' })).toHaveLength(2)
+  })
+
   describe('entregas', () => {
     beforeEach(() => {
       postulacionesService.obtenerEntregas.mockResolvedValue(deliveries)
