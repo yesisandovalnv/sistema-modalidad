@@ -91,8 +91,8 @@ describe('Subir documento', () => {
   it('conserva la presentación humanizada y las acciones de la página', async () => {
     setup({ availableApplications: [humanApplication], rows: [documentRow], pageAuth: auth })
 
-    expect(await screen.findByText('PG-2026-011')).toBeInTheDocument()
-    expect(screen.getByText('Andrea Molina Martines')).toBeInTheDocument()
+    expect(await screen.findByText('Andrea Molina Martines')).toBeInTheDocument()
+    expect(screen.queryByText('PG-2026-011')).not.toBeInTheDocument()
     expect(screen.getByText('Proyecto de Grado')).toBeInTheDocument()
     expect(screen.getByText('Aprobado')).toBeInTheDocument()
     expect(screen.getByText('No requerida')).toBeInTheDocument()
