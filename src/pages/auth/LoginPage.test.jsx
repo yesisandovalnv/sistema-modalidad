@@ -66,20 +66,20 @@ describe('LoginPage', () => {
     expect(await screen.findByText('No tienes permiso para acceder.')).toBeInTheDocument()
   })
 
-  it('normaliza y envía las credenciales por el acceso estudiantil separado', async () => {
+  it('normaliza el R.U. y envía R.U. + C.I. por el acceso estudiantil', async () => {
     authService.studentLogin.mockResolvedValue({ data: { access: 'access', refresh: 'refresh' } })
     render(<MemoryRouter><LoginPage /></MemoryRouter>)
     await userEvent.type(screen.getByPlaceholderText('Ingresa tu R.U.'), ' ru1001 ')
-    await userEvent.type(screen.getByPlaceholderText('Ingresa tu contraseña'), 'Student-Password-2026')
+    await userEvent.type(screen.getByPlaceholderText('Ingresa tu C.I.'), '00123456')
     await userEvent.click(screen.getByRole('button', { name: 'Ingresar' }))
-    expect(authService.studentLogin).toHaveBeenCalledWith({ ru: 'RU1001', password: 'Student-Password-2026' })
+    expect(authService.studentLogin).toHaveBeenCalledWith({ ru: 'RU1001', ci: '00123456' })
   })
 
   it('usa un mensaje genérico para todo rechazo estudiantil', async () => {
     authService.studentLogin.mockRejectedValue({ response: { status: 401, data: { detail: 'interno' } } })
     render(<MemoryRouter><LoginPage /></MemoryRouter>)
     await userEvent.type(screen.getByPlaceholderText('Ingresa tu R.U.'), 'RU1001')
-    await userEvent.type(screen.getByPlaceholderText('Ingresa tu contraseña'), 'incorrecto')
+    await userEvent.type(screen.getByPlaceholderText('Ingresa tu C.I.'), 'incorrecto')
     await userEvent.click(screen.getByRole('button', { name: 'Ingresar' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('No fue posible iniciar sesión con los datos proporcionados.')
   })

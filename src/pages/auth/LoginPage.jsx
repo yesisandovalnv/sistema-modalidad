@@ -16,7 +16,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [ru, setRu] = useState('')
   const [ci, setCi] = useState('')
-  const [studentPassword, setStudentPassword] = useState('')
   const [code, setCode] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [studentScreen, setStudentScreen] = useState('login')
@@ -52,14 +51,13 @@ export default function LoginPage() {
         if (studentScreen === 'activation-confirm') await authService.confirmStudentActivation(credentials)
         else await authService.confirmStudentRecovery(credentials)
         setStudentScreen('login')
-        setStudentPassword(newPassword)
         setNewPassword('')
         setCode('')
         setNotice('Contraseña actualizada. Ya puedes iniciar sesión.')
         return
       }
       const response = mode === 'student'
-        ? await authService.studentLogin({ ru: ru.trim().toUpperCase(), password: studentPassword })
+        ? await authService.studentLogin({ ru: ru.trim().toUpperCase(), ci: ci.trim() })
         : await authService.login({ username: username.trim(), password })
       localStorage.setItem('auth_access_token', response.data.access)
       localStorage.setItem('auth_refresh_token', response.data.refresh)
@@ -143,7 +141,7 @@ export default function LoginPage() {
         >
           <p className="text-xs leading-5 text-slate-500">
             {isStudent
-              ? studentScreen === 'login' ? 'Ingresa con tu Registro Universitario y contraseña.' : 'Verifica tu identidad con tu Registro Universitario y Cédula de Identidad.'
+              ? studentScreen === 'login' ? 'Ingresa con tu Registro Universitario y Cédula de Identidad.' : 'Verifica tu identidad con tu Registro Universitario y Cédula de Identidad.'
               : 'Utiliza el usuario y la contraseña asignados.'}
           </p>
 
@@ -156,10 +154,10 @@ export default function LoginPage() {
               </div>
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-800" htmlFor="student-password">Contraseña</label>
+              <label className="mb-1.5 block text-sm font-medium text-slate-800" htmlFor="student-ci">C.I.</label>
               <div className="relative">
                 <LockKeyhole aria-hidden="true" size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input id="student-password" name="password" type="password" autoComplete="current-password" className={inputClass} placeholder="Ingresa tu contraseña" value={studentPassword} onChange={(event) => setStudentPassword(event.target.value)} disabled={isLoading} required />
+                <input id="student-ci" name="ci" type="password" autoComplete="current-password" className={inputClass} placeholder="Ingresa tu C.I." value={ci} onChange={(event) => setCi(event.target.value)} disabled={isLoading} required />
               </div>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">

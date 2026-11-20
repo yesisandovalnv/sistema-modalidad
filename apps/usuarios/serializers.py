@@ -63,17 +63,17 @@ class LoginSerializer(serializers.Serializer):
 
 
 class StudentLoginSerializer(serializers.Serializer):
-    """RU and password credentials exclusive to student accounts."""
+    """RU and identity-card credentials exclusive to student accounts."""
 
     ru = serializers.CharField(required=True, write_only=True, allow_blank=False, max_length=20)
-    password = serializers.CharField(required=True, write_only=True, allow_blank=False, trim_whitespace=False)
+    ci = serializers.CharField(required=True, write_only=True, allow_blank=False, max_length=20)
 
     def validate(self, attrs):
         from apps.usuarios.student_auth import authenticate_student
 
         attrs["tokens"] = authenticate_student(
             ru=attrs["ru"],
-            password=attrs["password"],
+            ci=attrs["ci"],
             request=self.context["request"],
         )
         return attrs

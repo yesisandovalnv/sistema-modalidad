@@ -92,6 +92,12 @@ def _reset_account(state: StudentLoginThrottle) -> None:
         state.save(update_fields=["failed_attempts", "window_started_at", "blocked_until", "updated_at"])
 
 
+def _student_ci_matches(user, ci: str) -> bool:
+    normalized_ci = normalize_ci(ci)
+    stored_ci = normalize_ci(user.ci) if user else "invalid-student-ci"
+    return bool(user) and constant_time_compare(stored_ci, normalized_ci)
+
+
 def _find_student(*, ru: str, ci: str):
     normalized_ru = normalize_ru(ru)
     normalized_ci = normalize_ci(ci)
@@ -272,7 +278,7 @@ def _confirm_student_code(*, ru: str, ci: str, code: str, password: str, request
         raise StudentLoginRejected(GENERIC_ERROR)
 
 
-def authenticate_student(*, ru: str, password: str, request):
+def authenticate_student(*, ru: str, ci: str, request):
     normalized_ru = normalize_ru(ru)
     now = timezone.now()
     origin_digest = _digest(StudentLoginThrottle.Scope.ORIGIN, _origin(request))
@@ -302,7 +308,7 @@ def authenticate_student(*, ru: str, password: str, request):
                 rejection_reason = "account_blocked"
             else:
                 user = candidates[0] if len(candidates) == 1 else None
-                credentials_match = bool(user and user.has_usable_password()) and user.check_password(password)
+                credentials_match = _student_ci_matches(user, ci)
                 if not credentials_match:
                     _register_failure(origin_state, ORIGIN_FAILURE_LIMIT, now)
                     _register_failure(account_state, ACCOUNT_FAILURE_LIMIT, now)
