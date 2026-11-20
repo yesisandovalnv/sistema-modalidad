@@ -58,7 +58,7 @@ class StudentAuthSecurityTests(SimpleTestCase):
             context = patch('apps.usuarios.student_auth.' + target, **options)
             setattr(self, target.split('.')[0] + '_mock', context.start())
             self.addCleanup(context.stop)
-        self.CustomUser_mock.select_for_update.return_value.select_related.return_value.get.return_value = self.user
+        self.CustomUser_mock.select_for_update.return_value.get.return_value = self.user
         manager = self.StudentAccountActivation_mock.select_for_update.return_value
         manager.get_or_create.return_value = (self.state, True)
         manager.filter.return_value.first.return_value = self.state

@@ -56,25 +56,39 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("Credenciales inválidas.")
         if not user.is_active:
             raise serializers.ValidationError("Usuario inactivo.")
+        if getattr(getattr(user, "role", None), "codigo", "") == "ESTUDIANTE":
+            raise serializers.ValidationError("Credenciales inválidas.")
         attrs["user"] = user
         return attrs
 
 
 class StudentLoginSerializer(serializers.Serializer):
-    """Credenciales institucionales exclusivas del acceso estudiantil."""
+    """RU and password credentials exclusive to student accounts."""
 
     ru = serializers.CharField(required=True, write_only=True, allow_blank=False, max_length=20)
-    ci = serializers.CharField(required=True, write_only=True, allow_blank=False, max_length=20)
+    password = serializers.CharField(required=True, write_only=True, allow_blank=False, trim_whitespace=False)
 
     def validate(self, attrs):
         from apps.usuarios.student_auth import authenticate_student
 
         attrs["tokens"] = authenticate_student(
             ru=attrs["ru"],
-            ci=attrs["ci"],
+            password=attrs["password"],
             request=self.context["request"],
         )
         return attrs
+
+
+class StudentCodeRequestSerializer(serializers.Serializer):
+    ru = serializers.CharField(required=True, write_only=True, allow_blank=False, max_length=20)
+    ci = serializers.CharField(required=True, write_only=True, allow_blank=False, max_length=20)
+
+
+class StudentCodeConfirmSerializer(serializers.Serializer):
+    ru = serializers.CharField(required=True, write_only=True, allow_blank=False, max_length=20)
+    ci = serializers.CharField(required=True, write_only=True, allow_blank=False, max_length=20)
+    code = serializers.RegexField(r"^\d{6}$", required=True, write_only=True)
+    password = serializers.CharField(required=True, write_only=True, allow_blank=False, trim_whitespace=False)
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

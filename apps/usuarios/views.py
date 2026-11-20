@@ -1,4 +1,5 @@
 from django.utils import timezone
+from django.db import IntegrityError, transaction
 from rest_framework import status
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework import filters, mixins, viewsets
@@ -14,9 +15,10 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 
-from apps.usuarios.serializers import AssignmentCandidateSerializer, LoginSerializer, LogoutSerializer, RoleAdminSerializer, StudentLoginSerializer, StudentOptionSerializer, UserAdminSerializer, UserProfileSerializer
+from apps.usuarios.serializers import AssignmentCandidateSerializer, LoginSerializer, LogoutSerializer, RoleAdminSerializer, StudentCodeConfirmSerializer, StudentCodeRequestSerializer, StudentLoginSerializer, StudentOptionSerializer, UserAdminSerializer, UserProfileSerializer
 from apps.usuarios.models import CustomUser, Role
 from apps.usuarios.student_import import build_template, confirm_import, validate_workbook
+from apps.usuarios.student_auth import _confirm_student_code, request_student_activation, request_student_recovery
 from apps.postulantes.models import Postulacion
 from apps.usuarios.services import UserCapabilitiesService
 from core.pagination import StandardResultsSetPagination
@@ -54,7 +56,7 @@ class CustomTokenRefreshView(TokenRefreshView):
 
 
 class StudentTokenObtainPairView(APIView):
-    """Emite JWT para una cuenta estudiantil existente mediante R.U. y C.I."""
+    """Emite JWT para una cuenta estudiantil mediante R.U. y contraseña."""
 
     authentication_classes = ()
     permission_classes = ()
@@ -64,6 +66,50 @@ class StudentTokenObtainPairView(APIView):
         serializer = self.serializer_class(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         return Response(serializer.validated_data["tokens"], status=status.HTTP_200_OK)
+
+
+class StudentCodeRequestView(APIView):
+    authentication_classes = ()
+    permission_classes = ()
+    purpose = None
+    service = None
+
+    def post(self, request, *args, **kwargs):
+        serializer = StudentCodeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.service(**serializer.validated_data, request=request)
+        return Response(
+            {"detail": "Si los datos corresponden a una cuenta elegible, recibirás un código en tu correo institucional."},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class StudentActivationRequestView(StudentCodeRequestView):
+    service = staticmethod(request_student_activation)
+
+
+class StudentRecoveryRequestView(StudentCodeRequestView):
+    service = staticmethod(request_student_recovery)
+
+
+class StudentCodeConfirmView(APIView):
+    authentication_classes = ()
+    permission_classes = ()
+    purpose = None
+
+    def post(self, request, *args, **kwargs):
+        serializer = StudentCodeConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        _confirm_student_code(**serializer.validated_data, request=request, purpose=self.purpose)
+        return Response({"detail": "La contraseña se actualizó correctamente."}, status=status.HTTP_200_OK)
+
+
+class StudentActivationConfirmView(StudentCodeConfirmView):
+    purpose = "activation"
+
+
+class StudentRecoveryConfirmView(StudentCodeConfirmView):
+    purpose = "recovery"
 
 
 class LogoutView(APIView):
@@ -167,6 +213,13 @@ class UserAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.
     search_fields = ("username", "nombres", "apellido_paterno", "apellido_materno", "ci", "ru", "correo_institucional", "correo_personal")
     ordering_fields = ("username", "nombres", "apellido_paterno", "apellido_materno", "is_active", "role__nombre")
     ordering = ("apellido_paterno", "apellido_materno", "nombres", "username")
+
+    def perform_create(self, serializer):
+        try:
+            with transaction.atomic():
+                serializer.save()
+        except IntegrityError as exc:
+            raise ValidationError("Los datos del usuario entran en conflicto con una cuenta existente.") from exc
 
     def get_queryset(self):
         queryset = CustomUser.all_objects.select_related("role")

@@ -245,3 +245,28 @@ class StudentLoginThrottle(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.scope} - intentos {self.failed_attempts}"
+
+
+class StudentAccountActivation(BaseModel):
+    """Single-use, purpose-bound email code state for student activation/recovery."""
+
+    user = models.OneToOneField(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="student_account_activation",
+    )
+    code_digest = models.CharField(max_length=64, blank=True)
+    password_snapshot = models.CharField(max_length=128, blank=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
+    failed_attempts = models.PositiveSmallIntegerField(default=0)
+    last_sent_at = models.DateTimeField(blank=True, null=True)
+    request_window_started_at = models.DateTimeField(blank=True, null=True)
+    requests_in_window = models.PositiveSmallIntegerField(default=0)
+    used_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Activación de cuenta estudiantil"
+        verbose_name_plural = "Activaciones de cuentas estudiantiles"
+
+    def __str__(self) -> str:
+        return f"Activación estudiantil para usuario {self.user_id}"

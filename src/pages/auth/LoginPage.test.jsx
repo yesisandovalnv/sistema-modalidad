@@ -6,7 +6,10 @@ import LoginPage from './LoginPage'
 import { AuthLayout } from '../../layouts/AuthLayout'
 import { authService } from '../../services/authService'
 
-vi.mock('../../services/authService', () => ({ authService: { login: vi.fn(), studentLogin: vi.fn() } }))
+vi.mock('../../services/authService', () => ({ authService: {
+  login: vi.fn(), studentLogin: vi.fn(), requestStudentActivation: vi.fn(), confirmStudentActivation: vi.fn(),
+  requestStudentRecovery: vi.fn(), confirmStudentRecovery: vi.fn(),
+} }))
 
 async function submit() {
   render(<MemoryRouter><LoginPage /></MemoryRouter>)
@@ -67,17 +70,33 @@ describe('LoginPage', () => {
     authService.studentLogin.mockResolvedValue({ data: { access: 'access', refresh: 'refresh' } })
     render(<MemoryRouter><LoginPage /></MemoryRouter>)
     await userEvent.type(screen.getByPlaceholderText('Ingresa tu R.U.'), ' ru1001 ')
-    await userEvent.type(screen.getByPlaceholderText('Ingresa tu C.I.'), ' 00123456 ')
+    await userEvent.type(screen.getByPlaceholderText('Ingresa tu contraseña'), 'Student-Password-2026')
     await userEvent.click(screen.getByRole('button', { name: 'Ingresar' }))
-    expect(authService.studentLogin).toHaveBeenCalledWith({ ru: 'RU1001', ci: '00123456' })
+    expect(authService.studentLogin).toHaveBeenCalledWith({ ru: 'RU1001', password: 'Student-Password-2026' })
   })
 
   it('usa un mensaje genérico para todo rechazo estudiantil', async () => {
     authService.studentLogin.mockRejectedValue({ response: { status: 401, data: { detail: 'interno' } } })
     render(<MemoryRouter><LoginPage /></MemoryRouter>)
     await userEvent.type(screen.getByPlaceholderText('Ingresa tu R.U.'), 'RU1001')
-    await userEvent.type(screen.getByPlaceholderText('Ingresa tu C.I.'), 'incorrecto')
+    await userEvent.type(screen.getByPlaceholderText('Ingresa tu contraseña'), 'incorrecto')
     await userEvent.click(screen.getByRole('button', { name: 'Ingresar' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('No fue posible iniciar sesión con los datos proporcionados.')
+  })
+  it('solicita activación y confirma una nueva contraseña', async () => {
+    authService.requestStudentActivation.mockResolvedValue({ data: { detail: 'Si corresponde, recibirás un código.' } })
+    authService.confirmStudentActivation.mockResolvedValue({ data: { detail: 'Actualizada.' } })
+    render(<MemoryRouter><LoginPage /></MemoryRouter>)
+    await userEvent.click(screen.getByRole('button', { name: 'Activar cuenta' }))
+    await userEvent.type(screen.getByPlaceholderText('Ingresa tu R.U.'), ' ru1001 ')
+    await userEvent.type(screen.getByPlaceholderText('Ingresa tu C.I.'), '00123456')
+    await userEvent.click(screen.getByRole('button', { name: 'Enviar código de activación' }))
+    await userEvent.type(screen.getByLabelText('Código de verificación'), '123456')
+    await userEvent.type(screen.getByLabelText('Nueva contraseña'), 'New-Student-Password-2026')
+    await userEvent.click(screen.getByRole('button', { name: 'Actualizar contraseña' }))
+    expect(authService.confirmStudentActivation).toHaveBeenCalledWith({
+      ru: 'RU1001', ci: '00123456', code: '123456', password: 'New-Student-Password-2026',
+    })
+    expect(await screen.findByText('Contraseña actualizada. Ya puedes iniciar sesión.')).toBeInTheDocument()
   })
 })
