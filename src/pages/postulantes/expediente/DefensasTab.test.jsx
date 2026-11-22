@@ -214,7 +214,9 @@ describe('ExpedientePage · Defensas', () => {
     })
     renderDefenseManagerPage('resumen')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Ir a gestionar' }))
+    // La defensa ya existe: la siguiente acción dice continuarla (no "Programar defensa").
+    expect(await screen.findByText('Continuar Defensa Privada programada')).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ir a la defensa' }))
     const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
     expect(within(detail).getByText('Programada')).toBeInTheDocument()
     expect(within(detail).getByText('Defensa privada')).toBeInTheDocument()
@@ -275,7 +277,9 @@ describe('ExpedientePage · Defensas', () => {
     })
     renderDefenseManagerPage('resumen')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Ir a gestionar' }))
+    // La defensa ya existe: la siguiente acción dice continuarla (no "Programar defensa").
+    expect(await screen.findByText('Continuar Defensa Pública programada')).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: 'Ir a la defensa' }))
     const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
     expect(within(detail).getByRole('heading', { name: 'Defensa pública' })).toBeInTheDocument()
     expect(within(detail).getByText('Programada')).toBeInTheDocument()

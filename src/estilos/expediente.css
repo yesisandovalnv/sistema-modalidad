@@ -357,3 +357,23 @@
   border-top: 1px solid var(--border);
   padding-top: 1rem;
 }
+
+/* Notas del resultado (y demás puntajes): datos planos separados por un filete, sin recuadro. */
+.expediente-score {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+/* "Información de etapas posteriores": título y descripción a la izquierda, el enlace a la derecha. */
+.expediente-root details > summary.expediente-more-summary {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.expediente-more-toggle {
+  flex-shrink: 0;
+  color: var(--focus);
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}

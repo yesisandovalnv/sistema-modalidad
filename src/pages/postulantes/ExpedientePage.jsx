@@ -2026,10 +2026,12 @@ export default function ExpedientePage() {
   </details>
   const futureSections = isProjectGrade && (!stageUi.review || !stageUi.academicResult || !stageUi.closure || !stageUi.corrections)
     && <details className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
-      <summary className="cursor-pointer list-none px-6 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">
-        <span className="text-lg font-bold">Información de etapas posteriores</span>
-        <span className="mt-1 block text-sm text-slate-500">Consulta la revisión, resultados y cierre cuando esas etapas sean relevantes.</span>
-        <span className="mt-2 block text-sm font-medium text-sky-700 dark:text-sky-300">Ver información futura</span>
+      <summary className="expediente-more-summary cursor-pointer list-none px-6 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">
+        <span className="min-w-0">
+          <span className="block text-lg font-bold">Información de etapas posteriores</span>
+          <span className="mt-1 block text-sm text-slate-500">Consulta la revisión, resultados y cierre cuando esas etapas sean relevantes.</span>
+        </span>
+        <span className="expediente-more-toggle">Ver información futura</span>
       </summary>
       <div className="border-t border-slate-200 p-5 dark:border-slate-700">
         <div className="grid gap-5">

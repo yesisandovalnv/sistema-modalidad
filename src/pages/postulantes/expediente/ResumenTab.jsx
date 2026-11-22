@@ -7,7 +7,7 @@ import { formatPeriodoLabel, formatStudentLabel } from '../postulacionFormatters
 import { STATUS_TONE } from '../../../lib/statusTone'
 import { MemorandumStatusCard } from './DecisionesAcademicas'
 import { Info, RequirementIcon, StageMarker, StatusBadge } from './compartidos'
-import { EMPTY, assignmentTypeLabel, formatAcademicClassification, formatCode, formatStatus } from './reglas'
+import { assignmentTypeLabel, EMPTY, formatAcademicClassification, formatCode, formatDocumentDate, formatStatus } from './reglas'
 
 const CLOSURE_TRACKING_DOCUMENT_CODES = ['ACTA_DEFENSA']
 
@@ -257,6 +257,16 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
     && ['EN_PROCESO', 'OBSERVADA'].includes(currentStage?.estado)
     && publicAuthorityRequirements.some((item) => item.cumplido === false)
     && (publicAuthoritiesCapability?.permite_identidad_reutilizada || !publicAuthorityConflict)
+  // Proyecto de Grado: las autoridades que faltan, dichas en la siguiente acción (en Tesis queda como estaba).
+  const missingAuthorities = publicAuthorityRequirements.filter((item) => item.cumplido === false).map((item) => String(item.nombre || '').toLocaleLowerCase('es-BO'))
+  const authorityAssignment = publicAuthorityAction && isProjectGrade && missingAuthorities.length > 0
+    ? (() => {
+      const list = missingAuthorities.length > 1 ? `${missingAuthorities.slice(0, -1).join(', ')} y ${missingAuthorities.at(-1)}` : missingAuthorities[0]
+      const withArticles = missingAuthorities.map((name) => `el ${name}`)
+      const phrase = withArticles.length > 1 ? `${withArticles.slice(0, -1).join(', ')} y ${withArticles.at(-1)}` : withArticles[0]
+      return { title: `Asignar ${list}`, description: `${withArticles.length > 1 ? 'Faltan' : 'Falta'} ${phrase} para programar la defensa.` }
+    })()
+    : null
   const profileDefenseCandidates = isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO'
     && currentStage?.activo !== false && currentStage?.id != null && currentStage?.numero_intento != null
     ? defenses.filter((defense) => defense.tipo_evento === 'DEFENSA_PERFIL'
@@ -285,9 +295,21 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
     : []
   const publicDefense = publicDefenseCandidates.length === 1 ? publicDefenseCandidates[0] : null
   const profileEvaluation = profileDefense?.evaluaciones?.some((item) => item.tipo_evaluacion !== 'RESULTADO_FINAL')
+  // Defensa privada o pública de Proyecto de Grado que ya existe: el servidor sigue pidiendo
+  // "Programar defensa"; aquí se dice lo que realmente toca con esa defensa.
+  const stageDefense = currentStage?.codigo === 'DEFENSA_PRIVADA' ? privateDefense : currentStage?.codigo === 'DEFENSA_PUBLICA' ? publicDefense : null
+  const programmedDefenseView = isProjectGrade && stageDefense && ['PROGRAMADA', 'EN_CURSO', 'SUSPENDIDA'].includes(stageDefense.estado)
+    && effectiveOrientation?.siguiente_accion?.codigo === 'PROGRAMAR_EVENTO'
+    ? (() => {
+      const kind = currentStage.codigo === 'DEFENSA_PRIVADA' ? 'Defensa Privada' : 'Defensa Pública'
+      if (stageDefense.estado === 'EN_CURSO') return { title: `Gestionar y finalizar ${kind}`, description: 'La defensa está en curso. Ábrela para registrar el resultado.' }
+      if (stageDefense.estado === 'SUSPENDIDA') return { title: `${kind} suspendida`, description: 'Ábrela para reprogramarla o cancelarla.' }
+      return { title: `Continuar ${kind} programada`, description: `Programada para el ${formatDocumentDate(stageDefense.fecha_programada).replace(/\.$/, '')}. Ábrela para registrar el resultado o reprogramarla.` }
+    })()
+    : null
   // El servidor sigue diciendo "verifica las precondiciones para programar" aunque la defensa de
   // perfil de esta etapa ya existe: ese mensaje ya no corresponde y no se muestra.
-  const staleProgrammingMessage = Boolean(profileDefense) && orientation?.operacion === 'PROGRAMAR_EVENTO'
+  const staleProgrammingMessage = Boolean(profileDefense || programmedDefenseView) && orientation?.operacion === 'PROGRAMAR_EVENTO'
   const profileDefenseAction = profileDefense ? {
     codigo: 'CONSULTAR_DEFENSA_PERFIL',
     titulo: profileDefense.estado === 'PROGRAMADA'
@@ -432,13 +454,13 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
       <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 id="administrative-action-title" className="text-lg font-bold">En espera del personal responsable</h3><p className="mt-1 text-sm">{profileDefenseAction.waitingMessage}</p></div><StatusBadge value="Pendiente" compact /></div>
       <a className="expediente-link" href="#defensas">Ver defensa</a>
     </section> : publicAuthorityAction ? <section className="expediente-next" aria-labelledby="public-authority-action-title">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 id="public-authority-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{effectiveOrientation?.siguiente_accion?.titulo || 'Completar autoridades'}</p><p className="mt-1 text-sm">{effectiveOrientation?.siguiente_accion?.descripcion || 'Completa las autoridades requeridas para continuar con la Defensa Pública.'}</p></div><StatusBadge value="Pendiente" compact /></div>
-      <p className="mt-2 text-sm">Pendientes: {publicAuthorityRequirements.filter((item) => item.cumplido === false).map((item) => item.nombre).join(', ')}.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 id="public-authority-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{authorityAssignment?.title || effectiveOrientation?.siguiente_accion?.titulo || 'Completar autoridades'}</p><p className="mt-1 text-sm">{authorityAssignment?.description || effectiveOrientation?.siguiente_accion?.descripcion || 'Completa las autoridades requeridas para continuar con la Defensa Pública.'}</p></div>{!authorityAssignment && <StatusBadge value="Pendiente" compact />}</div>
+      {!authorityAssignment && <p className="mt-2 text-sm">Pendientes: {publicAuthorityRequirements.filter((item) => item.cumplido === false).map((item) => item.nombre).join(', ')}.</p>}
       <Button className="mt-3" type="button" onClick={onCompleteAuthorities}>{effectiveOrientation?.siguiente_accion?.accion_label || 'Completar autoridades'}</Button>
     </section> : visibleOrientationAction ? <section className="expediente-next" aria-labelledby="next-action-title" data-personal-action={personalDocumentAction || undefined}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{tribunalAssignment?.title || visibleNextActionTitle}</p><p className="mt-1 text-sm">{tribunalAssignment?.description || nextAction.descripcion}</p></div>
-        {nextAction.estado && (nextAction.estado !== 'PENDIENTE' || isThesisGrade) && <StatusBadge value={nextAction.estado_display || nextAction.estado} positive={nextAction.estado === 'COMPLETADA'} compact />}
+        <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{programmedDefenseView?.title || tribunalAssignment?.title || visibleNextActionTitle}</p><p className="mt-1 text-sm">{programmedDefenseView?.description || tribunalAssignment?.description || nextAction.descripcion}</p></div>
+        {nextAction.estado && !programmedDefenseView && (nextAction.estado !== 'PENDIENTE' || isThesisGrade) && <StatusBadge value={nextAction.estado_display || nextAction.estado} positive={nextAction.estado === 'COMPLETADA'} compact />}
       </div>
       {managesMissingPublicActors && <div className="expediente-next-detail"><p className="font-semibold">Para programar la Defensa Pública faltan:</p><ul className="mt-2 list-disc pl-5">{publicDefenseMissingRoles.map((role) => <li key={role}>{assignmentTypeLabel(role)}</li>)}</ul></div>}
       {nextAction.codigo === 'APROBAR_ETAPA' ? canApproveStage ? <>
@@ -460,11 +482,11 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
             : isProjectGrade && currentStage?.codigo === 'DEFENSA_PRIVADA'
               && nextAction.destino === '#defensas' && nextAction.estado === 'DISPONIBLE'
               && privateDefense && onOpenDefense
-              ? <button type="button" className="expediente-link" onClick={(event) => { event.preventDefault(); onOpenDefense(privateDefense) }}>{nextAction.accion_label || 'Ir a gestionar'}</button>
+              ? <button type="button" className="expediente-link" onClick={(event) => { event.preventDefault(); onOpenDefense(privateDefense) }}>{programmedDefenseView ? 'Ir a la defensa' : nextAction.accion_label || 'Ir a gestionar'}</button>
             : isProjectGrade && currentStage?.codigo === 'DEFENSA_PUBLICA'
               && nextAction.destino === '#defensas' && nextAction.estado === 'DISPONIBLE'
               && publicDefense && onOpenDefense
-              ? <button type="button" className="expediente-link" onClick={(event) => { event.preventDefault(); onOpenDefense(publicDefense) }}>{nextAction.accion_label || 'Ir a gestionar'}</button>
+              ? <button type="button" className="expediente-link" onClick={(event) => { event.preventDefault(); onOpenDefense(publicDefense) }}>{programmedDefenseView ? 'Ir a la defensa' : nextAction.accion_label || 'Ir a gestionar'}</button>
             : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="expediente-link" href={nextAction.destino} onClick={nextAction.codigo === 'REGISTRAR_DICTAMEN' && onOpenDictamen ? onOpenDictamen : (nextAction.codigo === 'GESTIONAR_ACTORES' || canOpenPrivateSecretary) ? (event) => { event.preventDefault(); if (canOpenPrivateSecretary) event.stopPropagation(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' ? 'Consultar revisión del Tribunal' : tribunalAssignment?.title || nextAction.accion_label || 'Ir a gestionar'}</a>}
       {nextAction.codigo === 'APROBAR_ETAPA' && stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
     </section> : <section className="expediente-next expediente-locked" aria-labelledby="next-action-locked-title">
@@ -482,7 +504,7 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
             {item.destino && item.destino !== nextAction?.destino && !(publicAuthorityAction && ['PRESIDENTE', 'SECRETARIO'].includes(item.codigo)) && <a className="expediente-req-link" href={item.destino} onClick={canOpenProfileTutor && item.codigo === 'TUTOR' && item.cumplido === false && item.destino === '#actores' ? (event) => { event.preventDefault(); event.stopPropagation(); onManageActors(event) } : undefined}>Ir a gestionar</a>}
         </li>
       ))}</ul>
-      <p className="mt-3 text-sm font-semibold">{completedRequirements} de {stageRequirements.length} cumplidos</p>
+      <p className="mt-3 text-sm font-semibold">{completedRequirements} de {stageRequirements.filter((item) => item.cumplido === true || item.cumplido === false).length} cumplidos</p>
     </section>}
     {documentaryChecklist.length > 0 && <section className="expediente-summary-block" aria-labelledby="documentary-checklist-title">
       <h3 id="documentary-checklist-title" className="text-lg font-bold">Checklist documental</h3>

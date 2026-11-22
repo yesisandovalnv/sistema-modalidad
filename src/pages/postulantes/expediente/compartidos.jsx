@@ -22,7 +22,7 @@ export function StageMarker({ state }) {
 
 export function Score({ label, value, scale, fallback = EMPTY, detail = null, decimalComma = false }) {
   const displayValue = decimalComma && value !== null && value !== undefined ? String(value).replace('.', ',') : value
-  return <div className="rounded-lg border border-slate-200 p-4 text-center dark:border-slate-700"><dt className="text-sm font-medium text-slate-500">{label}</dt><dd className="mt-2 text-2xl font-bold">{displayValue ?? fallback}{scale && value !== null && value !== undefined ? <span className="text-sm font-medium text-slate-500"> / {scale}</span> : null}</dd>{detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}</div>
+  return <div className="expediente-score"><dt className="text-sm font-medium text-slate-500">{label}</dt><dd className="mt-2 text-2xl font-bold">{displayValue ?? fallback}{scale && value !== null && value !== undefined ? <span className="text-sm font-medium text-slate-500"> / {scale}</span> : null}</dd>{detail && <p className="mt-1 text-xs text-slate-500">{detail}</p>}</div>
 }
 
 export function SectionError({ message, label, onRetry }) {

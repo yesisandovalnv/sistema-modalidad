@@ -748,3 +748,11 @@
   gap: 0.5rem;
   margin-top: 0.75rem;
 }
+
+/* Con requisitos a la derecha más altos que la columna izquierda, el espacio sobrante va a la fila
+   del contenido y no a la del título (que si no queda flotando en el medio). */
+@media (min-width: 1100px) {
+  .expediente-summary:has(> .expediente-summary-side) {
+    grid-template-rows: auto 1fr;
+  }
+}
