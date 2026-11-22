@@ -14,22 +14,23 @@
 | Excelencia Académica | Completo | Criterios a)–d) del Art. 2 se verifican manualmente (aceptable). |
 | Graduación vía Diplomado | Casi completo | Falta la vigencia de 8 meses para la defensa. |
 | Examen de Grado | Parcial | Faltan requisitos del acto (Art. 17) y la variante Seminario de Grado. |
-| Tesis de Grado | Parcial | Faltan fólder amarillo, requisitos de defensa (Art. 22) y cierre documental. |
-| Proyecto de Grado | Parcial | Requisitos del Art. 32 se exigen en el cierre, no antes de las defensas; sin límite de intentos. |
+| Tesis de Grado | Parcial | Faltan fólder amarillo, requisitos de defensa (Art. 22) y cierre documental; el resultado directo no comprueba quórum. |
+| Proyecto de Grado | Parcial | Requisitos del Art. 32 se exigen en el cierre, no antes de las defensas; sin límite de intentos; el resultado directo no comprueba quórum. |
 
 **Patrón:** las dos modalidades protegidas por `AGENTS.md` (Proyecto de Grado y Tesis) son las que más se apartan de su reglamento, sobre todo en los requisitos previos a la defensa. Ninguna modalidad controla plazos en días salvo Trabajo Dirigido y Examen de Grado.
 
 ## 2. Prioridades sugeridas
 
 1. **Requisitos previos a la defensa en Proyecto de Grado y Tesis.** Es el punto de mayor impacto: hoy un postulante puede defender sin acreditar solvencias, admisión ni timbre.
-2. **Límite de intentos en Proyecto de Grado**, alineado con Tesis y Trabajo Dirigido, que ya lo tienen.
-3. **Fólder amarillo en Tesis** (requisito de inscripción).
-4. **Requisitos del acto en Examen de Grado.**
-5. **Vigencia de 8 meses en Diplomado.**
-6. **Seminario de Grado** (variante de Examen de Grado): requiere definir alcance antes de implementarse.
-7. **Plazos en días** (todas las modalidades): requiere decisión institucional sobre si el sistema debe bloquear o solo advertir.
+2. **Quórum en el resultado directo de Proyecto de Grado y Tesis** (PG-6, TG-5): hoy se puede registrar una defensa sin constancia de quién asistió. Requiere decidir si el registro directo debe exigir la asistencia o si basta con la composición formal.
+3. **Límite de intentos en Proyecto de Grado**, alineado con Tesis y Trabajo Dirigido, que ya lo tienen.
+4. **Fólder amarillo en Tesis** (requisito de inscripción).
+5. **Requisitos del acto en Examen de Grado.**
+6. **Vigencia de 8 meses en Diplomado.**
+7. **Seminario de Grado** (variante de Examen de Grado): requiere definir alcance antes de implementarse.
+8. **Plazos en días** (todas las modalidades): requiere decisión institucional sobre si el sistema debe bloquear o solo advertir.
 
-Los puntos 1 y 2 tocan Proyecto de Grado y Tesis: según `AGENTS.md` necesitan diagnóstico previo, autorización expresa y regresión completa de ambas modalidades.
+Los puntos 1, 2 y 3 tocan Proyecto de Grado y Tesis: según `AGENTS.md` necesitan diagnóstico previo, autorización expresa y regresión completa de ambas modalidades.
 
 ## 3. Detalle por modalidad
 
@@ -52,6 +53,7 @@ Reglamento: `normativa_proyecto_de_grado/reglamento_proyecto_grado_2013.doc`. Po
 | PG-3 | Plazos: 5 días hábiles (Art. 19), 10 días calendario (Arts. 29–31), 2 semanas (Art. 45), 2 gestiones (Arts. 24 y 55). | No se controlan; solo existe la condición manual `PLAZO_MAXIMO`. | — |
 | PG-4 | Art. 25: seis ejemplares. | Cantidad no fijada (el contrato la deja pendiente por una norma que dice cuatro). | — |
 | PG-5 | El reglamento no establece anticipación para la defensa pública. | El sistema exige 48 horas. Es decisión del sistema; conviene documentar su fuente. | `MINIMUM_NOTICE_HOURS` |
+| PG-6 | Arts. 33–34: la defensa requiere quórum (privada: 2 tribunales + docente de modalidad; pública: 2 tribunales + Presidente + Secretario). | El registro directo del resultado (perfil, privada y pública) solo verifica que la composición formal del tribunal esté asignada; no registra asistencia ni comprueba el quórum del acto. El quórum técnico existe, pero solo lo usa el flujo operativo (iniciar → asistencia → evaluar → consolidar), que Proyecto de Grado ya no sigue. | `EventoDefensaService.registrar_resultado_directo_proyecto`, `apps/postulantes/defensas.py:264` |
 
 ### 3.2 Tesis de Grado
 Reglamento: `normativa_tesis_de_grado/4TESISDEGRADO.doc`. Política: `apps/modalidades/tesis_grado.py`.
@@ -65,6 +67,7 @@ Reglamento: `normativa_tesis_de_grado/4TESISDEGRADO.doc`. Política: `apps/modal
 | TG-2 | Art. 22: oficio, historial del plan, informe del tutor, admisión, solvencias, matrícula y timbre para la defensa. | No se exigen en ninguna etapa. | `DOCUMENTS_BY_STAGE`, `tesis_grado.py:427` |
 | TG-3 | Arts. 14 y 54-equivalentes: acta, hoja de aprobación, ejemplares y respaldo. | No hay cierre documental (solo conclusión académica). | — |
 | TG-4 | Plazos: 15 días del informe del tutor (Art. 17), 10 días (Arts. 19–21), 2 gestiones (Art. 14). | No se controlan. | — |
+| TG-5 | Quórum de la defensa (mismo criterio que PG-6). | Igual que PG-6: el registro directo (temática, perfil, privada y pública) no registra asistencia ni comprueba quórum. Solo la Defensa Privada evaluada de forma individual pasa por el flujo con quórum. | `registrar_resultado_directo_proyecto`, `TesisGradoPolicy.validar_resultado_directo` (`tesis_grado.py:154`) |
 
 ### 3.3 Trabajo Dirigido
 Reglamento: `normativa_trabajo_dirigido/5TRABAJODIRIGIDO.doc`. Política: `apps/modalidades/trabajo_dirigido.py`.
