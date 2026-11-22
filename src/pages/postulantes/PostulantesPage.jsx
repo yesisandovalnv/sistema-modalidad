@@ -477,16 +477,16 @@ export default function PostulantesPage() {
       <Card className="animate-enter p-4 sm:p-5" style={{ '--stagger': 2 }}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-base font-semibold text-[var(--heading)]">Estudiantes postulados</p>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="postulantes-list-actions ml-auto flex flex-wrap items-center gap-2">
           <ViewToggle view={view} onChange={chooseView} />
           {canRegisterStudents && (
-            <Button variant="secondary" className="gap-2 rounded-full" onClick={() => setImportOpen(true)}>
+            <Button variant="secondary" className="postulantes-import gap-2 rounded-full" onClick={() => setImportOpen(true)}>
               <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
-              Importar estudiantes
+              <span>Importar<span className="postulantes-import-rest"> estudiantes</span></span>
             </Button>
           )}
           {canManage && (
-            <Button className="gap-2 rounded-full" onClick={() => open()} disabled={loading || Boolean(catalogError)}>
+            <Button className="postulantes-new gap-2 rounded-full" onClick={() => open()} disabled={loading || Boolean(catalogError)}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               Nueva postulación
             </Button>

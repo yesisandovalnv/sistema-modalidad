@@ -708,3 +708,39 @@ html.dark .postulantes-table {
     transform: none;
   }
 }
+
+/* Celular: "Nueva postulación" arriba a todo el ancho (la acción principal); debajo, el selector
+   Tarjetas | Lista e "Importar estudiantes" ocupando el resto de la fila. */
+@media (max-width: 639px) {
+  .postulantes-list-actions {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .postulantes-list-actions > .postulantes-new {
+    grid-column: 1 / -1;
+    order: -1;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .postulantes-list-actions > .postulantes-import {
+    justify-content: center;
+    min-width: 0;
+  }
+}
+
+/* Celulares muy angostos: el botón dice "Importar" a la vista; el nombre completo sigue para
+   lectores de pantalla (se oculta solo visualmente). */
+@media (max-width: 399px) {
+  .postulantes-import-rest {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
