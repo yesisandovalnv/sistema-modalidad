@@ -7,7 +7,7 @@ import { formatPeriodoLabel, formatStudentLabel } from '../postulacionFormatters
 import { STATUS_TONE } from '../../../lib/statusTone'
 import { MemorandumStatusCard } from './DecisionesAcademicas'
 import { Info, RequirementIcon, StageMarker, StatusBadge } from './compartidos'
-import { EMPTY, assignmentTypeLabel, formatAcademicClassification, formatCode } from './reglas'
+import { EMPTY, assignmentTypeLabel, formatAcademicClassification, formatCode, formatStatus } from './reglas'
 
 const CLOSURE_TRACKING_DOCUMENT_CODES = ['ACTA_DEFENSA']
 
@@ -103,7 +103,7 @@ export function StudentProcessView({ detalle, flujo, cierre, cierreSoportado, pr
 
     <Card className="overflow-hidden" aria-labelledby="student-stages-title">
       <h2 id="student-stages-title" className="text-xl font-bold">Etapas del proceso</h2>
-      {stages.length === 0 ? <p className="mt-3 text-sm text-slate-500">El flujo académico todavía no fue inicializado.</p> : <ol className="mt-5">{stages.map((stage) => {
+      {stages.length === 0 ? <p className="mt-3 text-sm text-slate-500">Todavía no se prepararon las etapas de tu proceso.</p> : <ol className="mt-5">{stages.map((stage) => {
         const isCurrent = stage.id === currentStage?.id
         return <li key={stage.id} aria-current={isCurrent ? 'step' : undefined} className="relative flex gap-4 pb-5 last:pb-0">
           <span aria-hidden="true" className="absolute bottom-0 left-[0.7rem] top-6 w-px bg-slate-200 last:hidden dark:bg-slate-700" />
@@ -162,7 +162,7 @@ function clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, cur
   }
 }
 
-export function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, onOpenDocumentUpload, documentActionPending = false, onProgramDefense, onOpenDefense, programmingContext, canProgramDefense = false, orientationAcademicDecision, onRegisterAcademicDecision, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, examConclusionPending = false, academicExcellenceResult = null, resultado, concluded, defenses = [], isProjectGrade = false, isExamGrade = false, isAcademicExcellence = false, isThesisGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, additionalContent = null, onCompleteAuthorities, onManageActors, onManageMissingActors, canOpenProfileTutor = false, canOpenPrivateSecretary = false, onOpenDictamen, onRegisterTribunalReport }) {
+export function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, onOpenDocumentUpload, documentActionPending = false, onProgramDefense, onOpenDefense, programmingContext, canProgramDefense = false, orientationAcademicDecision, onRegisterAcademicDecision, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, examConclusionPending = false, academicExcellenceResult = null, resultado, concluded, defenses = [], isProjectGrade = false, isExamGrade = false, isAcademicExcellence = false, isThesisGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, additionalContent = null, onCompleteAuthorities, onManageActors, onManageMissingActors, canOpenProfileTutor = false, canOpenPrivateSecretary = false, onOpenDictamen, onRegisterTribunalReport, startStep = null }) {
   if (directedConclusion && (concluded || orientation?.operacion === 'ORIENTAR_CONCLUSION_ACADEMICA')) {
     const action = orientation?.siguiente_accion
     const canConclude = !concluded && action?.codigo === 'CONCLUIR_ACADEMICAMENTE' && action.estado === 'DISPONIBLE'
@@ -391,13 +391,17 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
     <div className="expediente-summary-main">
     <section className="expediente-tile" aria-labelledby="current-stage-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h3 id="current-stage-title" className="text-lg font-bold">{currentStage?.nombre || formatCode(cierre?.etapa_actual) || 'Sin etapa pendiente'}</h3><p className="mt-1 text-sm text-slate-500">{totalStages ? `${completedStages} de ${totalStages} etapas completadas` : 'Flujo académico sin etapas registradas'}</p></div>
+        <div><h3 id="current-stage-title" className="text-lg font-bold">{currentStage?.nombre || formatCode(cierre?.etapa_actual) || (totalStages ? 'Sin etapa pendiente' : 'Etapas por preparar')}</h3><p className="mt-1 text-sm text-slate-500">{totalStages ? `${completedStages} de ${totalStages} etapas completadas` : 'Todavía no se crearon las etapas de este proceso.'}</p></div>
         {currentStage?.estado && <StatusBadge value={currentStage.estado_display || formatStatus(currentStage.estado)} positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(currentStage.estado)} tone={STATUS_TONE[currentStage.estado]} />}
       </div>
     </section>
     {isExamGrade && resultado?.data?.nota_final != null && <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Calificación final: {String(resultado.data.nota_final).replace('.', ',')}/100</strong>{resultado.data.clasificacion && <StatusBadge value={formatAcademicClassification(resultado.data.clasificacion)} positive />}</div>}
     {(approvalMissingLabels || administrativeActionPending || publicAuthorityAction || visibleOrientationAction) && <p className="mt-4 text-sm">{orientationMessage}</p>}
-    {approvalMissingLabels ? <section className="expediente-next" aria-labelledby="missing-document-action-title">
+    {startStep ? <section className="expediente-next" aria-labelledby="start-step-title">
+      <div className="min-w-0"><h3 id="start-step-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{startStep.title}</p>{startStep.description && <p className="mt-1 text-sm">{startStep.description}</p>}</div>
+      <Button type="button" className="mt-3" disabled={startStep.disabled} onClick={startStep.onClick}>{startStep.label}</Button>
+      {startStep.error && <p role="alert" className="mt-2 text-sm text-red-600">{startStep.error}</p>}
+    </section> : approvalMissingLabels ? <section className="expediente-next" aria-labelledby="missing-document-action-title">
       <h3 id="missing-document-action-title" className="text-lg font-bold">Siguiente acción</h3>
       <p className="mt-1 text-sm">Completa el documento pendiente para volver a intentar la aprobación.</p>
       <Button className="mt-3" onClick={onGoToDocuments}>Ir a documentos</Button>
@@ -501,9 +505,4 @@ export function InscriptionDocumentsSection({ requirements, completed, total, em
       </ul>
     </section>
   </Card>
-}
-
-function formatStatus(value) {
-  const text = formatCode(value).toLocaleLowerCase('es-BO')
-  return text ? text.charAt(0).toLocaleUpperCase('es-BO') + text.slice(1) : EMPTY
 }

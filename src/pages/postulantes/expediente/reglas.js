@@ -53,3 +53,9 @@ export function formatDocumentDate(value) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 'No registrada' : date.toLocaleString('es-BO')
 }
+
+// Estado en texto normal ("PENDIENTE" → "Pendiente").
+export function formatStatus(value) {
+  const text = formatCode(value).toLocaleLowerCase('es-BO')
+  return text ? text.charAt(0).toLocaleUpperCase('es-BO') + text.slice(1) : EMPTY
+}

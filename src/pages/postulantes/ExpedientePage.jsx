@@ -28,7 +28,7 @@ import { HistoryCard } from './expediente/HistorialTab'
 import { InscriptionDocumentsSection, OperationalSummary, StudentProcessView } from './expediente/ResumenTab'
 import { TribunalReportDialog, TribunalReviewActions, TribunalReviewReports } from './expediente/RevisionTribunal'
 import { BackLink, Info, PartialState, Score, StageMarker, StatusBadge } from './expediente/compartidos'
-import { DEFENSE_TYPES, EMPTY, formatAcademicClassification, formatCode, initialsOf, supportsCancelledDefenseRescheduling } from './expediente/reglas'
+import { DEFENSE_TYPES, EMPTY, formatAcademicClassification, formatCode, formatStatus, initialsOf, supportsCancelledDefenseRescheduling } from './expediente/reglas'
 import { MODALITY_COLOR } from '../../lib/modalityColor'
 
 // Preferencia operativa de selección; no modifica la elegibilidad académica.
@@ -824,6 +824,35 @@ export default function ExpedientePage() {
       }
     }
   }
+
+  // Paso para empezar: preparar las etapas (expediente nuevo) o iniciar la etapa pendiente. En la
+  // pestaña Resumen se muestra en "Siguiente acción"; en las demás, en la cabecera (nunca en ambos).
+  const plannedStageCount = (data.capacidades?.etapas || []).length
+  const modalityName = detalle.modalidad_detalle?.nombre || flujo.modalidad?.nombre
+  const currentStageName = currentStage ? currentStage.nombre || formatCode(currentStage.codigo) : ''
+  const startStep = isHistorical ? null : canInitializeFlow ? {
+    key: 'init',
+    title: isProjectGrade ? 'Iniciar el proceso' : 'Preparar el expediente',
+    label: flowInitialization.submitting
+      ? (isProjectGrade ? 'Iniciando proceso...' : 'Preparando…')
+      : (isProjectGrade ? 'Iniciar proceso de Proyecto de Grado' : 'Preparar etapas'),
+    heroDescription: isProjectGrade
+      ? 'Registra la Inscripción y deja Perfil de Proyecto listo como siguiente etapa.'
+      : `Se crean ${plannedStageCount ? `las ${plannedStageCount} etapas` : 'las etapas'}${modalityName ? ` de ${modalityName}` : ''}; ninguna se inicia ni se aprueba todavía.`,
+    disabled: flowInitialization.submitting,
+    onClick: initializeFlow,
+    error: flowInitialization.error,
+  } : canStartCurrentStage ? {
+    key: 'start',
+    title: `Iniciar ${currentStageName}`,
+    label: stageInitialization.submitting ? 'Iniciando…' : `Iniciar ${currentStageName}`,
+    heroDescription: null,
+    disabled: stageInitialization.submitting,
+    onClick: startCurrentStage,
+    error: stageInitialization.error,
+  } : null
+  if (startStep) startStep.description = startStep.key === 'init' ? startStep.heroDescription : 'La etapa está lista para iniciarse.'
+  const startStepInSummary = Boolean(startStep) && activeTab === 'resumen'
 
   const approveCurrentStage = async () => {
     if (stageApprovalSubmitting.current || !currentStage?.id || !['EN_PROCESO', 'OBSERVADA'].includes(currentStage.estado)) return
@@ -2017,7 +2046,7 @@ export default function ExpedientePage() {
           {!isHistorical && <div className="expediente-hero-stage">
             <span className="expediente-hero-stage-icon" aria-hidden="true"><Flag className="h-[18px] w-[18px]" strokeWidth={1.9} /></span>
             <dl className="min-w-0 flex-1">
-              <Info label="Etapa actual" value={currentStage?.nombre || 'Sin etapa pendiente'} />
+              <Info label="Etapa actual" value={currentStage?.nombre || ((flujo.etapas || []).length ? 'Sin etapa pendiente' : 'Etapas por preparar')} />
             </dl>
             {canApproveStage && (
               <Button type="button" className="shrink-0" disabled={stageApproval.submitting} onClick={approveCurrentStage}>
@@ -2038,27 +2067,14 @@ export default function ExpedientePage() {
           <>
             <h2 className="sr-only">Estado actual de tu proceso académico</h2>
             <div className="expediente-hero-actions">
-            {canInitializeFlow && (
+            {startStep && !startStepInSummary && (
               <div className="mt-5">
-                <Button disabled={flowInitialization.submitting} onClick={initializeFlow}>
-                  {flowInitialization.submitting
-                    ? (isProjectGrade ? 'Iniciando proceso...' : 'Inicializando…')
-                    : (isProjectGrade ? 'Iniciar proceso de Proyecto de Grado' : 'Inicializar flujo académico')}
-                </Button>
-                <p className="mt-2 text-sm text-slate-500">{isProjectGrade
-                  ? 'Registra la Inscripción y deja Perfil de Proyecto listo como siguiente etapa.'
-                  : 'Crea las etapas pendientes configuradas por el backend; no inicia ni aprueba ninguna etapa.'}</p>
+                <Button disabled={startStep.disabled} onClick={startStep.onClick}>{startStep.label}</Button>
+                {startStep.heroDescription && <p className="mt-2 text-sm text-slate-500">{startStep.heroDescription}</p>}
+                {startStep.error && <p role="alert" className="mt-2 text-sm text-red-600">{startStep.error}</p>}
               </div>
             )}
-            {flowInitialization.error && <p role="alert" className="mt-3 text-sm text-red-600">{flowInitialization.error}</p>}
-            {canStartCurrentStage && (
-              <div className="mt-5">
-                <Button disabled={stageInitialization.submitting} onClick={startCurrentStage}>
-                  {stageInitialization.submitting ? 'Iniciando…' : `Iniciar ${currentStage.nombre || formatCode(currentStage.codigo)}`}
-                </Button>
-                {stageInitialization.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageInitialization.error}</p>}
-              </div>
-            )}
+            {startStep?.key !== 'init' && flowInitialization.error && <p role="alert" className="mt-3 text-sm text-red-600">{flowInitialization.error}</p>}
             {canManageApplications && stageApprovalAllowed && !orientationApprovalDeclared && currentStage?.id && ['EN_PROCESO', 'OBSERVADA'].includes(currentStage.estado) && !['PERFIL_PROYECTO', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(currentStage.codigo) && !isConcluded && (
               <div className="mt-5">
                 <Button variant={pendingCurrentRequirements > 0 ? 'secondary' : 'default'} disabled={stageApproval.submitting} onClick={approveCurrentStage}>
@@ -2098,6 +2114,7 @@ export default function ExpedientePage() {
       <div id="panel-resumen" role="tabpanel" aria-labelledby="expediente-tab-resumen" data-expediente-panel="resumen" hidden={!isHistorical && activeTab !== 'resumen'}>
         {!isHistorical && <div id="resumen" className="scroll-mt-24">
           <OperationalSummary
+            startStep={startStepInSummary ? startStep : null}
             cierre={cierre.data}
             cierreSoportado={cierreSoportado}
             currentStage={currentStage}
@@ -2254,7 +2271,7 @@ export default function ExpedientePage() {
         {!isHistorical && <Card id="etapas" className="expediente-card scroll-mt-24 overflow-hidden" aria-labelledby="etapas-flujo-title">
           <h2 id="etapas-flujo-title" className="text-xl font-bold">Etapas del flujo académico</h2>
           {(flujo.etapas || []).length === 0 ? (
-            <p className="mt-3 text-sm text-slate-500">El flujo académico todavía no fue inicializado.</p>
+            <p className="mt-3 text-sm text-slate-500">Todavía no se prepararon las etapas de este expediente.</p>
           ) : (
             <ol className="expediente-stages">
               {flujo.etapas.map((stage, index) => (
@@ -2263,9 +2280,9 @@ export default function ExpedientePage() {
                   <div className="min-w-0 flex-1 text-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <strong>{stage.nombre || stage.codigo}</strong>
-                      <StatusBadge value={stage.estado_display || stage.estado} compact positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)} />
+                      <StatusBadge value={stage.estado_display || formatStatus(stage.estado)} compact positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(stage.estado)} tone={STATUS_TONE[stage.estado]} />
                     </div>
-                    <p className="mt-1 text-slate-500">Intento {stage.numero_intento ?? 1}</p>
+                    {Number(stage.numero_intento) > 1 && <p className="mt-1 text-slate-500">Intento {stage.numero_intento}</p>}
                   </div>
                 </li>
               ))}

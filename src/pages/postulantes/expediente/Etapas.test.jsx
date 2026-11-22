@@ -24,7 +24,7 @@ describe('ExpedientePage · Etapas y flujo', () => {
     expect(await screen.findByText('0 de 0 etapas completadas')).toBeInTheDocument()
     expect(screen.getAllByText('Sin etapa actual').length).toBeGreaterThan(0)
     expect(screen.getByText('No hay una orientación pendiente para esta etapa.')).toBeInTheDocument()
-    expect(screen.getByText('El flujo académico todavía no fue inicializado.')).toBeInTheDocument()
+    expect(screen.getByText('Todavía no se prepararon las etapas de tu proceso.')).toBeInTheDocument()
     expect(screen.getByText('El estado del cierre técnico todavía no está disponible.')).toBeInTheDocument()
   })
 
@@ -101,9 +101,11 @@ describe('ExpedientePage · Etapas y flujo', () => {
     await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
     expect(screen.queryByRole('button', { name: 'Iniciar Perfil de Proyecto' })).not.toBeInTheDocument()
     const stagesCard = screen.getByRole('heading', { name: 'Etapas del flujo académico' }).parentElement
-    expect(within(stagesCard).getAllByText('PENDIENTE')).toHaveLength(6)
-    expect(within(stagesCard).getByText(/APROBADA/)).toBeInTheDocument()
-    expect(within(stagesCard).getByText('EN_PROCESO')).toBeInTheDocument()
+    // Estados en texto normal (no el código del servidor) y sin "Intento 1" repetido.
+    expect(within(stagesCard).getAllByText('Pendiente')).toHaveLength(6)
+    expect(within(stagesCard).getByText('Aprobada')).toBeInTheDocument()
+    expect(within(stagesCard).getByText('En proceso')).toBeInTheDocument()
+    expect(within(stagesCard).queryByText(/Intento/)).not.toBeInTheDocument()
     expect(projectFlowAfterStart('APROBADA', 'EN_PROCESO').flujo.etapas).toHaveLength(8)
     confirm.mockRestore()
   })
@@ -367,7 +369,37 @@ describe('ExpedientePage · Etapas y flujo', () => {
     expect(within(summary).queryByText('Tribunales')).not.toBeInTheDocument()
     expect(within(summary).queryByText(futureProfileOrientation.mensaje)).not.toBeInTheDocument()
     expect(within(summary).queryByText('Gestión de actores')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Iniciar Perfil de Proyecto' })).toBeInTheDocument()
+    // En Resumen el botón para iniciar está en "Siguiente acción" (sin candado) y aparece una sola vez.
+    expect(within(summary).getByRole('heading', { name: 'Siguiente acción' })).toBeInTheDocument()
+    expect(within(summary).getByRole('button', { name: 'Iniciar Perfil de Proyecto' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Iniciar Perfil de Proyecto' })).toHaveLength(1)
+    // En otra pestaña el mismo botón queda en la cabecera.
+    await userEvent.click(screen.getByRole('tab', { name: 'Documentos' }))
+    expect(screen.getAllByRole('button', { name: 'Iniciar Perfil de Proyecto' })).toHaveLength(1)
+  })
+
+  it('expediente sin etapas: en Resumen ofrece "Preparar etapas" con lenguaje claro y una sola vez', async () => {
+    const td = { id: 3, codigo: 'TRABAJO_DIRIGIDO', nombre: 'Trabajo Dirigido' }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, modalidad_detalle: td, estado_actual_detalle: { id: 1, codigo: 'REGISTRADA', nombre: 'Registrada' } },
+      flujo: { ...response.flujo, modalidad: td, etapa_actual: null, porcentaje_avance: 0, etapas: [], etapas_totales: 0, etapas_completadas: 0, orientacion_etapa_actual: null },
+      cierre: { data: null, error: '' },
+    })
+    postulacionesService.obtenerCapacidadesModalidad.mockResolvedValue({ soportada: true, configuracion_valida: true, etapas: Array.from({ length: 8 }, (_, index) => ({ orden: index + 1 })) })
+    renderApplicationManagerPage('resumen')
+
+    const summary = (await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })).parentElement
+    expect(within(summary).getByText('Etapas por preparar')).toBeInTheDocument()
+    expect(within(summary).getByText('Preparar el expediente')).toBeInTheDocument()
+    expect(within(summary).getByText('Se crean las 8 etapas de Trabajo Dirigido; ninguna se inicia ni se aprueba todavía.')).toBeInTheDocument()
+    expect(within(summary).getByRole('button', { name: 'Preparar etapas' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Preparar etapas' })).toHaveLength(1)
+    expect(screen.queryByText(/configuradas por el backend/)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Etapas' }))
+    expect(screen.getAllByRole('button', { name: 'Preparar etapas' })).toHaveLength(1)
+    expect(screen.getByText('Todavía no se prepararon las etapas de este expediente.')).toBeInTheDocument()
   })
 
   it.each(['EN_PROCESO', 'OBSERVADA'])('muestra la siguiente acción del backend cuando la etapa está %s', async (estado) => {
