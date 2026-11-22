@@ -50,7 +50,7 @@ describe('usuariosService importación de estudiantes', () => {
 
   it('extrae el detalle de errores HTTP cuando Axios recibe un Blob', async () => {
     apiClient.get.mockRejectedValue({
-      response: { status: 403, data: new Blob(['{"detail":"No autorizado."'], { type: 'application/json' }) },
+      response: { status: 403, data: new Blob(['{"detail":"No autorizado."}'], { type: 'application/json' }) },
     })
 
     await expect(usuariosService.downloadStudentTemplate()).rejects.toMatchObject({ message: 'No autorizado.' })

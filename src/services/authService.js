@@ -1,4 +1,4 @@
-import apiClient from './api'
+import apiClient, { refreshClient } from './api'
 
 export const authService = {
   async login(credentials) {
@@ -8,16 +8,16 @@ export const authService = {
     return apiClient.post('/api/v1/auth/student-login/', credentials)
   },
   async requestStudentActivation(credentials) {
-    return apiClient.post('/api/v1/auth/student-activation/request/', credentials)
+    return refreshClient.post('/api/v1/auth/student-activation/request/', credentials)
   },
   async confirmStudentActivation(credentials) {
-    return apiClient.post('/api/v1/auth/student-activation/confirm/', credentials)
+    return refreshClient.post('/api/v1/auth/student-activation/confirm/', credentials)
   },
   async requestStudentRecovery(credentials) {
-    return apiClient.post('/api/v1/auth/student-recovery/request/', credentials)
+    return refreshClient.post('/api/v1/auth/student-recovery/request/', credentials)
   },
   async confirmStudentRecovery(credentials) {
-    return apiClient.post('/api/v1/auth/student-recovery/confirm/', credentials)
+    return refreshClient.post('/api/v1/auth/student-recovery/confirm/', credentials)
   },
   async me() {
     return apiClient.get('/api/v1/auth/me/')
