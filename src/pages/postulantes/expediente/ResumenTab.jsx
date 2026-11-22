@@ -344,6 +344,22 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
     : nextAction?.titulo
   const visibleNextActionTitle = nextActionTitle
   const stageRequirements = requirements.filter((item) => item.bloquea_siguiente_accion !== false)
+  // Si lo único que falta para avanzar son tribunales, la siguiente acción lo dice: "Asignar
+  // tribunales" / "Faltan 2 tribunales para programar la defensa" (en vez de "Actores de la
+  // postulación" / "Ir a gestionar"). Otros actores (tutor, autoridades) quedan como estaban.
+  const pendingActorRequirements = stageRequirements.filter((item) => !item.cumplido)
+  const tribunalAssignment = nextAction?.codigo === 'GESTIONAR_ACTORES'
+    && pendingActorRequirements.length > 0
+    && pendingActorRequirements.every((item) => item.tipo === 'ACTOR' && item.codigo === 'TRIBUNAL')
+    ? (() => {
+      const missing = pendingActorRequirements.reduce((total, item) => total + Math.max(Number(item.minimo) - Number(item.actual || 0), 0), 0)
+      const purpose = orientation?.operacion === 'PROGRAMAR_EVENTO' ? 'para programar la defensa' : 'para continuar'
+      return {
+        title: 'Asignar tribunales',
+        description: missing > 0 ? `${missing === 1 ? 'Falta 1 tribunal' : `Faltan ${missing} tribunales`} ${purpose}.` : nextAction.descripcion,
+      }
+    })()
+    : null
   const documentaryChecklist = requirements.filter((item) => item.bloquea_siguiente_accion === false)
   const completedRequirements = stageRequirements.filter((item) => item.cumplido).length
   const approvalMissingLabels = Array.isArray(stageApproval?.fields?.faltantes)
@@ -415,8 +431,8 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
       <Button className="mt-3" type="button" onClick={onCompleteAuthorities}>{effectiveOrientation?.siguiente_accion?.accion_label || 'Completar autoridades'}</Button>
     </section> : visibleOrientationAction ? <section className="expediente-next" aria-labelledby="next-action-title" data-personal-action={personalDocumentAction || undefined}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{visibleNextActionTitle}</p><p className="mt-1 text-sm">{nextAction.descripcion}</p></div>
-        {nextAction.estado && <StatusBadge value={nextAction.estado_display || nextAction.estado} positive={nextAction.estado === 'COMPLETADA'} compact />}
+        <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{tribunalAssignment?.title || visibleNextActionTitle}</p><p className="mt-1 text-sm">{tribunalAssignment?.description || nextAction.descripcion}</p></div>
+        {nextAction.estado && (nextAction.estado !== 'PENDIENTE' || isThesisGrade) && <StatusBadge value={nextAction.estado_display || nextAction.estado} positive={nextAction.estado === 'COMPLETADA'} compact />}
       </div>
       {managesMissingPublicActors && <div className="expediente-next-detail"><p className="font-semibold">Para programar la Defensa Pública faltan:</p><ul className="mt-2 list-disc pl-5">{publicDefenseMissingRoles.map((role) => <li key={role}>{assignmentTypeLabel(role)}</li>)}</ul></div>}
       {nextAction.codigo === 'APROBAR_ETAPA' ? canApproveStage ? <>
@@ -443,7 +459,7 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
               && nextAction.destino === '#defensas' && nextAction.estado === 'DISPONIBLE'
               && publicDefense && onOpenDefense
               ? <button type="button" className="expediente-link" onClick={(event) => { event.preventDefault(); onOpenDefense(publicDefense) }}>{nextAction.accion_label || 'Ir a gestionar'}</button>
-            : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="expediente-link" href={nextAction.destino} onClick={nextAction.codigo === 'REGISTRAR_DICTAMEN' && onOpenDictamen ? onOpenDictamen : (nextAction.codigo === 'GESTIONAR_ACTORES' || canOpenPrivateSecretary) ? (event) => { event.preventDefault(); if (canOpenPrivateSecretary) event.stopPropagation(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' ? 'Consultar revisión del Tribunal' : nextAction.accion_label || 'Ir a gestionar'}</a>}
+            : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="expediente-link" href={nextAction.destino} onClick={nextAction.codigo === 'REGISTRAR_DICTAMEN' && onOpenDictamen ? onOpenDictamen : (nextAction.codigo === 'GESTIONAR_ACTORES' || canOpenPrivateSecretary) ? (event) => { event.preventDefault(); if (canOpenPrivateSecretary) event.stopPropagation(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' ? 'Consultar revisión del Tribunal' : tribunalAssignment?.title || nextAction.accion_label || 'Ir a gestionar'}</a>}
       {nextAction.codigo === 'APROBAR_ETAPA' && stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
     </section> : <section className="expediente-next expediente-locked" aria-labelledby="next-action-locked-title">
       <h3 id="next-action-locked-title">Siguiente acción</h3>

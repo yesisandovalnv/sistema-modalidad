@@ -408,9 +408,12 @@ describe('ExpedientePage · Resumen y navegación', () => {
     renderApplicationManagerPage()
 
     const summary = (await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })).parentElement
-    const links = within(summary).getAllByRole('link', { name: 'Ir a gestionar' })
+    // Lo único que falta son tribunales: el enlace dice "Asignar tribunales".
+    const links = within(summary).getAllByRole('link', { name: 'Asignar tribunales' })
     expect(links).toHaveLength(1)
     expect(links[0]).toHaveAttribute('href', '#actores')
+    expect(within(summary).getByText('Asignar tribunales', { selector: 'p' })).toBeInTheDocument()
+    expect(within(summary).getByText(/^Falta 1 tribunal (para programar la defensa|para continuar)\.$/)).toBeInTheDocument()
   })
 
   it('conserva una acción documental propia para el estudiante', async () => {

@@ -741,7 +741,8 @@ describe('ExpedientePage · Documentos', () => {
     })
     renderApplicationManagerPage()
     const nextAction = await screen.findByText('Completar documentos de Documento Final')
-    expect(within(nextAction.closest('section')).getByText(/^pendiente$/i)).toBeInTheDocument()
+    // La píldora "Pendiente" ya no se repite debajo de la siguiente acción.
+    expect(within(nextAction.closest('section')).queryByText(/^pendiente$/i)).not.toBeInTheDocument()
     expect(screen.getAllByText('Presente o corrija los documentos obligatorios de Documento Final.').length).toBeGreaterThan(0)
     expect(screen.getByRole('heading', { name: 'Requisitos de Documento Final' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Documentación de Documento Final' })).toBeInTheDocument()
