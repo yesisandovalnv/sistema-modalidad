@@ -592,13 +592,13 @@ export default function ExpedientePage() {
   const projectFinalDocumentRequirements = isProjectFinalDocumentStage
     ? [
         { codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final del Proyecto de Grado' },
-        { codigo: 'INFORME_FINAL_TUTOR', nombre: 'Informe Final del Tutor' },
-      ].map(({ codigo, nombre }) => {
+        { codigo: 'INFORME_FINAL_TUTOR', nombre: 'Informe Final del Tutor', opcional: true },
+      ].map(({ codigo, nombre, opcional = false }) => {
         const document = documentRows.find((row) => row.activo !== false && row.tipo_documento_codigo === codigo)
         const currentVersion = document?.versiones?.some((version) => version.es_version_actual && version.activo !== false)
         const approved = Boolean(document && document.estado_codigo === 'APR' && !document.requiere_correccion && currentVersion)
         const status = !document
-          ? 'No presentado'
+          ? (opcional ? 'Opcional en esta etapa' : 'No presentado')
           : document.requiere_correccion || ['OBS', 'REC'].includes(document.estado_codigo)
             ? 'Requiere corrección'
             : document.estado_codigo !== 'APR'
@@ -606,7 +606,7 @@ export default function ExpedientePage() {
               : !currentVersion
                 ? 'Sin versión vigente'
                 : 'Aprobado'
-        return { tipo: 'DOCUMENTO', codigo, nombre, cumplido: approved, estado_display: status }
+        return { tipo: 'DOCUMENTO', codigo, nombre, cumplido: approved, opcional, estado_display: status }
       })
     : []
   const tribunalReviewDocuments = getTribunalReviewDocuments(modalityCode)
@@ -696,6 +696,10 @@ export default function ExpedientePage() {
     && actionOrientation.siguiente_accion.estado === 'DISPONIBLE'
     && stageApprovalAllowed
   const canApproveStage = canManageApplications && orientationApprovalAvailable
+  // En Resumen, "Siguiente acción" ya tiene el botón para aprobar la etapa: la cabecera no lo repite
+  // (salvo que la aprobación haya fallado por faltantes, cuando el Resumen muestra esos faltantes).
+  const approveInSummary = canApproveStage && activeTab === 'resumen' && !isHistorical
+    && !(Array.isArray(stageApproval.fields?.faltantes) && stageApproval.fields.faltantes.length > 0)
   const isTrabajoDirigido = modalityCode === 'TRABAJO_DIRIGIDO'
   const directedConclusionOrientation = isTrabajoDirigido && currentOrientation?.operacion === 'ORIENTAR_CONCLUSION_ACADEMICA'
     ? currentOrientation : null
@@ -2061,7 +2065,7 @@ export default function ExpedientePage() {
             <dl className="min-w-0 flex-1">
               <Info label="Etapa actual" value={currentStage?.nombre || ((flujo.etapas || []).length ? 'Sin etapa pendiente' : 'Etapas por preparar')} />
             </dl>
-            {canApproveStage && (
+            {canApproveStage && !approveInSummary && (
               <Button type="button" className="shrink-0" disabled={stageApproval.submitting} onClick={approveCurrentStage}>
                 {stageApproval.submitting ? 'Procesando…' : 'Aprobar etapa'}
               </Button>
@@ -2202,10 +2206,10 @@ export default function ExpedientePage() {
             </> : isProjectFinalDocumentStage && !documents.loading && !documents.error ? <InscriptionDocumentsSection
               embedded
               requirements={projectFinalDocumentRequirements}
-              completed={projectFinalDocumentRequirements.filter((item) => item.cumplido).length}
-              total={projectFinalDocumentRequirements.length}
+              completed={projectFinalDocumentRequirements.filter((item) => !item.opcional && item.cumplido).length}
+              total={projectFinalDocumentRequirements.filter((item) => !item.opcional).length}
               title="Requisitos de Documento Final"
-              documentationTitle="Documentación de Documento Final"
+              documentationTitle="Documentos de la etapa"
               titleId="documento-final-requirements-title"
               documentationTitleId="documento-final-documents-title"
             /> : null}
@@ -2239,7 +2243,7 @@ export default function ExpedientePage() {
           canUpload={canUpload}
           onUpload={() => openUpload()}
           onSelect={openDocumentDetail}
-          stageDocuments={stageDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: stageDocumentRequirements } : null}
+          stageDocuments={stageDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: stageDocumentRequirements } : projectFinalDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: projectFinalDocumentRequirements.map((item) => ({ key: item.codigo, nombre: item.nombre, state: item.cumplido ? 'done' : item.opcional && item.estado_display === 'Opcional en esta etapa' ? 'optional' : item.estado_display === 'No presentado' ? 'missing' : 'review' })) } : null}
         /></div>
         {!isHistorical && (flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo) && stage.estado !== 'PENDIENTE').map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} contextualPostulacion={detalle.id} onRegisterContextualOpen={supportsContextualDictamen && String(stage.id) === String(currentStage.id) ? registerDictamenOpener : undefined} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
       </div>

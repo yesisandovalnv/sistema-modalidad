@@ -17,7 +17,7 @@ export function DocumentsCard({ documents, page, onPage, onRetry, onSelect, canU
         <ul>{stageDocuments.items.map((item) => <li key={item.key} className="expediente-stage-doc">
           <RequirementIcon value={item.state === 'done' ? true : item.state === 'missing' ? false : null} />
           <span className="expediente-stage-doc-name">{item.nombre}</span>
-          <span className="expediente-status expediente-status--compact" data-tone={item.state === 'done' ? 'success' : item.state === 'review' ? 'info' : 'warning'}>{item.state === 'done' ? 'Cumplido' : item.state === 'review' ? 'En revisión' : 'Falta'}</span>
+          <span className="expediente-status expediente-status--compact" data-tone={item.state === 'done' ? 'success' : item.state === 'review' ? 'info' : item.state === 'optional' ? 'neutral' : 'warning'}>{item.state === 'done' ? 'Cumplido' : item.state === 'review' ? 'En revisión' : item.state === 'optional' ? 'Opcional' : 'Falta'}</span>
         </li>)}</ul>
       </section>}
       {documents.loading && <p role="status" className="mt-4 text-sm">Cargando documentos…</p>}

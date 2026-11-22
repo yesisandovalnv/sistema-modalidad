@@ -415,7 +415,7 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
       </div>
     </section>
     {isExamGrade && resultado?.data?.nota_final != null && <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Calificación final: {String(resultado.data.nota_final).replace('.', ',')}/100</strong>{resultado.data.clasificacion && <StatusBadge value={formatAcademicClassification(resultado.data.clasificacion)} positive />}</div>}
-    {(approvalMissingLabels || ((administrativeActionPending || publicAuthorityAction || visibleOrientationAction) && !staleProgrammingMessage)) && <p className="mt-4 text-sm">{orientationMessage}</p>}
+    {(approvalMissingLabels || ((administrativeActionPending || publicAuthorityAction || visibleOrientationAction) && !staleProgrammingMessage && (isThesisGrade || orientationMessage !== (tribunalAssignment?.description || nextAction?.descripcion)))) && <p className="mt-4 text-sm">{orientationMessage}</p>}
     {startStep ? <section className="expediente-next" aria-labelledby="start-step-title">
       <div className="min-w-0"><h3 id="start-step-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{startStep.title}</p>{startStep.description && <p className="mt-1 text-sm">{startStep.description}</p>}</div>
       <Button type="button" className="mt-3" disabled={startStep.disabled} onClick={startStep.onClick}>{startStep.label}</Button>
@@ -439,7 +439,7 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
       </div>
       {managesMissingPublicActors && <div className="expediente-next-detail"><p className="font-semibold">Para programar la Defensa Pública faltan:</p><ul className="mt-2 list-disc pl-5">{publicDefenseMissingRoles.map((role) => <li key={role}>{assignmentTypeLabel(role)}</li>)}</ul></div>}
       {nextAction.codigo === 'APROBAR_ETAPA' ? canApproveStage ? <>
-        <Button type="button" className="mt-3" disabled={stageApproval.submitting} onClick={onApproveStage}>{stageApproval.submitting ? 'Procesando…' : nextAction.accion_label || nextAction.titulo || `Aprobar ${currentStage?.nombre || formatCode(currentStage?.codigo) || 'etapa'}`}</Button>
+        <Button type="button" className="mt-3" disabled={stageApproval.submitting} onClick={onApproveStage}>{stageApproval.submitting ? 'Procesando…' : (/^Ir a /.test(nextAction.accion_label || '') ? null : nextAction.accion_label) || (nextAction.titulo && nextAction.titulo.length <= 32 ? nextAction.titulo : null) || (currentStage?.nombre ? `Aprobar ${currentStage.nombre}` : null) || nextAction.titulo || `Aprobar ${formatCode(currentStage?.codigo) || 'etapa'}`}</Button>
         {pendingCurrentRequirements > 0 && <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Hay {pendingCurrentRequirements} {pendingCurrentRequirements === 1 ? 'requisito pendiente' : 'requisitos pendientes'}. El backend realizará la validación definitiva al aprobar.</p>}
       </> : null
         : onlyProfileTutorPending && canManageAssignments ? <a className="expediente-link" href="#actores" onClick={canOpenProfileTutor ? (event) => { event.preventDefault(); event.stopPropagation(); onManageActors(event) } : undefined}>Ir a actores</a>
@@ -513,13 +513,13 @@ export function InscriptionDocumentsSection({ requirements, completed, total, em
       <p className="font-semibold text-slate-700 dark:text-slate-200">{completed} de {total} cumplidos</p>
     </div>
     <section className={embedded ? 'mt-3' : 'mt-6 border-t border-slate-200 pt-5 dark:border-slate-700'} aria-labelledby={documentationTitleId}>
-      <Subheading id={documentationTitleId} className="text-sm font-bold uppercase tracking-[0.16em] text-slate-600 dark:text-slate-300">{documentationTitle}</Subheading>
+      <Subheading id={documentationTitleId} className="text-sm font-semibold text-[var(--text-secondary)]">{documentationTitle}</Subheading>
       <ul className={embedded ? 'mt-3 space-y-2' : 'mt-4 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-700 dark:border-slate-700'}>
         {requirements.map((item) => <li key={item.codigo} className={embedded
           ? 'expediente-req'
           : 'flex flex-wrap items-center justify-between gap-3 py-3'}>
-          <span className="expediente-req-name"><RequirementIcon value={Boolean(item.cumplido)} />{item.nombre}</span>
-          <span className={item.cumplido ? 'font-semibold text-emerald-700 dark:text-emerald-300' : 'font-semibold text-amber-700 dark:text-amber-300'}>{item.estado_display}</span>
+          <span className="expediente-req-name"><RequirementIcon value={item.cumplido ? true : item.opcional ? null : false} />{item.nombre}</span>
+          <span className={item.cumplido ? 'font-semibold text-emerald-700 dark:text-emerald-300' : item.opcional ? 'font-semibold text-[var(--text-secondary)]' : 'font-semibold text-amber-700 dark:text-amber-300'}>{item.estado_display}</span>
         </li>)}
       </ul>
     </section>

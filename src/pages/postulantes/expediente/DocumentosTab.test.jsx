@@ -745,11 +745,16 @@ describe('ExpedientePage · Documentos', () => {
     expect(within(nextAction.closest('section')).queryByText(/^pendiente$/i)).not.toBeInTheDocument()
     expect(screen.getAllByText('Presente o corrija los documentos obligatorios de Documento Final.').length).toBeGreaterThan(0)
     expect(screen.getByRole('heading', { name: 'Requisitos de Documento Final' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Documentación de Documento Final' })).toBeInTheDocument()
-    expect(screen.getByText('0 de 2 cumplidos')).toBeInTheDocument()
-    expect(screen.getAllByText('No presentado')).toHaveLength(2)
-    expect(screen.getByText('Documento Final del Proyecto de Grado')).toBeInTheDocument()
-    expect(screen.getByText('Informe Final del Tutor')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Documentos de la etapa' })).toBeInTheDocument()
+    // El Informe Final del Tutor es opcional en esta etapa: el conteo es solo de lo obligatorio.
+    expect(screen.getByText('0 de 1 cumplidos')).toBeInTheDocument()
+    expect(screen.getAllByText('No presentado')).toHaveLength(1)
+    expect(screen.getAllByText('Opcional en esta etapa').length).toBeGreaterThan(0)
+    // También aparecen en la pestaña Documentos ("Lo que pide Documento Final").
+    expect(screen.getAllByText('Documento Final del Proyecto de Grado').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Informe Final del Tutor').length).toBeGreaterThan(0)
+    const stageDocs = screen.getByRole('heading', { name: 'Lo que pide Documento Final', hidden: true }).closest('section')
+    expect([...stageDocs.querySelectorAll('li')].map((row) => row.textContent)).toEqual(['Documento Final del Proyecto de GradoFalta', 'Informe Final del TutorOpcional'])
     expect(screen.queryByRole('button', { name: 'Aprobar Documento Final' })).not.toBeInTheDocument()
   })
 
@@ -781,8 +786,9 @@ describe('ExpedientePage · Documentos', () => {
     renderApplicationUploadManagerPage('resumen')
 
     expect(await screen.findByText('Completar documentos de Documento Final')).toBeInTheDocument()
-    expect(screen.getByText('1 de 2 cumplidos')).toBeInTheDocument()
-    const documentRequirements = screen.getByRole('heading', { name: 'Documentación de Documento Final' }).closest('section')
+    // Solo el Documento Final es obligatorio: el Informe del Tutor aprobado no suma al conteo.
+    expect(screen.getByText('0 de 1 cumplidos')).toBeInTheDocument()
+    const documentRequirements = screen.getByRole('heading', { name: 'Documentos de la etapa' }).closest('section')
     expect(within(documentRequirements).getByText('Documento Final del Proyecto de Grado').closest('li')).toHaveTextContent('Pendiente de revisión administrativa')
     expect(within(documentRequirements).getByText('Informe Final del Tutor').closest('li')).toHaveTextContent('Aprobado')
     const manageDocuments = screen.getByRole('button', { name: 'Gestionar documentos' })
@@ -804,7 +810,7 @@ describe('ExpedientePage · Documentos', () => {
       },
     })
     renderApplicationManagerPage()
-    expect(await screen.findByRole('button', { name: 'Aprobar Documento Final del Proyecto de Grado' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Aprobar Documento Final' })).toBeInTheDocument()
   })
 
   it('refresca la orientación canónica tras cargar Documento Final y no aprueba la etapa automáticamente', async () => {
@@ -855,7 +861,7 @@ describe('ExpedientePage · Documentos', () => {
     resolveUpload({ id: 303, numero_version: 1, es_version_actual: true })
 
     await userEvent.click(screen.getByRole('tab', { name: 'Resumen' }))
-    expect(await screen.findByRole('button', { name: 'Aprobar Documento Final del Proyecto de Grado' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Aprobar Documento Final' })).toBeInTheDocument()
     await waitFor(() => expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(2))
     expect(screen.queryByText('Completar documentos de Documento Final')).not.toBeInTheDocument()
     expect(postulacionesService.obtenerDocumentos).toHaveBeenCalledTimes(2)

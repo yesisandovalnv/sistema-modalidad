@@ -412,7 +412,8 @@ describe('ExpedientePage · Etapas y flujo', () => {
     const summary = (await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })).parentElement
     expect(within(summary).getByRole('heading', { name: 'Siguiente acción' })).toBeInTheDocument()
     expect(within(summary).getByText('Completar composición formal')).toBeInTheDocument()
-    expect(within(summary).getAllByText('Completa las posiciones formales pendientes.')).toHaveLength(2)
+    // El mismo texto ya no se repite a la izquierda y en "Siguiente acción".
+    expect(within(summary).getAllByText('Completa las posiciones formales pendientes.')).toHaveLength(1)
     expect(within(summary).getByRole('link', { name: 'Gestionar actores' })).toHaveAttribute('href', '#actores')
     expect(within(summary).queryByText('Mínimo requerido: 2')).not.toBeInTheDocument()
   })
@@ -546,11 +547,14 @@ describe('ExpedientePage · Etapas y flujo', () => {
     expect(within(requirements).getByText('4 de 4 cumplidos')).toBeInTheDocument()
     expect(document.getElementById('panel-documentos').textContent).not.toContain('Requisitos de Inscripción')
     expect(document.getElementById('panel-documentos').textContent).not.toContain('Recepción física')
+    // En Resumen el botón para aprobar está en "Siguiente acción"; la cabecera no lo repite.
+    expect(screen.getByRole('button', { name: 'Aprobar Inscripción' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Aprobar etapa' })).not.toBeInTheDocument()
+    // En otra pestaña el botón vuelve a la cabecera.
+    await userEvent.click(screen.getByRole('tab', { name: 'Documentos' }))
     const headerButton = screen.getByRole('button', { name: 'Aprobar etapa' })
     expect(headerButton.parentElement).toHaveClass('expediente-hero-stage')
     expect(headerButton).toHaveClass('shrink-0')
-    expect(screen.getByRole('button', { name: 'Aprobar Inscripción' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Aprobar etapa' })).toBeInTheDocument()
   })
 
   it.each([
