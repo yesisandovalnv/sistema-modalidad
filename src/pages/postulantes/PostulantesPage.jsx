@@ -535,7 +535,7 @@ export default function PostulantesPage() {
                 const label = studentLabel(item)
                 return (
                   <article key={item.id} className="postulante-card animate-row-in" style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}>
-                    <div className="flex min-w-0 items-start gap-3">
+                    <div className="postulante-card-head flex min-w-0 items-start gap-3">
                       <span className="postulante-avatar postulante-avatar--lg" aria-hidden="true">{initialsOf(label)}</span>
                       <div className="min-w-0 flex-1">
                         <h2 className="postulante-name" title={label}>{label}</h2>

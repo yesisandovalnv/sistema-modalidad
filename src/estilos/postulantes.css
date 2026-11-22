@@ -744,3 +744,20 @@ html.dark .postulantes-table {
     white-space: nowrap;
   }
 }
+
+/* Celular angosto: en la tarjeta el estado baja debajo del nombre (alineado con el texto) para
+   que el nombre y la modalidad usen todo el ancho y no se corten. */
+@media (max-width: 479px) {
+  .postulante-card-head {
+    flex-wrap: wrap;
+  }
+
+  /* El texto ocupa todo el ancho junto al avatar (3rem + 0.75rem de separación). */
+  .postulante-card-head > .flex-1 {
+    flex-basis: calc(100% - 3.75rem);
+  }
+
+  .postulante-card-head > .postulante-status {
+    margin-left: 3.75rem;
+  }
+}
