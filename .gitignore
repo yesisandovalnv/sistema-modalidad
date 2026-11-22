@@ -47,3 +47,6 @@ __pycache__/
 .coverage
 htmlcov/
 coverage/
+
+# Archivos de trabajo de la herramienta de diseño (impeccable)
+.impeccable/
