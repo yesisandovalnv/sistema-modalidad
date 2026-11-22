@@ -988,5 +988,20 @@ describe('ExpedientePage · Tesis de Grado', () => {
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Cargar documentos' })).not.toBeInTheDocument())
       expect(document.activeElement).not.toBe(openButton)
     })
+
+    it('muestra los dictámenes del Tutor y del Tribunal solo cuando su etapa ya empezó', async () => {
+      const orientation = { mensaje: '', requisitos: [], siguiente_accion: null }
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('INSCRIPCION', orientation))
+      const first = renderThesis('documentos')
+      await screen.findByRole('heading', { name: 'Documentos' })
+      expect(screen.queryByRole('heading', { name: 'Dictamen del Tutor' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'Dictamen del Tribunal' })).not.toBeInTheDocument()
+      first.unmount()
+
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('REVISION_TUTOR', orientation))
+      renderThesis('documentos')
+      expect((await screen.findAllByRole('heading', { name: 'Dictamen del Tutor' })).length).toBeGreaterThan(0)
+      expect(screen.queryByRole('heading', { name: 'Dictamen del Tribunal' })).not.toBeInTheDocument()
+    })
   })
 })

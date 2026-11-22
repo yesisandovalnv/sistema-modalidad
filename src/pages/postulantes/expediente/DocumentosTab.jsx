@@ -3,15 +3,23 @@ import { Modal } from '../../../components/crud/CrudShell'
 import { Card } from '../../../components/ui/card'
 import { Button } from '../../../components/ui/button'
 import { Pagination } from '../../../components/reports/ReportComponents'
-import { Info, SectionError } from './compartidos'
+import { Info, RequirementIcon, SectionError } from './compartidos'
 import { formatDocumentDate } from './reglas'
 
-export function DocumentsCard({ documents, page, onPage, onRetry, onSelect, canUpload, onUpload }) {
+export function DocumentsCard({ documents, page, onPage, onRetry, onSelect, canUpload, onUpload, stageDocuments = null }) {
   const rows = documents.data?.results || []
   return (
     <Card className="expediente-card expediente-docs overflow-hidden" aria-labelledby="documentos-title">
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="documentos-title" className="text-xl font-bold">Documentos</h2>{canUpload && <Button onClick={onUpload}>Cargar documento</Button>}</div>
       <p className="mt-1 text-sm text-slate-500">Consulta y gestiona los documentos vinculados a tu proceso académico.</p>
+      {stageDocuments && <section className="expediente-stage-docs" aria-labelledby="stage-docs-title">
+        <h3 id="stage-docs-title" className="expediente-stage-docs-title">Lo que pide {stageDocuments.stageName}</h3>
+        <ul>{stageDocuments.items.map((item) => <li key={item.key} className="expediente-stage-doc">
+          <RequirementIcon value={item.state === 'done' ? true : item.state === 'missing' ? false : null} />
+          <span className="expediente-stage-doc-name">{item.nombre}</span>
+          <span className="expediente-status expediente-status--compact" data-tone={item.state === 'done' ? 'success' : item.state === 'review' ? 'info' : 'warning'}>{item.state === 'done' ? 'Cumplido' : item.state === 'review' ? 'En revisión' : 'Falta'}</span>
+        </li>)}</ul>
+      </section>}
       {documents.loading && <p role="status" className="mt-4 text-sm">Cargando documentos…</p>}
       {documents.error && <SectionError message={documents.error} label="Reintentar documentos" onRetry={onRetry} />}
       {!documents.loading && !documents.error && rows.length === 0 && <div className="expediente-empty">

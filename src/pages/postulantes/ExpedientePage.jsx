@@ -759,6 +759,18 @@ export default function ExpedientePage() {
     && !isConcluded
     && (!isTrabajoDirigido || currentStage.acciones_permitidas?.includes('iniciar'))
     && (!isAcademicExcellence || currentStage.acciones_permitidas?.includes('iniciar'))
+  // Cabecera: junto a la etapa actual va el estado de la etapa; el de la postulación, en los datos.
+  const showStageStatusInHero = !isHistorical && Boolean(currentStage?.estado)
+  // Documentos que pide la etapa actual cuando su siguiente paso es completar documentos.
+  const stageDocumentRequirements = !isHistorical && actionOrientation?.siguiente_accion?.codigo === 'COMPLETAR_DOCUMENTOS'
+    ? (actionOrientation.requisitos || [])
+      .filter((item) => ['OPERATIVO', 'DOCUMENTO'].includes(item.tipo) && item.bloquea_siguiente_accion !== false)
+      .map((item) => {
+        const code = String(item.codigo || '').split(':').pop()
+        const uploaded = documentRows.some((document) => document.activo !== false && document.tipo_documento_codigo === code)
+        return { key: `${item.tipo}-${item.codigo}`, nombre: item.nombre || humanizeRequirementCode(item.codigo), state: item.cumplido ? 'done' : uploaded ? 'review' : 'missing' }
+      })
+    : []
   const examConclusionPending = Boolean(
     isExamGrade
     && examResult?.completo === true
@@ -2041,6 +2053,7 @@ export default function ExpedientePage() {
               </p>
               <p>{period ? formatPeriodoLabel(period) : EMPTY}</p>
               {isHistorical && <p className="expediente-chip expediente-chip--info">Registro histórico</p>}
+              {showStageStatusInHero && <p className="expediente-hero-state">Postulación <StatusBadge compact value={detalle.estado_actual_detalle?.nombre || detalle.estado_actual_detalle?.codigo} positive={isConcluded} tone={STATUS_TONE[detalle.estado_actual_detalle?.codigo]} /></p>}
             </div>
           </div>
           {!isHistorical && <div className="expediente-hero-stage">
@@ -2055,7 +2068,9 @@ export default function ExpedientePage() {
             )}
           </div>}
           <div className="expediente-hero-aside">
-            <StatusBadge value={detalle.estado_actual_detalle?.nombre || detalle.estado_actual_detalle?.codigo} positive={isConcluded} tone={STATUS_TONE[detalle.estado_actual_detalle?.codigo]} />
+            {showStageStatusInHero
+              ? <StatusBadge value={currentStage.estado_display || formatStatus(currentStage.estado)} positive={['APROBADA', 'COMPLETADA', 'CERRADA'].includes(currentStage.estado)} tone={STATUS_TONE[currentStage.estado]} />
+              : <StatusBadge value={detalle.estado_actual_detalle?.nombre || detalle.estado_actual_detalle?.codigo} positive={isConcluded} tone={STATUS_TONE[detalle.estado_actual_detalle?.codigo]} />}
           </div>
         </div>
         {isHistorical ? (
@@ -2224,8 +2239,9 @@ export default function ExpedientePage() {
           canUpload={canUpload}
           onUpload={() => openUpload()}
           onSelect={openDocumentDetail}
+          stageDocuments={stageDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: stageDocumentRequirements } : null}
         /></div>
-        {!isHistorical && (flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo)).map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} contextualPostulacion={detalle.id} onRegisterContextualOpen={supportsContextualDictamen && String(stage.id) === String(currentStage.id) ? registerDictamenOpener : undefined} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
+        {!isHistorical && (flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo) && stage.estado !== 'PENDIENTE').map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} contextualPostulacion={detalle.id} onRegisterContextualOpen={supportsContextualDictamen && String(stage.id) === String(currentStage.id) ? registerDictamenOpener : undefined} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
       </div>
 
       <div id="panel-defensas" role="tabpanel" aria-labelledby="expediente-tab-defensas" data-expediente-panel="defensas" hidden={!isHistorical && activeTab !== 'defensas'}>

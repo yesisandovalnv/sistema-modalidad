@@ -731,3 +731,11 @@
 .expediente-hero-actions > p[role='alert'] {
   text-align: right;
 }
+
+/* Estado de la postulación en los datos de la cabecera (el de la etapa va junto a la etapa). */
+.expediente-hero-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--text-secondary);
+}

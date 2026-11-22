@@ -2518,4 +2518,41 @@ describe('ExpedientePage · Documentos', () => {
     expect(window.location.hash).toBe('#condiciones-tecnicas')
     confirm.mockRestore()
   })
+
+  it('lista lo que pide la etapa con su estado cuando el paso es completar documentos', async () => {
+    const stage = { id: 21, codigo: 'INSCRIPCION', nombre: 'Inscripción', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      flujo: {
+        ...response.flujo,
+        etapa_actual: stage,
+        etapas: [stage],
+        orientacion_etapa_actual: {
+          mensaje: 'Completa los documentos requeridos para la etapa.',
+          siguiente_accion: { codigo: 'COMPLETAR_DOCUMENTOS', titulo: 'Completar documentos', estado: 'PENDIENTE', destino: '#documentos' },
+          requisitos: [
+            { tipo: 'OPERATIVO', codigo: 'CARTA_SOLICITUD', nombre: 'Carta Solicitud', cumplido: false, estado: 'PENDIENTE' },
+            { tipo: 'OPERATIVO', codigo: 'MATRICULA_VIGENTE', nombre: 'Matricula Vigente', cumplido: false, estado: 'PENDIENTE' },
+            { tipo: 'OPERATIVO', codigo: 'HISTORIAL_PRERREQ', nombre: 'Historial Prerreq', cumplido: true, estado: 'CUMPLIDO' },
+            { tipo: 'ACTOR', codigo: 'TUTOR', nombre: 'Tutor', cumplido: false, estado: 'PENDIENTE' },
+          ],
+        },
+      },
+    })
+    postulacionesService.obtenerDocumentos.mockResolvedValue({ count: 1, next: null, previous: null, results: [
+      { id: 501, tipo_documento: 8, tipo_documento_codigo: 'MATRICULA_VIGENTE', tipo_documento_nombre: 'Matrícula vigente', estado_codigo: 'ENV', estado_nombre: 'Enviado', fecha_subida: '2026-02-01T10:00:00Z', fecha_revision: null, requiere_correccion: false, versiones: [{ id: 601 }] },
+    ] })
+    renderApplicationUploadManagerPage('documentos')
+
+    const block = (await screen.findByRole('heading', { name: 'Lo que pide Inscripción' })).closest('section')
+    const rows = within(block).getAllByRole('listitem')
+    expect(rows.map((row) => row.textContent)).toEqual(['Carta SolicitudFalta', 'Matricula VigenteEn revisión', 'Historial PrerreqCumplido'])
+    expect(within(block).queryByText('Tutor')).not.toBeInTheDocument()
+  })
+
+  it('no lista lo que pide la etapa cuando el paso no es completar documentos', async () => {
+    renderApplicationUploadManagerPage('documentos')
+    await screen.findByRole('heading', { name: 'Documentos' })
+    expect(screen.queryByRole('heading', { name: /^Lo que pide/ })).not.toBeInTheDocument()
+  })
 })

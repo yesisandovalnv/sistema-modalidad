@@ -559,4 +559,19 @@ describe('ExpedientePage · Resumen y navegación', () => {
     expect(await screen.findByText('No existe una etapa actual disponible.')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Gestionar cierre técnico' })).not.toBeInTheDocument()
   })
+
+  it('la cabecera muestra el estado de la etapa junto a ella y el de la postulación en sus datos', async () => {
+    const stage = { id: 21, codigo: 'INSCRIPCION', nombre: 'Inscripción', estado: 'PENDIENTE', numero_intento: 1, activo: true }
+    postulacionesService.obtenerExpediente.mockResolvedValue({
+      ...response,
+      detalle: { ...response.detalle, estado_actual_detalle: { id: 1, codigo: 'REGISTRADA', nombre: 'Registrada' } },
+      flujo: { ...response.flujo, etapa_actual: stage, etapas: [stage] },
+    })
+    const { container } = renderApplicationManagerPage('resumen')
+    await screen.findByRole('heading', { name: 'Qué debes hacer ahora' })
+    expect(container.querySelector('.expediente-hero-aside')).toHaveTextContent('Pendiente')
+    expect(container.querySelector('.expediente-hero-aside')).not.toHaveTextContent('Registrada')
+    expect(container.querySelector('.expediente-hero-state')).toHaveTextContent('Postulación')
+    expect(container.querySelector('.expediente-hero-state')).toHaveTextContent('Registrada')
+  })
 })
