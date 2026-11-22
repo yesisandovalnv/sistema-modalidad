@@ -8,6 +8,12 @@ import PostulantesPage from './PostulantesPage'
 import { crudService, listAll } from '../../services/crudService'
 import { postulacionesService } from '../../services/postulacionesService'
 
+// Editar se abre desde la ventana de Detalle (la fila solo tiene Detalle y Abrir expediente).
+async function openEdit(scope = screen) {
+  await userEvent.click(await scope.findByRole('button', { name: 'Detalle' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Editar' }))
+}
+
 vi.mock('../../services/crudService', () => ({
   endpoints: {
     postulaciones: '/postulaciones/',
@@ -78,20 +84,23 @@ describe('PostulantesPage US-007', () => {
     expect(await within(dialog).findByText('Cierre Documental — Aprobada')).toBeInTheDocument()
     expect(within(dialog).getByText('99.1')).toBeInTheDocument()
     expect(within(dialog).getByRole('note')).toHaveTextContent(/no sustituyen actos/i)
+    expect(within(dialog).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument()
     expect(postulacionesService.obtenerDetalle).toHaveBeenCalledTimes(1)
     expect(apiClient.get).toHaveBeenCalledWith('/api/v1/postulaciones/71/flujo/', expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(apiClient.get).toHaveBeenCalledWith('/api/v1/postulaciones/71/resultado-final/', expect.objectContaining({ signal: expect.any(AbortSignal) }))
-    expect(screen.getByRole('link', { name: 'Abrir expediente' })).toHaveAttribute('href', '/postulaciones/71')
+    // "Abrir expediente" está en la fila y también abajo en el Detalle.
+    expect(within(dialog).getByRole('link', { name: 'Abrir expediente' })).toHaveAttribute('href', '/postulaciones/71')
+    for (const link of screen.getAllByRole('link', { name: 'Abrir expediente' })) expect(link).toHaveAttribute('href', '/postulaciones/71')
     expect(screen.queryByRole('button', { name: /Eliminar/i })).not.toBeInTheDocument()
   })
 
   it('limita la edición a código y observaciones generales', async () => {
     setup({ canManage: true })
-    await userEvent.click(await screen.findByRole('button', { name: 'Editar' }))
+    await openEdit()
     const dialog = screen.getByRole('dialog', { name: 'Editar postulación' })
     expect(within(dialog).getByLabelText('Código')).toHaveValue('BASIC-071')
     expect(within(dialog).getByLabelText('Observaciones')).toHaveValue('Descripción vigente.')
-    expect(within(dialog).getByText('Datos de solo lectura')).toBeInTheDocument()
+    expect(within(dialog).getByText(/no se modifican desde esta edición básica/)).toBeInTheDocument()
     expect(within(dialog).queryByRole('combobox', { name: 'Estudiante' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('combobox', { name: 'Modalidad' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('combobox', { name: /Semestre/ })).not.toBeInTheDocument()
@@ -140,7 +149,7 @@ describe('PostulantesPage US-007', () => {
     let resolvePatch
     crudService.update.mockReturnValue(new Promise((resolve) => { resolvePatch = resolve }))
     setup({ canManage: true })
-    await userEvent.click(await screen.findByRole('button', { name: 'Editar' }))
+    await openEdit()
     const code = screen.getByLabelText('Código')
     await userEvent.clear(code)
     await userEvent.type(code, 'BASIC-071-A')
@@ -159,7 +168,7 @@ describe('PostulantesPage US-007', () => {
 
   it('permite cancelar sin enviar cambios', async () => {
     setup({ canManage: true })
-    await userEvent.click(await screen.findByRole('button', { name: 'Editar' }))
+    await openEdit()
     await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(crudService.update).not.toHaveBeenCalled()
@@ -172,7 +181,7 @@ describe('PostulantesPage US-007', () => {
       fields: { codigo: ['Ya existe.'] },
     })
     setup({ canManage: true })
-    await userEvent.click(await screen.findByRole('button', { name: 'Editar' }))
+    await openEdit()
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     expect(await screen.findByText('El código ingresado ya se encuentra registrado en otra postulación. Por favor, ingrese un código diferente.')).toBeInTheDocument()
     expect(screen.getByRole('dialog')).toBeInTheDocument()

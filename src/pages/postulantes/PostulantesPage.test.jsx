@@ -9,6 +9,12 @@ import { crudService, endpoints, listAll } from '../../services/crudService'
 import { postulacionesService } from '../../services/postulacionesService'
 import { usuariosService } from '../../services/usuariosService'
 
+// Editar se abre desde la ventana de Detalle (la fila solo tiene Detalle y Abrir expediente).
+async function openEdit(scope = screen) {
+  await userEvent.click(await scope.findByRole('button', { name: 'Detalle' }))
+  await userEvent.click(await screen.findByRole('button', { name: 'Editar' }))
+}
+
 vi.mock('../../services/crudService', () => ({
   endpoints: { postulaciones:'/postulaciones/', modalidades:'/modalidades/', periodos:'/periodos/', estudiantes:'/estudiantes/' },
   crudService: { list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
@@ -215,8 +221,9 @@ describe('Nueva postulación', () => {
   it('no ofrece abrir el expediente después de editar', async () => {
     const row = { id: 41, codigo: 'POST-041', estudiante: 17, modalidad: 3, periodo: 8 }
     crudService.update.mockResolvedValue({ ...row })
+    postulacionesService.obtenerDetalle.mockResolvedValue(row)
     setup({ rows: [row] })
-    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }))
+    await openEdit()
     fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }))
     await waitFor(() => expect(crudService.update).toHaveBeenCalled())
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /Editar/ })).not.toBeInTheDocument())
@@ -410,7 +417,8 @@ describe('Nueva postulación', () => {
     expect(within(card).queryByText(tipoRegistro === 'HISTORICO' ? 'Registro histórico' : 'Proceso con seguimiento')).not.toBeInTheDocument()
     expect(within(card).getByRole('link', { name: 'Abrir expediente' })).toBeInTheDocument()
     expect(within(card).getByRole('button', { name: 'Detalle' })).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: 'Editar' })).toBeInTheDocument()
+    // Editar está dentro de la ventana de Detalle, no en la tarjeta.
+    expect(within(card).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument()
   })
 
   it('limpia la búsqueda, vuelve a la primera página y muestra la nueva postulación tras crear', async () => {
@@ -492,9 +500,10 @@ describe('Nueva postulación', () => {
 
   it('conserva el campo Código al editar una postulación existente', async () => {
     const row = { id: 41, codigo: 'POST-041', estudiante: 17, modalidad: 3, periodo: 8 }
+    postulacionesService.obtenerDetalle.mockResolvedValue(row)
     setup({ rows: [row] })
     const card = (await screen.findByRole('link', { name: 'Abrir expediente' })).closest('article')
-    await userEvent.click(within(card).getByRole('button', { name: 'Editar' }))
+    await openEdit(within(card))
     expect(screen.getByLabelText('Código')).toHaveValue('POST-041')
   })
 
@@ -531,18 +540,17 @@ describe('Nueva postulación', () => {
     const card = link.closest('article')
     const actions = link.parentElement
     const detailButton = within(card).getByRole('button', { name: 'Detalle' })
-    const editButton = within(card).getByRole('button', { name: 'Editar' })
 
     expect(link).toHaveAttribute('href', '/postulaciones/42')
     expect(link).toHaveClass('action-button')
     expect(actions).toHaveClass('postulante-actions')
     expect(actions).toContainElement(detailButton)
-    expect(actions).toContainElement(editButton)
+    expect(within(card).queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument()
     expect(within(card).getAllByText(statusName)).toHaveLength(1)
     expect(within(card).getByText(statusName)).toHaveAttribute('data-tone', tone)
     expect(within(card).queryByText('POST-042')).not.toBeInTheDocument()
     expect(within(card).getByRole('heading', { name: formatStudentLabel(student) })).toBeInTheDocument()
-    for (const action of [link, detailButton, editButton]) {
+    for (const action of [link, detailButton]) {
       expect(action.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
     }
 

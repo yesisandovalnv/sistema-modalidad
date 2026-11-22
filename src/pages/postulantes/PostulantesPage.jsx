@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Eye, FileSpreadsheet, Pencil, Plus, Search, SearchX, UserPlus, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, FileSpreadsheet, Info as InfoIcon, Pencil, Plus, Search, SearchX, UserPlus, Users } from 'lucide-react'
 import { ViewToggle } from '../../components/ui/ViewToggle'
 import { STATUS_TONE as statusTone } from '../../lib/statusTone'
 import { Button } from '../../components/ui/button'
@@ -412,11 +412,6 @@ export default function PostulantesPage() {
       <button className="postulante-icon" type="button" aria-label="Detalle" title="Ver detalle" onClick={() => setDetail({ id: item.id, codigo: item.codigo, data: null, loading: true, error: '', row: item })}>
         <Eye className="h-4 w-4" aria-hidden="true" />
       </button>
-      {canManage && (
-        <button className="postulante-icon" type="button" aria-label="Editar" title="Editar" onClick={() => open(item)}>
-          <Pencil className="h-4 w-4" aria-hidden="true" />
-        </button>
-      )}
       <ActionButton to={`/postulaciones/${item.id}`} size="sm">Abrir expediente</ActionButton>
     </div>
   )
@@ -591,12 +586,22 @@ export default function PostulantesPage() {
                   )}
                   <div className="sm:col-span-2"><Info label="Observaciones generales" value={detail.data.observaciones_generales || 'Sin observaciones generales.'} /></div>
                 </dl>
-                <p role="note" className="rounded-xl bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
+                <p role="note" className="postulante-note">
+                  <InfoIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
                   Estos son datos técnicos básicos y no sustituyen actos administrativos o institucionales.
                 </p>
               </div>
             )}
           </DataState>
+          <div className="form-footer postulante-detail-actions">
+            {canManage && (
+              <Button type="button" variant="secondary" className="gap-2" onClick={() => { const item = detail.data || detail.row; setDetail(null); open(item) }}>
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+                Editar
+              </Button>
+            )}
+            <ActionButton to={`/postulaciones/${detail.id}`}>Abrir expediente</ActionButton>
+          </div>
         </CenteredModal>
       )}
       {createdProfile && (
@@ -678,6 +683,7 @@ export default function PostulantesPage() {
       {form && (
         <CenteredModal
           title={editing ? 'Editar postulación' : 'Nueva postulación'}
+          eyebrow={editing ? studentLabel(selected) : undefined}
           size="form"
           onClose={() => { if (!saving) { setSelected(null); setForm(null) } }}
         >
@@ -687,17 +693,7 @@ export default function PostulantesPage() {
                 <FormField error={fieldErrors.codigo}>
                   <label className="form-label">Código<input required value={form.codigo} onChange={(event) => change('codigo', event.target.value)} className="form-control" /></label>
                 </FormField>
-                <div className="compact-readonly">
-                  <p className="text-xs font-semibold text-[var(--heading)]">Datos de solo lectura</p>
-                  <dl className="mt-2 grid gap-2 sm:grid-cols-2">
-                    <Info label="Estudiante" value={studentLabel(selected)} />
-                    <Info label="Modalidad" value={modalityLabel(selected)} />
-                    <Info label="Gestión y semestre" value={periodLabel(selected)} />
-                    <Info label="Tipo de registro" value={tipoRegistroLabel(selected)} />
-                    <Info label="Estado técnico" value={<span className="postulante-status" data-tone={statusTone[selected?.estado_actual_detalle?.codigo] || 'neutral'}>{stateLabel(selected)}</span>} />
-                  </dl>
-                  <p className="mt-2 text-xs text-[var(--text-muted)]">Estudiante, modalidad, periodo y estado no se modifican desde esta edición básica.</p>
-                </div>
+                <p className="form-help">{modalityLabel(selected)} · {periodLabel(selected)}. Estudiante, modalidad, periodo y estado no se modifican desde esta edición básica.</p>
               </>
             ) : (
               <>

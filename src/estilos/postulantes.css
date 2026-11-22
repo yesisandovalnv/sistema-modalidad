@@ -435,24 +435,39 @@ html.dark .postulantes-table {
   }
 }
 
-/* Detalle y formularios dentro de la ventana flotante */
+/* Detalle y formularios dentro de la ventana flotante: planos, sin recuadros dentro de la
+   ventana. El estudiante va arriba separado por un filete; los datos, con su etiqueta. */
 .postulante-detail-head {
   display: flex;
   align-items: center;
   gap: 0.875rem;
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  background: var(--surface);
-  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1rem;
 }
 
 .postulante-detail-grid {
   display: grid;
   gap: 0.875rem 1.5rem;
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  background: var(--surface);
-  padding: 1rem 1.125rem;
+}
+
+/* Aviso discreto en una línea con ícono (no una franja de color). */
+.postulante-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.875rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.postulante-note svg {
+  margin-top: 0.125rem;
+  color: var(--text-muted);
+}
+
+.postulante-detail-actions {
+  margin-top: 1.25rem;
 }
 
 @media (min-width: 640px) {
@@ -480,13 +495,6 @@ html.dark .postulantes-table {
 
 .compact-form .form-footer {
   margin-top: 0.25rem;
-}
-
-.compact-readonly {
-  border-radius: 0.875rem;
-  background: var(--surface);
-  padding: 0.75rem 0.875rem;
-  box-shadow: inset 0 0 0 1px var(--border);
 }
 
 .form-label {
