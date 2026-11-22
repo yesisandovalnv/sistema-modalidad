@@ -10,6 +10,8 @@ import { DataState } from '../../components/crud/CrudShell'
 import { CenteredModal } from '../../components/ui/CenteredModal'
 import { Select } from '../../components/ui/Select'
 import { FilterMenu } from '../../components/ui/FilterMenu'
+import { ModalityChips } from '../../components/ui/ModalityChips'
+import { sortModalities } from '../../lib/modalityColor'
 import { withAccents } from '../../lib/spanishLabel'
 import { crudService, endpoints, listAll } from '../../services/crudService'
 import { useAuth } from '../../hooks/useAuth'
@@ -27,6 +29,8 @@ const duplicateCodeMessage = 'El código ingresado ya se encuentra registrado en
 // periodo, tipo de registro y estado se ven en Detalle. El estado usa colores semánticos.
 // Tarjetas o lista: cada usuario elige cómo ver a los estudiantes y se recuerda en este navegador.
 const REGISTRO_OPTIONS = [{ value: 'SEGUIMIENTO', label: 'Proceso con seguimiento' }, { value: 'HISTORICO', label: 'Registro histórico' }]
+// Nombres cortos en los botones de modalidad (el completo aparece al pasar el cursor).
+const CHIP_LABEL = { GRADUACION_VIA_DIPLOMADO: 'Vía Diplomado', EXCELENCIA_ACADEMICA: 'Excelencia' }
 const VIEW_KEY = 'sm_postulantes_vista'
 const readView = () => { try { return localStorage.getItem(VIEW_KEY) === 'lista' ? 'lista' : 'tarjetas' } catch { return 'tarjetas' } }
 const PAGE_SIZE = { tarjetas: 15, lista: 20 }
@@ -77,6 +81,8 @@ export default function PostulantesPage() {
   // Error al guardar: se muestra en el formulario, no reemplaza la lista de fondo.
   const [formError, setFormError] = useState('')
   const [catalogError, setCatalogError] = useState('')
+  // Postulación recién creada: se ofrece abrir su expediente, que es el paso siguiente.
+  const [createdProfile, setCreatedProfile] = useState(null)
   const [selected, setSelected] = useState(null)
   const [detail, setDetail] = useState(null)
   const [academicDetail, setAcademicDetail] = useState(null)
@@ -288,6 +294,7 @@ export default function PostulantesPage() {
       periodo: Number(form.periodo),
       observaciones_generales: form.observaciones_generales || '',
     }
+    let created = null
     try {
       if (editing) {
         await crudService.update(endpoints.postulaciones, selected.id, payload)
@@ -312,6 +319,14 @@ export default function PostulantesPage() {
           setRevision((value) => value + 1)
           return
         }
+        if (response?.id) {
+          created = {
+            id: response.id,
+            estudiante_detalle: response.estudiante_detalle || catalogs.estudiantes.find((item) => item.id === Number(form.estudiante)),
+            modalidad_detalle: response.modalidad_detalle || catalogs.modalidades.find((item) => item.id === Number(form.modalidad)),
+            periodo_detalle: response.periodo_detalle || catalogs.periodos.find((item) => item.id === Number(form.periodo)),
+          }
+        }
       }
       if (!editing) {
         setQuery('')
@@ -321,6 +336,7 @@ export default function PostulantesPage() {
       setSelected(null)
       setForm(null)
       setRevision((value) => value + 1)
+      if (created) setCreatedProfile(created)
     } catch (requestError) {
       if (requestError.status === 403) setFormError('No tienes permiso para gestionar postulaciones.')
       else {
@@ -414,6 +430,8 @@ export default function PostulantesPage() {
     multiple: true,
     options: filterModalities.map((item) => ({ value: String(item.id), label: withAccents(item.nombre) })),
   }]
+  // Botones de modalidad sobre la lista: mismo valor que el menú Filtrar.
+  const chipModalities = sortModalities(filterModalities).map((item) => ({ value: String(item.id), label: CHIP_LABEL[item.codigo] || withAccents(item.nombre), title: withAccents(item.nombre), codigo: item.codigo }))
   const filterName = filterColumns[0].options.filter((option) => modalidadFilter.includes(option.value)).map((option) => option.label).join(', ')
   const changeFilter = (key, value) => { if (key === 'modalidad') { setModalidadFilter(Array.isArray(value) ? value : []); setPage(1) } }
 
@@ -480,6 +498,7 @@ export default function PostulantesPage() {
           )}
           </div>
         </div>
+        <ModalityChips options={chipModalities} selected={modalidadFilter} onChange={(value) => changeFilter('modalidad', value)} />
         <DataState
           loading={loading && !loadedOnce.current}
           error={error}
@@ -578,6 +597,22 @@ export default function PostulantesPage() {
               </div>
             )}
           </DataState>
+        </CenteredModal>
+      )}
+      {createdProfile && (
+        <CenteredModal title="Postulación creada" eyebrow="Nueva postulación" onClose={() => setCreatedProfile(null)}>
+          <div className="space-y-4">
+            <dl className="postulante-detail-grid">
+              <Info label="Estudiante" value={studentLabel(createdProfile)} />
+              <Info label="Modalidad" value={modalityLabel(createdProfile)} />
+              <Info label="Gestión" value={periodLabel(createdProfile)} />
+            </dl>
+            <p className="text-sm text-[var(--text-secondary)]">El siguiente paso es abrir el expediente e iniciar la Inscripción.</p>
+            <div className="form-footer">
+              <Button type="button" variant="outline" onClick={() => setCreatedProfile(null)}>Cerrar</Button>
+              <ActionButton to={`/postulaciones/${createdProfile.id}`}>Abrir expediente</ActionButton>
+            </div>
+          </div>
         </CenteredModal>
       )}
       {historicalProfile && !historicalUploadOpen && (

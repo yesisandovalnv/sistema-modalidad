@@ -194,7 +194,33 @@ describe('Nueva postulación', () => {
     expect(screen.getByRole('button', { name: /Guardando/ })).toBeDisabled()
     expect(crudService.create).toHaveBeenCalledTimes(1)
     expect(crudService.create).toHaveBeenCalledWith('/postulaciones/', { estudiante: 17, modalidad: 3, periodo: 8, observaciones_generales: '' })
-    resolveRequest({ id: 1 }); await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    resolveRequest({ id: 1 }); await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Nueva postulación' })).not.toBeInTheDocument())
+  })
+
+  it('tras crear ofrece abrir el expediente de la nueva postulación y se puede cerrar', async () => {
+    crudService.create.mockResolvedValue({ id: 41, estudiante: 17, modalidad: 3, periodo: 8 })
+    setup()
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await pick('Estudiante', '394090 - Luis Fernando Menacho Melgar')
+    await pick('Modalidad', 'Proyecto de Grado')
+    await pick(/Semestre/, 'Gestión 2026 - Semestre II')
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    const created = await screen.findByRole('dialog', { name: 'Postulación creada' })
+    expect(within(created).getByText('394090 - Luis Fernando Menacho Melgar')).toBeInTheDocument()
+    expect(within(created).getByRole('link', { name: 'Abrir expediente' })).toHaveAttribute('href', '/postulaciones/41')
+    fireEvent.click(within(created).getAllByRole('button', { name: 'Cerrar' }).at(-1))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Postulación creada' })).not.toBeInTheDocument())
+  })
+
+  it('no ofrece abrir el expediente después de editar', async () => {
+    const row = { id: 41, codigo: 'POST-041', estudiante: 17, modalidad: 3, periodo: 8 }
+    crudService.update.mockResolvedValue({ ...row })
+    setup({ rows: [row] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Guardar' }))
+    await waitFor(() => expect(crudService.update).toHaveBeenCalled())
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Editar/ })).not.toBeInTheDocument())
+    expect(screen.queryByRole('dialog', { name: 'Postulación creada' })).not.toBeInTheDocument()
   })
 
   it('muestra el tipo de registro y mantiene Proceso con seguimiento como valor por defecto', async () => {
@@ -588,21 +614,52 @@ describe('Nueva postulación', () => {
     setup({ rows, modalities: [modality, tesis], students: [student, ana] })
     listAll.mockImplementation((path) => Promise.resolve(path === endpoints.postulaciones ? rows : path === endpoints.modalidades ? [modality, tesis] : path === endpoints.periodos ? [period] : [student, ana]))
     await screen.findAllByRole('link', { name: 'Abrir expediente' })
+    // Las opciones de Filtrar se llaman igual que los botones de modalidad sobre la lista.
+    const menuOption = (name) => screen.getAllByRole('button', { name }).find((button) => !button.closest('.modality-chips'))
     await userEvent.click(screen.getByRole('button', { name: /Filtrar/ }))
     expect(screen.queryByRole('button', { name: 'Limpiar' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Tesis de Grado' }))
+    await userEvent.click(menuOption('Tesis de Grado'))
     await waitFor(() => expect(screen.getAllByRole('link', { name: 'Abrir expediente' })).toHaveLength(1))
     expect(screen.getByRole('heading', { name: formatStudentLabel(ana) })).toBeInTheDocument()
     expect(listAll).toHaveBeenCalledWith(endpoints.postulaciones, { search: '', ordering: '-created_at' }, expect.any(AbortSignal))
     // Se puede marcar más de una modalidad; no hay botón Limpiar.
-    await userEvent.click(screen.getByRole('button', { name: 'Proyecto de Grado' }))
+    await userEvent.click(menuOption('Proyecto de Grado'))
     await waitFor(() => expect(screen.getAllByRole('link', { name: 'Abrir expediente' })).toHaveLength(2))
-    expect(screen.getByRole('button', { name: 'Tesis de Grado' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Proyecto de Grado' })).toHaveAttribute('aria-pressed', 'true')
+    expect(menuOption('Tesis de Grado')).toHaveAttribute('aria-pressed', 'true')
+    expect(menuOption('Proyecto de Grado')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('button', { name: 'Limpiar' })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Tesis de Grado' }))
+    await userEvent.click(menuOption('Tesis de Grado'))
     await waitFor(() => expect(screen.getAllByRole('link', { name: 'Abrir expediente' })).toHaveLength(1))
   })
+  it('filtra con los botones de modalidad y comparte el valor con Filtrar', async () => {
+    localStorage.removeItem('sm_postulantes_vista')
+    const tesis = { id: 4, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado', activo: true }
+    const rows = [
+      { id: 1, codigo: 'P-1', estudiante: 17, modalidad: 3, periodo: 8, estudiante_detalle: student, modalidad_detalle: modality },
+      { id: 2, codigo: 'T-1', estudiante: 39, modalidad: 4, periodo: 8, estudiante_detalle: ana, modalidad_detalle: tesis },
+    ]
+    setup({ rows, modalities: [modality, tesis], students: [student, ana] })
+    listAll.mockImplementation((path) => Promise.resolve(path === endpoints.postulaciones ? rows : path === endpoints.modalidades ? [modality, tesis] : path === endpoints.periodos ? [period] : [student, ana]))
+    await screen.findAllByRole('link', { name: 'Abrir expediente' })
+    const chips = screen.getByRole('group', { name: 'Filtrar por modalidad' })
+    // Proyecto de Grado va primero (orden de los colores del sistema), después Tesis.
+    expect(within(chips).getAllByRole('button').map((button) => button.textContent)).toEqual(['Todas', 'Proyecto de Grado', 'Tesis de Grado'])
+    expect(within(chips).getByRole('button', { name: 'Todas' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(within(chips).getByRole('button', { name: 'Tesis de Grado' }))
+    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Abrir expediente' })).toHaveLength(1))
+    expect(screen.getByRole('heading', { name: formatStudentLabel(ana) })).toBeInTheDocument()
+    expect(within(chips).getByRole('button', { name: 'Tesis de Grado' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(chips).getByRole('button', { name: 'Todas' })).toHaveAttribute('aria-pressed', 'false')
+    // El menú Filtrar muestra la misma modalidad elegida.
+    await userEvent.click(screen.getByRole('button', { name: /Filtrar/ }))
+    expect(screen.getAllByRole('button', { name: 'Tesis de Grado' }).find((button) => !button.closest('.modality-chips'))).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.keyboard('{Escape}')
+    // Tocar la elegida otra vez vuelve a "Todas".
+    await userEvent.click(within(chips).getByRole('button', { name: 'Tesis de Grado' }))
+    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Abrir expediente' })).toHaveLength(2))
+    expect(within(chips).getByRole('button', { name: 'Todas' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
 
   it('sin coincidencias muestra un aviso propio (con sugerencia) en lugar de cortar la lista', async () => {
     const row = { id: 41, codigo: 'POST-041', estudiante: 17, modalidad: 3, periodo: 8 }

@@ -29,6 +29,7 @@ import { InscriptionDocumentsSection, OperationalSummary, StudentProcessView } f
 import { TribunalReportDialog, TribunalReviewActions, TribunalReviewReports } from './expediente/RevisionTribunal'
 import { BackLink, Info, PartialState, Score, StageMarker, StatusBadge } from './expediente/compartidos'
 import { DEFENSE_TYPES, EMPTY, formatAcademicClassification, formatCode, initialsOf, supportsCancelledDefenseRescheduling } from './expediente/reglas'
+import { MODALITY_COLOR } from '../../lib/modalityColor'
 
 // Preferencia operativa de selección; no modifica la elegibilidad académica.
 const ACTOR_SELECTION_PRESENTATION = {
@@ -48,16 +49,6 @@ const INSCRIPTION_PRESENTATION = {
   PROYECTO_GRADO: { integrated: true },
   EXAMEN_GRADO: { integrated: true },
   EXCELENCIA_ACADEMICA: { integrated: true },
-}
-
-// Diseño del sistema: cada modalidad con su color fijo (los mismos del Inicio) e iniciales.
-const MODALITY_COLOR = {
-  PROYECTO_GRADO: '--chart-1',
-  TESIS_GRADO: '--chart-2',
-  TRABAJO_DIRIGIDO: '--chart-3',
-  GRADUACION_VIA_DIPLOMADO: '--chart-4',
-  EXCELENCIA_ACADEMICA: '--chart-5',
-  EXAMEN_GRADO: '--chart-6',
 }
 
 const EXPEDIENTE_HASH_TABS = {
