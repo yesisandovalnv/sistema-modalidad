@@ -285,6 +285,9 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
     : []
   const publicDefense = publicDefenseCandidates.length === 1 ? publicDefenseCandidates[0] : null
   const profileEvaluation = profileDefense?.evaluaciones?.some((item) => item.tipo_evaluacion !== 'RESULTADO_FINAL')
+  // El servidor sigue diciendo "verifica las precondiciones para programar" aunque la defensa de
+  // perfil de esta etapa ya existe: ese mensaje ya no corresponde y no se muestra.
+  const staleProgrammingMessage = Boolean(profileDefense) && orientation?.operacion === 'PROGRAMAR_EVENTO'
   const profileDefenseAction = profileDefense ? {
     codigo: 'CONSULTAR_DEFENSA_PERFIL',
     titulo: profileDefense.estado === 'PROGRAMADA'
@@ -412,7 +415,7 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
       </div>
     </section>
     {isExamGrade && resultado?.data?.nota_final != null && <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Calificación final: {String(resultado.data.nota_final).replace('.', ',')}/100</strong>{resultado.data.clasificacion && <StatusBadge value={formatAcademicClassification(resultado.data.clasificacion)} positive />}</div>}
-    {(approvalMissingLabels || administrativeActionPending || publicAuthorityAction || visibleOrientationAction) && <p className="mt-4 text-sm">{orientationMessage}</p>}
+    {(approvalMissingLabels || ((administrativeActionPending || publicAuthorityAction || visibleOrientationAction) && !staleProgrammingMessage)) && <p className="mt-4 text-sm">{orientationMessage}</p>}
     {startStep ? <section className="expediente-next" aria-labelledby="start-step-title">
       <div className="min-w-0"><h3 id="start-step-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{startStep.title}</p>{startStep.description && <p className="mt-1 text-sm">{startStep.description}</p>}</div>
       <Button type="button" className="mt-3" disabled={startStep.disabled} onClick={startStep.onClick}>{startStep.label}</Button>

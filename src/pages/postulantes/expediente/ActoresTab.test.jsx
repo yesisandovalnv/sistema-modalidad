@@ -713,6 +713,7 @@ describe('ExpedientePage · Actores', () => {
       clave: 'TRIBUNAL_1', nombre: 'Tribunal 1', tipo_participacion: 'TRIBUNAL', ambito: 'ETAPA', seguimiento_etapa: 160, orden_cargo: 1,
       estado_ocupacion: 'VACANTE', habilitada: true, asignacion_actual: null, asignacion_actual_detalle: null, acciones_permitidas: ['ASIGNAR'], bloqueo: null, precondicion: null,
     })
+    postulacionesService.obtenerCandidatosElegibles.mockResolvedValue({ count: 1, next: null, previous: null, results: [{ id: 81, nombre_completo: 'Docente elegible', elegible: true }] })
     renderPrivateSecretary({ management })
     await userEvent.click(await screen.findByRole('link', { name: 'Ir a precondiciones' }))
     const dialog = await screen.findByRole('dialog', { name: 'Gestionar actores — Defensa Privada' })
@@ -721,6 +722,10 @@ describe('ExpedientePage · Actores', () => {
     expect(within(dialog).getByText('Para esta etapa')).toBeInTheDocument()
     expect(within(dialog).getAllByText('Vacante')).toHaveLength(2)
     expect(within(dialog).getByText('Asignada')).toBeInTheDocument()
+    // Sin nadie elegido, la lista no ofrece una opción vacía ("Quitar selección" aparece al elegir a alguien).
+    const combo = within(dialog).getByLabelText('Seleccionar candidato para Docente de Modalidad')
+    await waitFor(() => expect(candidateList(combo).querySelectorAll('[role="option"]').length).toBeGreaterThan(0))
+    expect(within(candidateList(combo)).queryByRole('option', { name: 'Quitar selección' })).not.toBeInTheDocument()
   })
 
   it('Secretario contextual de Tesis: abre desde Resumen sin POST y conserva cierre, foco y ambos puestos', async () => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarCheck2, CalendarClock } from 'lucide-react'
+import { CalendarCheck2, CalendarClock, Info as InfoIcon } from 'lucide-react'
 import { Modal } from '../../../components/crud/CrudShell'
 import { Card } from '../../../components/ui/card'
 import { Button } from '../../../components/ui/button'
@@ -236,7 +236,16 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
 
       {directProjectFlow && <ProjectGradeDirectResult defense={defense} canManage={evaluationManager} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} onClose={onClose} thesisGrade={isThesisGrade} compositionValidation={thesisCompositionValidation} />}
 
-      {canManage && directProjectFlow && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}
+      {canManage && directProjectFlow && (actions.includes('reprogramar') || destructiveActions.length > 0) && <section className="defense-more" aria-labelledby="otras-acciones-defensa-title">
+        <h3 id="otras-acciones-defensa-title" className="font-bold">{defense.estado === 'CANCELADA' ? 'Nueva programación' : 'Otras acciones'}</h3>
+        {actions.includes('reprogramar') && <p className="mt-1 text-sm text-[var(--text-secondary)]">{defense.estado === 'CANCELADA'
+          ? 'La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.'
+          : 'Reprogramar cambia la fecha de esta defensa; el cambio queda registrado en el historial.'}</p>}
+        <div className="defense-more-actions">
+          {destructiveActions.map((action) => <Button key={action} variant="outline" onClick={() => onAction(action)}>{actionLabels[action]}</Button>)}
+          {actions.includes('reprogramar') && <Button onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button>}
+        </div>
+      </section>}
       {canManage && !directProjectFlow && defense.estado === 'CANCELADA' && canRescheduleCancelledDefense && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}
 
       {!directProjectFlow && displayedPrimaryAction && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950" aria-labelledby="siguiente-accion-defensa-title"><h3 className="text-sm font-bold uppercase tracking-wide text-sky-800 dark:text-sky-200">Acción principal</h3>{![ 'iniciar', 'registrar_evaluacion'].includes(displayedPrimaryAction) && <p className="mt-2 font-semibold">{displayedPrimaryTitle}</p>}{displayedPrimaryDescription && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{displayedPrimaryDescription}</p>}{['registrar_evaluacion', 'consolidar_resultado'].includes(displayedPrimaryAction) ? <DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} action={displayedPrimaryAction} actionLabel={displayedPrimaryTitle} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} projectProfileFlow={profileQuickFlow} onReviewAttendance={() => { setAttendanceReviewRequest((value) => value + 1); const participantsHeading = document.getElementById('participantes-defensa-title'); if (typeof participantsHeading?.scrollIntoView === 'function') participantsHeading.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} /> : <Button className="mt-4" disabled={displayedPrimaryAction === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)} onClick={() => onAction(displayedPrimaryAction)}>{displayedPrimaryTitle}</Button>}</section>}
@@ -249,7 +258,7 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
         return <Button key={action} variant={variant} disabled={finalBlocked} title={finalBlocked ? 'La finalización requiere quórum técnico válido confirmado por el backend.' : undefined} onClick={() => onAction(action)}>{actionLabels[action]}</Button>
       })}</div>{defense.estado === 'EN_CURSO' && quorum.data?.valido !== true && <p className="mt-3 text-sm text-slate-500">La finalización estará disponible cuando el backend confirme quórum técnico válido.</p>}</section>}
 
-      {canManage && destructiveActions.length > 0 && <section aria-labelledby="acciones-destructivas-defensa-title"><h3 id="acciones-destructivas-defensa-title" className="text-lg font-bold">Acción destructiva</h3><div className="mt-3 flex flex-wrap gap-2">{destructiveActions.map((action) => <Button key={action} variant="outline" onClick={() => onAction(action)}>{actionLabels[action]}</Button>)}</div></section>}
+      {canManage && !directProjectFlow && destructiveActions.length > 0 && <section aria-labelledby="acciones-destructivas-defensa-title"><h3 id="acciones-destructivas-defensa-title" className="text-lg font-bold">Acción destructiva</h3><div className="mt-3 flex flex-wrap gap-2">{destructiveActions.map((action) => <Button key={action} variant="outline" onClick={() => onAction(action)}>{actionLabels[action]}</Button>)}</div></section>}
 
       {hasResult && <section aria-labelledby="resultado-consolidado-title"><h3 id="resultado-consolidado-title" className="text-lg font-bold">Resultado</h3><div className="mt-3 rounded-lg border p-3"><EvaluationData evaluation={defense.resultado_consolidado} showTechnical={canManage || canEvaluate} /></div></section>}
 
@@ -302,22 +311,19 @@ export function DefenseOperationDialog({ operation, stages, quorum, onSubmit, on
         {operation.programmingContext ? <>
           <input type="hidden" name="tipo_evento" value={operation.programmingContext.tipoEvento} />
           <input type="hidden" name="seguimiento_etapa" value={operation.programmingContext.seguimientoEtapa} />
-          <dl className="grid gap-3 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm dark:border-sky-800 dark:bg-sky-950 sm:grid-cols-2"><div><dt className="text-slate-500">Defensa a programar</dt><dd className="mt-1 font-semibold">{operation.programmingContext.typeLabel}</dd></div><div><dt className="text-slate-500">Etapa</dt><dd className="mt-1 font-semibold">{operation.programmingContext.stageLabel}</dd></div>{operation.programmingContext.anticipationLabel && <div><dt className="text-slate-500">Anticipación mínima informada</dt><dd className="mt-1 font-semibold">{operation.programmingContext.anticipationLabel}</dd></div>}</dl>
+          <dl className="defense-op-context"><div><dt className="text-slate-500">Defensa a programar</dt><dd className="mt-1 font-semibold">{operation.programmingContext.typeLabel}</dd></div><div><dt className="text-slate-500">Etapa</dt><dd className="mt-1 font-semibold">{operation.programmingContext.stageLabel}</dd></div>{operation.programmingContext.anticipationLabel && <div><dt className="text-slate-500">Anticipación mínima informada</dt><dd className="mt-1 font-semibold">{operation.programmingContext.anticipationLabel}</dd></div>}</dl>
         </> : <>
           <p className="text-sm">La postulación se toma de este expediente. El intento será determinado por el backend.</p>
-          <label className="text-sm">Tipo de defensa<select name="tipo_evento" value={type} onChange={(event) => setType(event.target.value)} required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione un tipo</option>{DEFENSE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{error('tipo_evento')}</label>
-          <label className="text-sm">Etapa compatible<select name="seguimiento_etapa" required disabled={disabled || !type} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="">Seleccione una etapa</option>{compatibleStages.map((stage) => <option key={stage.id} value={stage.id}>{stage.nombre} — intento {stage.numero_intento}</option>)}</select>{error('seguimiento_etapa')}</label>
+          <label className="form-label">Tipo de defensa<select name="tipo_evento" value={type} onChange={(event) => setType(event.target.value)} required disabled={disabled} className="form-control"><option value="">Seleccione un tipo</option>{DEFENSE_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{error('tipo_evento')}</label>
+          <label className="form-label">Etapa compatible<select name="seguimiento_etapa" required disabled={disabled || !type} className="form-control"><option value="">Seleccione una etapa</option>{compatibleStages.map((stage) => <option key={stage.id} value={stage.id}>{stage.nombre} — intento {stage.numero_intento}</option>)}</select>{error('seguimiento_etapa')}</label>
           {type && compatibleStages.length === 0 && <p role="status" className="text-sm text-amber-700">No existe una etapa compatible en proceso u observada.</p>}
         </>}
-        <label className="text-sm">Fecha y hora programada<input name="fecha_programada" type="datetime-local" required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('fecha_programada')}</label>
-        <label className="text-sm">Modalidad técnica<select name="modalidad_evento" value={mode} onChange={(event) => setMode(event.target.value)} disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"><option value="PRESENCIAL">Presencial</option><option value="VIRTUAL">Virtual</option><option value="MIXTA">Mixta</option></select></label>
-        {(mode === 'PRESENCIAL' || mode === 'MIXTA') && <label className="text-sm">Lugar<input name="lugar" required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('lugar')}</label>}
-        {(mode === 'VIRTUAL' || mode === 'MIXTA') && <label className="text-sm">Enlace virtual<input name="enlace_virtual" type="url" required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('enlace_virtual')}</label>}
-        <label className="text-sm">Observaciones (opcional)<textarea name="observaciones" disabled={disabled} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" /></label>
-        <details className="overflow-hidden rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950">
-          <summary className="cursor-pointer px-3 py-2 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600">Información institucional</summary>
-          <aside role="note" className="border-t border-amber-300 p-3 text-sm">Virtual y mixta son modalidades técnicas y no acreditan autorización normativa.</aside>
-        </details>
+        <label className="form-label">Fecha y hora programada<input name="fecha_programada" type="datetime-local" required disabled={disabled} className="form-control" />{error('fecha_programada')}</label>
+        <label className="form-label">Modalidad técnica<select name="modalidad_evento" value={mode} onChange={(event) => setMode(event.target.value)} disabled={disabled} className="form-control"><option value="PRESENCIAL">Presencial</option><option value="VIRTUAL">Virtual</option><option value="MIXTA">Mixta</option></select></label>
+        {(mode === 'PRESENCIAL' || mode === 'MIXTA') && <label className="form-label">Lugar<input name="lugar" required disabled={disabled} className="form-control" />{error('lugar')}</label>}
+        {(mode === 'VIRTUAL' || mode === 'MIXTA') && <label className="form-label">Enlace virtual<input name="enlace_virtual" type="url" required disabled={disabled} className="form-control" />{error('enlace_virtual')}</label>}
+        <label className="form-label">Observaciones (opcional)<textarea name="observaciones" disabled={disabled} className="form-control form-control--area" /></label>
+        <p role="note" className="defense-op-note"><InfoIcon className="h-4 w-4 shrink-0" aria-hidden="true" />Virtual y mixta son modalidades técnicas y no acreditan autorización normativa.</p>
       </> : <>
         {operation.action === 'iniciar' ? <>
           <p className="text-sm">Confirma los participantes presentes antes de iniciar la defensa.</p>
@@ -333,12 +339,12 @@ export function DefenseOperationDialog({ operation, stages, quorum, onSubmit, on
           {activeParticipants.some((participant) => participant.presente === null || participant.presente === undefined) && <p className="text-sm text-slate-500">Desmarca únicamente a quienes no se encuentren presentes.</p>}
         </> : <p className="text-sm">Confirma la acción sobre el evento técnico seleccionado.</p>}
         {operation.action === 'finalizar' && <p className="rounded-lg border p-3 text-sm">Quórum técnico confirmado por backend: <strong>{quorum.data?.valido ? 'válido' : 'no válido'}</strong>. Finalizar no registra resultado académico, acta firmada ni cierre universitario.</p>}
-        {operation.action === 'reprogramar' && <label className="text-sm">Nueva fecha y hora<input name="nueva_fecha" type="datetime-local" required disabled={disabled} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('nueva_fecha')}</label>}
-        {['suspender', 'cancelar', 'reprogramar'].includes(operation.action) && <label className="text-sm">Motivo<textarea aria-label="Motivo" name="motivo" required disabled={disabled} className="mt-1 min-h-24 w-full rounded-lg border p-2 dark:bg-slate-950" />{error('motivo')}</label>}
+        {operation.action === 'reprogramar' && <label className="form-label">Nueva fecha y hora<input name="nueva_fecha" type="datetime-local" required disabled={disabled} className="form-control" />{error('nueva_fecha')}</label>}
+        {['suspender', 'cancelar', 'reprogramar'].includes(operation.action) && <label className="form-label">Motivo<textarea aria-label="Motivo" name="motivo" required disabled={disabled} className="form-control form-control--area" />{error('motivo')}</label>}
       </>}
       {error('non_field_errors')}{error('detail')}
       {operation.error && <p role="alert" className="text-red-600">{operation.error}</p>}
-      <div className="flex flex-wrap gap-3"><Button type="submit" disabled={disabled}>{disabled ? 'Procesando…' : operation.action === 'programar' ? operation.programmingContext?.actionLabel || 'Programar defensa' : operation.action === 'iniciar' ? 'Iniciar defensa' : 'Confirmar'}</Button><Button type="button" variant="secondary" disabled={disabled} onClick={onClose}>Cancelar</Button></div>
+      <div className="form-footer"><Button type="button" variant="secondary" disabled={disabled} onClick={onClose}>Cancelar</Button><Button type="submit" disabled={disabled}>{disabled ? 'Procesando…' : operation.action === 'programar' ? operation.programmingContext?.actionLabel || 'Programar defensa' : operation.action === 'iniciar' ? 'Iniciar defensa' : 'Confirmar'}</Button></div>
     </form>
   </Modal>
 }

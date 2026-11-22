@@ -397,7 +397,8 @@ function EligibleActorCandidates({ postulacion, position, positions, drafts, ass
     onStatusChange(position.clave, { loading: candidates.loading, error: candidates.error, invalidSelection })
   }, [position.clave, candidates.loading, candidates.error, invalidSelection, onStatusChange])
 
-  const candidateOptions = [{ value: '', label: 'Seleccione una persona' }, ...visibleRows.map((candidate) => {
+  // La opción vacía sirve para quitar una elección: solo aparece cuando ya hay alguien elegido.
+  const candidateOptions = [...(selected?.candidateId ? [{ value: '', label: 'Quitar selección' }] : []), ...visibleRows.map((candidate) => {
     const selectedDraft = findSelectedDraft(position, candidate.id, positions, drafts)
     const conflict = findConflictingDraft(position, candidate.id, positions, drafts, selectionPresentation)
     const assignedPosition = findConflictingDraft(position, candidate.id, positions.filter((other) => (

@@ -999,6 +999,20 @@ describe('ExpedientePage · Defensas', () => {
     expect(within(dialog).getByRole('heading', { name: 'Resultado' })).toBeInTheDocument()
   })
 
+  it('Proyecto de Grado: reprogramar y cancelar van juntos en "Otras acciones" con un texto correcto', async () => {
+    const programmed = { ...defenseRows[2], estado: 'PROGRAMADA', estado_display: 'Programada', acciones_permitidas: ['reprogramar', 'cancelar'] }
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [programmed] })
+    renderDefenseDocumentsAdminPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+    const dialog = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    const more = within(dialog).getByRole('heading', { name: 'Otras acciones' }).closest('section')
+    expect(within(dialog).queryByRole('heading', { name: 'Acción destructiva' })).not.toBeInTheDocument()
+    expect(within(more).queryByText(/La fecha cancelada/)).not.toBeInTheDocument()
+    expect(within(more).getByRole('button', { name: 'Reprogramar defensa' })).toBeInTheDocument()
+  })
+
   it('muestra y descarga la hoja de observaciones de una Defensa de Perfil finalizada', async () => {
     const profileDefense = {
       ...defenseRows[2],
@@ -1271,9 +1285,11 @@ describe('ExpedientePage · Defensas', () => {
     renderDefenseManagerPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Programar defensa' }))
     const dialog = screen.getByRole('dialog', { name: 'Programar defensa' })
-    const institutionalDetails = within(dialog).getByText('Información institucional').closest('details')
-    expect(institutionalDetails).not.toHaveAttribute('open')
-    expect(within(institutionalDetails).queryByText(/regla de 48 horas/i)).not.toBeInTheDocument()
+    // El aviso institucional es una línea discreta (ya no un desplegable amarillo).
+    expect(within(dialog).getByRole('note')).toHaveTextContent(/no acreditan autorización normativa/i)
+    expect(within(dialog).queryByText(/regla de 48 horas/i)).not.toBeInTheDocument()
+    // Botones a la derecha: Cancelar y después la acción principal.
+    expect([...dialog.querySelector('.form-footer').querySelectorAll('button')].map((button) => button.textContent)).toEqual(['Cancelar', 'Programar defensa'])
     fireEvent.change(within(dialog).getByLabelText('Tipo de defensa'), { target: { value: 'DEFENSA_PRIVADA' } })
     expect(within(dialog).getByRole('option', { name: 'Defensa Privada — intento 2' })).toBeInTheDocument()
     fireEvent.change(within(dialog).getByLabelText('Etapa compatible'), { target: { value: '12' } })

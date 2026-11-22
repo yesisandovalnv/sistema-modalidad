@@ -99,22 +99,22 @@ export default function ProjectGradeDirectResult({ defense, canManage, onChanged
     {!formOpen && canManage && <Button className="mt-3" disabled={!compositionValid} onClick={() => setFormOpen(true)}>{existingEvaluation ? 'Finalizar y consolidar resultado existente' : 'Registrar resultado y finalizar'}</Button>}
     {!canManage && <p className="mt-3 text-sm">Se requiere permiso administrativo para registrar el resultado.</p>}
     {formOpen && compositionValid && <form className="mt-4 space-y-4" onSubmit={submit}>
-      {!existingEvaluation && needsResult && <label className="block text-sm font-medium">Resultado
-        <select name="resultado" defaultValue="SUFICIENTE" disabled={submitting} className="mt-1 w-full rounded-md border p-2 dark:bg-slate-950">
+      {!existingEvaluation && needsResult && <label className="form-label">Resultado
+        <select name="resultado" defaultValue="SUFICIENTE" disabled={submitting} className="form-control">
           <option value="SUFICIENTE">Suficiente</option><option value="INSUFICIENTE">Insuficiente</option>
         </select>
       </label>}
       {!existingEvaluation && needsNote && <div>
-        <label className="mt-3 block text-sm font-medium">{thesisGrade && selectedSemantics === 'MODALIDAD_ESPECIFICA' ? `Nota (${noteMinimum}–${noteMaximum})` : thesisGrade ? `Nota bruta (${noteMinimum}–${noteMaximum})` : 'Nota bruta (0–100)'}
-          <input name="nota" type="number" min={noteMinimum} max={noteMaximum} step="0.01" required disabled={submitting} className="mt-1 w-full rounded-md border p-2 dark:bg-slate-950" />
+        <label className="form-label mt-3">{thesisGrade && selectedSemantics === 'MODALIDAD_ESPECIFICA' ? `Nota (${noteMinimum}–${noteMaximum})` : thesisGrade ? `Nota bruta (${noteMinimum}–${noteMaximum})` : 'Nota bruta (0–100)'}
+          <input name="nota" type="number" min={noteMinimum} max={noteMaximum} step="0.01" required disabled={submitting} className="form-control" />
         </label>
         <p className="mt-1 text-sm text-slate-600">Ponderación: {weight}%. El aporte se calcula automáticamente.</p>
       </div>}
-      {!existingEvaluation && <label className="block text-sm font-medium">Observaciones (opcional)
-        <textarea name="observaciones" disabled={submitting} className="mt-1 min-h-20 w-full rounded-md border p-2 dark:bg-slate-950" />
+      {!existingEvaluation && <label className="form-label">Observaciones (opcional)
+        <textarea name="observaciones" disabled={submitting} className="form-control form-control--area" />
       </label>}
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-      <div className="flex gap-2"><Button type="submit" disabled={submitting}>{submitting ? 'Procesando…' : existingEvaluation ? 'Finalizar y consolidar' : 'Guardar resultado'}</Button><Button type="button" variant="secondary" disabled={submitting} onClick={() => setFormOpen(false)}>Cancelar</Button></div>
+      <div className="form-footer"><Button type="button" variant="secondary" disabled={submitting} onClick={() => setFormOpen(false)}>Cancelar</Button><Button type="submit" disabled={submitting}>{submitting ? 'Procesando…' : existingEvaluation ? 'Finalizar y consolidar' : 'Guardar resultado'}</Button></div>
     </form>}
   </section>
 }
