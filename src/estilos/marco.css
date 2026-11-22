@@ -1,0 +1,408 @@
+/* Marco: menú lateral, barra superior, panel de trabajo y colores del modo oscuro (html.dark). */
+
+/* Marco azul (menú + barra superior) y panel de trabajo. Solo el panel se desplaza, así
+   sus esquinas redondeadas quedan siempre a la vista, arriba y abajo. El panel no crea una
+   capa propia (no es fixed ni usa transform): las ventanas emergentes siguen cubriendo todo. */
+.layout-navbar {
+  left: 0;
+  height: var(--navbar-height);
+  background: var(--nav-bg-start);
+  color: var(--nav-text);
+  transition: left 0.25s var(--ease-out);
+}
+
+.layout-column {
+  height: calc(100dvh - var(--navbar-height));
+  margin-top: var(--navbar-height);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  border-radius: 1.25rem 1.25rem 0 0;
+  background: var(--canvas);
+  transition: margin-left 0.25s var(--ease-out);
+}
+
+.layout-main {
+  padding-top: 1.5rem;
+}
+
+.navbar-title {
+  color: var(--nav-strong);
+}
+
+.navbar-meta {
+  color: var(--nav-meta);
+}
+
+/* `.navbar-control` doble: gana a `html.dark .app-button--ghost` (texto claro), que en un
+   tema de menú claro haría desaparecer los iconos de la barra. */
+.layout-navbar .navbar-control.navbar-control {
+  color: var(--nav-text);
+  background: transparent;
+  box-shadow: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.layout-navbar .navbar-control.navbar-control:hover {
+  background: var(--nav-hover);
+  color: var(--nav-strong);
+}
+
+.layout-navbar .navbar-control:focus-visible {
+  outline: 2px solid var(--nav-focus);
+  outline-offset: 2px;
+  --tw-ring-shadow: 0 0 #0000;
+}
+
+.layout-navbar .navbar-account {
+  color: var(--nav-strong);
+}
+
+.navbar-badge {
+  position: absolute;
+  top: 0.125rem;
+  right: 0;
+  display: grid;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--danger);
+  padding: 0 0.25rem;
+  color: #ffffff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--nav-bg-start);
+  animation: count-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navbar-badge {
+    animation: none;
+  }
+}
+
+.sidebar-brand-plate {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 7.5rem;
+  height: 7.5rem;
+  border-radius: 9999px;
+  background: #ffffff;
+  box-shadow: 0 0 0 2px var(--brand-gold), 0 6px 18px rgb(0 15 34 / 35%);
+  transition: width 0.25s var(--ease-out), height 0.25s var(--ease-out);
+}
+
+.sidebar-brand-plate img {
+  width: 86%;
+  height: 86%;
+  object-fit: contain;
+}
+
+.sidebar-section {
+  color: var(--nav-section);
+}
+
+.sidebar-link {
+  position: relative;
+  color: var(--nav-text);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-link svg {
+  color: var(--nav-text);
+  transition: color 0.15s ease;
+}
+
+.sidebar-link:hover {
+  background: var(--nav-hover);
+  color: var(--nav-strong);
+}
+
+.sidebar-link:hover svg {
+  color: var(--nav-strong);
+}
+
+.sidebar-link:focus-visible,
+.sidebar-close:focus-visible {
+  outline: 2px solid var(--nav-focus);
+  outline-offset: 2px;
+}
+
+.sidebar-link--active,
+.sidebar-link--active:hover {
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgb(0 15 34 / 25%);
+}
+
+.sidebar-link--active svg,
+.sidebar-link--active:hover svg {
+  color: var(--nav-active-icon);
+}
+
+.sidebar-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 0.75rem;
+  background: var(--nav-active-bg);
+  box-shadow: 0 2px 8px rgb(0 15 34 / 25%);
+  pointer-events: none;
+}
+
+.sidebar-indicator--animate {
+  transition: transform 240ms var(--ease-out);
+}
+
+.sidebar-link {
+  z-index: 1;
+}
+
+.has-indicator .sidebar-link--active,
+.has-indicator .sidebar-link--active:hover {
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-indicator--animate {
+    transition: none;
+  }
+}
+
+.sidebar-close {
+  color: var(--nav-text);
+}
+
+.sidebar--collapsed .sidebar-toolbar {
+  justify-content: center;
+}
+
+.sidebar-close:hover {
+  background: var(--nav-hover);
+  color: var(--nav-strong);
+}
+
+@media (min-width: 768px) {
+  .sidebar {
+    transition: width 0.25s ease;
+  }
+
+  .sidebar-label {
+    display: block;
+    max-width: 200px;
+    overflow: hidden;
+    opacity: 1;
+    white-space: nowrap;
+    visibility: visible;
+    transition: max-width 0.25s ease, opacity 0.25s ease, visibility 0s linear;
+  }
+
+  .sidebar-link {
+    transition: background-color 0.15s ease, color 0.15s ease, padding-left 0.25s ease, padding-right 0.25s ease, gap 0.25s ease;
+  }
+
+  /* En escritorio el panel llega al borde derecho y al de abajo; se redondean las dos
+     esquinas de arriba y la de abajo a la izquierda (hacia el menú). */
+  .layout-column {
+    margin-left: var(--sidebar-expanded-width);
+    border-radius: var(--panel-radius) var(--panel-radius) 0 var(--panel-radius);
+  }
+
+  .layout-column--collapsed {
+    margin-left: var(--sidebar-collapsed-width);
+  }
+
+  .sidebar--collapsed {
+    width: var(--sidebar-collapsed-width);
+  }
+
+  .sidebar--collapsed .sidebar-label {
+    max-width: 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: max-width 0.25s ease, opacity 0.25s ease, visibility 0s linear 0.25s;
+  }
+
+  .sidebar--collapsed .sidebar-brand-plate {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .sidebar--collapsed .sidebar-link {
+    padding-left: 1.125rem;
+    padding-right: 1.125rem;
+    gap: 0;
+  }
+
+  .layout-navbar {
+    left: var(--sidebar-expanded-width);
+  }
+
+  .layout-navbar--collapsed {
+    left: var(--sidebar-collapsed-width);
+  }
+
+}
+
+html.dark {
+  color-scheme: dark;
+  --canvas: #0a1628;
+  --surface: #12233d;
+  --surface-raised: #182c4a;
+  --surface-sunken: #0d1b31;
+  --surface-secondary: #182c4a;
+  --border: #22395c;
+  --border-strong: #5a7193;
+  --text-primary: #e6edf7;
+  --text-secondary: #a9b8cd;
+  --text-muted: #8c9db5;
+  --heading: #ffffff;
+  --primary: var(--uab-turquesa);
+  --primary-hover: color-mix(in srgb, var(--uab-turquesa) 85%, #ffffff);
+  --on-primary: var(--uab-azul-950);
+  --primary-soft: #182c4a;
+  --link: #7fd3dc;
+  --focus: var(--uab-turquesa);
+  --brand-gold-text: var(--uab-dorado);
+  --nav-bg: var(--uab-azul-950);
+  --nav-active-bg: #e6edf7;
+  --nav-active-text: var(--uab-azul-950);
+  --success-soft: #0f2e24;
+  --success-text: #6fd39a;
+  --warning-soft: #33280b;
+  --warning-text: #f2c75c;
+  --danger-soft: #3a1418;
+  --danger-text: #ff9b9b;
+  --info-soft: #0d2e36;
+  --info-text: #7fd3dc;
+  --evaluation-soft: #2e2410;
+  --evaluation-text: #e3c277;
+  --document-soft: #17234a;
+  --document-text: #a9bcf5;
+  --delivery-soft: #0d2e36;
+  --delivery-text: #7fd3dc;
+  --neutral-soft: #182c4a;
+  --neutral-text: #a9b8cd;
+  --card-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 4px 16px rgb(0 0 0 / 22%);
+  --scrim: rgb(0 0 0 / 60%);
+  scrollbar-color: color-mix(in srgb, var(--border-strong) 70%, transparent) transparent;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--text-primary);
+  caret-color: var(--primary);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--uab-turquesa) 35%, transparent);
+  color: inherit;
+}
+
+.app-shell {
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--nav-bg);
+  color: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar *,
+  .layout-navbar,
+  .layout-column {
+    transition-duration: 0s !important;
+  }
+}
+
+.app-filter-panel {
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+  color: var(--text-primary);
+}
+
+.app-filter-panel label {
+  min-width: 0;
+}
+
+.app-filter-panel :where(input, select, textarea) {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.app-filter-panel :where(input, textarea)::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.app-filter-panel :where(input, select, textarea):focus {
+  border-color: var(--primary);
+  outline: 2px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  outline-offset: 1px;
+}
+
+.app-button--primary {
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: 0 1px 2px rgb(2 37 78 / 18%);
+}
+
+.app-button--primary:hover { background: var(--primary-dark); }
+
+.app-button--secondary {
+  background: var(--primary-soft);
+  color: var(--blue-deep);
+}
+
+.app-button--secondary:hover {
+  background: color-mix(in srgb, var(--primary-light) 24%, var(--surface));
+}
+
+.app-button--outline {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: var(--surface);
+  color: var(--primary-dark);
+}
+
+.app-button--outline:hover { background: var(--primary-soft); }
+
+.app-button--ghost { color: var(--primary-dark); }
+.app-button--ghost:hover { background: var(--primary-soft); }
+
+html.dark .app-button--secondary,
+html.dark .app-button--outline,
+html.dark .app-button--ghost {
+  color: var(--text-primary);
+}
+
+.semantic-status {
+  border-radius: 9999px;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.semantic-status--success { background: var(--success-soft); color: var(--success-text); }
+.semantic-status--warning { background: var(--warning-soft); color: var(--warning-text); }
+.semantic-status--danger { background: var(--danger-soft); color: var(--danger-text); }
+.semantic-status--evaluation { background: var(--evaluation-soft); color: var(--evaluation-text); }
+.semantic-status--document { background: var(--document-soft); color: var(--document-text); }
+.semantic-status--delivery { background: var(--delivery-soft); color: var(--delivery-text); }
+.semantic-status--neutral { background: var(--neutral-soft); color: var(--neutral-text); }
+.semantic-status--info { background: var(--info-soft); color: var(--info-text); }
+
+#root {
+  min-height: 100vh;
+}

@@ -39,7 +39,10 @@ describe('ruta del expediente', () => {
   it('renderiza el expediente con la capacidad requerida', () => {
     renderRoute((permission) => permission === 'puede_ver_postulaciones')
     expect(screen.getByRole('heading', { name: 'Expediente cargado' })).toBeInTheDocument()
+    // El expediente es una página (no una ventana flotante).
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+
 })
 
 describe('resolución de la ruta inicial', () => {

@@ -4,10 +4,11 @@ import { Button } from '../../components/ui/button'
 
 /** Isolates rendering failures in the Proyecto de Grado defense detail. */
 export default class DefenseDetailErrorBoundary extends Component {
-  state = { hasError: false }
+  // Recuerda la defensa actual: el aviso de error se reinicia solo al abrir otra defensa.
+  state = { hasError: false, resetKey: this.props.resetKey }
 
   static getDerivedStateFromProps(props, state) {
-    if (state.hasError && props.resetKey !== state.resetKey) {
+    if (props.resetKey !== state.resetKey) {
       return { hasError: false, resetKey: props.resetKey }
     }
     return null

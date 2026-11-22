@@ -1,0 +1,83 @@
+/* Animaciones de entrada y carga. */
+
+/* ── Animaciones (DESIGN.md · sección I del plan) ───────────────────────────
+   Solo transform, opacity y clip-path. `backwards` aplica el estado inicial durante
+   el retraso y no deja ningún transform al terminar, así no encierra ventanas fixed. */
+@keyframes enter-up {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes bar-grow {
+  from { clip-path: inset(0 100% 0 0 round 9999px); }
+}
+
+@keyframes donut-draw {
+  from { stroke-dasharray: 0 400; }
+}
+
+@keyframes skeleton-pulse {
+  50% { opacity: 0.55; }
+}
+
+.animate-enter {
+  animation: enter-up 260ms var(--ease-out) backwards;
+  animation-delay: calc(var(--stagger, 0) * 45ms);
+}
+
+.bar-fill {
+  animation: bar-grow 600ms var(--ease-out) backwards;
+  animation-delay: calc(150ms + var(--stagger, 0) * 60ms);
+  transition: clip-path 500ms var(--ease-out);
+}
+
+.animate-fade {
+  animation: fade-in 320ms var(--ease-out) backwards;
+  animation-delay: 360ms;
+}
+
+/* Al aplicar filtros el contenido se queda y se atenúa mientras llegan los datos nuevos. */
+.dashboard-body {
+  transition: opacity 200ms ease;
+}
+
+.dashboard-body.is-refreshing {
+  opacity: 0.55;
+}
+
+.donut-segment {
+  transition: stroke-dasharray 500ms var(--ease-out), stroke-dashoffset 500ms var(--ease-out);
+  animation: donut-draw 700ms var(--ease-out) backwards;
+  animation-delay: calc(150ms + var(--stagger, 0) * 90ms);
+}
+
+.skeleton {
+  background: var(--surface-sunken);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  animation-delay: calc(var(--stagger, 0) * 90ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-enter {
+    animation-name: fade-in;
+    animation-delay: 0ms;
+  }
+
+  .bar-fill,
+  .donut-segment {
+    animation: none;
+    transition: none;
+  }
+
+  .animate-fade {
+    animation-delay: 0ms;
+  }
+
+  .skeleton {
+    animation-duration: 2.8s;
+  }
+
+}

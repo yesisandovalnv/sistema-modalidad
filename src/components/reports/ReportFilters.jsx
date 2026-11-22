@@ -1,28 +1,116 @@
-import { useEffect, useState } from 'react'
-import { Button } from '../ui/button'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Search } from 'lucide-react'
+import { FilterChips, FilterMenu } from '../ui/FilterMenu'
+import { activeFilters } from '../../lib/activeFilters'
+import { withAccents } from '../../lib/spanishLabel'
 import { reportesService } from '../../services/reportesService'
 
 const empty = { modalidad: '', gestion: '', semestre: '', tipo_registro: '', etapa_actual: '', buscar: '', fecha_desde: '', fecha_hasta: '' }
-export function ReportFilters({ initial = empty, onApply, showSearch = false }) {
-  const [draft, setDraft] = useState({ ...empty, ...initial }); const [modalidades, setModalidades] = useState([]); const [etapas, setEtapas] = useState([]); const [advanced, setAdvanced] = useState(false); const [loadingStages, setLoadingStages] = useState(false); const [stageError, setStageError] = useState(''); const [configurationWarning, setConfigurationWarning] = useState('')
-  useEffect(() => { const controller = new AbortController(); reportesService.obtenerModalidades(controller.signal).then(setModalidades).catch(() => {}); return () => controller.abort() }, [])
+
+function defaultGestiones() {
+  const year = new Date().getFullYear()
+  return [year, year - 1, year - 2, year - 3]
+}
+
+/**
+ * Filtros de los reportes y del Inicio: un botón "Filtrar" que despliega columnas para marcar
+ * lo que se quiere ver (se aplica al instante), los chips de lo elegido y, si se pide, un buscador.
+ * `gestiones`: años a ofrecer (el Inicio pasa los que tienen postulaciones).
+ */
+// `layout="header"`: solo el botón, a la derecha de la cabecera (sin chips, para que nada
+// se mueva al marcar); lo elegido se informa con `onSummary` para mostrarlo en otro lugar.
+export function ReportFilters({ initial = empty, onApply, showSearch = false, gestiones, layout = 'inline', onSummary }) {
+  const [values, setValues] = useState({ ...empty, ...initial })
+  const [modalidades, setModalidades] = useState([])
+  const [etapas, setEtapas] = useState([])
+  const [loadingStages, setLoadingStages] = useState(false)
+  const [stageError, setStageError] = useState('')
+  const [configurationWarning, setConfigurationWarning] = useState('')
+  const searchTimer = useRef(null)
+
   useEffect(() => {
-    setDraft((current) => ({ ...current, etapa_actual: '' })); setEtapas([]); setStageError(''); setConfigurationWarning(''); setLoadingStages(false)
-    if (!draft.modalidad) return
-    const controller = new AbortController(); setLoadingStages(true); reportesService.obtenerCapacidades(draft.modalidad, controller.signal).then((data) => { setEtapas((data.etapas || []).filter((stage) => stage.id != null)); if (data.configuracion_valida === false) setConfigurationWarning((data.advertencias || [])[0] || 'La modalidad tiene etapas sin configurar.') }).catch((error) => { if (!error.canceled) setStageError('No se pudieron cargar las etapas.') }).finally(() => { if (!controller.signal.aborted) setLoadingStages(false) }); return () => controller.abort()
-  }, [draft.modalidad])
-  const set = (key) => (e) => setDraft((current) => ({ ...current, [key]: e.target.value }))
-  const field = 'h-10 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950'
-  return <form className="app-filter-panel rounded-xl border p-4" onSubmit={(e) => { e.preventDefault(); onApply(draft) }}>
-    <div className={`grid gap-4 sm:grid-cols-2 ${showSearch ? 'xl:grid-cols-5' : 'lg:grid-cols-4'}`}>
-      <label className="grid gap-1 text-sm">Modalidad<select className={field} value={draft.modalidad} onChange={set('modalidad')}><option value="">Todas</option>{modalidades.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}</select></label>
-      <label className="grid gap-1 text-sm">Gestión<input className={field} type="number" min="1900" max="2200" value={draft.gestion} onChange={set('gestion')} placeholder="2026" /></label>
-      <label className="grid gap-1 text-sm">Semestre<select className={field} value={draft.semestre} onChange={set('semestre')}><option value="">Todos</option><option value="I">Primero</option><option value="II">Segundo</option></select></label>
-      <label className="grid gap-1 text-sm">Tipo de registro<select aria-label="Tipo de registro" className={field} value={draft.tipo_registro} onChange={set('tipo_registro')}><option value="">Todos</option><option value="SEGUIMIENTO">Seguimiento</option><option value="HISTORICO">Histórico</option></select></label>
-      <label className="grid gap-1 text-sm">Etapa actual<select aria-label="Etapa actual" className={field} value={draft.etapa_actual} onChange={set('etapa_actual')} disabled={!draft.modalidad || loadingStages || etapas.length === 0}><option value="">{loadingStages ? 'Cargando etapas…' : etapas.length === 0 && draft.modalidad ? 'Sin etapas disponibles' : 'Todas'}</option>{etapas.map((e) => <option key={e.id} value={e.id}>{e.nombre}</option>)}</select>{stageError && <span role="alert" className="text-xs text-red-700">{stageError}</span>}{configurationWarning && <span role="status" className="text-xs text-amber-700">{configurationWarning}</span>}</label>
-      {showSearch && <label className="grid gap-1 text-sm">Buscar<input className={field} value={draft.buscar} onChange={set('buscar')} placeholder="Nombre o código" /></label>}
+    const controller = new AbortController()
+    reportesService.obtenerModalidades(controller.signal).then(setModalidades).catch(() => {})
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    setEtapas([]); setStageError(''); setConfigurationWarning(''); setLoadingStages(false)
+    if (!values.modalidad) return undefined
+    const controller = new AbortController()
+    setLoadingStages(true)
+    reportesService.obtenerCapacidades(values.modalidad, controller.signal)
+      .then((data) => {
+        setEtapas((data.etapas || []).filter((stage) => stage.id != null))
+        if (data.configuracion_valida === false) setConfigurationWarning((data.advertencias || [])[0] || 'La modalidad tiene etapas sin configurar.')
+      })
+      .catch((error) => { if (!error.canceled) setStageError('No se pudieron cargar las etapas.') })
+      .finally(() => { if (!controller.signal.aborted) setLoadingStages(false) })
+    return () => controller.abort()
+  }, [values.modalidad])
+
+  useEffect(() => () => window.clearTimeout(searchTimer.current), [])
+
+  const apply = (next) => { setValues(next); onApply(next) }
+  const change = (key, value) => {
+    const next = { ...values, [key]: value === '' ? '' : String(value) }
+    if (key === 'modalidad') next.etapa_actual = ''
+    apply(next)
+  }
+  const clear = () => apply({ ...empty, buscar: values.buscar })
+
+  const years = useMemo(() => {
+    const list = [...new Set([...(gestiones || []), ...defaultGestiones()].map(Number).filter(Boolean))]
+    return list.sort((a, b) => b - a)
+  }, [gestiones])
+
+  const columns = [
+    { key: 'gestion', group: 'periodo', title: 'Gestión', options: years.map((year) => ({ value: String(year), label: String(year) })) },
+    { key: 'semestre', group: 'periodo', title: 'Semestre', options: [{ value: 'I', label: 'Semestre I' }, { value: 'II', label: 'Semestre II' }] },
+    { key: 'modalidad', group: 'modalidad', title: 'Modalidad', options: modalidades.map((m) => ({ value: String(m.id), label: withAccents(m.nombre) })) },
+    { key: 'tipo_registro', group: 'proceso', title: 'Tipo de registro', options: [{ value: 'SEGUIMIENTO', label: 'Seguimiento' }, { value: 'HISTORICO', label: 'Histórico' }] },
+    {
+      key: 'etapa_actual',
+      group: 'proceso',
+      title: 'Etapa actual',
+      disabled: !values.modalidad || loadingStages,
+      options: etapas.map((e) => ({ value: String(e.id), label: withAccents(e.nombre) })),
+      note: !values.modalidad ? 'Elige una modalidad' : loadingStages ? 'Cargando etapas…' : etapas.length === 0 ? 'Sin etapas disponibles' : '',
+    },
+  ]
+
+  const header = layout === 'header'
+  const summary = activeFilters(columns, values).map((item) => item.label).join(' · ')
+  useEffect(() => { onSummary?.(summary) }, [summary, onSummary])
+  return (
+    <div className={header ? 'report-filters contents' : 'report-filters flex min-w-0 flex-col gap-2'}>
+      <div className={header ? 'report-filters-action' : 'flex min-w-0 flex-wrap items-center gap-2'}>
+        {showSearch && (
+          <label className="search-pill relative min-w-0 flex-1 sm:max-w-sm">
+            <span className="sr-only">Buscar</span>
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" aria-hidden="true" />
+            <input
+              className="pill-control pl-10"
+              value={values.buscar}
+              placeholder="Buscar por nombre o código"
+              onChange={(event) => {
+                const next = { ...values, buscar: event.target.value }
+                setValues(next)
+                window.clearTimeout(searchTimer.current)
+                searchTimer.current = window.setTimeout(() => onApply(next), 350)
+              }}
+            />
+          </label>
+        )}
+        <FilterMenu columns={columns} values={values} onChange={change} onClear={clear} />
+        {!header && <FilterChips columns={columns} values={values} onChange={change} />}
+      </div>
+      {(stageError || configurationWarning) && (
+        <div className={`space-y-1 px-1 text-xs ${header ? 'report-filters-chips' : ''}`}>
+          {stageError && <p role="alert" className="text-[var(--danger-text)]">{stageError}</p>}
+          {configurationWarning && <p role="status" className="text-[var(--warning-text)]">{configurationWarning}</p>}
+        </div>
+      )}
     </div>
-    {advanced && <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm">Fecha desde<input className={field} type="date" value={draft.fecha_desde} onChange={set('fecha_desde')} /></label><label className="grid gap-1 text-sm">Fecha hasta<input className={field} type="date" value={draft.fecha_hasta} onChange={set('fecha_hasta')} /></label></div>}
-    <div className="mt-4 flex flex-wrap gap-2"><Button type="submit">Aplicar filtros</Button><Button type="button" variant="outline" onClick={() => { setDraft(empty); onApply(empty) }}>Limpiar filtros</Button><Button type="button" variant="ghost" onClick={() => setAdvanced((v) => !v)}>{advanced ? 'Ocultar avanzados' : 'Filtros avanzados'}</Button></div>
-  </form>
+  )
 }

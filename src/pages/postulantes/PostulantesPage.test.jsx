@@ -7,11 +7,15 @@ import PostulantesPage from './PostulantesPage'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { crudService, endpoints, listAll } from '../../services/crudService'
 import { postulacionesService } from '../../services/postulacionesService'
+import { usuariosService } from '../../services/usuariosService'
 
 vi.mock('../../services/crudService', () => ({
   endpoints: { postulaciones:'/postulaciones/', modalidades:'/modalidades/', periodos:'/periodos/', estudiantes:'/estudiantes/' },
   crudService: { list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
   listAll: vi.fn(),
+}))
+vi.mock('../../services/usuariosService', () => ({
+  usuariosService: { listRoles: vi.fn(), createUser: vi.fn() },
 }))
 vi.mock('../../services/postulacionesService', () => ({
   postulacionesService: {
@@ -42,9 +46,63 @@ function setup({ periods = [period], rows = [], students = [student], modalities
   return render(<MemoryRouter><AuthContext.Provider value={authValue}><PostulantesPage /></AuthContext.Provider></MemoryRouter>)
 }
 
+// Los campos usan el desplegable del sistema (Select): se abre el campo y se toca la opción,
+// igual que lo haría una persona.
+async function openList(label, user = userEvent) {
+  const combo = await screen.findByRole('combobox', { name: label })
+  await waitFor(() => expect(combo).not.toBeDisabled())
+  await user.click(combo)
+  await screen.findByRole('listbox')
+}
+
+async function pick(label, optionName, user = userEvent) {
+  await openList(label, user)
+  await user.click(await screen.findByRole('option', { name: optionName }))
+}
+
 describe('Nueva postulación', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  const managerOfUsers = { hasPermission: (name) => ['puede_gestionar_postulaciones', 'puede_gestionar_usuarios'].includes(name) }
+
+  it('registra un estudiante nuevo desde la misma ventana y lo deja elegido', async () => {
+    usuariosService.listRoles.mockResolvedValue({ results: [{ id: 4, codigo: 'ESTUDIANTE', activo: true }] })
+    usuariosService.createUser.mockResolvedValue({ id: 88, ru: '500100', ci: '7700100', nombre_completo: 'Rosa Paz Ortiz' })
+    setup({ authValue: managerOfUsers })
+    fireEvent.click(await screen.findByRole('button', { name: 'Nueva postulación' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Registrar estudiante/ }))
+    fireEvent.change(screen.getByLabelText('Nombres'), { target: { value: 'Rosa' } })
+    fireEvent.change(screen.getByLabelText('Apellido paterno'), { target: { value: 'Paz' } })
+    fireEvent.change(screen.getByLabelText('Apellido materno'), { target: { value: 'Ortiz' } })
+    fireEvent.change(screen.getByLabelText('R.U.'), { target: { value: '500100' } })
+    fireEvent.change(screen.getByLabelText('C.I.'), { target: { value: '7700100' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar y elegir' }))
+
+    const combo = await screen.findByRole('combobox', { name: 'Estudiante' })
+    expect(combo).toHaveValue('500100 - Rosa Paz Ortiz')
+    expect(usuariosService.createUser).toHaveBeenCalledWith(expect.objectContaining({
+      nombres: 'Rosa', apellido_paterno: 'Paz', apellido_materno: 'Ortiz', ru: '500100', ci: '7700100', username: '500100', role_id: 4, is_active: true,
+    }))
+    expect(usuariosService.createUser.mock.calls[0][0].password).toEqual(expect.any(String))
+  })
+
+  it('pide los datos mínimos antes de registrar al estudiante', async () => {
+    setup({ authValue: managerOfUsers })
+    fireEvent.click(await screen.findByRole('button', { name: 'Nueva postulación' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Registrar estudiante/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar y elegir' }))
+    expect(await screen.findByText('Completa nombres, apellido paterno, R.U. y C.I.')).toBeInTheDocument()
+    expect(usuariosService.createUser).not.toHaveBeenCalled()
+  })
+
+  it('no ofrece registrar ni importar estudiantes sin permiso para gestionar usuarios', async () => {
+    setup()
+    fireEvent.click(await screen.findByRole('button', { name: 'Nueva postulación' }))
+    await screen.findByRole('combobox', { name: 'Estudiante' })
+    expect(screen.queryByRole('button', { name: /Registrar estudiante/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Importar estudiantes' })).not.toBeInTheDocument()
   })
 
   it('formatea estudiante y periodo sin mostrar el ID interno', () => {
@@ -54,21 +112,24 @@ describe('Nueva postulación', () => {
 
   it('muestra un estado vacío específico al estudiante sin postulaciones', async () => {
     setup({ authValue: { hasPermission: () => false, roleCode: 'ESTUDIANTE' } })
-    expect(await screen.findByRole('status')).toHaveTextContent('Todavía no tienes postulaciones académicas registradas.')
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Todavía no tienes postulaciones académicas registradas.'))
   })
 
   it('consume catálogos paginados y muestra etiquetas legibles', async () => {
     setup(); await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await openList('Estudiante')
     expect(screen.getByRole('option', { name: '394090 - Luis Fernando Menacho Melgar' })).toBeInTheDocument()
+    await openList('Gestión / Semestre')
     expect(screen.getByRole('option', { name: 'Gestión 2026 - Semestre II' })).toBeInTheDocument()
   })
 
   it('mantiene Proyecto de Grado y Examen seleccionables según capabilities', async () => {
     setup({ modalities: [modality, examenModality] })
     await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await openList('Modalidad')
 
-    expect(screen.getByRole('option', { name: 'Proyecto de Grado' })).toBeEnabled()
-    expect(screen.getByRole('option', { name: 'Examen de Grado' })).toBeEnabled()
+    expect(screen.getByRole('option', { name: 'Proyecto de Grado' })).not.toHaveAttribute('aria-disabled')
+    expect(screen.getByRole('option', { name: 'Examen de Grado' })).not.toHaveAttribute('aria-disabled')
     expect(postulacionesService.obtenerCapacidadesModalidad).toHaveBeenCalledWith(3, expect.any(AbortSignal))
     expect(postulacionesService.obtenerCapacidadesModalidad).toHaveBeenCalledWith(6, expect.any(AbortSignal))
   })
@@ -76,16 +137,17 @@ describe('Nueva postulación', () => {
   it('mantiene Trabajo Dirigido seleccionable cuando su configuración es válida', async () => {
     setup({ modalities: [trabajoDirigidoModality] })
     await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
+    await openList('Modalidad')
 
-    expect(screen.getByRole('option', { name: 'Trabajo Dirigido' })).toBeEnabled()
+    expect(screen.getByRole('option', { name: 'Trabajo Dirigido' })).not.toHaveAttribute('aria-disabled')
     expect(screen.queryByRole('option', { name: /Trabajo Dirigido — Próximamente/ })).not.toBeInTheDocument()
   })
 
   it('consulta estudiantes elegibles por modalidad y periodo', async () => {
     setup({ modalities: [modality], students: [student, ana] })
     await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    await userEvent.selectOptions(screen.getByLabelText('Modalidad'), '3')
-    await userEvent.selectOptions(screen.getByLabelText('Gestión / Semestre'), '8')
+    await pick('Modalidad', 'Proyecto de Grado')
+    await pick('Gestión / Semestre', 'Gestión 2026 - Semestre II')
     await waitFor(() => expect(listAll).toHaveBeenCalledWith(
       endpoints.estudiantes,
       { modalidad: '3', periodo: '8', ordering: 'apellido_paterno' },
@@ -93,11 +155,12 @@ describe('Nueva postulación', () => {
     ))
   })
 
-  it('busca estudiantes localmente por nombre, apellido, codigo, RU y CI', async () => {
+  it('busca estudiantes escribiendo en el propio campo Estudiante (nombre, apellido, código, RU y CI)', async () => {
     const user = userEvent.setup()
     setup({ students: [ana] })
     await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    const search = screen.getByLabelText('Buscar estudiante')
+    expect(screen.queryByLabelText('Buscar estudiante')).not.toBeInTheDocument()
+    const search = screen.getByRole('combobox', { name: 'Estudiante' })
     const optionName = '20260001 - Ana Maria Quispe Mamani'
 
     for (const query of ['Ana', 'Quispe', '20260001', '9900001']) {
@@ -124,9 +187,9 @@ describe('Nueva postulación', () => {
     let resolveRequest; crudService.create.mockReturnValue(new Promise((resolve) => { resolveRequest = resolve }))
     setup()
     fireEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    fireEvent.change(screen.getByLabelText('Estudiante'), { target: { value: '17' } })
-    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '3' } })
-    fireEvent.change(screen.getByLabelText(/Semestre/), { target: { value: '8' } })
+    await pick('Estudiante', '394090 - Luis Fernando Menacho Melgar')
+    await pick('Modalidad', 'Proyecto de Grado')
+    await pick(/Semestre/, 'Gestión 2026 - Semestre II')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     expect(screen.getByRole('button', { name: /Guardando/ })).toBeDisabled()
     expect(crudService.create).toHaveBeenCalledTimes(1)
@@ -137,9 +200,10 @@ describe('Nueva postulación', () => {
   it('muestra el tipo de registro y mantiene Proceso con seguimiento como valor por defecto', async () => {
     setup()
     await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    const selector = screen.getByLabelText('Tipo de registro')
-    expect(selector).toHaveValue('SEGUIMIENTO')
-    expect(screen.getByRole('option', { name: 'Proceso con seguimiento' })).toBeInTheDocument()
+    const selector = screen.getByRole('combobox', { name: 'Tipo de registro' })
+    expect(selector).toHaveTextContent('Proceso con seguimiento')
+    await openList('Tipo de registro')
+    expect(screen.getByRole('option', { name: 'Proceso con seguimiento' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('option', { name: 'Registro histórico' })).toBeInTheDocument()
   })
 
@@ -147,9 +211,9 @@ describe('Nueva postulación', () => {
     setup()
     await userEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
     expect(screen.queryByLabelText('Código')).not.toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByLabelText('Estudiante'), '17')
-    await userEvent.selectOptions(screen.getByLabelText('Modalidad'), '3')
-    await userEvent.selectOptions(screen.getByLabelText(/Semestre/), '8')
+    await pick('Estudiante', '394090 - Luis Fernando Menacho Melgar')
+    await pick('Modalidad', 'Proyecto de Grado')
+    await pick(/Semestre/, 'Gestión 2026 - Semestre II')
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
     expect(crudService.create).toHaveBeenCalledWith('/postulaciones/', {
@@ -163,11 +227,11 @@ describe('Nueva postulación', () => {
     crudService.create.mockResolvedValue({ id: 55, codigo: 'HIST-2022', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO', estudiante_detalle: { nombre_completo: 'Luis Fernando Menacho Melgar' }, modalidad_detalle: { nombre: 'Proyecto de Grado' }, periodo_detalle: { gestion: 2022, semestre: 'I' } })
     setup()
     await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    await user.selectOptions(screen.getByLabelText('Tipo de registro'), 'HISTORICO')
+    await pick('Tipo de registro', 'Registro histórico', user)
     expect(screen.queryByLabelText(/C.digo/)).not.toBeInTheDocument()
-    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
-    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
-    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
+    await pick('Estudiante', '394090 - Luis Fernando Menacho Melgar', user)
+    await pick('Modalidad', 'Proyecto de Grado', user)
+    await pick(/Semestre/, 'Gestión 2026 - Semestre II', user)
     await user.click(screen.getByRole('button', { name: 'Guardar' }))
 
     await waitFor(() => expect(crudService.create).toHaveBeenCalledWith('/api/v1/postulaciones/historicas/', { estudiante: 17, modalidad: 3, periodo: 8, observaciones_generales: '' }))
@@ -185,14 +249,15 @@ describe('Nueva postulación', () => {
     ])
     setup()
     fireEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    fireEvent.change(screen.getByLabelText('Tipo de registro'), { target: { value: 'HISTORICO' } })
-    fireEvent.change(screen.getByLabelText('Estudiante'), { target: { value: '17' } })
-    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '3' } })
-    fireEvent.change(screen.getByLabelText(/Semestre/), { target: { value: '8' } })
+    await pick('Tipo de registro', 'Registro histórico')
+    await pick('Estudiante', '394090 - Luis Fernando Menacho Melgar')
+    await pick('Modalidad', 'Proyecto de Grado')
+    await pick(/Semestre/, 'Gestión 2026 - Semestre II')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
 
     await waitFor(() => expect(postulacionesService.obtenerTiposDocumentosHistoricos).toHaveBeenCalledWith(55, expect.any(AbortSignal)))
+    await openList('Tipo de documento *')
     expect(screen.getByRole('option', { name: 'Acta de defensa' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Certificado' })).toBeInTheDocument()
   })
@@ -202,10 +267,10 @@ describe('Nueva postulación', () => {
     postulacionesService.obtenerTiposDocumentosHistoricos.mockResolvedValue([])
     setup()
     fireEvent.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    fireEvent.change(screen.getByLabelText('Tipo de registro'), { target: { value: 'HISTORICO' } })
-    fireEvent.change(screen.getByLabelText('Estudiante'), { target: { value: '17' } })
-    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '3' } })
-    fireEvent.change(screen.getByLabelText(/Semestre/), { target: { value: '8' } })
+    await pick('Tipo de registro', 'Registro histórico')
+    await pick('Estudiante', '394090 - Luis Fernando Menacho Melgar')
+    await pick('Modalidad', 'Proyecto de Grado')
+    await pick(/Semestre/, 'Gestión 2026 - Semestre II')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
 
@@ -221,13 +286,13 @@ describe('Nueva postulación', () => {
     postulacionesService.subirDocumentoHistorico.mockResolvedValue({ id: 99 })
     setup()
     await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    await user.selectOptions(screen.getByLabelText('Tipo de registro'), 'HISTORICO')
-    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
-    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
-    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
+    await pick('Tipo de registro', 'Registro histórico', user)
+    await pick('Estudiante', '394090 - Luis Fernando Menacho Melgar', user)
+    await pick('Modalidad', 'Proyecto de Grado', user)
+    await pick(/Semestre/, 'Gestión 2026 - Semestre II', user)
     await user.click(screen.getByRole('button', { name: 'Guardar' }))
     await user.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
-    await user.selectOptions(screen.getByLabelText('Tipo de documento *'), '11')
+    await pick('Tipo de documento *', 'Acta de defensa', user)
     const file = new File(['archivo'], 'acta.pdf', { type: 'application/pdf' })
     await user.upload(screen.getByLabelText('Archivo *'), file)
     await user.click(screen.getByRole('button', { name: 'Subir documento' }))
@@ -245,13 +310,13 @@ describe('Nueva postulación', () => {
     postulacionesService.subirDocumentoHistorico.mockRejectedValue({ status: 403, message: 'No tienes autorización para cargar documentos en esta postulación.' })
     setup()
     await user.click(await screen.findByRole('button', { name: /Nueva postulaci/ }))
-    await user.selectOptions(screen.getByLabelText('Tipo de registro'), 'HISTORICO')
-    await user.selectOptions(screen.getByLabelText('Estudiante'), '17')
-    await user.selectOptions(screen.getByLabelText('Modalidad'), '3')
-    await user.selectOptions(screen.getByLabelText(/Semestre/), '8')
+    await pick('Tipo de registro', 'Registro histórico', user)
+    await pick('Estudiante', '394090 - Luis Fernando Menacho Melgar', user)
+    await pick('Modalidad', 'Proyecto de Grado', user)
+    await pick(/Semestre/, 'Gestión 2026 - Semestre II', user)
     await user.click(screen.getByRole('button', { name: 'Guardar' }))
     await user.click(await screen.findByRole('button', { name: 'Cargar documentación' }))
-    await user.selectOptions(screen.getByLabelText('Tipo de documento *'), '11')
+    await pick('Tipo de documento *', 'Acta de defensa', user)
     await user.upload(screen.getByLabelText('Archivo *'), new File(['archivo'], 'acta.pdf', { type: 'application/pdf' }))
     await user.click(screen.getByRole('button', { name: 'Subir documento' }))
 
@@ -272,8 +337,13 @@ describe('Nueva postulación', () => {
         { id: 2, codigo: 'POST-002', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO' },
       ],
     })
-    expect(await screen.findByText('Proceso con seguimiento')).toBeInTheDocument()
-    expect(screen.getByText('Registro histórico')).toBeInTheDocument()
+    // La lista muestra solo el nombre; el tipo de registro se lee en Detalle.
+    await screen.findAllByRole('link', { name: 'Abrir expediente' })
+    expect(screen.queryByText('Proceso con seguimiento')).not.toBeInTheDocument()
+    postulacionesService.obtenerDetalle.mockResolvedValue({ id: 2, codigo: 'POST-002', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'HISTORICO' })
+    await userEvent.click(screen.getAllByRole('button', { name: 'Detalle' })[1])
+    const dialog = screen.getByRole('dialog', { name: 'Detalle de la postulación' })
+    expect(await within(dialog).findByText('Registro histórico')).toBeInTheDocument()
   })
 
   it.each([
@@ -306,10 +376,12 @@ describe('Nueva postulación', () => {
 
     expect(within(card).queryByText(code)).not.toBeInTheDocument()
     expect(within(card).getByRole('heading', { name: formatStudentLabel(student) })).toBeInTheDocument()
+    // Como en Fondo de Tiempo: la tarjeta muestra nombre, modalidad y estado; periodo y tipo
+    // de registro se ven en Detalle.
     expect(within(card).getByText(modalidadNombre)).toBeInTheDocument()
-    expect(within(card).getByText(formatPeriodoLabel(period))).toBeInTheDocument()
-    expect(within(card).getByText(tipoRegistro === 'HISTORICO' ? 'Registro histórico' : 'Proceso con seguimiento')).toBeInTheDocument()
     expect(within(card).getByText('Registrada')).toBeInTheDocument()
+    expect(within(card).queryByText(formatPeriodoLabel(period))).not.toBeInTheDocument()
+    expect(within(card).queryByText(tipoRegistro === 'HISTORICO' ? 'Registro histórico' : 'Proceso con seguimiento')).not.toBeInTheDocument()
     expect(within(card).getByRole('link', { name: 'Abrir expediente' })).toBeInTheDocument()
     expect(within(card).getByRole('button', { name: 'Detalle' })).toBeInTheDocument()
     expect(within(card).getByRole('button', { name: 'Editar' })).toBeInTheDocument()
@@ -317,7 +389,8 @@ describe('Nueva postulación', () => {
 
   it('limpia la búsqueda, vuelve a la primera página y muestra la nueva postulación tras crear', async () => {
     const created = { id: 41, codigo: 'POST-2026-001', estudiante: 17, modalidad: 3, periodo: 8 }
-    const existing = { id: 40, codigo: 'POST-EXISTENTE', estudiante: 17, modalidad: 3, periodo: 8 }
+    // La lista ya no muestra el código: la nueva postulación se reconoce por su estudiante.
+    const existing = { id: 40, codigo: 'POST-EXISTENTE', estudiante: 99, estudiante_detalle: { ru: '111', nombre_completo: 'Otra Estudiante' }, modalidad: 3, periodo: 8 }
     let creationCompleted = false
     crudService.create.mockImplementation(async () => {
       creationCompleted = true
@@ -334,28 +407,29 @@ describe('Nueva postulación', () => {
 
     const search = await screen.findByRole('textbox', { name: 'Buscar' })
     fireEvent.change(search, { target: { value: '20260001' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Buscar' }))
+    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith('/postulaciones/', { search: '20260001', page: 1, ordering: '-created_at', page_size: 15 }, expect.any(AbortSignal)))
     fireEvent.click(await screen.findByRole('button', { name: 'Siguiente' }))
     await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(
       '/postulaciones/',
-      { search: '20260001', page: 2, ordering: '-created_at' },
+      { search: '20260001', page: 2, ordering: '-created_at', page_size: 15 },
       expect.any(AbortSignal),
     ))
 
     fireEvent.click(screen.getByRole('button', { name: /Nueva postulaci/ }))
-    fireEvent.change(screen.getByLabelText('Estudiante'), { target: { value: '17' } })
-    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '3' } })
-    fireEvent.change(screen.getByLabelText(/Semestre/), { target: { value: '8' } })
+    await pick('Estudiante', '394090 - Luis Fernando Menacho Melgar')
+    await pick('Modalidad', 'Proyecto de Grado')
+    await pick(/Semestre/, 'Gestión 2026 - Semestre II')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
     await waitFor(() => expect(search).toHaveValue(''))
     await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(
       '/postulaciones/',
-      { search: '', page: 1, ordering: '-created_at' },
+      { search: '', page: 1, ordering: '-created_at', page_size: 15 },
       expect.any(AbortSignal),
     ))
-    expect(await screen.findByText(created.codigo)).toBeInTheDocument()
-    expect(screen.getByText('1 resultados · Página 1')).toBeInTheDocument()
+    expect((await screen.findAllByText('394090 - Luis Fernando Menacho Melgar')).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/Otra Estudiante/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Página 1' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('oculta el alta sin permiso explícito', async () => {
@@ -374,9 +448,9 @@ describe('Nueva postulación', () => {
     setup()
     fireEvent.click(await screen.findByRole('button', { name: 'Nueva postulación' }))
     expect(screen.queryByLabelText('Código')).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Estudiante'), { target: { value: '17' } })
-    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '3' } })
-    fireEvent.change(screen.getByLabelText('Gestión / Semestre'), { target: { value: '8' } })
+    await pick('Estudiante', '394090 - Luis Fernando Menacho Melgar')
+    await pick('Modalidad', 'Proyecto de Grado')
+    await pick('Gestión / Semestre', 'Gestión 2026 - Semestre II')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
 
     expect(await screen.findByText('El periodo seleccionado no está disponible.')).toBeInTheDocument()
@@ -399,18 +473,18 @@ describe('Nueva postulación', () => {
   })
 
   it.each([
-    { statusCode: 'REGISTRADA', statusName: 'Registrada', colorClasses: ['bg-amber-50', 'text-amber-700', 'dark:bg-amber-950/50', 'dark:text-amber-300'], modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
-    { statusCode: 'PENDIENTE', statusName: 'Pendiente', colorClasses: ['bg-amber-50', 'text-amber-700', 'dark:bg-amber-950/50', 'dark:text-amber-300'], modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
-    { statusCode: 'EN_PROCESO', statusName: 'En proceso', colorClasses: ['bg-sky-50', 'text-sky-700', 'dark:bg-sky-950/50', 'dark:text-sky-300'], modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
-    { statusCode: 'EN_REVISION', statusName: 'En revisión', colorClasses: ['bg-sky-50', 'text-sky-700', 'dark:bg-sky-950/50', 'dark:text-sky-300'], modalityCode: 'TESIS_GRADO', modalityName: 'Tesis de Grado' },
-    { statusCode: 'OBSERVADA', statusName: 'Observada', colorClasses: ['bg-amber-50', 'text-amber-700', 'dark:bg-amber-950/50', 'dark:text-amber-300'], modalityCode: 'GRADUACION_VIA_DIPLOMADO', modalityName: 'Graduación Vía Diplomado' },
-    { statusCode: 'SUBSANADA', statusName: 'Subsanada', colorClasses: ['bg-sky-50', 'text-sky-700', 'dark:bg-sky-950/50', 'dark:text-sky-300'], modalityCode: 'EXCELENCIA_ACADEMICA', modalityName: 'Excelencia Académica' },
-    { statusCode: 'APROBADA', statusName: 'Aprobada', colorClasses: ['bg-emerald-50', 'text-emerald-700', 'dark:bg-emerald-950/50', 'dark:text-emerald-300'], modalityCode: 'EXAMEN_GRADO', modalityName: 'Examen de Grado' },
-    { statusCode: 'RECHAZADA', statusName: 'Rechazada', colorClasses: ['bg-red-50', 'text-red-700', 'dark:bg-red-950/50', 'dark:text-red-300'], modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
-    { statusCode: 'CONCLUIDA', statusName: 'Concluida', colorClasses: ['bg-emerald-50', 'text-emerald-700', 'dark:bg-emerald-950/50', 'dark:text-emerald-300'], modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
-    { statusCode: 'CANCELADA', statusName: 'Cancelada', colorClasses: ['bg-slate-100', 'text-slate-700', 'dark:bg-slate-800', 'dark:text-slate-300'], modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
-    { statusCode: null, statusName: 'Sin estado', colorClasses: ['bg-slate-100', 'text-slate-700', 'dark:bg-slate-800', 'dark:text-slate-300'], modalityCode: 'TESIS_GRADO', modalityName: 'Tesis de Grado' },
-  ])('presenta $statusCode una sola vez en $modalityCode', async ({ statusCode, statusName, colorClasses, modalityCode, modalityName }) => {
+    { statusCode: 'REGISTRADA', statusName: 'Registrada', tone: 'warning', modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
+    { statusCode: 'PENDIENTE', statusName: 'Pendiente', tone: 'warning', modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
+    { statusCode: 'EN_PROCESO', statusName: 'En proceso', tone: 'info', modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
+    { statusCode: 'EN_REVISION', statusName: 'En revisión', tone: 'info', modalityCode: 'TESIS_GRADO', modalityName: 'Tesis de Grado' },
+    { statusCode: 'OBSERVADA', statusName: 'Observada', tone: 'warning', modalityCode: 'GRADUACION_VIA_DIPLOMADO', modalityName: 'Graduación Vía Diplomado' },
+    { statusCode: 'SUBSANADA', statusName: 'Subsanada', tone: 'info', modalityCode: 'EXCELENCIA_ACADEMICA', modalityName: 'Excelencia Académica' },
+    { statusCode: 'APROBADA', statusName: 'Aprobada', tone: 'success', modalityCode: 'EXAMEN_GRADO', modalityName: 'Examen de Grado' },
+    { statusCode: 'RECHAZADA', statusName: 'Rechazada', tone: 'danger', modalityCode: 'PROYECTO_GRADO', modalityName: 'Proyecto de Grado' },
+    { statusCode: 'CONCLUIDA', statusName: 'Concluida', tone: 'success', modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
+    { statusCode: 'CANCELADA', statusName: 'Cancelada', tone: 'neutral', modalityCode: 'TRABAJO_DIRIGIDO', modalityName: 'Trabajo Dirigido' },
+    { statusCode: null, statusName: 'Sin estado', tone: 'neutral', modalityCode: 'TESIS_GRADO', modalityName: 'Tesis de Grado' },
+  ])('presenta $statusCode una sola vez en $modalityCode', async ({ statusCode, statusName, tone, modalityCode, modalityName }) => {
     setup({
       rows: [{
         id: 42,
@@ -426,34 +500,117 @@ describe('Nueva postulación', () => {
       }],
     })
 
+    // Tarjeta (como Fondo de Tiempo): nombre, modalidad, estado con su color y acciones.
     const link = await screen.findByRole('link', { name: 'Abrir expediente' })
     const card = link.closest('article')
     const actions = link.parentElement
-    const cardLayout = card.firstElementChild
-    const statusBadge = within(card).getByText(statusName)
-    const statusCell = statusBadge.parentElement
     const detailButton = within(card).getByRole('button', { name: 'Detalle' })
     const editButton = within(card).getByRole('button', { name: 'Editar' })
 
     expect(link).toHaveAttribute('href', '/postulaciones/42')
-    expect(actions).toHaveClass('flex', 'flex-wrap', 'justify-end')
+    expect(link).toHaveClass('action-button')
+    expect(actions).toHaveClass('postulante-actions')
+    expect(actions).toContainElement(detailButton)
+    expect(actions).toContainElement(editButton)
     expect(within(card).getAllByText(statusName)).toHaveLength(1)
-    expect(statusBadge).toHaveClass('rounded-full', 'text-xs', 'font-semibold', ...colorClasses)
-    expect(statusCell).toHaveClass('flex', 'self-end', 'justify-end')
-    expect(cardLayout).toHaveClass('grid', 'sm:grid-cols-[minmax(0,1fr)_auto]', 'sm:items-start', 'sm:gap-y-0')
-    expect(actions).toBe(cardLayout.children[1])
-    expect(statusCell).toBe(cardLayout.children[3])
+    expect(within(card).getByText(statusName)).toHaveAttribute('data-tone', tone)
     expect(within(card).queryByText('POST-042')).not.toBeInTheDocument()
     expect(within(card).getByRole('heading', { name: formatStudentLabel(student) })).toBeInTheDocument()
-    expect(within(card).getByText('Proceso con seguimiento')).toBeInTheDocument()
-    expect(within(card).getByText(modalityName)).toBeInTheDocument()
-    expect(detailButton).toBeInTheDocument()
-    expect(editButton).toBeInTheDocument()
-
     for (const action of [link, detailButton, editButton]) {
-      expect(action).toHaveClass('font-semibold', 'min-h-9', 'focus-visible:ring-2')
-      expect(action).not.toHaveClass('border', 'bg-white')
       expect(action.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
     }
+
+    postulacionesService.obtenerDetalle.mockResolvedValue({
+      id: 42, codigo: 'POST-042', estudiante: 17, modalidad: 3, periodo: 8, tipo_registro: 'SEGUIMIENTO',
+      estado_actual_detalle: statusCode ? { codigo: statusCode, nombre: statusName } : null,
+      estudiante_detalle: student, modalidad_detalle: { id: 3, codigo: modalityCode, nombre: modalityName }, periodo_detalle: period,
+    })
+    await userEvent.click(detailButton)
+    const dialog = screen.getByRole('dialog', { name: 'Detalle de la postulación' })
+    const statusBadge = await within(dialog).findByText(statusName)
+    expect(within(dialog).getAllByText(statusName)).toHaveLength(1)
+    expect(statusBadge).toHaveClass('postulante-status')
+    expect(statusBadge).toHaveAttribute('data-tone', tone)
+    expect(within(dialog).getByText(modalityName)).toBeInTheDocument()
+    expect(within(dialog).getByText('Proceso con seguimiento')).toBeInTheDocument()
+  })
+
+  it('busca sola al escribir: no hay botón Buscar y la lista se actualiza', async () => {
+    setup({ rows: [{ id: 41, codigo: 'POST-041', estudiante: 17, modalidad: 3, periodo: 8 }] })
+    const search = await screen.findByRole('textbox', { name: 'Buscar' })
+    expect(screen.queryByRole('button', { name: 'Buscar' })).not.toBeInTheDocument()
+    fireEvent.change(search, { target: { value: 'Menacho' } })
+    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith('/postulaciones/', { search: 'Menacho', page: 1, ordering: '-created_at', page_size: 15 }, expect.any(AbortSignal)))
+  })
+
+  it('permite ver a los estudiantes en tarjetas o en lista y recuerda la elección', async () => {
+    localStorage.removeItem('sm_postulantes_vista')
+    setup({ rows: [{ id: 41, codigo: 'POST-041', estudiante: 17, modalidad: 3, periodo: 8 }] })
+    await screen.findByRole('link', { name: 'Abrir expediente' })
+    expect(document.querySelector('.postulantes-cards')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Lista' }))
+    expect(screen.getByRole('button', { name: 'Lista' })).toHaveAttribute('aria-pressed', 'true')
+    // Lista tipo tabla: fila de títulos y una fila por estudiante, con sus acciones.
+    const table = document.querySelector('.postulantes-table')
+    expect(table).toBeInTheDocument()
+    expect(table).toHaveTextContent('Estudiante')
+    expect(within(table).getByRole('link', { name: 'Abrir expediente' })).toBeInTheDocument()
+    expect(document.querySelector('.postulantes-cards')).not.toBeInTheDocument()
+    expect(localStorage.getItem('sm_postulantes_vista')).toBe('lista')
+    localStorage.removeItem('sm_postulantes_vista')
+  })
+
+  it('la paginación solo aparece cuando hay más de una página y pide 15 en tarjetas o 20 en lista', async () => {
+    localStorage.removeItem('sm_postulantes_vista')
+    const row = { id: 41, codigo: 'POST-041', estudiante: 17, modalidad: 3, periodo: 8 }
+    setup({ listImplementation: () => Promise.resolve({ count: 1, next: null, previous: null, results: [row] }) })
+    await screen.findByRole('link', { name: 'Abrir expediente' })
+    expect(screen.queryByRole('navigation', { name: 'Paginación de postulantes' })).not.toBeInTheDocument()
+
+    crudService.list.mockImplementation((_path, params) => Promise.resolve({ count: 40, next: params.page < 2 ? '?page=2' : null, previous: params.page > 1 ? '?page=1' : null, results: [row] }))
+    await userEvent.click(screen.getByRole('button', { name: 'Lista' }))
+    const nav = await screen.findByRole('navigation', { name: 'Paginación de postulantes' })
+    expect(within(nav).getByRole('button', { name: 'Página 1' })).toHaveAttribute('aria-current', 'page')
+    expect(within(nav).getByRole('button', { name: 'Página 2' })).toBeInTheDocument()
+    expect(crudService.list).toHaveBeenLastCalledWith('/postulaciones/', { search: '', page: 1, ordering: '-created_at', page_size: 20 }, expect.any(AbortSignal))
+    await userEvent.click(within(nav).getByRole('button', { name: 'Página 2' }))
+    await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith('/postulaciones/', { search: '', page: 2, ordering: '-created_at', page_size: 20 }, expect.any(AbortSignal)))
+    localStorage.removeItem('sm_postulantes_vista')
+  })
+
+  it('filtra por modalidad desde Filtrar y pagina en el navegador', async () => {
+    localStorage.removeItem('sm_postulantes_vista')
+    const tesis = { id: 4, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado', activo: true }
+    const rows = [
+      { id: 1, codigo: 'P-1', estudiante: 17, modalidad: 3, periodo: 8, estudiante_detalle: student, modalidad_detalle: modality },
+      { id: 2, codigo: 'T-1', estudiante: 39, modalidad: 4, periodo: 8, estudiante_detalle: ana, modalidad_detalle: tesis },
+    ]
+    setup({ rows, modalities: [modality, tesis], students: [student, ana] })
+    listAll.mockImplementation((path) => Promise.resolve(path === endpoints.postulaciones ? rows : path === endpoints.modalidades ? [modality, tesis] : path === endpoints.periodos ? [period] : [student, ana]))
+    await screen.findAllByRole('link', { name: 'Abrir expediente' })
+    await userEvent.click(screen.getByRole('button', { name: /Filtrar/ }))
+    expect(screen.queryByRole('button', { name: 'Limpiar' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Tesis de Grado' }))
+    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Abrir expediente' })).toHaveLength(1))
+    expect(screen.getByRole('heading', { name: formatStudentLabel(ana) })).toBeInTheDocument()
+    expect(listAll).toHaveBeenCalledWith(endpoints.postulaciones, { search: '', ordering: '-created_at' }, expect.any(AbortSignal))
+    // Se puede marcar más de una modalidad; no hay botón Limpiar.
+    await userEvent.click(screen.getByRole('button', { name: 'Proyecto de Grado' }))
+    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Abrir expediente' })).toHaveLength(2))
+    expect(screen.getByRole('button', { name: 'Tesis de Grado' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Proyecto de Grado' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('button', { name: 'Limpiar' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Tesis de Grado' }))
+    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Abrir expediente' })).toHaveLength(1))
+  })
+
+  it('sin coincidencias muestra un aviso propio (con sugerencia) en lugar de cortar la lista', async () => {
+    const row = { id: 41, codigo: 'POST-041', estudiante: 17, modalidad: 3, periodo: 8 }
+    setup({ listImplementation: (_path, params) => Promise.resolve(params.search ? { count: 0, next: null, previous: null, results: [] } : { count: 1, next: null, previous: null, results: [row] }) })
+    await screen.findByRole('link', { name: 'Abrir expediente' })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Buscar' }), { target: { value: 'nadie' } })
+    const empty = await screen.findByText('No hay estudiantes que coincidan')
+    expect(empty.closest('[role="status"]')).toHaveClass('postulantes-empty', 'animate-row-in')
+    expect(screen.getByText(/Prueba con otro nombre/)).toBeInTheDocument()
   })
 })

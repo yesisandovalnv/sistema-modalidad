@@ -403,7 +403,6 @@ export default function DefenseParticipants({ defense, canManage, onChanged, pro
       <h3 id="participantes-defensa-title" className="text-lg font-bold">{profileContext ? 'Participantes de la defensa' : 'Participantes'}</h3>
       <div className="flex flex-wrap gap-2">{canAttend && pendingAttendance.length > 0 && <Button onClick={openMultipleAttendance}>Registrar asistencia múltiple</Button>}{canMutate && <Button variant="secondary" onClick={loadCandidates}>Agregar participante</Button>}</div>
     </div>
-    {false && <aside role="note" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950">La incorporación como participante no sustituye memorando, designación ni convocatoria institucional formal.</aside>}
     {profileContext && canMutate && <section className="mt-4" aria-labelledby="tribunales-pendientes-title">
       <h4 id="tribunales-pendientes-title" className="font-semibold">Pendientes de incorporar</h4>
       {catalog.loading && <p role="status" className="mt-2 text-sm">Consultando actores elegibles…</p>}

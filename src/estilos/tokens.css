@@ -1,0 +1,124 @@
+/* Colores, tipografía y tokens del sistema (modo claro; el modo oscuro está en marco.css). */
+
+:root {
+  /* Primitivos institucionales: UABJB y sello de la Carrera de Ingeniería de Sistemas acreditada.
+     Las pantallas usan solo los tokens semánticos de abajo, nunca estos valores sueltos. */
+  --uab-azul-900: #02254e;
+  --uab-azul-950: #001a3a;
+  --uab-azul-noche: #000f22;
+  --uab-rojo: #c10202;
+  --uab-turquesa: #3bbdc9;
+  --uab-turquesa-texto: #167784;
+  --uab-dorado: #cc9d3b;
+  --uab-dorado-texto: #8a6418;
+  --uab-amarillo: #ffe858;
+  --uab-azul-web: #0037dd;
+
+  /* Superficies y texto */
+  --canvas: #eaf0f7;
+  --surface: #f8fafd;
+  --surface-raised: #ffffff;
+  --surface-sunken: #e1e8f2;
+  --surface-secondary: #eef3f9;
+  --border: #d3dde9;
+  --border-strong: #7a8ba3;
+  --text-primary: #0b1f3a;
+  --text-secondary: #475a73;
+  --text-muted: #5e6e86;
+  --heading: var(--uab-azul-900);
+
+  /* Acciones */
+  --primary: var(--uab-azul-900);
+  --primary-hover: color-mix(in srgb, var(--uab-azul-900) 88%, #ffffff);
+  --on-primary: #ffffff;
+  --secondary: var(--uab-turquesa-texto);
+  --on-secondary: #ffffff;
+  --primary-soft: #e1e8f2;
+  --link: var(--uab-azul-web);
+  --focus: var(--uab-turquesa-texto);
+  --on-danger: #ffffff;
+  --brand-gold: var(--uab-dorado);
+  --brand-gold-text: var(--uab-dorado-texto);
+
+  /* Alias de compatibilidad con los componentes existentes */
+  --primary-dark: var(--primary-hover);
+  --primary-light: var(--focus);
+  --blue-deep: var(--uab-azul-900);
+  --general-bg: var(--canvas);
+  --navbar-border: var(--border);
+
+  /* Menú lateral */
+  --nav-bg: var(--uab-azul-900);
+  --nav-bg-start: var(--nav-bg);
+  --nav-bg-end: var(--nav-bg);
+  --nav-text: #d6e2f0;
+  --nav-section: var(--uab-turquesa);
+  --nav-meta: #9fb4cf;
+  --nav-hover: rgb(255 255 255 / 8%);
+  /* Texto más fuerte sobre el menú/barra (títulos, hover) y su anillo de foco. Los temas de
+     color (Mi perfil → Tema de color) los cambian a oscuro cuando el menú es claro. */
+  --nav-strong: #ffffff;
+  --nav-focus: var(--uab-turquesa);
+  /* Bloques de marca (tarjeta del total, franja del perfil): siguen el color del menú. */
+  --brand-surface: var(--uab-azul-900);
+  --on-brand-surface: #ffffff;
+  --nav-active-bg: #ffffff;
+  --nav-active-text: var(--uab-azul-900);
+  --nav-active-icon: var(--uab-turquesa-texto);
+  --sidebar-text-secondary: var(--nav-meta);
+  --sidebar-text-active: var(--nav-strong);
+  --sidebar-hover: var(--nav-hover);
+  --sidebar-icon: var(--nav-text);
+
+  /* Estados semánticos: texto / fondo suave / sólido */
+  --success: #15803d;
+  --success-soft: #e3f4ec;
+  --success-text: #11683f;
+  --warning: #e0a526;
+  --warning-soft: #fff3d1;
+  --warning-text: #7a4f00;
+  --danger: var(--uab-rojo);
+  --danger-soft: #fde8e8;
+  --danger-text: #a4161a;
+  --info: var(--uab-turquesa-texto);
+  --info-soft: #ddf3f5;
+  --info-text: #0f5f69;
+  --evaluation: var(--uab-dorado);
+  --evaluation-soft: #f6eedb;
+  --evaluation-text: #7a5310;
+  --document: var(--uab-azul-web);
+  --document-soft: #e4eafb;
+  --document-text: #1f3fa8;
+  --delivery: var(--uab-turquesa-texto);
+  --delivery-soft: #ddf3f5;
+  --delivery-text: #0f5f69;
+  --neutral: #5e6e86;
+  --neutral-soft: #e1e8f2;
+  --neutral-text: var(--uab-azul-900);
+
+  --card-shadow: 0 1px 2px rgb(2 37 78 / 6%), 0 4px 16px rgb(2 37 78 / 6%);
+  --scrim: rgb(0 15 34 / 45%);
+  --panel-radius: 1.75rem;
+  --sidebar-expanded-width: 272px;
+  --sidebar-collapsed-width: 80px;
+  --navbar-height: 4rem;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  accent-color: var(--primary);
+  scrollbar-color: color-mix(in srgb, var(--border-strong) 60%, transparent) transparent;
+}
+
+.sidebar {
+  width: var(--sidebar-expanded-width);
+  overflow: hidden;
+  background: var(--nav-bg);
+  color: var(--nav-text);
+  transition: transform 0.25s var(--ease-out);
+}

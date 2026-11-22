@@ -1,0 +1,217 @@
+/* Expediente: pestañas, columnas y colores del contenido. */
+
+/* Etapa actual y avance lado a lado (más compacto); en celular, uno debajo del otro. */
+/* Pestañas del expediente: riel con la píldora que se desliza; fijas arriba al desplazarse. */
+.expediente-nav {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 10;
+  display: flex;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--canvas) 85%, transparent);
+  padding: 0.25rem 0;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.expediente-tabs {
+  display: flex;
+  max-width: 100%;
+  margin: 0;
+  list-style: none;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.expediente-tab {
+  display: flex;
+  min-height: 2.25rem;
+  align-items: center;
+  padding: 0 1rem;
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+/* ── Expediente: dos columnas (ficha y secciones fijas a la izquierda; contenido a la derecha) ── */
+.expediente-layout {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.expediente-side,
+.expediente-main {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 1.25rem;
+}
+
+.expediente-main > [hidden] {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .expediente-layout {
+    grid-template-columns: 17.5rem minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .expediente-layout > :not(.expediente-side):not(.expediente-main) {
+    grid-column: 1 / -1;
+  }
+
+  .expediente-side {
+    position: sticky;
+    top: 0.5rem;
+    gap: 1rem;
+  }
+  /* Secciones en columna, con la píldora que se desliza de arriba abajo. */
+  .expediente-side .expediente-nav {
+    position: static;
+    padding: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .expediente-side .expediente-tabs {
+    width: 100%;
+    flex-direction: column;
+    gap: 0.125rem;
+    overflow: visible;
+    border-radius: 1.125rem;
+    background: var(--surface);
+    padding: 0.375rem;
+  }
+
+  .expediente-side .expediente-tab {
+    width: 100%;
+    min-height: 2.5rem;
+    border-radius: 0.875rem;
+    padding: 0 0.875rem;
+  }
+
+  .expediente-side .expediente-tabs .tabs-indicator {
+    top: 0;
+    bottom: auto;
+    border-radius: 0.875rem;
+  }
+}
+
+.expediente-tabs .tabs-indicator {
+  top: 0;
+  bottom: auto;
+}
+
+.expediente-tabs.has-indicator .tabs-indicator.tabs-indicator--animate {
+  transition: transform 260ms var(--ease-out), width 260ms var(--ease-out), height 260ms var(--ease-out);
+}
+
+/* ── Contenido del expediente con los colores y formas del sistema ──────────
+   El contenido viene con utilidades de color sueltas (slate, sky, amber…). Aquí se traducen a
+   los tokens: así sigue el modo oscuro y el tema de color, sin tocar la lógica ni el marcado. */
+.expediente-root h2,
+.expediente-root h3,
+.expediente-root h4 {
+  color: var(--heading);
+}
+
+.expediente-root .rounded-lg { border-radius: 0.875rem; }
+.expediente-root .rounded-xl,
+.expediente-root .rounded-2xl { border-radius: 1.25rem; }
+
+.expediente-root .text-slate-400,
+.expediente-root .text-slate-500,
+.expediente-root .dark\:text-slate-400,
+.expediente-root .dark\:text-slate-500 { color: var(--text-secondary); }
+
+.expediente-root .text-slate-600,
+.expediente-root .text-slate-700,
+.expediente-root .text-slate-800,
+.expediente-root .text-slate-900,
+.expediente-root .dark\:text-slate-100,
+.expediente-root .dark\:text-slate-200,
+.expediente-root .dark\:text-slate-300 { color: var(--text-primary); }
+
+.expediente-root .border-slate-200,
+.expediente-root .border-slate-300,
+.expediente-root .dark\:border-slate-600,
+.expediente-root .dark\:border-slate-700,
+.expediente-root .dark\:border-slate-800,
+.expediente-root .divide-slate-200 > * + *,
+.expediente-root .dark\:divide-slate-700 > * + * { border-color: var(--border); }
+
+.expediente-root .bg-white,
+.expediente-root .bg-white\/70,
+.expediente-root .bg-white\/95,
+.expediente-root .dark\:bg-slate-900,
+.expediente-root .dark\:bg-slate-900\/60,
+.expediente-root .dark\:bg-slate-950 { background-color: var(--surface); }
+
+.expediente-root .bg-slate-50,
+.expediente-root .bg-slate-100,
+.expediente-root .dark\:bg-slate-800 { background-color: var(--surface-secondary); }
+
+.expediente-root .bg-slate-200,
+.expediente-root .dark\:bg-slate-700 { background-color: var(--surface-sunken); }
+
+/* Información (sky / blue) */
+.expediente-root .bg-sky-50,
+.expediente-root .bg-blue-50,
+.expediente-root .dark\:bg-sky-950,
+.expediente-root .dark\:bg-blue-950 { background-color: var(--info-soft); }
+
+.expediente-root .border-sky-200,
+.expediente-root .border-sky-300,
+.expediente-root .border-blue-300,
+.expediente-root .dark\:border-sky-700,
+.expediente-root .dark\:border-sky-800,
+.expediente-root .dark\:border-blue-800 { border-color: color-mix(in srgb, var(--info) 32%, var(--border)); }
+
+.expediente-root .text-sky-700,
+.expediente-root .text-sky-800,
+.expediente-root .dark\:text-sky-200,
+.expediente-root .dark\:text-sky-300 { color: var(--info-text); }
+
+/* Advertencia (amber) */
+.expediente-root .bg-amber-50,
+.expediente-root .dark\:bg-amber-950 { background-color: var(--warning-soft); }
+
+.expediente-root .border-amber-300,
+.expediente-root .dark\:border-amber-800 { border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); }
+
+.expediente-root .text-amber-700,
+.expediente-root .text-amber-800,
+.expediente-root .text-amber-900,
+.expediente-root .dark\:text-amber-100,
+.expediente-root .dark\:text-amber-200,
+.expediente-root .dark\:text-amber-300 { color: var(--warning-text); }
+
+/* Éxito (emerald) */
+.expediente-root .bg-emerald-50,
+.expediente-root .dark\:bg-emerald-950 { background-color: var(--success-soft); }
+
+.expediente-root .border-emerald-200,
+.expediente-root .border-emerald-300,
+.expediente-root .dark\:border-emerald-800 { border-color: color-mix(in srgb, var(--success) 35%, var(--border)); }
+
+.expediente-root .text-emerald-700,
+.expediente-root .text-emerald-800,
+.expediente-root .text-emerald-900,
+.expediente-root .dark\:text-emerald-100,
+.expediente-root .dark\:text-emerald-200,
+.expediente-root .dark\:text-emerald-300 { color: var(--success-text); }
+
+/* Error (red) */
+.expediente-root .bg-red-50,
+.expediente-root .dark\:bg-red-950 { background-color: var(--danger-soft); }
+
+.expediente-root .border-red-200,
+.expediente-root .border-red-300 { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
+
+.expediente-root .text-red-600,
+.expediente-root .text-red-900 { color: var(--danger-text); }
+
+/* Las tarjetas del contenido: borde fino, esquinas amplias y la sombra suave del sistema. */
+.expediente-main > * > section,
+.expediente-main > * > div > section,
+.expediente-main .scroll-mt-24 > section {
+  border-radius: 1.25rem;
+}

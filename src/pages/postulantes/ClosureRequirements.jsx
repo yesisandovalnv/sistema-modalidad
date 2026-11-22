@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
+import { CircleCheck } from 'lucide-react'
 import { postulacionesService } from '../../services/postulacionesService'
 
 const rows = (data) => data?.results || data || []
@@ -229,14 +230,14 @@ export default function ClosureRequirements({
   }, [selectedEligibleDeliveryIds.length, eligibleDeliveries.length])
 
   const Heading = embedded ? 'h3' : 'h2'
-  return <Card className={embedded ? 'overflow-hidden rounded-none border-0 border-t border-sky-200 bg-transparent p-0 pt-5 shadow-none dark:border-sky-800' : 'overflow-hidden'} aria-labelledby={titleId}>
+  return <Card className={`closure-req ${embedded ? 'overflow-hidden rounded-none border-0 border-t border-sky-200 bg-transparent p-0 pt-5 shadow-none dark:border-sky-800' : 'overflow-hidden'}`} aria-labelledby={titleId}>
     <Heading id={titleId} className="text-xl font-bold">{title}</Heading>
     {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
     {state.loading && <p role="status" className="mt-4 text-sm">Cargando condiciones y entregas…</p>}
     {state.error && <div className="mt-4"><p role="alert" className="text-sm text-red-600">{state.error}</p><Button className="mt-2" variant="secondary" onClick={load}>Reintentar</Button></div>}
     {!state.loading && !state.error && <div className={`mt-5 grid items-start gap-4 ${showConditions ? 'lg:grid-cols-2' : 'grid-cols-1'}`}>
       {showConditions && <details open={!collapseDetailsByDefault && !conditionsComplete} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-        <summary className="cursor-pointer list-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">{conditionsComplete ? '✓ ' : ''}Condiciones técnicas <span className="font-normal text-slate-500">{completedConditions}/{conditions.length} cumplidas · Ver detalle</span></summary>
+        <summary className="cursor-pointer list-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">{conditionsComplete && <CircleCheck className="closure-req-done" aria-hidden="true" />}Condiciones técnicas <span className="font-normal text-slate-500">{completedConditions}/{conditions.length} cumplidas · Ver detalle</span></summary>
         {canManage && <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <label className="inline-flex items-center gap-2 text-sm">
             <input
@@ -282,7 +283,7 @@ export default function ClosureRequirements({
         })}</ul>}
       </details>}
       <details open={!collapseDetailsByDefault && !deliveriesComplete} className={`rounded-lg border border-slate-200 p-4 dark:border-slate-700 ${embedded ? 'bg-white/70 dark:bg-slate-900/60' : ''}`}>
-        <summary className="cursor-pointer list-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">{deliveriesComplete ? '✓ ' : ''}{deliveryHeading} <span className="font-normal text-slate-500">{completedDeliveries}/{deliveries.length} completas · Ver detalle</span></summary>
+        <summary className="cursor-pointer list-none font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">{deliveriesComplete && <CircleCheck className="closure-req-done" aria-hidden="true" />}{deliveryHeading} <span className="font-normal text-slate-500">{completedDeliveries}/{deliveries.length} completas · Ver detalle</span></summary>
         {canManage && <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <label className="inline-flex items-center gap-2 text-sm">
             <input

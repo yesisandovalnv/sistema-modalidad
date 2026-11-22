@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ThemeContext } from './ThemeContext'
+import { animateColorChange } from '../lib/colorThemes'
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
@@ -15,7 +16,10 @@ export function ThemeProvider({ children }) {
   const value = useMemo(
     () => ({
       theme,
-      toggleTheme: () => setTheme((current) => (current === 'light' ? 'dark' : 'light')),
+      toggleTheme: () => {
+        animateColorChange()
+        setTheme((current) => (current === 'light' ? 'dark' : 'light'))
+      },
     }),
     [theme],
   )

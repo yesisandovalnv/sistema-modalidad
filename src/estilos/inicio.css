@@ -1,0 +1,576 @@
+/* Inicio: pestañas, indicadores, distribución y actividad. */
+
+/* ── Pestañas con píldora deslizante ─────────────────────────────────────── */
+.tabs-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.tabs-list {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  gap: 0.125rem;
+  overflow-x: auto;
+  border-radius: 9999px;
+  background: var(--surface-sunken);
+  padding: 0.25rem;
+  scrollbar-width: none;
+}
+
+.tabs-indicator {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 0;
+  border-radius: 9999px;
+  background: var(--primary);
+  box-shadow: 0 2px 6px rgb(2 37 78 / 20%);
+}
+
+.tabs-indicator--animate {
+  transition: transform 260ms var(--ease-out);
+}
+
+.tabs-tab {
+  position: relative;
+  z-index: 1;
+  min-height: 2rem;
+  border-radius: 9999px;
+  padding: 0 0.875rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+
+.tabs-tab:hover {
+  color: var(--heading);
+}
+
+.tabs-tab[aria-selected='true'] {
+  color: var(--on-primary);
+}
+
+.tabs-list:not(.has-indicator) .tabs-tab[aria-selected='true'] {
+  background: var(--primary);
+}
+
+.tabs-tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.tabs-panel {
+  margin-top: 1rem;
+  animation: tab-in 220ms var(--ease-out) both;
+}
+
+/* Panel que ocupa el alto libre de la tarjeta y centra el gráfico, sin estirarlo. */
+.tabs-panel--center:not([hidden]) {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes tab-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filter-count,
+  .filter-mark.is-checked::after,
+  .filter-chip,
+  .tabs-panel {
+    animation: none;
+  }
+
+  .tabs-indicator--animate,
+  .filter-trigger-chevron svg {
+    transition: none;
+  }
+}
+
+/* ── Indicadores en mosaico, tabla de colecciones y botón de acción ───────── */
+.indicator-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: 0.625rem;
+}
+
+.indicator-tile {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--surface-secondary);
+  padding: 0.75rem 0.875rem;
+  animation: option-in 240ms var(--ease-out) both;
+  animation-delay: calc(80ms + var(--i, 0) * 35ms);
+}
+
+.indicator-tile dt {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+
+.indicator-tile dd {
+  color: var(--heading);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.indicator-table {
+  overflow-x: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.875rem;
+}
+
+.indicator-table th,
+.indicator-table td {
+  padding: 0.5rem 0.875rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.indicator-table thead th {
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.indicator-table tbody tr + tr td {
+  border-top: 1px solid var(--border);
+}
+
+.indicator-table td {
+  color: var(--heading);
+  font-variant-numeric: tabular-nums;
+}
+
+.action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 9999px;
+  background: var(--primary-soft);
+  padding: 0.375rem 0.375rem 0.375rem 1rem;
+  color: var(--heading);
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.action-button--sm {
+  flex: none;
+  gap: 0.5rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.action-button--sm .action-button-arrow {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.action-button-arrow {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--primary);
+  color: var(--on-primary);
+  transition: transform 160ms var(--ease-out);
+}
+
+.action-button:hover {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.action-button:hover .action-button-arrow {
+  background: var(--on-primary);
+  color: var(--primary);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .action-button:hover .action-button-arrow {
+    transform: translateX(2px);
+  }
+}
+
+.action-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indicator-tile {
+    animation: none;
+  }
+
+  .action-button-arrow {
+    transition: none;
+  }
+}
+
+/* ── Formas de la distribución: barra segmentada (estado) y columnas (gestión) ── */
+.state-stack {
+  display: flex;
+  height: 1.25rem;
+  gap: 2px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--surface-sunken);
+}
+
+.state-stack-segment {
+  flex-basis: 0;
+  min-width: 0.5rem;
+  animation: bar-grow 600ms var(--ease-out) backwards;
+  animation-delay: calc(120ms + var(--stagger, 0) * 90ms);
+}
+
+.state-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 0.625rem;
+  background: var(--surface-secondary);
+  padding: 0.5rem 0.75rem;
+  animation: option-in 240ms var(--ease-out) both;
+  animation-delay: calc(200ms + var(--i, 0) * 45ms);
+}
+
+.stage-columns {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr));
+  align-items: end;
+  gap: 0.75rem;
+  height: 11rem;
+  max-width: calc(var(--n, 5) * 5.75rem);
+  margin-inline: auto;
+}
+
+.stage-column {
+  display: grid;
+  height: 100%;
+  min-width: 0;
+  grid-template-rows: auto 1fr 2.5rem;
+  justify-items: center;
+  gap: 0.375rem;
+}
+
+.stage-column-track {
+  display: flex;
+  width: 100%;
+  max-width: 2.75rem;
+  align-items: flex-end;
+  border-bottom: 1px solid var(--border);
+}
+
+.stage-column-bar {
+  width: 100%;
+  min-height: 4px;
+  border-radius: 0.625rem 0.625rem 0 0;
+  animation: column-grow 650ms var(--ease-out) backwards;
+  animation-delay: calc(120ms + var(--stagger, 0) * 80ms);
+}
+
+.stage-column-name {
+  display: -webkit-box;
+  align-self: start;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.25;
+  text-align: center;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@keyframes column-grow {
+  from { clip-path: inset(100% 0 0 0 round 0.625rem 0.625rem 0 0); opacity: 0.35; }
+}
+
+/* Cifras y nombres de los gráficos: suben y aparecen junto a su barra, no de golpe. */
+@keyframes chart-rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+.stage-column > strong,
+.stage-column-name,
+.year-bar-row {
+  animation: chart-rise 320ms var(--ease-out) backwards;
+  animation-delay: calc(60ms + var(--stagger, 0) * 80ms);
+}
+
+.year-bars {
+  display: grid;
+  gap: 1rem;
+}
+
+.year-bar-row {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 2rem;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.year-bar-year {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.year-bar-track {
+  height: 0.875rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: var(--surface-sunken);
+}
+
+.year-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0.5rem;
+  animation: bar-grow 650ms var(--ease-out) backwards;
+  animation-delay: calc(120ms + var(--stagger, 0) * 90ms);
+}
+
+.year-bar-value {
+  color: var(--heading);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .state-stack-segment,
+  .state-legend,
+  .stage-column-bar,
+  .year-bar-fill,
+  .stage-column > strong,
+  .stage-column-name,
+  .year-bar-row {
+    animation: none;
+  }
+}
+
+/* ── Tarjetas de actividad del Dashboard ───────────────────────────────────
+   Cabecera con explicación y contador; filas separadas por una línea; en
+   "Pendientes" cada cosa es un mosaico propio para que no se mezclen. */
+.activity-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 1.25rem;
+}
+
+.activity-card-icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.75rem;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.activity-count-badge {
+  flex: none;
+  border-radius: 9999px;
+  background: var(--primary-soft);
+  padding: 0.125rem 0.625rem;
+  color: var(--heading);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.activity-list > li {
+  animation: option-in 240ms var(--ease-out) both;
+  animation-delay: calc(120ms + var(--i, 0) * 45ms);
+}
+
+.activity-list > li + li {
+  border-top: 1px solid var(--border);
+}
+
+.activity-row {
+  display: flex;
+  min-height: 3.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 -0.5rem;
+  border-radius: 0.75rem;
+  padding: 0.625rem 0.5rem;
+  font-size: 0.875rem;
+  transition: background-color 0.15s ease;
+}
+
+a.activity-row:hover,
+a.activity-row:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+}
+
+a.activity-row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+.activity-date {
+  display: grid;
+  width: 3.25rem;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  background: var(--surface-raised);
+  padding: 0.25rem 0;
+  color: var(--heading);
+  line-height: 1.15;
+}
+
+.activity-date strong {
+  font-size: 0.8125rem;
+  text-transform: capitalize;
+}
+
+.activity-date small {
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-date.is-overdue {
+  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+.activity-flag {
+  flex: none;
+  border-radius: 9999px;
+  background: var(--warning-soft);
+  padding: 0.125rem 0.5rem;
+  color: var(--warning-text);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.activity-avatar {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.pending-list {
+  display: grid;
+  gap: 0.625rem;
+  padding: 0.5rem 0 1.25rem;
+}
+
+.pending-list > li {
+  animation: option-in 240ms var(--ease-out) both;
+  animation-delay: calc(120ms + var(--i, 0) * 45ms);
+}
+
+.pending-tile {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--surface-secondary);
+  padding: 0.75rem 0.875rem;
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+a.pending-tile:hover,
+a.pending-tile:focus-visible {
+  outline: none;
+  border-color: var(--focus);
+  background: var(--surface-raised);
+}
+
+a.pending-tile:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent);
+}
+
+.pending-count {
+  display: grid;
+  min-width: 3rem;
+  height: 3rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.75rem;
+  background: var(--surface-sunken);
+  padding: 0 0.375rem;
+  color: var(--text-secondary);
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pending-count.has-items {
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+.pending-arrow {
+  color: var(--text-muted);
+  transition: transform 160ms var(--ease-out), color 0.15s ease;
+}
+
+a.pending-tile:hover .pending-arrow {
+  color: var(--heading);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  a.pending-tile:hover .pending-arrow {
+    transform: translateX(2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-list > li,
+  .pending-list > li {
+    animation: none;
+  }
+
+  .pending-arrow {
+    transition: none;
+  }
+}

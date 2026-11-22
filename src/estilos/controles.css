@@ -1,0 +1,678 @@
+/* Series de gráficos, filtros en píldora, listas desplegables, Filtrar y cabecera del Inicio. */
+
+/* ── Series de gráficos (DESIGN.md) ─────────────────────────────────────────
+   Paleta categórica validada con la skill dataviz (banda de luminosidad, croma,
+   separación para daltonismo y contraste) en claro sobre #F8FAFD y en oscuro sobre
+   #12233D. Cada modalidad tiene su color fijo (no cambia al filtrar). */
+:root {
+  --chart-1: #2f5fd0; /* Proyecto de Grado: azul UABJB */
+  --chart-2: #b47b22; /* Tesis de Grado: dorado de la acreditación */
+  --chart-3: #1e9aa6; /* Trabajo Dirigido: turquesa del engranaje */
+  --chart-4: #c9566e; /* Graduación vía Diplomado: vino */
+  --chart-5: #7357c6; /* Excelencia Académica: violeta */
+  --chart-6: #3f9b63; /* Examen de Grado: verde */
+}
+
+html.dark {
+  --chart-1: #5a84e3;
+  --chart-2: #bc8526;
+  --chart-3: #26a3b0;
+  --chart-4: #d0607a;
+  --chart-5: #8a6fd8;
+  --chart-6: #44a46b;
+}
+
+/* ── Tarjeta del total: azul marino plano ── */
+.metric-featured {
+  background: var(--brand-surface);
+  color: var(--on-brand-surface);
+  box-shadow: 0 6px 20px rgb(2 37 78 / 22%);
+}
+
+html.dark .metric-featured {
+  background: var(--brand-surface);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%), var(--card-shadow);
+}
+
+/* ── Campos de filtro en forma de píldora ───────────────────────────────── */
+.pill-control {
+  width: 100%;
+  min-width: 0;
+  height: 2.75rem;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  background: var(--surface-sunken);
+  padding: 0 1.125rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pill-control::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.pill-control:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.pill-control:focus-visible {
+  border-color: var(--focus);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 25%, transparent);
+}
+
+.pill-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.pill-chevron {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+/* ── Listas desplegables y menús (Select, menú de cuenta) ─────────────────────
+   El panel baja desde el campo (escala y opacidad, origen en el campo) y las opciones
+   se acomodan una por una. Al cerrar sale más rápido. Solo transform y opacity. */
+.select-trigger {
+  cursor: pointer;
+  padding-right: 0.375rem;
+}
+
+.select-trigger:disabled {
+  cursor: not-allowed;
+}
+
+.select-placeholder {
+  color: var(--text-secondary);
+}
+
+.select-trigger[aria-expanded='true'] {
+  border-color: var(--focus);
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent);
+}
+
+.select-chevron svg {
+  transition: transform 200ms var(--ease-out);
+}
+
+.select-trigger[aria-expanded='true'] .select-chevron svg {
+  transform: rotate(180deg);
+}
+
+.select-panel,
+.dropdown-panel {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface-raised);
+  box-shadow: 0 14px 36px rgb(2 37 78 / 16%), 0 2px 6px rgb(2 37 78 / 8%);
+  animation: dropdown-in 200ms var(--ease-out) both;
+}
+
+html.dark .select-panel,
+html.dark .dropdown-panel {
+  box-shadow: 0 14px 36px rgb(0 0 0 / 45%), 0 0 0 1px rgb(255 255 255 / 4%);
+}
+
+.select-panel {
+  position: absolute;
+  left: 0;
+  min-width: max(100%, 15rem);
+  top: calc(100% + 0.5rem);
+  z-index: 45;
+  max-height: 18rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.375rem;
+  transform-origin: top center;
+}
+
+.select-panel[data-side='top'] {
+  top: auto;
+  bottom: calc(100% + 0.5rem);
+  transform-origin: bottom center;
+}
+
+/* El panel vive en <body> con posición fija (Select lo ubica bajo el campo), por encima
+   de las ventanas flotantes, así ninguna tarjeta ni ventana lo recorta. */
+.select-panel.select-panel--floating {
+  z-index: 70;
+  min-width: 0;
+}
+
+.select-panel--floating[data-side='top'] {
+  top: auto;
+}
+
+.select-label {
+  display: block;
+  margin-bottom: 0.375rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* Versión con búsqueda: el campo es de texto y lo escrito filtra la lista. */
+.select-trigger--search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: text;
+  padding-left: 1rem;
+}
+
+.select-trigger--search:focus-within,
+.select-trigger--search[data-open] {
+  border-color: var(--focus);
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent);
+}
+
+.select-trigger--search[data-open] .select-chevron svg {
+  transform: rotate(180deg);
+}
+
+.select-search-input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.select-search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.select-chevron {
+  cursor: pointer;
+}
+
+.select-empty {
+  padding: 0.625rem 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.select-option[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.select-panel[data-state='closing'],
+.dropdown-panel[data-state='closing'] {
+  animation: dropdown-out 130ms var(--ease-out) both;
+}
+
+.select-option,
+.dropdown-item {
+  animation: option-in 240ms var(--ease-out) both;
+  animation-delay: calc(40ms + var(--i, 0) * 30ms);
+}
+
+.select-option {
+  display: flex;
+  min-height: 2.5rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.select-option[data-active] {
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface-raised));
+  color: var(--heading);
+}
+
+.select-option[aria-selected='true'] {
+  font-weight: 600;
+  color: var(--heading);
+}
+
+.select-check {
+  color: var(--focus);
+}
+
+.dropdown-action {
+  color: var(--text-primary);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.dropdown-action:hover,
+.dropdown-action:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface-raised));
+  color: var(--heading);
+}
+
+.dropdown-action:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+.dropdown-action svg {
+  color: var(--focus);
+}
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+}
+
+@keyframes dropdown-out {
+  to { opacity: 0; transform: translateY(-4px) scale(0.98); }
+}
+
+@keyframes option-in {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+
+.select-panel[data-side='top'] {
+  animation-name: dropdown-in-up;
+}
+
+@keyframes dropdown-in-up {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select-panel,
+  .dropdown-panel,
+  .select-panel[data-side='top'] {
+    animation-name: fade-in;
+    animation-duration: 120ms;
+  }
+
+  .select-option,
+  .dropdown-item {
+    animation: none;
+  }
+
+  .select-chevron svg {
+    transition: none;
+  }
+}
+
+/* ── Botón "Filtrar" con columnas para marcar (patrón del sistema del hostal) ── */
+.filter-trigger {
+  display: inline-flex;
+  height: 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  padding: 0 0.375rem 0 0.875rem;
+  color: var(--heading);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.filter-trigger:hover {
+  border-color: var(--focus);
+}
+
+.filter-trigger:focus-visible,
+.filter-trigger[aria-expanded='true'] {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent);
+}
+
+.filter-trigger-chevron {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.filter-trigger-chevron svg {
+  transition: transform 200ms var(--ease-out);
+}
+
+.filter-trigger[aria-expanded='true'] .filter-trigger-chevron svg {
+  transform: rotate(180deg);
+}
+
+.filter-clear-button {
+  display: inline-flex;
+  height: 2.5rem;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 9999px;
+  background: var(--danger-soft);
+  padding: 0 0.875rem;
+  color: var(--danger-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  animation: count-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.filter-clear-button:hover,
+.filter-clear-button:focus-visible {
+  outline: none;
+  background: var(--danger);
+  color: var(--on-danger);
+}
+
+.filter-clear-button:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
+.filter-count {
+  display: grid;
+  min-width: 1.375rem;
+  height: 1.375rem;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--primary);
+  padding: 0 0.375rem;
+  color: var(--on-primary);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  animation: count-pop 260ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes count-pop {
+  from { opacity: 0; transform: scale(0.5); }
+}
+
+.filter-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  z-index: 45;
+  /* El ancho sale de cuántas columnas tiene (3 → 44rem, como en el Dashboard; 2 → 30rem),
+     así no queda espacio vacío a la derecha. */
+  width: min(max(calc(var(--n, 3) * 14.25rem + 1.25rem), 18rem), calc(100vw - 2rem));
+  max-width: min(56rem, calc(100vw - 2rem));
+  max-height: min(28rem, calc(100dvh - 10rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.75rem;
+  transform-origin: top right;
+}
+
+.filter-panel--start {
+  right: auto;
+  left: 0;
+  transform-origin: top left;
+}
+
+.filter-columns {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr));
+  gap: 0.5rem 0;
+}
+
+.filter-columns[data-n='3'] {
+  grid-template-columns: 0.8fr 1.1fr 1.1fr;
+}
+
+.filter-columns[data-n='2'] {
+  grid-template-columns: 0.85fr 1.15fr;
+}
+
+.filter-option > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tamaño fijo: una columna con muchas opciones (p. ej. las etapas) se desplaza por dentro
+   en lugar de agrandar el panel. */
+.filter-group {
+  display: flex;
+  max-height: 17.5rem;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 0.625rem;
+  scrollbar-width: thin;
+}
+
+.filter-group + .filter-group {
+  border-left: 1px solid var(--border);
+}
+
+.filter-column {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.filter-column + .filter-column {
+  border-top: 1px solid var(--border);
+  padding-top: 0.625rem;
+}
+
+/* Cabecera del Inicio: icono | título | botón Filtrar, y debajo los chips. */
+.dashboard-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1rem;
+  row-gap: 0.75rem;
+}
+
+.report-filters-action {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.report-filters-chips {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 639px) {
+  .dashboard-header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .report-filters-action {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+}
+
+.filter-column:disabled {
+  opacity: 0.6;
+}
+
+.filter-column-title {
+  margin-bottom: 0.375rem;
+  padding: 0 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.filter-option {
+  display: flex;
+  width: 100%;
+  min-height: 2.25rem;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 0.625rem;
+  padding: 0.375rem 0.5rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.filter-option[aria-pressed='true'] {
+  color: var(--heading);
+  font-weight: 600;
+}
+
+.filter-mark {
+  position: relative;
+  display: grid;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  place-items: center;
+  border-radius: 9999px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface-raised);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.filter-mark.is-checked {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.filter-mark.is-checked::after {
+  content: '';
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 9999px;
+  background: var(--on-primary);
+  animation: count-pop 220ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.filter-mark--box {
+  border-radius: 0.375rem;
+}
+
+.filter-mark--box.is-checked::after {
+  width: 0.3125rem;
+  height: 0.5625rem;
+  margin-top: -0.125rem;
+  border-radius: 0;
+  border: solid var(--on-primary);
+  border-width: 0 2px 2px 0;
+  background: transparent;
+  transform: rotate(45deg);
+  animation: none;
+}
+
+.filter-note {
+  padding: 0.375rem 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.filter-clear {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  margin-top: 0.625rem;
+  border-top: 1px solid var(--border);
+  padding: 0.625rem 0 0.125rem;
+  color: var(--danger-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.filter-clear:hover {
+  text-decoration: underline;
+}
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  background: var(--primary-soft);
+  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  color: var(--heading);
+  font-size: 0.8125rem;
+  animation: option-in 220ms var(--ease-out) both;
+}
+
+.filter-chip-title {
+  color: var(--text-secondary);
+}
+
+.filter-chip button {
+  display: grid;
+  width: 1.375rem;
+  height: 1.375rem;
+  place-items: center;
+  border-radius: 9999px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.filter-chip button:hover,
+.filter-chip button:focus-visible {
+  outline: none;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+@media (max-width: 639px) {
+  .filter-panel {
+    left: 0;
+    right: auto;
+    width: min(22rem, calc(100vw - 4rem));
+    transform-origin: top left;
+  }
+
+  .filter-columns,
+  .filter-columns[data-n] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+
+  .filter-group + .filter-group {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+  }
+}
+
+/* Hover de opciones de listas y menús: bien visible, en el azul de la marca. */
+.select-option[data-active],
+.filter-option:hover,
+.filter-option:focus-visible,
+.dropdown-action:hover,
+.dropdown-action:focus-visible {
+  outline: none;
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.select-option[data-active] .select-check,
+.dropdown-action:hover svg,
+.dropdown-action:focus-visible svg {
+  color: var(--on-primary);
+}
+
+.filter-option:hover .filter-mark,
+.filter-option:focus-visible .filter-mark {
+  border-color: var(--on-primary);
+}

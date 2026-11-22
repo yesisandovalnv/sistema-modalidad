@@ -1,9 +1,19 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 import { AuthContext } from '../../context/AuthContext'
 import { reportesService } from '../../services/reportesService'
+import { dashboardService } from '../../services/dashboardService'
 import DashboardPage from './DashboardPage'
+
+vi.mock('../../services/dashboardService', () => ({
+  dashboardService: {
+    proximasDefensas: vi.fn(),
+    postulacionesRecientes: vi.fn(),
+    pendientes: vi.fn(),
+  },
+}))
 
 vi.mock('../../services/reportesService', () => ({
   reportesService: {
@@ -74,10 +84,10 @@ function makeDashboard(overrides = {}) {
   }
 }
 
-function renderDashboard(user = { nombres: 'Agustin Pérez', username: 'admin_agustin' }) {
+function renderDashboard(user = { nombres: 'Agustin Pérez', username: 'admin_agustin' }, permissions = []) {
   return render(
-    <AuthContext.Provider value={{ user }}>
-      <DashboardPage />
+    <AuthContext.Provider value={{ user, hasPermission: (name) => permissions.includes(name) }}>
+      <MemoryRouter><DashboardPage /></MemoryRouter>
     </AuthContext.Provider>,
   )
 }
@@ -86,6 +96,9 @@ describe('DashboardPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     reportesService.obtenerDashboard.mockResolvedValue(makeDashboard())
+    dashboardService.proximasDefensas.mockResolvedValue({ items: [{ id: 1, postulacion: 45, postulacion_codigo: 'PG-2026-011', tipo_display: 'Defensa pública', lugar: 'Salón Bicentenario', fecha_programada: '2099-09-18T09:00:00-04:00' }], total: 1 })
+    dashboardService.postulacionesRecientes.mockResolvedValue({ items: [{ id: 48, codigo: 'PG-2026-015', estudiante_detalle: { nombre_completo: 'Camila Melgar Escalante' }, modalidad_detalle: { nombre: 'Proyecto de Grado' }, estado_actual_detalle: { codigo: 'CONCLUIDA', nombre: 'Concluida' } }], total: 1 })
+    dashboardService.pendientes.mockResolvedValue({ documentos: 4, condiciones: 6, entregas: null })
     reportesService.obtenerModalidades.mockResolvedValue([
       { id: 1, codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado' },
       { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' },
@@ -99,15 +112,15 @@ describe('DashboardPage', () => {
   it('conserva los cinco indicadores y presenta distribuciones accesibles', async () => {
     renderDashboard()
 
-    expect(screen.getByRole('heading', { name: 'Bienvenido, Agustin' })).toBeInTheDocument()
-    expect(screen.getByText('Consulta el estado general de los procesos académicos.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Bienvenido, Agustin', level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Filtrar/ })).toBeInTheDocument()
 
     const metrics = await screen.findByTestId('dashboard-metrics')
-    expect(metrics).toHaveClass('sm:grid-cols-2', 'xl:grid-cols-5')
-    for (const label of ['Total postulaciones', 'En proceso', 'Concluidas', 'Rechazadas', 'Sin etapa actual']) {
+    expect(metrics).toHaveClass('grid-cols-2', 'xl:grid-cols-4')
+    for (const label of ['En proceso', 'Concluidas', 'Rechazadas', 'Sin etapa actual']) {
       expect(within(metrics).getByText(label)).toBeInTheDocument()
     }
-    expect(within(metrics).getByText('7')).toBeInTheDocument()
+    expect(screen.getByText('Total postulaciones').closest('.metric-featured')).toHaveTextContent('7')
     expect(within(metrics).getByText('4')).toBeInTheDocument()
     expect(within(metrics).getByText('2')).toBeInTheDocument()
     expect(within(metrics).getByText('1')).toBeInTheDocument()
@@ -120,9 +133,8 @@ describe('DashboardPage', () => {
     expect(within(distribution).getByText('Proyecto de Grado').closest('li')).toHaveTextContent('4')
     expect(within(distribution).getByText('Proyecto de Grado').closest('li')).toHaveTextContent('57,1%')
     expect(within(distribution).getByText('Tesis de Grado').closest('li')).toHaveTextContent('42,9%')
-    expect(screen.getAllByText('Defensa Publica')).toHaveLength(2)
-    expect(screen.getByText('Por Tipo')).toBeInTheDocument()
-    expect(screen.getByText('Notificaciones personales')).toBeInTheDocument()
+    expect(screen.getAllByText('Defensa pública')).toHaveLength(2)
+    expect(screen.getByText('Por tipo')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Advertencias' })).not.toBeInTheDocument()
     expect(screen.queryByText(dashboard.advertencias[0])).not.toBeInTheDocument()
   })
@@ -181,7 +193,7 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('No hay postulaciones para los filtros aplicados.')).toBeInTheDocument()
     expect(screen.getByTestId('dashboard-metrics')).toHaveTextContent('0')
     expect(screen.getAllByText('Sin datos disponibles para esta distribución.')).toHaveLength(4)
-    expect(screen.getByRole('heading', { name: 'Tendencia por gestión' }).parentElement).toHaveTextContent(
+    expect(screen.getByRole('heading', { name: 'Tendencia por gestión', hidden: true }).parentElement).toHaveTextContent(
       'Sin datos disponibles para esta distribución.',
     )
   })
@@ -202,39 +214,7 @@ describe('DashboardPage', () => {
     })).toBeInTheDocument()
     expect(within(screen.getByTestId('dashboard-distributions')).getByText('Proyecto de Grado').closest('li'))
       .toHaveTextContent('—')
-    expect(screen.getByText('Inscripcion')).toBeInTheDocument()
-  })
-
-  it('actualiza las visualizaciones al aplicar y limpiar los filtros existentes', async () => {
-    reportesService.obtenerDashboard
-      .mockResolvedValueOnce(makeDashboard())
-      .mockResolvedValueOnce(makeDashboard({
-        resumen: { total_postulaciones: 2 },
-        modalidades: [{ codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado', total: 2 }],
-      }))
-      .mockResolvedValueOnce(makeDashboard())
-
-    renderDashboard()
-    await screen.findByRole('img', { name: /total 7$/ })
-
-    fireEvent.change(await screen.findByLabelText('Modalidad'), { target: { value: '2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar filtros' }))
-    await screen.findByRole('img', { name: /total 2$/ })
-    await waitFor(() => {
-      expect(reportesService.obtenerDashboard).toHaveBeenLastCalledWith(
-        expect.objectContaining({ modalidad: '2' }),
-        expect.any(AbortSignal),
-      )
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }))
-    await screen.findByRole('img', { name: /total 7$/ })
-    await waitFor(() => {
-      expect(reportesService.obtenerDashboard).toHaveBeenLastCalledWith(
-        expect.objectContaining({ modalidad: '', etapa_actual: '' }),
-        expect.any(AbortSignal),
-      )
-    })
+    expect(screen.getByText('Inscripción')).toBeInTheDocument()
   })
 
   it('mantiene el estado de carga y muestra un esqueleto adaptable', async () => {
@@ -248,7 +228,7 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('status', { name: 'Cargando dashboard' })).toBeInTheDocument()
     expect(screen.queryByTestId('dashboard-metrics')).not.toBeInTheDocument()
     resolveDashboard(makeDashboard())
-    expect(await screen.findByTestId('dashboard-metrics')).toHaveClass('xl:grid-cols-5')
+    expect(await screen.findByTestId('dashboard-metrics')).toHaveClass('xl:grid-cols-4')
   })
 
   it('muestra errores recuperables y permite reintentar la consulta', async () => {
@@ -282,28 +262,91 @@ describe('DashboardPage', () => {
 
     const metrics = await screen.findByTestId('dashboard-metrics')
     expect(document.documentElement).toHaveClass('dark')
-    expect(metrics).toHaveClass('grid-cols-1', 'sm:grid-cols-2', 'xl:grid-cols-5')
-    expect(screen.getByTestId('dashboard-distributions')).toHaveClass(
-      'lg:grid-cols-2',
-      'xl:grid-cols-3',
-    )
+    expect(metrics).toHaveClass('grid-cols-2', 'xl:grid-cols-4')
+    expect(within(screen.getByTestId('dashboard-distributions')).getByRole('tablist', { name: 'Ver la distribución por' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /Distribución de postulaciones por modalidad/ })).toBeInTheDocument()
     document.documentElement.classList.remove('dark')
   })
 
-  it('usa el nombre autenticado sin depender del rol y aplica el fallback al username', async () => {
-    const { unmount } = renderDashboard({
-      nombres: 'María Fernanda',
-      username: 'maria',
-      rol: { codigo: 'ROL_FUTURO' },
-    })
+  it('ofrece la siguiente acción solo con permiso', async () => {
+    renderDashboard(undefined, ['puede_ver_notificaciones', 'puede_ver_documentos'])
+    await screen.findByTestId('dashboard-metrics')
+    expect(screen.getByRole('link', { name: 'Ver documentos' })).toHaveAttribute('href', '/documentos')
+  })
 
+  it('sin permisos no muestra enlaces de acción', async () => {
+    renderDashboard()
+    await screen.findByTestId('dashboard-metrics')
+    expect(screen.queryByRole('link', { name: 'Ver documentos' })).not.toBeInTheDocument()
+  })
+
+  it('agrupa distribuciones e indicadores en pestañas para ocupar menos espacio', async () => {
+    renderDashboard()
+    const distribution = await screen.findByTestId('dashboard-distributions')
+    const tabs = within(distribution).getAllByRole('tab')
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Modalidad', 'Etapa', 'Estado', 'Gestión'])
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
+    fireEvent.click(tabs[1])
+    expect(tabs[1]).toHaveAttribute('aria-selected', 'true')
+    expect(within(distribution).getByRole('tabpanel')).toHaveTextContent('Defensa pública')
+    expect(screen.getByRole('tablist', { name: 'Indicadores operativos' })).toBeInTheDocument()
+  })
+
+  it('el total va a la derecha de la bienvenida y el filtro se aplica al instante', async () => {
+    reportesService.obtenerDashboard
+      .mockResolvedValueOnce(makeDashboard())
+      .mockResolvedValueOnce(makeDashboard({ resumen: { total_postulaciones: 2 }, modalidades: [{ codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado', total: 2 }] }))
+    renderDashboard()
+    await screen.findByRole('img', { name: /total 7$/ })
+    const header = screen.getByRole('heading', { name: 'Bienvenido, Agustin' }).closest('.dashboard-header')
+    expect(header.nextElementSibling).toHaveClass('metric-featured')
+    await waitFor(() => expect(reportesService.obtenerModalidades).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: /Filtrar/ }))
+    const panel = await screen.findByRole('group', { name: 'Filtros' })
+    fireEvent.click(await within(within(panel).getByRole('group', { name: 'Modalidad' })).findByRole('button', { name: 'Tesis de Grado' }))
+    expect(screen.queryByRole('status', { name: 'Cargando dashboard' })).not.toBeInTheDocument()
+    await screen.findByRole('img', { name: /total 2$/ })
+    expect(reportesService.obtenerDashboard).toHaveBeenLastCalledWith(expect.objectContaining({ modalidad: '2' }), expect.any(AbortSignal))
+  })
+
+  it('usa el primer nombre disponible y el username como respaldo', async () => {
+    const { unmount } = renderDashboard({ nombres: 'María Fernanda', username: 'maria' })
     expect(screen.getByRole('heading', { name: 'Bienvenido, María' })).toBeInTheDocument()
     await screen.findByTestId('dashboard-metrics')
     unmount()
-
     renderDashboard({ nombres: '   ', nombre_completo: '', nombre: '', username: 'usuario_seguro' })
     expect(screen.getByRole('heading', { name: 'Bienvenido, usuario_seguro' })).toBeInTheDocument()
     await screen.findByTestId('dashboard-metrics')
+  })
+
+  it('los indicadores se muestran como mosaicos y la colección como tabla', async () => {
+    renderDashboard()
+    await screen.findByTestId('dashboard-metrics')
+    const defensas = screen.getByRole('tab', { name: 'Defensas' })
+    fireEvent.click(defensas)
+    const panel = screen.getAllByRole('tabpanel').find((item) => !item.hidden && item.textContent.includes('Programadas'))
+    expect(panel.querySelectorAll('.indicator-tile').length).toBeGreaterThan(3)
+    expect(within(panel).getByRole('table')).toHaveTextContent('Defensa pública')
+  })
+
+  it('muestra próximas defensas, postulaciones recientes y pendientes con enlaces según permiso', async () => {
+    renderDashboard(undefined, ['puede_ver_postulaciones', 'puede_ver_documentos'])
+    const defensas = await screen.findByTestId('widget-defensas')
+    expect(await within(defensas).findByRole('link', { name: /PG-2026-011/ })).toHaveAttribute('href', '/postulaciones/45')
+    const recientes = screen.getByTestId('widget-recientes')
+    expect(await within(recientes).findByRole('link', { name: /Camila Melgar Escalante/ })).toHaveAttribute('href', '/postulaciones/48')
+    expect(within(recientes).getByText('Concluida')).toHaveClass('semantic-status--success')
+    const pendientes = screen.getByTestId('widget-pendientes')
+    expect(await within(pendientes).findByRole('link', { name: /Documentos por revisar/ })).toHaveTextContent('4')
+    expect(within(pendientes).getByRole('link', { name: /Entregas físicas pendientes/ })).toHaveTextContent('—')
+  })
+
+  it('las tarjetas de actividad muestran su estado vacío o de error sin romper el resto', async () => {
+    dashboardService.proximasDefensas.mockResolvedValue({ items: [], total: 0 })
+    dashboardService.postulacionesRecientes.mockRejectedValue(new Error('403'))
+    renderDashboard()
+    expect(await within(await screen.findByTestId('widget-defensas')).findByText('No hay defensas programadas.')).toBeInTheDocument()
+    expect(await within(screen.getByTestId('widget-recientes')).findByRole('alert')).toHaveTextContent('No se pudo cargar.')
+    expect(screen.getByTestId('dashboard-metrics')).toBeInTheDocument()
   })
 })

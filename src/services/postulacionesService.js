@@ -134,7 +134,6 @@ function normalizeClosure(error) {
   if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
   const status = error?.response?.status
   const data = error?.response?.data
-  const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
   if (status === 400 || status === 409) {
     const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
     return { status, message: 'La acción no cumple las precondiciones del cierre técnico.', fields }

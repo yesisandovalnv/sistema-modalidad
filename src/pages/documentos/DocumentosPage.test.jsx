@@ -169,7 +169,7 @@ describe('Subir documento', () => {
     await user.upload(firstInput, firstFile)
     await user.upload(secondInput, new File(['segundo'], 'segundo.pdf', { type: 'application/pdf' }))
     expect(screen.getByText('2 documentos seleccionados')).toBeInTheDocument()
-    await user.click(within(firstInput.closest('div').parentElement).getByRole('button', { name: 'Quitar' }))
+    await user.click(within(firstInput.closest('.upload-row')).getByRole('button', { name: 'Quitar' }))
     expect(screen.getByText('1 documento seleccionado')).toBeInTheDocument()
     await user.upload(firstInput, replacement)
 

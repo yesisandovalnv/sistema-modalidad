@@ -1,0 +1,171 @@
+/* Detalle de defensa. */
+
+/* ══ Detalle de defensa: ventana ancha, encabezado compacto y tres columnas ══ */
+.modal-window--xl {
+  max-width: 76rem;
+}
+
+.defense-detail {
+  display: grid;
+  grid-auto-flow: row dense;
+  gap: 1.25rem 2.5rem;
+}
+
+/* Encabezado: tipo y estado en una línea; debajo, todos los datos del evento en una fila. */
+.defense-event {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.defense-event-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.875rem;
+}
+
+.defense-event-head h3 {
+  color: var(--heading);
+  font-size: 1.375rem;
+  line-height: 1.2;
+}
+
+.defense-event-status {
+  border-radius: 9999px;
+  background: var(--info-soft);
+  padding: 0.1875rem 0.75rem;
+  color: var(--info-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.defense-event-status[data-tone='success'] { background: var(--success-soft); color: var(--success-text); }
+.defense-event-status[data-tone='warning'] { background: var(--warning-soft); color: var(--warning-text); }
+
+.defense-event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.defense-event-meta > p {
+  margin: 0;
+  padding: 0 0.875rem;
+  border-left: 1px solid var(--border-strong);
+}
+
+.defense-event-meta > p:first-child {
+  padding-left: 0;
+  border-left: 0;
+  color: var(--heading);
+}
+
+.defense-event-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+  font-size: 0.8125rem;
+}
+
+.defense-event-times dt {
+  font-size: 0.75rem;
+}
+
+.defense-event-times dd {
+  margin-top: 0;
+}
+
+@media (min-width: 1200px) {
+  .defense-detail {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .defense-detail > * {
+    grid-column: 1 / -1;
+  }
+
+  .defense-detail > section[aria-labelledby='estado-operativo-defensa-title'],
+  .defense-detail > section[aria-labelledby='resultado-directo-proyecto-title'],
+  .defense-detail > section[aria-labelledby='resultado-consolidado-title'],
+  .defense-detail > section[aria-labelledby='evaluaciones-defensa-title'] {
+    grid-column: span 1;
+  }
+
+  /* Columnas separadas por un filete vertical, no por cajas. */
+  .defense-detail > section[aria-labelledby='resultado-directo-proyecto-title'],
+  .defense-detail > section[aria-labelledby='resultado-consolidado-title'],
+  .defense-detail > section[aria-labelledby='evaluaciones-defensa-title'] {
+    border-left: 1px solid var(--border);
+    padding-left: 2.5rem;
+    margin-left: -1.25rem;
+  }
+}
+
+@media (min-width: 900px) and (max-width: 1199px) {
+  .defense-detail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .defense-detail > * {
+    grid-column: 1 / -1;
+  }
+
+  .defense-detail > section[aria-labelledby='estado-operativo-defensa-title'],
+  .defense-detail > section[aria-labelledby='resultado-directo-proyecto-title'],
+  .defense-detail > section[aria-labelledby='resultado-consolidado-title'],
+  .defense-detail > section[aria-labelledby='evaluaciones-defensa-title'] {
+    grid-column: span 1;
+  }
+}
+
+/* Dentro de cada columna, los datos del resultado y de cada evaluación en dos columnas. */
+.defense-detail section dl.grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+/* Datos compactos dentro de las columnas del detalle de defensa. */
+.defense-detail section dl.grid {
+  gap: 0.375rem 1rem;
+}
+
+.defense-detail section dl dt {
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.defense-detail section dl dd {
+  margin-top: 0.0625rem;
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.defense-detail section > h3 + * {
+  margin-top: 0.625rem;
+}
+
+.defense-detail li.border,
+.defense-detail li.rounded-md,
+.defense-detail li.rounded-lg {
+  padding: 0.5rem 0;
+}
+
+.defense-detail details {
+  padding-top: 0.5rem;
+}
+
+.defense-detail details > summary {
+  font-size: 0.875rem;
+}
+
+.defense-detail details > summary.p-3,
+.defense-detail details > summary {
+  padding: 0.25rem 0;
+}
+
+.defense-detail details[open] > summary {
+  margin-bottom: 0.5rem;
+}

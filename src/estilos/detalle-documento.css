@@ -1,0 +1,77 @@
+/* Detalle del documento. */
+
+/* ══ Detalle del documento: datos con etiqueta, versiones en filas y botones con ícono ══ */
+.doc-detail > * + * {
+  margin-top: 1.25rem;
+}
+
+.doc-detail-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.875rem 1.5rem;
+  font-size: 0.875rem;
+}
+
+.doc-detail-wide {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border);
+  padding-top: 0.875rem;
+}
+
+.doc-detail-status {
+  display: inline-flex;
+  border-radius: 9999px;
+  background: var(--info-soft);
+  padding: 0.125rem 0.625rem;
+  color: var(--info-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.doc-detail-status[data-tone='success'] { background: var(--success-soft); color: var(--success-text); }
+.doc-detail-status[data-tone='warning'] { background: var(--warning-soft); color: var(--warning-text); }
+
+.doc-detail-actions,
+.doc-version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.doc-detail [class*='app-button--'] {
+  gap: 0.4375rem;
+}
+
+.doc-detail ol,
+.doc-detail ul.space-y-3 {
+  display: grid;
+}
+
+.doc-detail ol > li + li,
+.doc-detail ul.space-y-3 > li + li {
+  margin-top: 0;
+}
+
+.doc-version {
+  display: grid;
+  min-width: 0;
+  gap: 0.75rem;
+  border-top: 1px solid var(--border);
+  padding: 1rem 0;
+}
+
+.doc-version:first-child {
+  border-top: 0;
+  padding-top: 0.5rem;
+}
+
+.doc-version > dl,
+.doc-version > div,
+.doc-version > p {
+  margin-top: 0;
+}
+
+.doc-version h4 {
+  color: var(--heading);
+}

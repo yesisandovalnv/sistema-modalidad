@@ -15,16 +15,16 @@
 }
 
 .login-page .login-card {
-  background: linear-gradient(135deg, #ffffff 0%, #f5f8ff 100%);
+  background: #ffffff;
   box-shadow: 0 16px 40px rgb(29 78 216 / 20%), 0 4px 12px rgb(15 23 42 / 10%);
 }
 
 .login-page .login-gradient {
-  background: linear-gradient(110deg, var(--login-blue), var(--document) 65%, var(--login-violet));
+  background: var(--uab-azul-900);
 }
 
 .login-page .login-gradient:hover {
-  filter: brightness(1.06);
+  background: var(--primary-hover);
 }
 
 .login-page .login-access-tab[aria-selected='false'] {

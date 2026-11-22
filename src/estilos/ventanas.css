@@ -1,0 +1,197 @@
+/* Ventanas flotantes centradas (CenteredModal). */
+
+/* ── Ventana flotante centrada (reglas de Fondo de Tiempo) ─────────────────
+   El fondo difuminado tiene la misma forma que el panel de trabajo: empieza debajo de la
+   barra superior, a la derecha del menú lateral, y con sus mismas esquinas curvas, así las
+   curvas del marco azul no se borran. La ventana queda centrada en esa área. Sobre la
+   barra superior va una capa transparente que también cierra la ventana. */
+.modal-overlay {
+  position: fixed;
+  inset: var(--navbar-height) 0 0 0;
+  z-index: 60;
+  border-radius: 1.25rem 1.25rem 0 0;
+  display: flex;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.75rem;
+}
+
+/* El tinte y el difuminado van en una capa propia (::before) y no en la ventana: así el fondo
+   no se convierte en el marco de las ventanas internas con posición fija (las del Expediente
+   siguen cubriendo toda la pantalla, como en su página). */
+.modal-overlay::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgb(0 26 58 / 32%);
+  content: '';
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+html.dark .modal-overlay::before {
+  background: rgb(0 10 25 / 55%);
+}
+
+/* Ventana de página (Expediente): un nivel por debajo de las ventanas internas (z-50). */
+.modal-overlay[data-layer='page'],
+.modal-catcher[data-layer='page'] {
+  z-index: 45;
+}
+
+@media (min-width: 640px) {
+  .modal-overlay {
+    padding: 1.5rem;
+  }
+
+  .modal-window {
+    max-height: calc(100dvh - var(--navbar-height) - 3rem);
+  }
+}
+
+/* Menú lateral bloqueado mientras hay una ventana flotante (CenteredModal le pone inert). */
+.sidebar[data-modal-blocked]::after {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: rgb(0 15 34 / 30%);
+  content: '';
+  cursor: not-allowed;
+  animation: fade-in 200ms var(--ease-out) both;
+}
+
+.modal-catcher {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 60;
+  height: var(--navbar-height);
+}
+
+@media (min-width: 768px) {
+  .modal-overlay {
+    border-radius: var(--panel-radius) var(--panel-radius) 0 var(--panel-radius);
+  }
+
+  html[data-sidebar='expanded'] .modal-overlay,
+  html[data-sidebar='expanded'] .modal-catcher {
+    left: var(--sidebar-expanded-width);
+  }
+
+  html[data-sidebar='collapsed'] .modal-overlay,
+  html[data-sidebar='collapsed'] .modal-catcher {
+    left: var(--sidebar-collapsed-width);
+  }
+}
+
+/* El fundido va en la capa del difuminado (no en el fondo entero): una opacidad animada en el
+   fondo cortaría el difuminado de su capa. */
+.modal-overlay::before {
+  animation: fade-in 200ms var(--ease-out) both;
+}
+
+.modal-overlay[data-state='closing']::before {
+  animation: fade-out 180ms var(--ease-out) both;
+}
+
+.modal-window {
+  display: flex;
+  width: 100%;
+  max-height: calc(100dvh - var(--navbar-height) - 1.5rem);
+  margin: auto;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 24px 60px rgb(2 37 78 / 24%);
+  animation: modal-in 260ms var(--ease-out) backwards;
+}
+
+html.dark .modal-window {
+  box-shadow: 0 24px 60px rgb(0 0 0 / 55%);
+}
+
+.modal-window--sm { max-width: 34rem; }
+.modal-window--form { max-width: 46rem; }
+.modal-window--form .modal-body { padding: 1.5rem 1.75rem; }
+.modal-window--md { max-width: 40rem; }
+.modal-window--lg { max-width: 60rem; }
+
+.modal-window[data-state='closing'] {
+  animation: modal-out 180ms var(--ease-out) both;
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+}
+
+@keyframes modal-out {
+  to { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+
+.modal-head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border);
+  padding: 1.125rem 1.25rem 1rem 1.5rem;
+}
+
+.modal-eyebrow {
+  color: var(--info-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.modal-close {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+  place-items: center;
+  border-radius: 9999px;
+  color: var(--text-secondary);
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .modal-close:hover {
+    background: var(--surface-sunken);
+    color: var(--heading);
+  }
+}
+
+.modal-body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  background: var(--surface-secondary);
+  padding: 1.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-window,
+  .modal-window[data-state='closing'] {
+    animation-name: fade-in;
+    animation-duration: 120ms;
+  }
+
+  .modal-window[data-state='closing'] {
+    animation-name: fade-out;
+  }
+}

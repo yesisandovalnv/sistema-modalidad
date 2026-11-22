@@ -1,40 +1,44 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Eye, FolderOpen, Pencil } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, FileSpreadsheet, Pencil, Plus, Search, SearchX, UserPlus, Users } from 'lucide-react'
+import { ViewToggle } from '../../components/ui/ViewToggle'
+import { STATUS_TONE as statusTone } from '../../lib/statusTone'
 import { Button } from '../../components/ui/button'
-import { DataState, Field, Modal, PageHeader, Pager, SearchBar } from '../../components/crud/CrudShell'
+import { Card } from '../../components/ui/card'
+import { ActionButton } from '../../components/ui/ActionButton'
+import { MetricCard } from '../../components/reports/ReportComponents'
+import { DataState } from '../../components/crud/CrudShell'
+import { CenteredModal } from '../../components/ui/CenteredModal'
+import { Select } from '../../components/ui/Select'
+import { FilterMenu } from '../../components/ui/FilterMenu'
+import { withAccents } from '../../lib/spanishLabel'
 import { crudService, endpoints, listAll } from '../../services/crudService'
 import { useAuth } from '../../hooks/useAuth'
 import apiClient from '../../services/api'
 import { formatCodeLabel } from '../../lib/utils'
 import { formatPeriodoLabel, formatStudentLabel } from './postulacionFormatters'
 import { postulacionesService } from '../../services/postulacionesService'
+import StudentImportModal from '../usuarios/StudentImportModal'
+import { QuickStudentForm } from './QuickStudentForm'
 
 const emptyForm = { estudiante: '', modalidad: '', periodo: '', observaciones_generales: '', tipo_registro: 'SEGUIMIENTO' }
 const duplicateCodeMessage = 'El código ingresado ya se encuentra registrado en otra postulación. Por favor, ingrese un código diferente.'
-const cardActionClass = 'inline-flex min-h-9 items-center gap-1.5 rounded px-1.5 text-sm font-semibold text-sky-700 transition-colors hover:text-sky-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:text-sky-300 dark:hover:text-sky-200 dark:focus-visible:ring-offset-slate-900'
-const statusBadgeBaseClass = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold'
-const statusBadgeVariants = {
-  blue: 'bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300',
-  green: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
-  amber: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
-  red: 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300',
-  gray: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-}
-const statusBadgeTone = {
-  REGISTRADA: 'amber',
-  PENDIENTE: 'amber',
-  EN_PROCESO: 'blue',
-  EN_REVISION: 'blue',
-  OBSERVADA: 'amber',
-  SUBSANADA: 'blue',
-  APROBADA: 'green',
-  CONCLUIDA: 'green',
-  RECHAZADA: 'red',
-  CANCELADA: 'gray',
-}
+// Mismo estilo que el Inicio: tarjetas compactas con el nombre del estudiante y sus acciones
+// (Detalle y Editar como íconos, "Abrir expediente" con el ActionButton común). Modalidad,
+// periodo, tipo de registro y estado se ven en Detalle. El estado usa colores semánticos.
+// Tarjetas o lista: cada usuario elige cómo ver a los estudiantes y se recuerda en este navegador.
+const REGISTRO_OPTIONS = [{ value: 'SEGUIMIENTO', label: 'Proceso con seguimiento' }, { value: 'HISTORICO', label: 'Registro histórico' }]
+const VIEW_KEY = 'sm_postulantes_vista'
+const readView = () => { try { return localStorage.getItem(VIEW_KEY) === 'lista' ? 'lista' : 'tarjetas' } catch { return 'tarjetas' } }
+const PAGE_SIZE = { tarjetas: 15, lista: 20 }
 
-const statusBadgeClass = (code) => `${statusBadgeBaseClass} ${statusBadgeVariants[statusBadgeTone[code] || 'gray']}`
+const initialsOf = (label) => String(label || '')
+  .replace(/^[^-]*-\s*/, '')
+  .split(/\s+/)
+  .filter(Boolean)
+  .slice(0, 2)
+  .map((part) => part[0])
+  .join('')
+  .toLocaleUpperCase('es') || '?'
 
 const humanizeTipoRegistro = (value) => {
   if (value === 'HISTORICO') return 'Registro histórico'
@@ -44,14 +48,34 @@ const humanizeTipoRegistro = (value) => {
 export default function PostulantesPage() {
   const { hasPermission, roleCode } = useAuth()
   const canManage = hasPermission('puede_gestionar_postulaciones')
+  // Registrar o importar estudiantes usa la administración de usuarios: mismo permiso que el backend.
+  const canRegisterStudents = canManage && hasPermission('puede_gestionar_usuarios')
+  const [quickStudent, setQuickStudent] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [view, setView] = useState(readView)
+  const pageSize = PAGE_SIZE[view]
+  // Como en Fondo de Tiempo: al cambiar de vista (o de página) el contenido se vuelve a montar
+  // y cada estudiante entra escalonado; el fondo del selector se desliza a la opción elegida.
+  const chooseView = (next) => {
+    if (next === view) return
+    try { localStorage.setItem(VIEW_KEY, next) } catch { /* sin almacenamiento: dura hasta recargar */ }
+    setView(next)
+    setPage(1)
+  }
   const [search, setSearch] = useState('')
+  // Filtro por modalidad. El listado del servidor no filtra por modalidad, así que con una
+  // modalidad elegida se pide la lista completa (ya acotada por la búsqueda), se filtra aquí y
+  // se pagina aquí mismo, como en Fondo de Tiempo. Sin filtro, todo sigue paginado en el servidor.
+  const [modalidadFilter, setModalidadFilter] = useState([])
   const [page, setPage] = useState(1)
   const [data, setData] = useState({ results: [] })
   const [catalogs, setCatalogs] = useState({ modalidades: [], periodos: [], estudiantes: [], capacidades: {} })
   const [eligibleStudents, setEligibleStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Error al guardar: se muestra en el formulario, no reemplaza la lista de fondo.
+  const [formError, setFormError] = useState('')
   const [catalogError, setCatalogError] = useState('')
   const [selected, setSelected] = useState(null)
   const [detail, setDetail] = useState(null)
@@ -61,7 +85,6 @@ export default function PostulantesPage() {
   const [form, setForm] = useState(null)
   const [fieldErrors, setFieldErrors] = useState({})
   const [saving, setSaving] = useState(false)
-  const [studentQuery, setStudentQuery] = useState('')
   const [revision, setRevision] = useState(0)
   const historicalTypesController = useRef(null)
   const [historicalProfile, setHistoricalProfile] = useState(null)
@@ -75,18 +98,47 @@ export default function PostulantesPage() {
   const [historicalFile, setHistoricalFile] = useState(null)
   const [historicalSuccessMessage, setHistoricalSuccessMessage] = useState('')
 
+  // La lista ya cargó una vez: al buscar o paginar se queda en pantalla (atenuada) en lugar
+  // de cambiar por "Cargando…".
+  const loadedOnce = useRef(false)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const value = query.trim()
+      if (value !== search) {
+        setSearch(value)
+        setPage(1)
+      }
+    }, 350)
+    return () => window.clearTimeout(timer)
+  }, [query, search])
+
   const load = useCallback(async (signal) => {
     setLoading(true)
     setError('')
     setCatalogError('')
 
     try {
-      const rows = await crudService.list(
-        endpoints.postulaciones,
-        { search, page, ordering: '-created_at' },
-        signal,
-      )
-      setData(rows)
+      if (modalidadFilter.length) {
+        const all = await listAll(endpoints.postulaciones, { search, ordering: '-created_at' }, signal)
+        const matching = all.filter((item) => modalidadFilter.includes(String(item.modalidad_detalle?.id ?? item.modalidad)))
+        const pages = Math.max(1, Math.ceil(matching.length / pageSize))
+        const current = Math.min(page, pages)
+        setData({
+          count: matching.length,
+          next: current < pages ? 'local' : null,
+          previous: current > 1 ? 'local' : null,
+          results: matching.slice((current - 1) * pageSize, current * pageSize),
+        })
+      } else {
+        const rows = await crudService.list(
+          endpoints.postulaciones,
+          { search, page, ordering: '-created_at', page_size: pageSize },
+          signal,
+        )
+        setData(rows)
+      }
+      loadedOnce.current = true
     } catch (requestError) {
       if (!requestError.canceled) {
         setError(requestError.status === 403
@@ -120,7 +172,7 @@ export default function PostulantesPage() {
     }
 
     if (!signal?.aborted) setLoading(false)
-  }, [search, page, canManage])
+  }, [search, page, pageSize, modalidadFilter, canManage])
 
   useEffect(() => {
     if (!form || editing || !form.modalidad || !form.periodo) {
@@ -193,23 +245,13 @@ export default function PostulantesPage() {
     ),
     [catalogs.periodos],
   )
-  const visibleStudents = useMemo(() => {
-    const value = studentQuery.trim().toLocaleLowerCase('es')
-    if (!value) return eligibleStudents
-    return eligibleStudents.filter((item) => (
-      [item.codigo, item.ru, item.ci, item.nombre_completo]
-        .filter(Boolean)
-        .join(' ')
-        .toLocaleLowerCase('es')
-        .includes(value)
-    ))
-  }, [eligibleStudents, studentQuery])
 
   const open = (item = null) => {
+    setFormError('')
+    setQuickStudent(false)
     setSelected(item)
     setEditing(Boolean(item))
     setFieldErrors({})
-    setStudentQuery('')
     setForm(item
       ? { codigo: item.codigo, observaciones_generales: item.observaciones_generales || '' }
       : { ...emptyForm })
@@ -235,7 +277,7 @@ export default function PostulantesPage() {
     }
 
     setSaving(true)
-    setError('')
+    setFormError('')
     setFieldErrors({})
     const payload = editing ? {
       codigo: form.codigo,
@@ -280,12 +322,12 @@ export default function PostulantesPage() {
       setForm(null)
       setRevision((value) => value + 1)
     } catch (requestError) {
-      if (requestError.status === 403) setError('No tienes permiso para gestionar postulaciones.')
+      if (requestError.status === 403) setFormError('No tienes permiso para gestionar postulaciones.')
       else {
         const fields = requestError.fields || {}
         const codeError = Array.isArray(fields.codigo) ? fields.codigo.join(' ') : fields.codigo
         const duplicateCode = requestError.status === 400 && /\b(ya existe|already exists|unique)\b/i.test(codeError || '')
-        setError(duplicateCode ? '' : requestError.message)
+        setFormError(duplicateCode ? '' : requestError.message)
         setFieldErrors(duplicateCode ? { ...fields, codigo: [duplicateCodeMessage] } : fields)
       }
     } finally {
@@ -313,17 +355,6 @@ export default function PostulantesPage() {
     }
   }, [])
 
-  const openHistoricalUpload = useCallback(async (postulacion) => {
-    if (!postulacion?.id) return
-    setHistoricalTypeId('')
-    setHistoricalTypes([])
-    setHistoricalUploadError('')
-    setHistoricalSuccessMessage('')
-    setHistoricalFile(null)
-    setHistoricalProfile(postulacion)
-    setHistoricalUploadOpen(true)
-    await loadHistoricalTypes(postulacion.id)
-  }, [loadHistoricalTypes])
 
   const closeHistoricalUpload = useCallback(() => {
     historicalTypesController.current?.abort()
@@ -360,6 +391,32 @@ export default function PostulantesPage() {
     }
   }
 
+  const renderActions = (item) => (
+    <div className="postulante-actions">
+      <button className="postulante-icon" type="button" aria-label="Detalle" title="Ver detalle" onClick={() => setDetail({ id: item.id, codigo: item.codigo, data: null, loading: true, error: '', row: item })}>
+        <Eye className="h-4 w-4" aria-hidden="true" />
+      </button>
+      {canManage && (
+        <button className="postulante-icon" type="button" aria-label="Editar" title="Editar" onClick={() => open(item)}>
+          <Pencil className="h-4 w-4" aria-hidden="true" />
+        </button>
+      )}
+      <ActionButton to={`/postulaciones/${item.id}`} size="sm">Abrir expediente</ActionButton>
+    </div>
+  )
+
+  // Las modalidades del filtro son las del catálogo que ya se carga para quien gestiona
+  // postulaciones; en solo lectura no se cargan catálogos (US-007) y no hay filtro.
+  const filterModalities = catalogs.modalidades
+  const filterColumns = [{
+    key: 'modalidad',
+    title: 'Modalidad',
+    multiple: true,
+    options: filterModalities.map((item) => ({ value: String(item.id), label: withAccents(item.nombre) })),
+  }]
+  const filterName = filterColumns[0].options.filter((option) => modalidadFilter.includes(option.value)).map((option) => option.label).join(', ')
+  const changeFilter = (key, value) => { if (key === 'modalidad') { setModalidadFilter(Array.isArray(value) ? value : []); setPage(1) } }
+
   const studentName = (id) => catalogs.estudiantes.find((item) => item.id === Number(id))
   const periodName = (id) => catalogs.periodos.find((item) => item.id === Number(id))
   const studentLabel = (item) => item.estudiante_detalle
@@ -375,69 +432,114 @@ export default function PostulantesPage() {
   const tipoRegistroLabel = (item) => humanizeTipoRegistro(item?.tipo_registro)
 
   return (
-    <section className="mx-auto max-w-6xl space-y-5">
-      <PageHeader
-        title="Postulantes"
-        description="Gestiona las postulaciones dentro de tu alcance autorizado."
-        action={canManage ? (
-          <Button onClick={() => open()} disabled={loading || Boolean(catalogError)}>
-            Nueva postulación
-          </Button>
-        ) : null}
-      />
-      {catalogError && <p role="alert" className="text-sm text-red-600">{catalogError}</p>}
-      <SearchBar
-        value={query}
-        onChange={setQuery}
-        onSearch={() => { setSearch(query.trim()); setPage(1) }}
-      />
-      <DataState
-        loading={loading}
-        error={error}
-        empty={!data.results?.length}
-        emptyMessage={roleCode === 'ESTUDIANTE' ? 'Todavía no tienes postulaciones académicas registradas.' : 'No se encontraron registros.'}
-        onRetry={() => setRevision((value) => value + 1)}
-      >
-        <div className="space-y-3">
-          {data.results?.map((item) => (
-            <article key={item.id} className="rounded-xl border bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-y-0">
-                <h2 className="min-w-0 text-lg font-bold">{studentLabel(item)}</h2>
-                <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-                  <Link className={cardActionClass} to={`/postulaciones/${item.id}`}>
-                    <FolderOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    Abrir expediente
-                  </Link>
-                  <button className={cardActionClass} type="button" onClick={() => setDetail({ id: item.id, codigo: item.codigo, data: null, loading: true, error: '' })}>
-                    <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    Detalle
-                  </button>
-                  {canManage && (
-                    <button className={cardActionClass} type="button" onClick={() => open(item)}>
-                      <Pencil className="h-4 w-4 shrink-0" aria-hidden="true" />
-                      Editar
-                    </button>
-                  )}
-                </div>
-                <dl className="grid min-w-0 gap-x-8 gap-y-0.5 text-sm sm:grid-cols-2">
-                  <Info label="Estudiante" value={studentLabel(item)} />
-                  <Info label="Modalidad" value={modalityLabel(item)} />
-                  <Info label="Periodo" value={periodLabel(item)} />
-                  <Info label="Tipo de registro" value={tipoRegistroLabel(item)} />
-                </dl>
-                <div className="flex self-end justify-end">
-                  <span className={statusBadgeClass(item.estado_actual_detalle?.codigo)}>
-                    {stateLabel(item)}
-                  </span>
-                </div>
-              </div>
-            </article>
-          ))}
-          <Pager data={data} page={page} onPage={setPage} />
+    <section className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <Card className="postulantes-header animate-enter p-5" style={{ '--stagger': 0 }}>
+          <span aria-hidden="true" className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[var(--surface-sunken)] text-[var(--heading)]">
+            <Users className="h-[22px] w-[22px]" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-[var(--heading)]">Postulantes</h1>
+            <p className="mt-0.5 text-sm text-[var(--text-secondary)]">Gestiona las postulaciones dentro de tu alcance autorizado.</p>
+          </div>
+          <div className="postulantes-tools">
+          <label className="postulantes-search" role="search">
+            <span className="sr-only">Buscar</span>
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Nombre, R.U. o C.I."
+              className="pill-control postulantes-search-input"
+            />
+          </label>
+          {filterModalities.length > 0 && (
+            <FilterMenu columns={filterColumns} values={{ modalidad: modalidadFilter }} onChange={changeFilter} />
+          )}
+          </div>
+        </Card>
+        <MetricCard featured index={1} label="Postulaciones" hint={[filterName, search ? `Búsqueda: ${search}` : ''].filter(Boolean).join(' · ') || undefined} value={data.count ?? data.results?.length ?? 0} />
+      </div>
+      {catalogError && <p role="alert" className="text-sm text-[var(--danger-text)]">{catalogError}</p>}
+      <Card className="animate-enter p-4 sm:p-5" style={{ '--stagger': 2 }}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-base font-semibold text-[var(--heading)]">Estudiantes postulados</p>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <ViewToggle view={view} onChange={chooseView} />
+          {canRegisterStudents && (
+            <Button variant="secondary" className="gap-2 rounded-full" onClick={() => setImportOpen(true)}>
+              <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
+              Importar estudiantes
+            </Button>
+          )}
+          {canManage && (
+            <Button className="gap-2 rounded-full" onClick={() => open()} disabled={loading || Boolean(catalogError)}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Nueva postulación
+            </Button>
+          )}
+          </div>
         </div>
-      </DataState>
+        <DataState
+          loading={loading && !loadedOnce.current}
+          error={error}
+          empty={false}
+          onRetry={() => setRevision((value) => value + 1)}
+        >
+          {!loading && !data.results?.length ? (
+            <EmptyResults
+              key={`vacio-${search}-${modalidadFilter.join(',')}`}
+              student={roleCode === 'ESTUDIANTE'}
+              filtered={Boolean(search || modalidadFilter.length)}
+            />
+          ) : view === 'lista' ? (
+            <div key={`lista-${search}-${modalidadFilter.join(',')}-${page}-${revision}`} className={`postulantes-table ${loading ? 'is-refreshing' : ''}`} aria-busy={loading || undefined}>
+              <div className="postulantes-table-head" aria-hidden="true">
+                <span>Estudiante</span>
+                <span>Modalidad</span>
+                <span>Estado</span>
+                <span className="text-right">Acciones</span>
+              </div>
+              {data.results?.map((item, index) => {
+                const label = studentLabel(item)
+                return (
+                  <article key={item.id} className="postulante-row animate-row-in" style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="postulante-avatar" aria-hidden="true">{initialsOf(label)}</span>
+                      <h2 className="postulante-name postulante-name--row" title={label}>{label}</h2>
+                    </div>
+                    <p className="postulante-cell"><span className="postulante-cell-label">Modalidad</span>{modalityLabel(item)}</p>
+                    <p className="postulante-cell"><span className="postulante-cell-label">Estado</span><span className="postulante-status" data-tone={statusTone[item.estado_actual_detalle?.codigo] || 'neutral'}>{stateLabel(item)}</span></p>
+                    {renderActions(item)}
+                  </article>
+                )
+              })}
+            </div>
+          ) : (
+            <div key={`tarjetas-${search}-${modalidadFilter.join(',')}-${page}-${revision}`} className={`postulantes-cards ${loading ? 'is-refreshing' : ''}`} aria-busy={loading || undefined}>
+              {data.results?.map((item, index) => {
+                const label = studentLabel(item)
+                return (
+                  <article key={item.id} className="postulante-card animate-row-in" style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}>
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="postulante-avatar postulante-avatar--lg" aria-hidden="true">{initialsOf(label)}</span>
+                      <div className="min-w-0 flex-1">
+                        <h2 className="postulante-name" title={label}>{label}</h2>
+                        <p className="mt-0.5 truncate text-sm text-[var(--text-secondary)]">{modalityLabel(item)}</p>
+                      </div>
+                      <span className="postulante-status" data-tone={statusTone[item.estado_actual_detalle?.codigo] || 'neutral'}>{stateLabel(item)}</span>
+                    </div>
+                    {renderActions(item)}
+                  </article>
+                )
+              })}
+            </div>
+          )}
+          <PageNav count={data.count ?? 0} page={page} pageSize={pageSize} hasNext={Boolean(data.next)} hasPrevious={Boolean(data.previous)} onPage={setPage} />
+        </DataState>
+      </Card>
       {detail && (
-        <Modal title={`Postulación ${detail.codigo}`} onClose={() => setDetail(null)}>
+        <CenteredModal title="Detalle de la postulación" eyebrow={detail.codigo ? `Postulación ${detail.codigo}` : 'Postulación'} onClose={() => setDetail(null)}>
           <DataState
             loading={detail.loading}
             error={detail.error}
@@ -445,13 +547,20 @@ export default function PostulantesPage() {
             onRetry={() => setDetailRevision((value) => value + 1)}
           >
             {detail.data && (
-              <div className="mt-4 space-y-4">
-                <dl className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-4">
+                <div className="postulante-detail-head">
+                  <span className="postulante-avatar postulante-avatar--lg" aria-hidden="true">{initialsOf(studentLabel(detail.data))}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-[var(--text-secondary)]">Estudiante</p>
+                    <p className="text-base font-bold text-[var(--heading)]">{studentLabel(detail.data)}</p>
+                  </div>
+                </div>
+                <dl className="postulante-detail-grid">
                   <Info label="Código" value={detail.data.codigo} />
-                  <Info label="Estudiante" value={studentLabel(detail.data)} />
                   <Info label="Modalidad" value={modalityLabel(detail.data)} />
                   <Info label="Gestión y semestre" value={periodLabel(detail.data)} />
-                  <Info label="Estado técnico" value={stateLabel(detail.data)} />
+                  <Info label="Tipo de registro" value={tipoRegistroLabel(detail.data.tipo_registro ? detail.data : detail.row)} />
+                  <Info label="Estado técnico" value={<span className="postulante-status" data-tone={statusTone[detail.data.estado_actual_detalle?.codigo] || 'neutral'}>{stateLabel(detail.data)}</span>} />
                   {academicDetail?.id === detail.data.id && academicDetail.flow?.etapa_actual && (
                     <Info
                       label="Etapa actual"
@@ -461,214 +570,264 @@ export default function PostulantesPage() {
                   {academicDetail?.id === detail.data.id && academicDetail.result?.nota_final != null && (
                     <Info label="Resultado final" value={academicDetail.result.nota_final} />
                   )}
-                  <Info label="Observaciones generales" value={detail.data.observaciones_generales || 'Sin observaciones generales.'} />
+                  <div className="sm:col-span-2"><Info label="Observaciones generales" value={detail.data.observaciones_generales || 'Sin observaciones generales.'} /></div>
                 </dl>
-                <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                <p role="note" className="rounded-xl bg-[var(--warning-soft)] p-3 text-sm text-[var(--warning-text)]">
                   Estos son datos técnicos básicos y no sustituyen actos administrativos o institucionales.
                 </p>
               </div>
             )}
           </DataState>
-        </Modal>
+        </CenteredModal>
       )}
       {historicalProfile && !historicalUploadOpen && (
-        <Modal title="Registro histórico creado" onClose={() => {
+        <CenteredModal title="Registro histórico creado" eyebrow="Nueva postulación" onClose={() => {
           setHistoricalProfile(null)
           setHistoricalSuccessMessage('')
         }}>
-          <div className="mt-4 space-y-4">
-            <p className="text-sm text-slate-600">Estudiante: {studentLabel(historicalProfile)}</p>
-            <p className="text-sm text-slate-600">Modalidad: {modalityLabel(historicalProfile)}</p>
-            <p className="text-sm text-slate-600">Gestión: {periodLabel(historicalProfile)}</p>
-            {historicalSuccessMessage && <p className="text-sm font-medium text-green-700">{historicalSuccessMessage}</p>}
-            <div className="flex flex-wrap justify-end gap-2">
+          <div className="space-y-4">
+            <dl className="postulante-detail-grid">
+              <Info label="Estudiante" value={studentLabel(historicalProfile)} />
+              <Info label="Modalidad" value={modalityLabel(historicalProfile)} />
+              <Info label="Gestión" value={periodLabel(historicalProfile)} />
+            </dl>
+            {historicalSuccessMessage && <p className="text-sm font-medium text-[var(--success-text)]">{historicalSuccessMessage}</p>}
+            <div className="form-footer">
               <Button type="button" variant="outline" onClick={() => { setHistoricalProfile(null); setHistoricalSuccessMessage('') }}>Cerrar</Button>
               <Button type="button" onClick={() => { setHistoricalSuccessMessage(''); setHistoricalUploadOpen(true); void loadHistoricalTypes(historicalProfile.id) }}>Cargar documentación</Button>
             </div>
           </div>
-        </Modal>
+        </CenteredModal>
       )}
       {historicalProfile && historicalUploadOpen && (
-        <Modal title="Subir documento histórico" onClose={closeHistoricalUpload}>
-          <form className="mt-4 space-y-4" onSubmit={handleHistoricalUpload}>
-            <p className="text-sm text-slate-600">Postulación: {historicalProfile.codigo}</p>
-            <p className="text-sm text-slate-600">Estudiante: {studentLabel(historicalProfile)}</p>
-            <p className="text-sm text-slate-600">Modalidad: {modalityLabel(historicalProfile)}</p>
-            <label className="block text-sm">
-              Tipo de documento *
-              <select
-                value={historicalTypeId}
-                onChange={(event) => setHistoricalTypeId(event.target.value)}
-                disabled={historicalTypeLoading || Boolean(historicalTypeError) || historicalTypes.length === 0 || historicalUploading}
-                className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"
-              >
-                <option value="">{historicalTypeLoading ? 'Cargando tipos...' : 'Seleccionar...'}</option>
-                {historicalTypes.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}
-              </select>
-            </label>
+        <CenteredModal title="Subir documento histórico" eyebrow={historicalProfile.codigo ? `Postulación ${historicalProfile.codigo}` : 'Registro histórico'} onClose={closeHistoricalUpload}>
+          <form className="space-y-4" onSubmit={handleHistoricalUpload}>
+            <p className="text-sm text-[var(--text-secondary)]">Postulación: {historicalProfile.codigo}</p>
+            <dl className="postulante-detail-grid">
+              <Info label="Estudiante" value={studentLabel(historicalProfile)} />
+              <Info label="Modalidad" value={modalityLabel(historicalProfile)} />
+            </dl>
+            <Select
+              showLabel
+              label="Tipo de documento *"
+              placeholder={historicalTypeLoading ? 'Cargando tipos...' : 'Seleccionar...'}
+              value={historicalTypeId}
+              onChange={(value) => setHistoricalTypeId(value)}
+              disabled={historicalTypeLoading || Boolean(historicalTypeError) || historicalTypes.length === 0 || historicalUploading}
+              options={historicalTypes.map((item) => ({ value: String(item.id), label: item.nombre }))}
+            />
             {!historicalTypeLoading && !historicalTypeError && historicalTypes.length === 0 && (
-              <p className="text-sm text-slate-600">No existen tipos de documentos configurados para esta modalidad.</p>
+              <p className="text-sm text-[var(--text-secondary)]">No existen tipos de documentos configurados para esta modalidad.</p>
             )}
-            {historicalTypeError && <p role="alert" className="text-sm text-red-600">{historicalTypeError}</p>}
-            <label className="block text-sm">
+            {historicalTypeError && <p role="alert" className="text-sm text-[var(--danger-text)]">{historicalTypeError}</p>}
+            <label className="form-label">
               Archivo *
               <input
                 name="archivo"
                 type="file"
                 onChange={(event) => setHistoricalFile(event.target.files?.[0] || null)}
                 disabled={historicalTypeLoading || Boolean(historicalTypeError) || historicalTypes.length === 0 || historicalUploading}
-                className="mt-1 block w-full rounded-lg border p-2"
+                className="form-control form-control--file"
               />
             </label>
-            {historicalUploadError && <p role="alert" className="text-sm text-red-600">{historicalUploadError}</p>}
-            {historicalSuccessMessage && <p className="text-sm font-medium text-green-700">{historicalSuccessMessage}</p>}
-            <div className="flex justify-end gap-2">
+            {historicalUploadError && <p role="alert" className="text-sm text-[var(--danger-text)]">{historicalUploadError}</p>}
+            {historicalSuccessMessage && <p className="text-sm font-medium text-[var(--success-text)]">{historicalSuccessMessage}</p>}
+            <div className="form-footer">
               <Button type="button" variant="outline" disabled={historicalUploading} onClick={closeHistoricalUpload}>Cancelar</Button>
               <Button type="submit" disabled={historicalUploading || historicalTypeLoading || Boolean(historicalTypeError) || historicalTypes.length === 0 || !historicalTypeId || !historicalFile}>Subir documento</Button>
             </div>
           </form>
-        </Modal>
+        </CenteredModal>
       )}
+      {importOpen && <StudentImportModal onClose={() => setImportOpen(false)} onComplete={() => setRevision((value) => value + 1)} />}
       {form && (
-        <Modal
+        <CenteredModal
           title={editing ? 'Editar postulación' : 'Nueva postulación'}
+          size="form"
           onClose={() => { if (!saving) { setSelected(null); setForm(null) } }}
         >
-          <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={save}>
-            {editing && <FormField error={fieldErrors.codigo}>
-              <Field label="Código" required value={form.codigo} onChange={(event) => change('codigo', event.target.value)} />
-            </FormField>}
+          <form className="compact-form" onSubmit={save}>
             {editing ? (
-              <div className="rounded-lg border bg-slate-50 p-4 sm:col-span-2 dark:border-slate-800 dark:bg-slate-950">
-                <p className="text-sm font-semibold">Datos de solo lectura</p>
-                <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <Info label="Estudiante" value={studentLabel(selected)} />
-                  <Info label="Modalidad" value={modalityLabel(selected)} />
-                  <Info label="Gestión y semestre" value={periodLabel(selected)} />
-                  <Info label="Tipo de registro" value={tipoRegistroLabel(selected)} />
-                  <Info label="Estado técnico" value={stateLabel(selected)} />
-                </dl>
-                <p className="mt-3 text-xs text-slate-500">Estudiante, modalidad, periodo y estado no se modifican desde esta edición básica.</p>
-              </div>
-            ) : <div>
-              <label className="text-sm" htmlFor="student-search">Buscar estudiante</label>
-              <input
-                id="student-search"
-                value={studentQuery}
-                onChange={(event) => setStudentQuery(event.target.value)}
-                placeholder="Código, CI o nombre"
-                className="mt-1 w-full rounded-lg border px-3 py-2 dark:bg-slate-950"
-              />
-              <label className="mt-2 block text-sm" htmlFor="student-select">Estudiante</label>
-              <select
-                id="student-select"
-                required
-                value={form.estudiante}
-                onChange={(event) => change('estudiante', event.target.value)}
-                className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"
-              >
-                <option value="">Seleccione un estudiante</option>
-                {visibleStudents.map((item) => (
-                  <option key={item.id} value={item.id}>{formatStudentLabel(item)}</option>
-                ))}
-              </select>
-              <FieldError value={fieldErrors.estudiante} />
-              {!catalogs.estudiantes.length && (
-                <p className="mt-1 text-sm text-slate-500">No se encontraron estudiantes activos.</p>
-              )}
-            </div>}
-            {!editing && canManage && (
-              <label className="text-sm sm:col-span-2">
-                Tipo de registro
-                <select
-                  value={form.tipo_registro || 'SEGUIMIENTO'}
-                  onChange={(event) => change('tipo_registro', event.target.value)}
-                  className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"
-                >
-                  <option value="SEGUIMIENTO">Proceso con seguimiento</option>
-                  <option value="HISTORICO">Registro histórico</option>
-                </select>
-              </label>
+              <>
+                <FormField error={fieldErrors.codigo}>
+                  <label className="form-label">Código<input required value={form.codigo} onChange={(event) => change('codigo', event.target.value)} className="form-control" /></label>
+                </FormField>
+                <div className="compact-readonly">
+                  <p className="text-xs font-semibold text-[var(--heading)]">Datos de solo lectura</p>
+                  <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <Info label="Estudiante" value={studentLabel(selected)} />
+                    <Info label="Modalidad" value={modalityLabel(selected)} />
+                    <Info label="Gestión y semestre" value={periodLabel(selected)} />
+                    <Info label="Tipo de registro" value={tipoRegistroLabel(selected)} />
+                    <Info label="Estado técnico" value={<span className="postulante-status" data-tone={statusTone[selected?.estado_actual_detalle?.codigo] || 'neutral'}>{stateLabel(selected)}</span>} />
+                  </dl>
+                  <p className="mt-2 text-xs text-[var(--text-muted)]">Estudiante, modalidad, periodo y estado no se modifican desde esta edición básica.</p>
+                </div>
+              </>
+            ) : (
+              <>
+                {quickStudent ? (
+                  <QuickStudentForm
+                    onCancel={() => setQuickStudent(false)}
+                    onCreated={(student) => {
+                      setCatalogs((current) => ({ ...current, estudiantes: [...current.estudiantes, student] }))
+                      setEligibleStudents((current) => [...current, student])
+                      change('estudiante', String(student.id))
+                      setQuickStudent(false)
+                    }}
+                  />
+                ) : <div>
+                  <Select
+                    showLabel
+                    searchable
+                    required
+                    label="Estudiante"
+                    placeholder="Escribe el nombre, R.U. o C.I."
+                    emptyText="Ningún estudiante coincide"
+                    value={form.estudiante}
+                    onChange={(value) => change('estudiante', value)}
+                    options={eligibleStudents.map((item) => ({
+                      value: String(item.id),
+                      label: formatStudentLabel(item),
+                      keywords: [item.codigo, item.ru, item.ci, item.nombre_completo].filter(Boolean).join(' '),
+                    }))}
+                  />
+                  <FieldError value={fieldErrors.estudiante} />
+                  {!catalogs.estudiantes.length && <p className="form-help">No se encontraron estudiantes activos.</p>}
+                  {canRegisterStudents && (
+                    <button type="button" className="form-link" onClick={() => setQuickStudent(true)}>
+                      <UserPlus className="h-4 w-4" aria-hidden="true" />
+                      ¿No está en la lista? Registrar estudiante
+                    </button>
+                  )}
+                </div>}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Select
+                      showLabel
+                      required
+                      label="Modalidad"
+                      value={form.modalidad}
+                      onChange={(value) => change('modalidad', value)}
+                      options={catalogs.modalidades.map((item) => {
+                        const capability = catalogs.capacidades[item.id]
+                        const available = capability?.soportada && capability?.configuracion_valida
+                        const name = withAccents(item.nombre)
+                        return { value: String(item.id), label: available ? name : `${name} — Próximamente / No configurada`, disabled: !available }
+                      })}
+                    />
+                    <FieldError value={fieldErrors.modalidad} />
+                  </div>
+                  <div>
+                    <Select
+                      showLabel
+                      required
+                      label="Gestión / Semestre"
+                      value={form.periodo}
+                      onChange={(value) => change('periodo', value)}
+                      options={activePeriods.map((item) => ({ value: String(item.id), label: formatPeriodoLabel(item) }))}
+                    />
+                    <FieldError value={fieldErrors.periodo} />
+                  </div>
+                </div>
+                {canManage && (
+                  <div className="grid items-end gap-4 sm:grid-cols-2">
+                    <Select
+                      showLabel
+                      label="Tipo de registro"
+                      value={form.tipo_registro || 'SEGUIMIENTO'}
+                      onChange={(value) => change('tipo_registro', value)}
+                      options={REGISTRO_OPTIONS}
+                    />
+                    <p className="form-hint">
+                      {form.tipo_registro === 'HISTORICO'
+                        ? 'Postulación ya concluida: después podrás cargar su documentación.'
+                        : 'La postulación seguirá todas sus etapas en el sistema.'}
+                    </p>
+                  </div>
+                )}
+                {!activePeriods.length && (
+                  <p role="status" className="form-help text-[var(--warning-text)]">No existen periodos académicos activos.</p>
+                )}
+              </>
             )}
-            {!editing && <Select
-              label="Modalidad"
-              value={form.modalidad}
-              items={catalogs.modalidades}
-              format={(item) => {
-                const capability = catalogs.capacidades[item.id]
-                return capability?.soportada && capability?.configuracion_valida
-                  ? item.nombre
-                  : `${item.nombre} — Próximamente / No configurada`
-              }}
-              isDisabled={(item) => {
-                const capability = catalogs.capacidades[item.id]
-                return !capability?.soportada || !capability?.configuracion_valida
-              }}
-              onChange={(value) => change('modalidad', value)}
-              error={fieldErrors.modalidad}
-            />}
-            {!editing && <Select
-              label="Gestión / Semestre"
-              value={form.periodo}
-              items={activePeriods}
-              format={formatPeriodoLabel}
-              onChange={(value) => change('periodo', value)}
-              error={fieldErrors.periodo}
-            />}
-            <label className="text-sm sm:col-span-2">
+            <label className="form-label">
               Observaciones
               <textarea
                 value={form.observaciones_generales}
                 onChange={(event) => change('observaciones_generales', event.target.value)}
-                className="mt-1 w-full rounded-lg border p-3 dark:bg-slate-950"
+                className="form-control form-control--area"
+                rows={3}
+                placeholder="Opcional"
               />
             </label>
-            {!editing && !activePeriods.length && (
-              <p role="status" className="text-sm text-amber-700 sm:col-span-2">
-                No existen periodos académicos activos.
-              </p>
-            )}
-            {error && <p role="alert" className="text-red-600 sm:col-span-2">{error}</p>}
-            <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">
-              <Button type="button" variant="outline" disabled={saving} onClick={() => { setSelected(null); setForm(null) }}>Cancelar</Button>
-              <Button disabled={saving || (!editing && !activePeriods.length)}>
-              {saving ? 'Guardando…' : 'Guardar'}
+            {formError && <p role="alert" className="text-sm text-[var(--danger-text)]">{formError}</p>}
+            <div className="form-footer">
+              <Button type="button" variant="outline" className="rounded-full" disabled={saving} onClick={() => { setSelected(null); setForm(null) }}>Cancelar</Button>
+              <Button className="rounded-full px-6" disabled={saving || (!editing && !activePeriods.length)}>
+                {saving ? 'Guardando…' : 'Guardar'}
               </Button>
             </div>
           </form>
-        </Modal>
+        </CenteredModal>
       )}
     </section>
   )
 }
 
 function Info({ label, value }) {
-  return <div><dt className="text-slate-500">{label}</dt><dd>{value}</dd></div>
+  return <div className="min-w-0"><dt className="text-xs text-[var(--text-secondary)]">{label}</dt><dd className="break-words text-sm font-medium text-[var(--heading)]">{value}</dd></div>
 }
 
 function FieldError({ value }) {
   const message = Array.isArray(value) ? value.join(' ') : value
-  return message ? <p role="alert" className="mt-1 text-sm text-red-600">{message}</p> : null
+  return message ? <p role="alert" className="mt-1 text-sm text-[var(--danger-text)]">{message}</p> : null
 }
 
 function FormField({ error, children }) {
   return <div>{children}<FieldError value={error} /></div>
 }
 
-function Select({ label, value, items, format, isDisabled = () => false, onChange, error }) {
+
+// Paginación como la de Fondo de Tiempo: solo los números de página con anterior y siguiente,
+// centrados; aparece solo cuando hay más de una página.
+function PageNav({ count, page, pageSize, hasNext, hasPrevious, onPage }) {
+  if (!hasNext && !hasPrevious) return null
+  const pages = Math.max(page, Math.ceil(count / pageSize))
+  const numbers = [...new Set([1, page - 1, page, page + 1, pages])].filter((n) => n >= 1 && n <= pages).sort((x, y) => x - y)
   return (
-    <label className="text-sm">
-      {label}
-      <select
-        required
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950"
-      >
-        <option value="">Seleccione</option>
-        {items.map((item) => <option key={item.id} value={item.id} disabled={isDisabled(item)}>{format(item)}</option>)}
-      </select>
-      <FieldError value={error} />
-    </label>
+    <nav className="page-nav" aria-label="Paginación de postulantes">
+      <button type="button" className="page-nav-arrow" aria-label="Anterior" disabled={!hasPrevious} onClick={() => onPage(page - 1)}>
+        <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
+      </button>
+      {numbers.map((n, index) => (
+        <span key={n} className="contents">
+          {index > 0 && n - numbers[index - 1] > 1 && <span className="page-nav-gap" aria-hidden="true">…</span>}
+          <button type="button" className="page-nav-number" aria-current={n === page ? 'page' : undefined} aria-label={`Página ${n}`} onClick={() => n !== page && onPage(n)}>{n}</button>
+        </span>
+      ))}
+      <button type="button" className="page-nav-arrow" aria-label="Siguiente" disabled={!hasNext} onClick={() => onPage(page + 1)}>
+        <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />
+      </button>
+    </nav>
+  )
+}
+
+// Sin resultados: entra con el mismo fundido que las tarjetas (no aparece de golpe) y explica
+// qué pasó y qué probar. Ocupa un alto fijo, así la tarjeta no "se corta" al quedar vacía.
+function EmptyResults({ student, filtered }) {
+  const title = student
+    ? 'Todavía no tienes postulaciones académicas registradas.'
+    : filtered ? 'No hay estudiantes que coincidan' : 'No se encontraron registros.'
+  const hint = student
+    ? 'Cuando se registre tu postulación, aparecerá aquí.'
+    : filtered ? 'Prueba con otro nombre, R.U. o C.I., o marca otras modalidades en Filtrar.' : 'Las postulaciones registradas aparecerán aquí.'
+  const Icon = filtered ? SearchX : Users
+  return (
+    <div role="status" className="postulantes-empty animate-row-in">
+      <span className="postulantes-empty-icon" aria-hidden="true"><Icon className="h-6 w-6" strokeWidth={1.75} /></span>
+      <p className="text-base font-semibold text-[var(--heading)]">{title}</p>
+      <p className="max-w-sm text-sm text-[var(--text-secondary)]">{hint}</p>
+    </div>
   )
 }

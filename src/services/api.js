@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { API_BASE_URL } from '../config/env'
+import { fixMojibakeDeep } from '../lib/fixMojibake'
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -49,6 +50,10 @@ async function refreshAccessToken() {
 
 apiClient.interceptors.response.use((response) => {
   if (response.config?.url?.includes('/api/v1/auth/login/') || response.config?.url?.includes('/api/v1/auth/student-login/')) sessionExpired = false
+  // Textos guardados con la ñ y las tildes mal codificadas ("Inscripci├│n") se muestran bien.
+  // Solo cambia la presentación: no toca la base de datos, los códigos ni los archivos.
+  const type = response.config?.responseType
+  if (type !== 'blob' && type !== 'arraybuffer' && response.data && typeof response.data === 'object') response.data = fixMojibakeDeep(response.data)
   return response
 }, async (error) => {
   const originalRequest = error?.config

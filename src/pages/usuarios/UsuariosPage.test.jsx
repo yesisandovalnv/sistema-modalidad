@@ -198,10 +198,10 @@ it('muestra la vista previa, confirma el lote y descarga el reporte CSV de filas
     rows: [{ row_number: 3, created: false, errors: ['RU duplicado.'] }],
   })
   try {
-    const { container } = renderPage()
+    renderPage()
     await screen.findByText(/Ana/)
     fireEvent.click(screen.getByRole('button', { name: 'Importar estudiantes' }))
-    fireEvent.change(container.querySelector('input[type="file"]'), {
+    fireEvent.change(document.querySelector('input[type="file"]'), {
       target: { files: [new File(['xlsx'], 'estudiantes.xlsx')] },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Validar archivo' }))

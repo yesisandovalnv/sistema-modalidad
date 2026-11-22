@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../crud/CrudShell'
 import { Button } from '../ui/button'
+import { FilePicker } from '../ui/FilePicker'
 import { postulacionesService } from '../../services/postulacionesService'
 
 const UPLOAD_REQUIRED_CODES = new Set([
@@ -259,11 +260,9 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
     if (!multiple || fixedType) return null
 
     return (
-      <div className="grid gap-3">
+      <div className="upload-list">
         {historicalSelections.length > 0 && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-            <p className="text-xs text-slate-500">Adjunta los documentos disponibles del expediente. No es obligatorio cargar todos en una sola operación.</p>
-          </div>
+          <p className="upload-intro">Adjunta los documentos disponibles del expediente. No es obligatorio cargar todos en una sola operación.</p>
         )}
         {!isHistorical && historicalSelections.length === 0 && informationalTypes.length > 0 && (
           <p role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
@@ -271,26 +270,23 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
           </p>
         )}
         {historicalSelections.map((entry) => (
-          <div key={entry.typeId} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+          <div key={entry.typeId} className="upload-row" data-status={entry.status === 'uploaded' ? 'uploaded' : entry.status === 'error' ? 'error' : entry.file ? 'selected' : 'pending'}>
             {['ACTA_DEFENSA', 'ACTA_DEFENSA_TD'].includes(entry.typeCode) && publicDefenses.data.length > 0 && <label className="mb-3 block text-sm">Defensa Pública finalizada
               <select required value={selectedEventId} disabled={upload.submitting || historicalStatus.submitting} onChange={(event) => setSelectedEventId(event.target.value)} className="mt-1 w-full rounded-lg border p-2 dark:bg-slate-950">
                 <option value="">Seleccione la Defensa Pública</option>{publicDefenses.data.map((defense) => <option key={defense.id} value={defense.id}>{formatDefenseDate(defense.fecha_fin_real || defense.fecha_programada)} — {defense.lugar || 'Sin lugar'}</option>)}
               </select>
             </label>}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <label htmlFor={`historical-file-${entry.typeId}`} className="min-w-0 flex-1 text-sm font-medium text-slate-800 dark:text-slate-100">
+              <label htmlFor={`historical-file-${entry.typeId}`} className="upload-row-title">
                 {entry.typeName}
               </label>
               {entry.file && (
-                <button type="button" className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => handleHistoricalRemove(entry.typeId)}>
+                <button type="button" className="upload-remove" onClick={() => handleHistoricalRemove(entry.typeId)}>
                   Quitar
                 </button>
               )}
             </div>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <input id={`historical-file-${entry.typeId}`} aria-label={entry.typeName} type="file" disabled={upload.submitting || historicalStatus.submitting} className="block w-full rounded-lg border border-slate-300 p-2 text-sm dark:border-slate-700 dark:bg-slate-950" onChange={(event) => handleHistoricalFileChange(entry.typeId, event.target.files?.[0] || null)} />
-              {entry.file && <span className="truncate text-xs text-slate-500">{entry.file.name}</span>}
-            </div>
+            <FilePicker id={`historical-file-${entry.typeId}`} label={entry.typeName} file={entry.file || null} disabled={upload.submitting || historicalStatus.submitting} onFile={(file) => handleHistoricalFileChange(entry.typeId, file)} />
             {upload.trackIndividualStatus && <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">Estado: {entry.status === 'uploaded' ? 'Cargado' : entry.status === 'error' ? 'Error' : entry.file ? 'Seleccionado' : 'Pendiente'}</p>}
             {entry.error && <p className="mt-2 text-xs text-red-600">{entry.error}</p>}
           </div>
@@ -318,11 +314,14 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
           <progress className="mt-2 h-3 w-full" max={upload.stageProgress.total || 1} value={upload.stageProgress.completed} aria-label="Avance de requisitos de Inscripción" />
         </div>}
         {(historicalSelections.length > 0 || (isHistorical && types.data.length > 0)) && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="upload-summary">
             <span>{selectedHistoryCount} documento{selectedHistoryCount === 1 ? '' : 's'} seleccionado{selectedHistoryCount === 1 ? '' : 's'}</span>
-            <Button type="submit" disabled={historicalStatus.submitting || selectedHistoryCount === 0 || (historicalSelections.some((item) => item.file && ['ACTA_DEFENSA', 'ACTA_DEFENSA_TD'].includes(item.typeCode)) && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))} className="min-w-[180px]">
+            <div className="upload-actions">
+              <Button type="button" variant="secondary" disabled={historicalStatus.submitting} onClick={closeSafely}>Cancelar</Button>
+              <Button type="submit" disabled={historicalStatus.submitting || selectedHistoryCount === 0 || (historicalSelections.some((item) => item.file && ['ACTA_DEFENSA', 'ACTA_DEFENSA_TD'].includes(item.typeCode)) && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))} className="min-w-[180px]">
               {historicalStatus.submitting ? `Cargando ${selectedHistoryCount} de ${selectedHistoryCount}...` : `Cargar ${selectedHistoryCount} documento${selectedHistoryCount === 1 ? '' : 's'}`}
             </Button>
+            </div>
           </div>
         )}
         {historicalStatus.summary && (
@@ -361,15 +360,16 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
           <option value="">Seleccione la Defensa Pública</option>{publicDefenses.data.map((defense) => <option key={defense.id} value={defense.id}>{formatDefenseDate(defense.fecha_fin_real || defense.fecha_programada)} — {defense.lugar || 'Sin lugar'}</option>)}
         </select>{fieldMessage('evento_defensa_id') && <span id="defensa-error" className="mt-1 block text-red-600">{fieldMessage('evento_defensa_id')}</span>}
       </label>}
-      {!multiple && <label className="text-sm">Archivo
-        <input name="archivo" type="file" required disabled={upload.submitting} aria-describedby={fieldMessage('archivo') ? 'archivo-error' : undefined} className="mt-1 block w-full rounded-lg border p-2" />
+      {!multiple && <div className="text-sm">
+        <p className="mb-1.5 font-medium text-[var(--heading)]" aria-hidden="true">Archivo</p>
+        <FilePicker name="archivo" label="Archivo" required disabled={upload.submitting} describedBy={fieldMessage('archivo') ? 'archivo-error' : undefined} />
         {fieldMessage('archivo') && <span id="archivo-error" className="mt-1 block text-red-600">{fieldMessage('archivo')}</span>}
-      </label>}
+      </div>}
       {multiple && renderHistoryBody()}
       {fieldMessage('non_field_errors') && <p role="alert" className="text-red-600">{fieldMessage('non_field_errors')}</p>}
       {upload.error && <p role="alert" className="text-red-600">{upload.error}</p>}
-      {!multiple && <div className="flex flex-wrap gap-3"><Button type="submit" disabled={upload.submitting || types.loading || Boolean(types.error) || (!fixedType && types.data.length === 0) || (isDefenseRecord && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))}>{upload.submitting ? 'Enviando…' : fixedType ? 'Cargar nueva versión' : 'Cargar documento'}</Button><Button type="button" variant="secondary" disabled={upload.submitting} onClick={closeSafely}>Cancelar</Button></div>}
-      {multiple && <div className="flex flex-wrap gap-3"><Button type="button" variant="secondary" disabled={historicalStatus.submitting} onClick={closeSafely}>Cancelar</Button></div>}
+      {!multiple && <div className="flex flex-wrap justify-end gap-3"><Button type="button" variant="secondary" disabled={upload.submitting} onClick={closeSafely}>Cancelar</Button><Button type="submit" disabled={upload.submitting || types.loading || Boolean(types.error) || (!fixedType && types.data.length === 0) || (isDefenseRecord && (publicDefenses.loading || Boolean(publicDefenses.error) || publicDefenses.data.length === 0 || !selectedEventId))}>{upload.submitting ? 'Enviando…' : fixedType ? 'Cargar nueva versión' : 'Cargar documento'}</Button></div>}
+      {multiple && !(historicalSelections.length > 0 || (isHistorical && types.data.length > 0)) && <div className="flex flex-wrap justify-end gap-3"><Button type="button" variant="secondary" disabled={historicalStatus.submitting} onClick={closeSafely}>Cancelar</Button></div>}
     </form>}
   </Modal>
 }

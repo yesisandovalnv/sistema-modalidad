@@ -3,46 +3,58 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeContext } from '../../context/ThemeContext'
 import { AuthContext } from '../../context/AuthContext'
+import { NotificationContext } from '../../context/NotificationContext'
 import { Navbar } from './Navbar'
 
-function renderNavbar(props = {}, user = { nombres: 'Agustin Fernando', username: 'agustin', rol: { nombre: 'Administración' } }) {
+function renderNavbar(props = {}, user = { nombres: 'Agustin Fernando', username: 'agustin', rol: { nombre: 'Administración' } }, { permissions = [], unreadCount = 0, path = '/' } = {}) {
   const navbarProps = { onMobileToggle: () => {}, sidebarCollapsed: false, onSidebarToggle: () => {}, ...props }
   const logout = vi.fn()
   render(
-    <AuthContext.Provider value={{ user, logout }}>
+    <AuthContext.Provider value={{ user, logout, hasPermission: (name) => permissions.includes(name) }}>
+      <NotificationContext.Provider value={{ unreadCount }}>
       <ThemeContext.Provider value={{ theme: 'light', toggleTheme: () => {} }}>
-        <MemoryRouter><Navbar {...navbarProps} /><button type="button">Fuera del menú</button></MemoryRouter>
+        <MemoryRouter initialEntries={[path]}><Navbar {...navbarProps} /><button type="button">Fuera del menú</button></MemoryRouter>
       </ThemeContext.Provider>
+      </NotificationContext.Provider>
     </AuthContext.Provider>,
   )
   return { logout }
 }
 
 describe('Navbar', () => {
-  it('muestra el toggle de escritorio con icono Menu y atributos accesibles', () => {
-    renderNavbar()
-    const toggle = screen.getByRole('button', { name: 'Colapsar barra lateral' })
-    expect(toggle.closest('header')).toHaveClass('layout-navbar')
-    expect(toggle.closest('header')).not.toHaveClass('layout-navbar--collapsed')
-    expect(toggle).toHaveClass('hidden', 'md:inline-flex')
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    expect(toggle).toHaveAttribute('aria-controls', 'main-sidebar')
-    expect(toggle.querySelector('svg')).toBeInTheDocument()
+  it('muestra el nombre de la pantalla actual sin repetir el título del sistema', () => {
+    renderNavbar({}, undefined, { path: '/postulantes' })
+    expect(screen.getByText('Postulantes')).toBeInTheDocument()
+    expect(screen.queryByText('Bienvenido')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument()
   })
 
-  it('permite expandir y contraer sin mezclar el control móvil', async () => {
+  it('la campana abre la ventana de notificaciones e indica las no leídas cuando hay permiso', () => {
+    renderNavbar({}, undefined, { permissions: ['puede_ver_notificaciones'], unreadCount: 3 })
+    const bell = screen.getByRole('button', { name: 'Notificaciones, 3 sin leer' })
+    expect(bell).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(bell).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('sin permiso no muestra la campana', () => {
+    renderNavbar()
+    expect(screen.queryByRole('button', { name: /^Notificaciones/ })).not.toBeInTheDocument()
+  })
+
+  it('ya no muestra el botón de modo claro/oscuro en la barra (está en Mi perfil)', () => {
+    renderNavbar()
+    expect(screen.queryByRole('button', { name: /Activar modo/ })).not.toBeInTheDocument()
+  })
+
+  it('solo ofrece el botón del celular para abrir el menú; el colapso vive en el menú lateral', async () => {
     const user = userEvent.setup()
     const onMobileToggle = vi.fn()
-    const onSidebarToggle = vi.fn()
-    const { rerender } = render(<AuthContext.Provider value={{ user: {}, logout: vi.fn() }}><ThemeContext.Provider value={{ theme: 'light', toggleTheme: () => {} }}><MemoryRouter><Navbar onMobileToggle={onMobileToggle} sidebarCollapsed={false} onSidebarToggle={onSidebarToggle} /></MemoryRouter></ThemeContext.Provider></AuthContext.Provider>)
-    await user.click(screen.getByRole('button', { name: 'Colapsar barra lateral' }))
-    expect(onSidebarToggle).toHaveBeenCalledOnce()
-    expect(onMobileToggle).not.toHaveBeenCalled()
-
-    rerender(<AuthContext.Provider value={{ user: {}, logout: vi.fn() }}><ThemeContext.Provider value={{ theme: 'light', toggleTheme: () => {} }}><MemoryRouter><Navbar onMobileToggle={onMobileToggle} sidebarCollapsed onSidebarToggle={onSidebarToggle} /></MemoryRouter></ThemeContext.Provider></AuthContext.Provider>)
+    renderNavbar({ onMobileToggle, sidebarCollapsed: true })
     expect(screen.getByRole('banner')).toHaveClass('layout-navbar--collapsed')
-    expect(screen.getByRole('button', { name: 'Expandir barra lateral' })).toHaveAttribute('aria-expanded', 'false')
-    await user.click(screen.getByRole('button', { name: 'Abrir menú de navegación' }))
+    expect(screen.queryByRole('button', { name: /barra lateral/ })).not.toBeInTheDocument()
+    const mobileToggle = screen.getByRole('button', { name: 'Abrir menú de navegación' })
+    expect(mobileToggle).toHaveClass('md:hidden')
+    await user.click(mobileToggle)
     expect(onMobileToggle).toHaveBeenCalledOnce()
   })
 
@@ -57,7 +69,7 @@ describe('Navbar', () => {
     expect(trigger).toHaveTextContent('Administración')
     expect(trigger.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument()
     expect(trigger.querySelector('span[aria-hidden="true"]')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Notificaciones' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Notificaciones/ })).not.toBeInTheDocument()
   })
 
   it('usa el primer nombre disponible y username como fallback', () => {
@@ -70,7 +82,7 @@ describe('Navbar', () => {
     expect(trigger.querySelector('span[aria-hidden="true"]')).not.toBeInTheDocument()
   })
 
-  it('abre el menú y navega a Mi perfil', async () => {
+  it('abre el menú y Mi perfil se abre en una ventana flotante', async () => {
     const user = userEvent.setup()
     renderNavbar()
 
@@ -78,10 +90,14 @@ describe('Navbar', () => {
     const menu = screen.getByRole('menu', { name: 'Menú de usuario' })
     expect(menu).toBeInTheDocument()
     expect(menu.querySelector('[role="presentation"] span[aria-hidden="true"]')).toHaveTextContent('A')
-    expect(screen.getByRole('menuitem', { name: 'Mi perfil' })).toHaveAttribute('href', '/perfil')
     expect(screen.getByRole('button', { name: 'Abrir menú de usuario, Agustin' })).toHaveAttribute('aria-expanded', 'true')
     await user.click(screen.getByRole('menuitem', { name: 'Mi perfil' }))
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    const dialog = screen.getByRole('dialog', { name: 'Mi perfil' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog.closest('.modal-overlay')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }))
+    expect(screen.queryByRole('dialog', { name: 'Mi perfil' })).not.toBeInTheDocument()
   }, 15000)
 
   it('cierra con Escape y devuelve el foco al botón que lo abrió', async () => {

@@ -1,0 +1,618 @@
+/* Postulantes: lista, tarjetas, paginación, formularios y registro rápido. */
+
+/* ── Postulantes (mismo estilo que el Inicio) ─────────────────────────────
+   Cabecera con icono, título y buscador automático (sin botón: se filtra al escribir); a la
+   derecha la tarjeta del total. La lista es una grilla de tarjetas compactas: iniciales,
+   nombre y acciones (Detalle y Editar como íconos, "Abrir expediente"). */
+.postulantes-header {
+  display: grid;
+  grid-template-columns: auto minmax(14rem, 1fr) minmax(22rem, 30rem);
+  align-items: center;
+  gap: 0.875rem 1rem;
+}
+
+.postulantes-tools {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.postulantes-search {
+  position: relative;
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+.postulantes-search-input {
+  padding-left: 2.5rem;
+}
+
+/* Entrada de cada estudiante (como "fondoEntrada" de Fondo de Tiempo): sube 8 px con un
+   fundido, escalonado 35 ms. Se repite al cambiar de vista, de página o de búsqueda. */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+.animate-row-in {
+  animation: row-in 320ms var(--ease-out) both;
+}
+
+.is-refreshing {
+  opacity: 0.55;
+  transition: opacity 200ms var(--ease-out);
+}
+
+/* Sin resultados (Postulantes): bloque con icono, título y sugerencia; entra con row-in. */
+.postulantes-empty {
+  display: grid;
+  min-height: 15rem;
+  place-content: center;
+  justify-items: center;
+  gap: 0.5rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 1.25rem;
+  background: var(--surface-secondary);
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+html.dark .postulantes-empty {
+  background: var(--surface);
+}
+
+.postulantes-empty-icon {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  margin-bottom: 0.25rem;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--primary-soft);
+  color: var(--heading);
+  animation: count-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) 120ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .postulantes-empty-icon {
+    animation: none;
+  }
+}
+
+/* Vista Tarjetas: de a 3 (2 en tableta, 1 en celular). */
+.postulantes-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .postulantes-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1100px) {
+  .postulantes-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.postulante-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--surface-secondary);
+  padding: 1.125rem 1.125rem 1rem;
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+
+html.dark .postulante-card {
+  background: var(--surface);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .postulante-card:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--card-shadow);
+  }
+}
+
+.postulante-card .postulante-actions {
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+/* Vista Lista: un bloque tipo tabla con fila de títulos y filas divididas (como Fondo de
+   Tiempo). Las columnas llenan el ancho sin dejar huecos; en celular cada fila se apila. */
+.postulantes-table {
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  background: var(--surface-secondary);
+  padding: 0.5rem 0.75rem;
+}
+
+html.dark .postulantes-table {
+  background: var(--surface);
+}
+
+.postulantes-table-head,
+.postulante-row {
+  display: grid;
+  /* Acciones con ancho fijo: así los títulos quedan alineados con los datos de cada fila. */
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.3fr) minmax(0, 0.9fr) 14.5rem;
+  align-items: center;
+  column-gap: 1rem;
+}
+
+.postulantes-table-head {
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.postulante-row {
+  border-radius: 0.875rem;
+  padding: 0.75rem;
+  transition: background-color 150ms var(--ease-out);
+}
+
+.postulante-row + .postulante-row {
+  border-top: 1px solid var(--border);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .postulante-row:hover {
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
+  }
+}
+
+.postulante-cell {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.postulante-cell-label {
+  display: none;
+}
+
+.postulante-name--row {
+  -webkit-line-clamp: 1;
+}
+
+@media (max-width: 1023px) {
+  .postulantes-table-head {
+    display: none;
+  }
+
+  .postulante-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.5rem;
+  }
+
+  .postulante-cell {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .postulante-cell-label {
+    display: inline;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .postulante-row .postulante-actions {
+    justify-content: flex-start;
+  }
+}
+
+.postulante-avatar {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  place-items: center;
+  border-radius: 9999px;
+  background: var(--primary-soft);
+  color: var(--heading);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.postulante-avatar--lg {
+  width: 3rem;
+  height: 3rem;
+  font-size: 0.9375rem;
+}
+
+.postulante-name {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--heading);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.postulante-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.postulante-card .postulante-actions .action-button {
+  margin-left: auto;
+}
+
+.postulante-icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border-radius: 9999px;
+  color: var(--text-secondary);
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.postulante-icon:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .postulante-icon:hover {
+    background: var(--surface-sunken);
+    color: var(--heading);
+  }
+}
+
+.postulante-status {
+  display: inline-block;
+  flex: none;
+  border-radius: 9999px;
+  background: var(--neutral-soft);
+  padding: 0.125rem 0.625rem;
+  color: var(--neutral-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.postulante-status[data-tone='info'] { background: var(--info-soft); color: var(--info-text); }
+.postulante-status[data-tone='success'] { background: var(--success-soft); color: var(--success-text); }
+.postulante-status[data-tone='warning'] { background: var(--warning-soft); color: var(--warning-text); }
+.postulante-status[data-tone='danger'] { background: var(--danger-soft); color: var(--danger-text); }
+
+/* Selector Tarjetas | Lista (como el de Fondo de Tiempo): el fondo de la opción elegida se
+   desliza en 300 ms; en celular solo van los íconos. */
+.view-toggle {
+  position: relative;
+  display: inline-flex;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  background: var(--surface-sunken);
+  padding: 0.25rem;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.view-toggle-indicator {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 0;
+  border-radius: 9999px;
+  background: var(--primary);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 15%);
+}
+
+.view-toggle-indicator[data-animated] {
+  transition: transform 300ms var(--ease-out), width 300ms var(--ease-out);
+}
+
+.view-toggle-indicator:not([data-ready]) {
+  visibility: hidden;
+}
+
+.view-toggle-option {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  height: 2.25rem;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  padding: 0 1rem;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 300ms var(--ease-out);
+}
+
+.view-toggle-option[aria-pressed='true'] {
+  color: var(--on-primary);
+}
+
+.view-toggle-option:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .view-toggle-option:not([aria-pressed='true']):hover {
+    color: var(--heading);
+  }
+}
+
+@media (max-width: 639px) {
+  .view-toggle-option {
+    padding: 0 0.75rem;
+  }
+
+  .view-toggle-text {
+    display: none;
+  }
+}
+
+/* Paginación como la de Fondo de Tiempo: solo números, centrada; aparece si hay más páginas. */
+.page-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-top: 1.25rem;
+}
+
+.page-nav-arrow,
+.page-nav-number {
+  display: grid;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border-radius: 9999px;
+  padding: 0 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.page-nav-arrow {
+  color: var(--heading);
+}
+
+.page-nav-number[aria-current='page'] {
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 15%);
+}
+
+.page-nav-arrow:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.page-nav-arrow:focus-visible,
+.page-nav-number:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .page-nav-arrow:not(:disabled):hover,
+  .page-nav-number:not([aria-current='page']):hover {
+    background: var(--surface-sunken);
+  }
+}
+
+.page-nav-gap {
+  width: 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-row-in {
+    animation: none;
+  }
+
+  .view-toggle-indicator[data-animated],
+  .view-toggle-option {
+    transition: none;
+  }
+}
+
+/* Detalle y formularios dentro de la ventana flotante */
+.postulante-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  padding: 0.875rem 1rem;
+}
+
+.postulante-detail-grid {
+  display: grid;
+  gap: 0.875rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+  padding: 1rem 1.125rem;
+}
+
+@media (min-width: 640px) {
+  .postulante-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Formulario compacto (Nueva / Editar postulación): campos uno debajo de otro, sin bloques. */
+.compact-form {
+  display: grid;
+  gap: 1.125rem;
+}
+
+.form-hint {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  border-radius: 1rem;
+  background: var(--info-soft);
+  padding: 0.5rem 1rem;
+  color: var(--info-text);
+  font-size: 0.8125rem;
+}
+
+.compact-form .form-footer {
+  margin-top: 0.25rem;
+}
+
+.compact-readonly {
+  border-radius: 0.875rem;
+  background: var(--surface);
+  padding: 0.75rem 0.875rem;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.form-label {
+  display: grid;
+  gap: 0.375rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.form-control {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid transparent;
+  border-radius: 1rem;
+  background: var(--surface-sunken);
+  padding: 0.625rem 1.125rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 400;
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+
+.form-control:focus {
+  border-color: var(--focus);
+  background: var(--surface-raised);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 25%, transparent);
+}
+
+.form-control:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-control--area {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.form-control--file {
+  padding: 0.5rem;
+}
+
+.form-help {
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.form-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+@media (max-width: 1023px) {
+  .postulantes-header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .postulantes-tools {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Nueva postulación: enlace para registrar al estudiante si no aparece en el buscador. */
+.form-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  border-radius: 9999px;
+  padding: 0.25rem 0.125rem;
+  color: var(--focus);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .form-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+.form-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Registro rápido del estudiante: sección del mismo formulario (sin recuadro dentro de la ventana). */
+.quick-student {
+  display: grid;
+  gap: 0.75rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 0;
+  animation: option-in 220ms var(--ease-out) both;
+}
+
+.quick-student-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--heading);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.quick-student-title svg {
+  color: var(--focus);
+}
+
+.quick-student-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-student {
+    animation: none;
+  }
+}

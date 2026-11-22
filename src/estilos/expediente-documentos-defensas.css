@@ -1,0 +1,325 @@
+/* Expediente: filas de documentos y defensas, condiciones y entregas. */
+
+/* ══ Documentos del expediente: una fila por documento, sin tarjetas dentro ══ */
+.expediente-doc-list {
+  display: grid;
+  margin-top: 1.25rem;
+}
+
+.expediente-doc {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+  padding: 1rem 0;
+}
+
+.expediente-doc:first-child {
+  border-top: 0;
+  padding-top: 0.25rem;
+}
+
+.expediente-doc-icon {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  border-radius: 0.875rem;
+  background: var(--info-soft);
+  color: var(--info-text);
+}
+
+.expediente-doc-icon[data-tone='success'] { background: var(--success-soft); color: var(--success-text); }
+.expediente-doc-icon[data-tone='warning'] { background: var(--warning-soft); color: var(--warning-text); }
+
+.expediente-doc-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.expediente-doc-main h3 {
+  color: var(--heading);
+}
+
+.expediente-doc-facts {
+  display: grid;
+  grid-column: 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1.5rem;
+  font-size: 0.8125rem;
+}
+
+.expediente-doc-facts dt {
+  font-size: 0.75rem;
+}
+
+.expediente-doc-facts dd {
+  margin-top: 0;
+}
+
+@media (min-width: 1280px) {
+  .expediente-doc {
+    grid-template-columns: auto minmax(14rem, 1.1fr) minmax(0, 2.4fr) auto;
+  }
+
+  .expediente-doc-main {
+    display: contents;
+  }
+
+  .expediente-doc-facts {
+    grid-column: 3;
+    grid-row: 1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .expediente-doc-open {
+    grid-column: 4;
+    grid-row: 1;
+  }
+}
+
+/* Sección sin datos: ícono y mensaje en una línea, sin ocupar un recuadro enorme. */
+.expediente-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  margin-top: 1.25rem;
+}
+
+.expediente-empty-icon {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.875rem;
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+}
+
+/* Documentos: fechas en una sola línea; los datos ocupan solo lo que necesitan. */
+@media (min-width: 1280px) {
+  .expediente-doc {
+    grid-template-columns: auto minmax(12rem, 1fr) auto auto;
+  }
+
+  .expediente-doc-facts {
+    grid-template-columns: repeat(4, max-content);
+    column-gap: 2rem;
+  }
+
+  .expediente-doc-facts dd {
+    white-space: nowrap;
+  }
+}
+
+/* Condiciones y entregas (Recepción física, cierre): filas planas, sin recuadros dentro. */
+.closure-req details {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.closure-req summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--heading);
+}
+
+.closure-req-done {
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--success);
+}
+
+.closure-req details > ul {
+  display: grid;
+}
+
+.closure-req details > ul > li {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.25rem 1.5rem;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0.875rem 0;
+  color: var(--text-secondary);
+}
+
+.closure-req details > ul > li + li {
+  margin-top: 0;
+}
+
+.closure-req details > ul > li > :first-child,
+.closure-req details > ul > li > div:has(> [class*='app-button--']),
+.closure-req details > ul > li > form,
+.closure-req details > ul > li > [role='alert'] {
+  grid-column: 1 / -1;
+}
+
+.closure-req details > ul > li > :first-child {
+  color: var(--heading);
+}
+
+.closure-req details > ul > li > div:has(> [class*='app-button--']) {
+  justify-content: flex-end;
+}
+
+.closure-req details > ul > li > button {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+.upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+.defense-detail > * {
+  margin: 0;
+}
+.defense-detail > section.rounded-xl,
+.defense-detail > section[aria-labelledby='resultado-directo-proyecto-title'],
+.defense-detail > section[aria-labelledby='resultado-consolidado-title'],
+.defense-detail > section[aria-labelledby='evaluaciones-defensa-title'],
+.defense-detail > section[aria-labelledby='acciones-destructivas-defensa-title'] {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding: 1.25rem 0 0;
+}
+
+.defense-detail h3,
+.defense-detail h4 {
+  color: var(--heading);
+}
+
+.defense-detail section h3.text-lg {
+  font-size: 1rem;
+}
+
+/* Listas (tribunal, evaluaciones) y el resultado: filas planas. */
+.defense-detail li.border,
+.defense-detail li.rounded-md,
+.defense-detail li.rounded-lg,
+.defense-detail section[aria-labelledby='resultado-consolidado-title'] > div.border {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  padding: 0.625rem 0;
+}
+
+.defense-detail li:first-child,
+.defense-detail section[aria-labelledby='resultado-consolidado-title'] > div.border {
+  border-top: 0;
+}
+
+.defense-detail ul.space-y-2 > li + li,
+.defense-detail ul.space-y-3 > li + li {
+  margin-top: 0;
+}
+
+/* Botones de la ventana a la derecha. */
+.defense-detail section > [class*='app-button--'],
+.defense-detail section > div > [class*='app-button--']:only-child {
+  display: flex;
+  margin-left: auto;
+}
+
+@media (min-width: 1100px) {
+  .defense-detail > * {
+    grid-column: 1 / -1;
+  }}
+
+/* ══ Defensas: una fila por defensa (como Documentos), sin tarjetas dentro ══ */
+.expediente-defense-list {
+  display: grid;
+  margin-top: 1.25rem;
+}
+
+.expediente-defense {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  border-top: 1px solid var(--border);
+  padding: 1rem 0;
+}
+
+.expediente-defense:first-child {
+  border-top: 0;
+  padding-top: 0.25rem;
+}
+
+.expediente-defense-head {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.875rem;
+}
+
+.expediente-defense-head h3 {
+  color: var(--heading);
+}
+
+.expediente-defense-head p {
+  margin-top: 0;
+  color: var(--text-secondary);
+}
+
+.expediente-defense-open {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.expediente-defense-facts {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem 1.5rem;
+  font-size: 0.8125rem;
+}
+
+.expediente-defense-facts dt {
+  font-size: 0.75rem;
+}
+
+.expediente-defense-facts dd {
+  margin-top: 0;
+}
+
+/* Detalle de defensa: botón del tribunal a la derecha; "Detalles de la evaluación" sin caja. */
+.defense-detail div:has(> h4) > [class*='app-button--'] {
+  display: flex;
+  width: fit-content;
+  margin-left: auto;
+}
+
+.defense-detail details {
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  padding-top: 0.75rem;
+}
+
+/* Lista de documentos: estado en píldora junto al nombre. */
+.expediente-doc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+}
