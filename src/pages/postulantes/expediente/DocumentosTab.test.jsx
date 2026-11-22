@@ -330,11 +330,13 @@ describe('ExpedientePage · Documentos', () => {
     selectInitialTab('resumen')
     render(<AuthContext.Provider value={auth}><MemoryRouter initialEntries={['/postulaciones/7']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
 
-    const notice = await screen.findByText('Carga el Informe de Evaluación del Tribunal.')
+    // El paso va en "Siguiente acción" del Resumen (no suelto debajo de la tarjeta).
+    const notice = await screen.findByText('Cargar el Informe de Evaluación del Tribunal')
     const summary = document.getElementById('panel-resumen')
     const documents = document.getElementById('panel-documentos')
-    expect(within(summary).getAllByText('Carga el Informe de Evaluación del Tribunal.')).toHaveLength(1)
-    expect(within(documents).queryByText('Carga el Informe de Evaluación del Tribunal.')).not.toBeInTheDocument()
+    expect(notice.closest('.expediente-next')).not.toBeNull()
+    expect(within(summary).getAllByText('Cargar el Informe de Evaluación del Tribunal')).toHaveLength(1)
+    expect(within(documents).queryByText('Cargar el Informe de Evaluación del Tribunal')).not.toBeInTheDocument()
     expect(notice.closest('[data-expediente-panel]')).toBe(summary)
     const registerButton = await within(summary).findByRole('button', { name: 'Registrar informe del tribunal' })
     expect(notice.compareDocumentPosition(registerButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

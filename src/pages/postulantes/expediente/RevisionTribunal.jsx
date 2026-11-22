@@ -1,3 +1,4 @@
+import { FileClock } from 'lucide-react'
 import { Modal } from '../../../components/crud/CrudShell'
 import { Card } from '../../../components/ui/card'
 import { Button } from '../../../components/ui/button'
@@ -41,7 +42,10 @@ export function TribunalReviewReports({ reviewState, versions, evidenceVersions,
     </div>}
     {reports.loading && <p role="status" className="mt-4 text-sm">Cargando informes del tribunal…</p>}
     {reports.error && <SectionError message={reports.error} label="Reintentar informes" onRetry={onRetry} />}
-    {!reports.loading && !reports.error && rows.length === 0 && <p className="mt-4 text-sm text-slate-500">No existen informes registrados para esta etapa.</p>}
+    {!reports.loading && !reports.error && rows.length === 0 && <div className="expediente-empty">
+      <span className="expediente-empty-icon" aria-hidden="true"><FileClock className="h-5 w-5" strokeWidth={1.9} /></span>
+      <div className="min-w-0"><p className="font-semibold text-[var(--heading)]">No existen informes registrados para esta etapa.</p></div>
+    </div>}
     {!reports.loading && !reports.error && rows.length > 0 && <ol className="mt-5 space-y-4">{rows.map((report) => {
       const evidence = versionById.get(String(report.evidencia_version)) || { id: report.evidencia_version, nombre_original: report.evidencia_nombre_original }
       return <li key={report.id} className="rounded-lg border p-4">

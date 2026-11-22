@@ -739,3 +739,12 @@
   gap: 0.375rem;
   color: var(--text-secondary);
 }
+
+/* Siguiente acción con dos botones (secundario y principal), a la derecha. */
+.expediente-next-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}

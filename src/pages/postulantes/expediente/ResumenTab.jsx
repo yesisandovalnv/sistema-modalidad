@@ -418,7 +418,10 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
     {(approvalMissingLabels || ((administrativeActionPending || publicAuthorityAction || visibleOrientationAction) && !staleProgrammingMessage && (isThesisGrade || orientationMessage !== (tribunalAssignment?.description || nextAction?.descripcion)))) && <p className="mt-4 text-sm">{orientationMessage}</p>}
     {startStep ? <section className="expediente-next" aria-labelledby="start-step-title">
       <div className="min-w-0"><h3 id="start-step-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{startStep.title}</p>{startStep.description && <p className="mt-1 text-sm">{startStep.description}</p>}</div>
-      <Button type="button" className="mt-3" disabled={startStep.disabled} onClick={startStep.onClick}>{startStep.label}</Button>
+      {startStep.secondary ? <div className="expediente-next-actions">
+        <Button type="button" variant="secondary" disabled={startStep.disabled} onClick={startStep.secondary.onClick}>{startStep.secondary.label}</Button>
+        <Button type="button" disabled={startStep.disabled} onClick={startStep.onClick}>{startStep.label}</Button>
+      </div> : <Button type="button" className="mt-3" disabled={startStep.disabled} onClick={startStep.onClick}>{startStep.label}</Button>}
       {startStep.error && <p role="alert" className="mt-2 text-sm text-red-600">{startStep.error}</p>}
     </section> : approvalMissingLabels ? <section className="expediente-next" aria-labelledby="missing-document-action-title">
       <h3 id="missing-document-action-title" className="text-lg font-bold">Siguiente acción</h3>

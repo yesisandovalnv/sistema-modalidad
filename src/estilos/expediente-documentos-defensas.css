@@ -102,19 +102,26 @@
   color: var(--text-secondary);
 }
 
-/* Documentos: fechas en una sola línea; los datos ocupan solo lo que necesitan. */
+/* Documentos: fechas en una sola línea; los datos ocupan solo lo que necesitan. En dos columnas
+   (dos filas) para que el botón "Ver detalle" quepa entero; en pantallas muy anchas, en una fila. */
 @media (min-width: 1280px) {
   .expediente-doc {
     grid-template-columns: auto minmax(12rem, 1fr) auto auto;
   }
 
   .expediente-doc-facts {
-    grid-template-columns: repeat(4, max-content);
+    grid-template-columns: repeat(2, max-content);
     column-gap: 2rem;
   }
 
   .expediente-doc-facts dd {
     white-space: nowrap;
+  }
+}
+
+@media (min-width: 1600px) {
+  .expediente-doc-facts {
+    grid-template-columns: repeat(4, max-content);
   }
 }
 

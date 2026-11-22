@@ -22,7 +22,7 @@ export function ActorsCard({ active, historical, activePage, historicalPage, onA
     <Card className="expediente-card overflow-hidden" aria-labelledby="actores-title">
       <h2 id="actores-title" className="text-xl font-bold">Gestión de actores</h2>
       <p className="mt-1 text-sm text-slate-500">{positions.length > 0
-        ? `${occupiedCount} de ${positions.length} posiciones ocupadas`
+        ? `Puestos de la etapa actual: ${occupiedCount} de ${positions.length} ocupados`
         : `${activeCount} actores vigentes`}</p>
       <div className="expediente-card-action">
         <ViewToggle view={view} onChange={chooseView} />

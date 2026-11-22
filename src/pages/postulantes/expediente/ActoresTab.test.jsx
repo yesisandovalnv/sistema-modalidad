@@ -201,7 +201,7 @@ describe('ExpedientePage · Actores', () => {
     await userEvent.click(await screen.findByRole('tab', { name: 'Actores' }))
     const actors = (await screen.findByRole('heading', { name: 'Gestión de actores' })).closest('section')
     expect(within(actors).getByText('María Tutora')).toBeInTheDocument()
-    expect(within(actors).getByText('4 de 4 posiciones ocupadas')).toBeInTheDocument()
+    expect(within(actors).getByText('Puestos de la etapa actual: 4 de 4 ocupados')).toBeInTheDocument()
     await userEvent.click(within(actors).getByRole('button', { name: 'Gestionar actores' }))
     const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Proyecto' })
     for (const order of [1, 2, 3]) {
@@ -2480,7 +2480,7 @@ describe('ExpedientePage · Actores', () => {
       expect(within(dialog).getByLabelText(`Seleccionar reemplazo para Tribunal ${order}`)).toBeInTheDocument()
     }
     expect(within(dialog).queryByRole('heading', { name: 'Tribunal 4 *' })).not.toBeInTheDocument()
-    expect(within(actors).getByText('3 de 4 posiciones ocupadas')).toBeInTheDocument()
+    expect(within(actors).getByText('Puestos de la etapa actual: 3 de 4 ocupados')).toBeInTheDocument()
   })
 
   it('mantiene visibles los actores de Perfil sin proyectarlos como posiciones de otra etapa', async () => {
@@ -2547,7 +2547,7 @@ describe('ExpedientePage · Actores', () => {
     expect(within(dialog).getByRole('heading', { name: 'Tribunal 3 *' })).toBeInTheDocument()
     expect(within(dialog).getAllByText(/^Asignada$/)).toHaveLength(3)
     expect(within(dialog).getAllByLabelText(/Seleccionar reemplazo para Tribunal/)).toHaveLength(3)
-    expect(within(actors).getByText('3 de 4 posiciones ocupadas')).toBeInTheDocument()
+    expect(within(actors).getByText('Puestos de la etapa actual: 3 de 4 ocupados')).toBeInTheDocument()
   })
 
   it('envía orden y seguimiento declarados por la posición y refresca actores vigentes', async () => {
@@ -2631,7 +2631,7 @@ describe('ExpedientePage · Actores', () => {
     renderAssignmentManagerPage()
 
     const actors = (await screen.findByRole('heading', { name: 'Gestión de actores' })).closest('section')
-    expect(within(actors).getByText('0 de 4 posiciones ocupadas')).toBeInTheDocument()
+    expect(within(actors).getByText('Puestos de la etapa actual: 0 de 4 ocupados')).toBeInTheDocument()
     await userEvent.click(within(actors).getByRole('button', { name: 'Gestionar actores' }))
     const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Proyecto' })
     for (const order of [1, 2, 3]) expect(within(dialog).getByRole('heading', { name: `Tribunal ${order} *` })).toBeInTheDocument()
@@ -2727,7 +2727,7 @@ describe('ExpedientePage · Actores', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar asignaciones' }))
 
     await waitFor(() => expect(postulacionesService.asignarActor).toHaveBeenCalledTimes(3))
-    expect(await screen.findByText('3 de 4 posiciones ocupadas')).toBeInTheDocument()
+    expect(await screen.findByText('Puestos de la etapa actual: 3 de 4 ocupados')).toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Proyecto' })).toBeInTheDocument()
     const activeGroup = within(actors).getByRole('heading', { name: 'Participación actual' }).closest('section')
     for (const name of names) {
@@ -2803,7 +2803,7 @@ describe('ExpedientePage · Actores', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar asignaciones' }))
 
     expect(await within(dialog).findByText('Conflicto de asignación.')).toBeInTheDocument()
-    expect(await screen.findByText('2 de 4 posiciones ocupadas')).toBeInTheDocument()
+    expect(await screen.findByText('Puestos de la etapa actual: 2 de 4 ocupados')).toBeInTheDocument()
     expect(within(dialog).getAllByText('Guardado')).toHaveLength(2)
     const activeGroup = within(actors).getByRole('heading', { name: 'Participación actual' }).closest('section')
     expect(within(activeGroup).getByText('Tribunal Uno')).toBeInTheDocument()
@@ -2812,7 +2812,7 @@ describe('ExpedientePage · Actores', () => {
 
     await waitFor(() => expect(postulacionesService.asignarActor).toHaveBeenCalledTimes(4))
     expect(postulacionesService.asignarActor.mock.calls.map(([, payload]) => payload.orden_cargo)).toEqual([1, 2, 3, 2])
-    expect(await screen.findByText('3 de 4 posiciones ocupadas')).toBeInTheDocument()
+    expect(await screen.findByText('Puestos de la etapa actual: 3 de 4 ocupados')).toBeInTheDocument()
     expect(within(dialog).queryByText('Conflicto de asignación.')).not.toBeInTheDocument()
     expect(within(dialog).getAllByText('Guardado')).toHaveLength(3)
     expect(screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Proyecto' })).toBeInTheDocument()

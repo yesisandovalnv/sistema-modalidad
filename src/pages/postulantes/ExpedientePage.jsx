@@ -1940,6 +1940,25 @@ export default function ExpedientePage() {
     onUpdate={openTribunalReportUpdate}
     onUploadEvidence={openTribunalEvidenceUpload}
   />
+  // Revisión de Tribunal Previa (Proyecto de Grado): el paso que toca va en "Siguiente acción" del
+  // Resumen con su botón (antes quedaban sueltos debajo de la tarjeta). El servidor no manda
+  // orientación para esta etapa, así que se arma con el estado de la revisión.
+  const reviewStep = !isHistorical && isCurrentProjectTribunalReview && tribunalReviewStage && !currentOrientation?.siguiente_accion ? (() => {
+    const { canRegister, canUpdate, currentReport, updateRequired } = tribunalReviewState
+    if (updateRequired && canUpdate) {
+      return { key: 'review-update', title: 'Actualizar informe del tribunal', description: currentOrientation?.mensaje || 'El informe registrado debe actualizarse.', label: 'Actualizar informe del tribunal', onClick: () => openTribunalReportUpdate(currentReport) }
+    }
+    if (currentEvidenceVersions.length === 0 && canUpload) {
+      return {
+        key: 'review-evidence', title: 'Cargar el Informe de Evaluación del Tribunal', description: 'Es el documento del tribunal que respalda la revisión del Documento Final.', label: 'Cargar Informe de Evaluación', onClick: openTribunalEvidenceUpload,
+        secondary: canRegister ? { label: 'Registrar informe del tribunal', onClick: onRegisterTribunalReport } : null,
+      }
+    }
+    if (canRegister) {
+      return { key: 'review-register', title: 'Registrar informe del tribunal', description: 'Registra el resultado de la revisión del tribunal sobre el Documento Final.', label: 'Registrar informe del tribunal', onClick: onRegisterTribunalReport }
+    }
+    return null
+  })() : null
   const reviewSection = tribunalReviewStage && <TribunalReviewReports
     reviewState={tribunalReviewState}
     versions={allDocumentVersions}
@@ -2133,7 +2152,7 @@ export default function ExpedientePage() {
       <div id="panel-resumen" role="tabpanel" aria-labelledby="expediente-tab-resumen" data-expediente-panel="resumen" hidden={!isHistorical && activeTab !== 'resumen'}>
         {!isHistorical && <div id="resumen" className="scroll-mt-24">
           <OperationalSummary
-            startStep={startStepInSummary ? startStep : null}
+            startStep={startStepInSummary ? startStep : reviewStep}
             cierre={cierre.data}
             cierreSoportado={cierreSoportado}
             currentStage={currentStage}
@@ -2229,7 +2248,7 @@ export default function ExpedientePage() {
             } : undefined}
           />
         </div>}
-        {!isHistorical && isCurrentProjectTribunalReview && reviewActions}
+        {!isHistorical && isCurrentProjectTribunalReview && !reviewStep && reviewActions}
       </div>
 
       <div id="panel-documentos" role="tabpanel" aria-labelledby="expediente-tab-documentos" data-expediente-panel="documentos" hidden={(isHistorical ? historicalTab : activeTab) !== 'documentos'}>
