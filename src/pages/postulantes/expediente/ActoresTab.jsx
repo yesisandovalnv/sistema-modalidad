@@ -10,7 +10,7 @@ import { Select } from '../../../components/ui/Select'
 import { getActiveTribunalComposition } from '../tribunalComposition'
 import { MemorandumPublicationSection, MemorandumStatus } from './DecisionesAcademicas'
 import { Info, SectionError, StatusBadge } from './compartidos'
-import { ASSIGNMENT_TYPES, assignmentTypeLabel, initialsOf } from './reglas'
+import { ASSIGNMENT_TYPES, assignmentTypeLabel, formatStatus, initialsOf } from './reglas'
 
 export function ActorsCard({ active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical, canManage, management, memorandumContract, memorandums, onRetryMemorandums, onManage }) {
   const positions = management?.posiciones || []
@@ -28,7 +28,7 @@ export function ActorsCard({ active, historical, activePage, historicalPage, onA
         <ViewToggle view={view} onChange={chooseView} />
         {canManage && <Button onClick={onManage}>Gestionar actores</Button>}
       </div>
-      {memorandumContract && <section className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-700" aria-labelledby="memorandum-vigente-title">
+      {memorandumContract && <section className="expediente-memo" aria-labelledby="memorandum-vigente-title">
         <h3 id="memorandum-vigente-title" className="font-semibold">{memorandumContract.titulo || 'Memorándum oficial de designación'}</h3>
         <MemorandumStatus memorandums={memorandums} onRetry={onRetryMemorandums} />
       </section>}
@@ -38,6 +38,14 @@ export function ActorsCard({ active, historical, activePage, historicalPage, onA
       </div>
     </Card>
   )
+}
+
+// Alcance del puesto en palabras: "Para esta etapa" / "Para toda la postulación". El orden solo se
+// muestra si el nombre del puesto no lo dice ya ("Tribunal 1").
+function positionScopeLabel(position) {
+  const scope = { ETAPA: 'Para esta etapa', POSTULACION: 'Para toda la postulación' }[position.ambito] || formatStatus(position.ambito)
+  const order = position.orden_cargo != null && !String(position.nombre || '').includes(String(position.orden_cargo)) ? ` · Orden ${position.orden_cargo}` : ''
+  return `${scope}${order}`
 }
 
 export function ActorManagementDialog({ state, postulacion, management, selectionPresentation, stageName, memorandumContract, memorandumSeguimientoEtapa, memorandums, canPublishMemorandum, onMemorandumPublished, onRetryMemorandums, onSubmit, onFinalize, onClose }) {
@@ -121,7 +129,7 @@ export function ActorManagementDialog({ state, postulacion, management, selectio
   const close = state.submitting || memorandumSubmitting ? () => {} : onClose
   return <Modal title={modalTitle} onClose={close}>
     <form className="actor-manage-form mt-4 grid gap-4" onSubmit={saveAssignments} noValidate>
-      {management?.contexto?.codigo_etapa && <p className="text-sm text-slate-500">Etapa: {management.contexto.codigo_etapa}</p>}
+      {!stageName && management?.contexto?.codigo_etapa && <p className="text-sm text-slate-500">Etapa: {formatStatus(management.contexto.codigo_etapa)}</p>}
       {positions.length === 0 && <p role="status" className="text-sm text-slate-500">No hay posiciones de actores declaradas para este contexto.</p>}
       <div className="grid gap-3">
         {positions.map((position) => {
@@ -137,9 +145,9 @@ export function ActorManagementDialog({ state, postulacion, management, selectio
           return <section key={position.clave} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0"><h3 className="font-semibold">{position.nombre}{position.obligatoriedad ? ' *' : ''}</h3>
-                <p className="mt-1 text-sm text-slate-500">{position.ambito}{position.orden_cargo != null ? ` · Orden ${position.orden_cargo}` : ''}</p>
+                <p className="mt-1 text-sm text-slate-500">{positionScopeLabel(position)}</p>
               </div>
-              <StatusBadge value={blocked && !assigned ? 'BLOQUEADA' : position.estado_ocupacion} positive={assigned} compact />
+              <StatusBadge value={formatStatus(blocked && !assigned ? 'BLOQUEADA' : position.estado_ocupacion)} positive={assigned} compact />
             </div>
             {assigned && <p className="mt-3 text-sm">Asignada a <strong>{currentPerson}</strong></p>}
             {position.bloqueo?.mensaje && <p role="status" className="mt-3 text-sm text-amber-700 dark:text-amber-300">{position.bloqueo.mensaje}</p>}

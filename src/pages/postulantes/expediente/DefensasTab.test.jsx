@@ -976,6 +976,29 @@ describe('ExpedientePage · Defensas', () => {
     expect(within(dialog).getAllByText('60.00').length).toBeGreaterThan(0)
   })
 
+  it('no repite el resultado final entre las evaluaciones cuando ya hay resultado consolidado', async () => {
+    const finalResult = { id: 712, tipo_evaluacion: 'RESULTADO_FINAL', resultado_cualitativo: 'SUFICIENTE', modalidad_registro: 'CONSENSO', es_resultado_final_evento: true }
+    const profileDefense = {
+      ...defenseRows[2],
+      estado: 'FINALIZADA', estado_display: 'Finalizada',
+      evaluaciones: [
+        { id: 711, tipo_evaluacion: 'PERFIL', resultado_cualitativo: 'SUFICIENTE', modalidad_registro: 'CONSENSO', es_resultado_final_evento: false },
+        finalResult,
+      ],
+      resultado_consolidado: finalResult,
+    }
+    postulacionesService.obtenerExpediente.mockResolvedValue(response)
+    postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [profileDefense] })
+    renderDefenseDocumentsAdminPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+    const dialog = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+    const evaluationsSection = within(dialog).getByRole('heading', { name: 'Evaluaciones registradas' }).closest('section')
+    expect(within(evaluationsSection).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(evaluationsSection).queryByText('Resultado final')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('heading', { name: 'Resultado' })).toBeInTheDocument()
+  })
+
   it('muestra y descarga la hoja de observaciones de una Defensa de Perfil finalizada', async () => {
     const profileDefense = {
       ...defenseRows[2],

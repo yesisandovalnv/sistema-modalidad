@@ -169,3 +169,26 @@
 .defense-detail details[open] > summary {
   margin-bottom: 0.5rem;
 }
+
+/* Hoja de observaciones: una fila plana (datos | acciones a la derecha), sin recuadro dentro de la ventana. */
+.defense-sheet {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.defense-sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .defense-sheet {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+}

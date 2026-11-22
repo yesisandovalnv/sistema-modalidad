@@ -349,3 +349,11 @@
     justify-content: flex-start;
     margin-top: 0.875rem;
   }}
+
+/* Memorándum de designación en Actores: una sección del mismo bloque, separada por un filete
+   (no una tarjeta dentro de la tarjeta). */
+.expediente-memo {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}

@@ -36,7 +36,13 @@ export function DefensesCard({ defenses, page, onPage, onRetry, onSelect, canMan
     <p className="mt-1 text-sm text-slate-500">Defensas registradas en tu proceso académico.</p>
     {defenses.loading && <p role="status" className="mt-4 text-sm">Cargando defensas…</p>}
     {defenses.error && <SectionError message={defenses.error} label="Reintentar defensas" onRetry={onRetry} />}
-    {!defenses.loading && !defenses.error && rows.length === 0 && <p className="mt-4 text-sm text-slate-500">No se registraron defensas.</p>}
+    {!defenses.loading && !defenses.error && rows.length === 0 && <div className="expediente-empty">
+      <span className="expediente-empty-icon" aria-hidden="true"><CalendarClock className="h-5 w-5" strokeWidth={1.9} /></span>
+      <div className="min-w-0">
+        <p className="font-semibold text-[var(--heading)]">No se registraron defensas.</p>
+        <p className="text-sm text-[var(--text-secondary)]">Aparecerán aquí cuando se programe la primera.</p>
+      </div>
+    </div>}
     {!defenses.loading && !defenses.error && rows.length > 0 && <>
       <ul className="expediente-defense-list">{rows.map((defense, index) => <li key={defense.id} className="expediente-defense animate-row-in" style={{ animationDelay: `${Math.min(index, 8) * 35}ms` }}>
         <span className="expediente-doc-icon" data-tone={['FINALIZADA', 'REALIZADA'].includes(defense.estado) ? 'success' : 'info'} aria-hidden="true">{['FINALIZADA', 'REALIZADA'].includes(defense.estado) ? <CalendarCheck2 className="h-5 w-5" strokeWidth={1.9} /> : <CalendarClock className="h-5 w-5" strokeWidth={1.9} />}</span>
@@ -94,6 +100,10 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
     </Modal>
   }
   const evaluations = defense.evaluaciones || []
+  // Con resultado consolidado, el resultado final ya se muestra en "Resultado": aquí solo las evaluaciones.
+  const listedEvaluations = defense.resultado_consolidado
+    ? evaluations.filter((item) => item.tipo_evaluacion !== 'RESULTADO_FINAL')
+    : evaluations
   if (!Array.isArray(evaluations)) {
     return <Modal title="Detalle de defensa" onClose={onClose}>
       <section role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
@@ -168,6 +178,9 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
   const secondaryOperationalActions = secondaryActions.filter((action) => action !== 'cancelar' && action !== displayedPrimaryAction && !(defense.estado === 'CANCELADA' && canRescheduleCancelledDefense && !directProjectFlow && action === 'reprogramar'))
   const destructiveActions = secondaryActions.filter((action) => action === 'cancelar')
   const showEvaluationSection = hasSecondaryEvaluationAction || (canManage && secondaryActions.length > 0 && (defense.estado !== 'PROGRAMADA' || hasEvaluation))
+  // En la defensa de perfil el título "Estado operativo" queda sin contenido: se oculta a la vista
+  // (sigue para lectores de pantalla, que lo usan como nombre de la sección).
+  const operationalTitleEmpty = profileContext && !(!displayedPrimaryAction && compatibleNextAction?.titulo)
   return <Modal title="Detalle de defensa" onClose={onClose} size="xl">
     <div className="defense-detail mt-4 min-w-0 space-y-6">
       <section aria-labelledby="defensa-evento-title">
@@ -194,10 +207,10 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
 
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900" aria-labelledby="estado-operativo-defensa-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h3 id="estado-operativo-defensa-title" className="text-lg font-bold">Estado operativo</h3>{!profileContext && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{directProjectFlow ? `Resultado: ${resultSummary}` : `Participantes: ${participantSummary === 'Ninguno incorporado' ? '0' : participantSummary} · Quórum: ${quorumSummary} · Resultado: ${resultSummary}`}</p>}</div>
+          <div><h3 id="estado-operativo-defensa-title" className={operationalTitleEmpty ? 'sr-only' : 'text-lg font-bold'}>Estado operativo</h3>{!profileContext && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{directProjectFlow ? `Resultado: ${resultSummary}` : `Participantes: ${participantSummary === 'Ninguno incorporado' ? '0' : participantSummary} · Quórum: ${quorumSummary} · Resultado: ${resultSummary}`}</p>}</div>
           {!displayedPrimaryAction && compatibleNextAction?.titulo && <p className="max-w-md text-sm"><span className="font-semibold">Siguiente acción:</span> {compatibleNextAction.titulo}{compatibleNextAction.descripcion ? ` — ${compatibleNextAction.descripcion}` : ''}</p>}
         </div>
-        {directProjectFlow ? <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700"><h4 className="font-semibold">Tribunal y cargos formales</h4>
+        {directProjectFlow ? <div className={operationalTitleEmpty ? undefined : 'mt-4 border-t border-slate-200 pt-4 dark:border-slate-700'}><h4 className="font-semibold">Tribunal y cargos formales</h4>
           {defense.composicion_formal?.length ? <ul className="mt-2 space-y-2">{defense.composicion_formal.map((actor) => <li key={actor.id} className="rounded-md border bg-white p-3 text-sm dark:bg-slate-950"><span className="font-semibold">{actor.usuario_nombre}</span><span> — {actor.rol_display || actor.tipo_participacion}{actor.orden_cargo ? ` ${actor.orden_cargo}` : ''}</span></li>)}</ul> : <p className="mt-2 text-sm text-amber-700">No hay asignaciones formales vigentes para mostrar.</p>}
           {isThesisGrade && thesisCompositionValidation?.cumple !== true && <section role="alert" className="mt-3 rounded-md border border-amber-400 bg-amber-100 p-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">
             <p className="font-semibold">Composición formal inválida; corrige las asignaciones antes de registrar el resultado.</p>
@@ -241,7 +254,7 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
       {hasResult && <section aria-labelledby="resultado-consolidado-title"><h3 id="resultado-consolidado-title" className="text-lg font-bold">Resultado</h3><div className="mt-3 rounded-lg border p-3"><EvaluationData evaluation={defense.resultado_consolidado} showTechnical={canManage || canEvaluate} /></div></section>}
 
       <section aria-labelledby="evaluaciones-defensa-title"><h3 id="evaluaciones-defensa-title" className="text-lg font-bold">Evaluaciones registradas</h3>
-        {evaluations.length === 0 ? <p className="mt-3 text-sm text-slate-500">No se registraron evaluaciones.</p> : <ul className="mt-3 space-y-3">{evaluations.map((evaluation) => <li key={evaluation.id} className="rounded-lg border p-3"><EvaluationData evaluation={evaluation} /></li>)}</ul>}
+        {listedEvaluations.length === 0 ? <p className="mt-3 text-sm text-slate-500">No se registraron evaluaciones.</p> : <ul className="mt-3 space-y-3">{listedEvaluations.map((evaluation) => <li key={evaluation.id} className="rounded-lg border p-3"><EvaluationData evaluation={evaluation} /></li>)}</ul>}
       </section>
 
       {isProjectGrade && defense.tipo_evento === 'DEFENSA_PERFIL' && defense.estado === 'FINALIZADA' && <ProfileObservationsSection document={defense.hoja_observaciones} canManageDocuments={canManageDocuments} onUpload={() => onUploadProfileObservations(defense)} />}
@@ -254,7 +267,7 @@ function ProfileObservationsSection({ document, canManageDocuments, onUpload }) 
   const currentVersion = document?.versiones?.find((version) => version.es_version_actual && version.activo !== false)
   return <section aria-labelledby="hoja-observaciones-title"><h3 id="hoja-observaciones-title" className="text-lg font-bold">Hoja de observaciones</h3>
     {!document && <p className="mt-3 text-sm text-slate-500">No se registró una hoja de observaciones para esta defensa.</p>}
-    {document && <div className="mt-3 rounded-lg border p-3"><dl className="grid gap-2 text-sm sm:grid-cols-2"><Info label="Tipo" value={document.tipo_documento_nombre || document.tipo_documento_codigo} /><Info label="Versión actual" value={currentVersion ? `Versión ${currentVersion.numero_version}` : 'No registrada'} /><Info label="Fecha de carga" value={formatDocumentDate(currentVersion?.fecha_subida || document.fecha_subida)} /></dl>{currentVersion && <div className="mt-3"><DownloadVersionButton version={currentVersion} /></div>}{canManageDocuments && <Button className="mt-3" variant="secondary" onClick={onUpload}>{currentVersion ? 'Cargar nueva versión' : 'Cargar hoja de observaciones'}</Button>}</div>}
+    {document && <div className="defense-sheet"><dl className="grid gap-2 text-sm sm:grid-cols-2"><Info label="Tipo" value={document.tipo_documento_nombre || document.tipo_documento_codigo} /><Info label="Versión actual" value={currentVersion ? `Versión ${currentVersion.numero_version}` : 'No registrada'} /><Info label="Fecha de carga" value={formatDocumentDate(currentVersion?.fecha_subida || document.fecha_subida)} /></dl><div className="defense-sheet-actions">{canManageDocuments && <Button variant="secondary" onClick={onUpload}>{currentVersion ? 'Cargar nueva versión' : 'Cargar hoja de observaciones'}</Button>}{currentVersion && <DownloadVersionButton version={currentVersion} />}</div></div>}
     {!document && canManageDocuments && <Button className="mt-3" variant="secondary" onClick={onUpload}>Cargar hoja de observaciones</Button>}
   </section>
 }

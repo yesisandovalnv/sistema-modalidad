@@ -208,7 +208,7 @@ describe('ExpedientePage · Actores', () => {
       expect(within(dialog).getByRole('heading', { name: `Tribunal ${order} *` })).toBeInTheDocument()
     }
     expect(within(dialog).getByRole('heading', { name: 'Tutor *' })).toBeInTheDocument()
-    expect(within(dialog).getAllByText(/ASIGNADA/)).toHaveLength(4)
+    expect(within(dialog).getAllByText(/^Asignada$/)).toHaveLength(4)
     expect(within(dialog).getByText('María Tutora')).toBeInTheDocument()
     expect(within(dialog).getByLabelText('Archivo')).toBeInTheDocument()
     expect(within(actors).queryByText('Recomendado')).not.toBeInTheDocument()
@@ -706,6 +706,22 @@ describe('ExpedientePage · Actores', () => {
     const permissions = ['puede_gestionar_postulaciones', ...(canAssign ? ['puede_gestionar_asignaciones'] : [])]
     return render(<AuthContext.Provider value={{ user: { id: 9 }, hasPermission: (name) => permissions.includes(name) }}><MemoryRouter initialEntries={['/postulaciones/53']}><Routes><Route path="/postulaciones/:id" element={<ExpedientePage />} /></Routes></MemoryRouter></AuthContext.Provider>)
   }
+
+  it('Gestionar actores muestra el alcance y el estado de cada puesto en palabras, sin códigos internos', async () => {
+    const management = privateSecretaryManagement()
+    management.posiciones.push({
+      clave: 'TRIBUNAL_1', nombre: 'Tribunal 1', tipo_participacion: 'TRIBUNAL', ambito: 'ETAPA', seguimiento_etapa: 160, orden_cargo: 1,
+      estado_ocupacion: 'VACANTE', habilitada: true, asignacion_actual: null, asignacion_actual_detalle: null, acciones_permitidas: ['ASIGNAR'], bloqueo: null, precondicion: null,
+    })
+    renderPrivateSecretary({ management })
+    await userEvent.click(await screen.findByRole('link', { name: 'Ir a precondiciones' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Gestionar actores — Defensa Privada' })
+    expect(within(dialog).queryByText(/DEFENSA_PRIVADA|POSTULACION|ETAPA|VACANTE|ASIGNADA|Orden 1/)).not.toBeInTheDocument()
+    expect(within(dialog).getAllByText('Para toda la postulación')).toHaveLength(2)
+    expect(within(dialog).getByText('Para esta etapa')).toBeInTheDocument()
+    expect(within(dialog).getAllByText('Vacante')).toHaveLength(2)
+    expect(within(dialog).getByText('Asignada')).toBeInTheDocument()
+  })
 
   it('Secretario contextual de Tesis: abre desde Resumen sin POST y conserva cierre, foco y ambos puestos', async () => {
     renderPrivateSecretary()
@@ -2494,7 +2510,8 @@ describe('ExpedientePage · Actores', () => {
     expect(within(activeGroup).getByText('Mirna Fernández Rojas')).toBeInTheDocument()
     await userEvent.click(within(actors).getByRole('button', { name: 'Gestionar actores' }))
     const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Revisión de Tribunal Previa' })
-    expect(within(dialog).getByText('Etapa: REVISION_TRIBUNAL_PREVIA')).toBeInTheDocument()
+    // La etapa ya está en el título de la ventana: no se repite su código interno.
+    expect(within(dialog).queryByText(/REVISION_TRIBUNAL_PREVIA/)).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('heading', { name: /Tribunal [123] \*/ })).not.toBeInTheDocument()
     expect(within(dialog).getByLabelText('Seleccionar candidato para Tutor')).toBeInTheDocument()
   })
@@ -2523,7 +2540,7 @@ describe('ExpedientePage · Actores', () => {
     await userEvent.click(within(actors).getByRole('button', { name: 'Gestionar actores' }))
     const dialog = screen.getByRole('dialog', { name: 'Gestionar actores — Perfil de Proyecto' })
     expect(within(dialog).getByRole('heading', { name: 'Tribunal 3 *' })).toBeInTheDocument()
-    expect(within(dialog).getAllByText(/ASIGNADA/)).toHaveLength(3)
+    expect(within(dialog).getAllByText(/^Asignada$/)).toHaveLength(3)
     expect(within(dialog).getAllByLabelText(/Seleccionar reemplazo para Tribunal/)).toHaveLength(3)
     expect(within(actors).getByText('3 de 4 posiciones ocupadas')).toBeInTheDocument()
   })
