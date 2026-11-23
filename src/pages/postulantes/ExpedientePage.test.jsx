@@ -5754,8 +5754,21 @@ describe('ExpedientePage US-008', () => {
     expect(within(summary).getByText('Concluir académicamente')).toBeInTheDocument()
     expect(within(summary).getByText('3 de 3 cumplidos')).toBeInTheDocument()
     expect(within(summary).getByText('Disponible')).toBeInTheDocument()
-    expect(within(summary).getByRole('link', { name: 'Ir a concluir académicamente' })).toHaveAttribute('href', '#resumen')
+    expect(within(summary).getByRole('link', { name: 'Ir a concluir académicamente' })).toHaveAttribute('href', '/postulaciones/7#resultado-y-cierre')
     expect(within(summary).queryByText('Aprobar etapa')).not.toBeInTheDocument()
+    const scrollIntoView = vi.fn()
+    definePropertyForTest(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+
+    await userEvent.click(within(summary).getByRole('link', { name: /Ir a concluir acad/ }))
+
+    const outcomeTab = screen.getByRole('tab', { name: 'Resultado y cierre' })
+    expect(outcomeTab).toHaveAttribute('aria-selected', 'true')
+    const outcome = screen.getByRole('tabpanel', { name: 'Resultado y cierre' })
+    expect(outcome).not.toHaveAttribute('hidden')
+    expect(within(outcome).getByRole('heading', { name: 'Resultado académico técnico' })).toBeInTheDocument()
+    expect(within(outcome).getByText('77.00')).toBeInTheDocument()
+    expect(within(outcome).getByText(/APROBACI/)).toBeInTheDocument()
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
   })
 
   it('consume documentos aplicables de Tesis y deja accesibles revisiones y correcciones', async () => {

@@ -2139,6 +2139,11 @@ export default function ExpedientePage() {
             onApproveStage={approveCurrentStage}
             canApproveStage={canApproveStage}
             onGoToDocuments={scrollToDocuments}
+            postulacionId={detalle.id}
+            onNavigateToThesisResult={() => {
+              pendingHashNavigation.current = { sectionId: 'resultado-y-cierre', behavior: 'smooth' }
+              setActiveTab('resultado-cierre')
+            }}
             completedStages={completedStages}
             totalStages={stages.length}
             workflowProgress={safeProgress}
@@ -2532,7 +2537,7 @@ function clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, cur
   }
 }
 
-function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, onOpenDocumentUpload, documentActionPending = false, onProgramDefense, onOpenDefense, programmingContext, canProgramDefense = false, orientationAcademicDecision, onRegisterAcademicDecision, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, examConclusionPending = false, academicExcellenceResult = null, resultado, concluded, defenses = [], isProjectGrade = false, isExamGrade = false, isAcademicExcellence = false, isThesisGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, additionalContent = null, onCompleteAuthorities, onManageActors, onManageMissingActors, canOpenProfileTutor = false, canOpenPrivateSecretary = false, onOpenDictamen, onRegisterTribunalReport }) {
+function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, postulacionId, onNavigateToThesisResult, onOpenDocumentUpload, documentActionPending = false, onProgramDefense, onOpenDefense, programmingContext, canProgramDefense = false, orientationAcademicDecision, onRegisterAcademicDecision, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, examConclusionPending = false, academicExcellenceResult = null, resultado, concluded, defenses = [], isProjectGrade = false, isExamGrade = false, isAcademicExcellence = false, isThesisGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, additionalContent = null, onCompleteAuthorities, onManageActors, onManageMissingActors, canOpenProfileTutor = false, canOpenPrivateSecretary = false, onOpenDictamen, onRegisterTribunalReport }) {
   if (directedConclusion && (concluded || orientation?.operacion === 'ORIENTAR_CONCLUSION_ACADEMICA')) {
     const action = orientation?.siguiente_accion
     const canConclude = !concluded && action?.codigo === 'CONCLUIR_ACADEMICAMENTE' && action.estado === 'DISPONIBLE'
@@ -2808,6 +2813,8 @@ function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, ci
               && nextAction.destino === '#defensas' && nextAction.estado === 'DISPONIBLE'
               && publicDefense && onOpenDefense
               ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={(event) => { event.preventDefault(); onOpenDefense(publicDefense) }}>{nextAction.accion_label || 'Ir a gestionar'}</button>
+            : isThesisGrade && nextAction.codigo === 'CONCLUIR_ACADEMICAMENTE' && nextAction.estado === 'DISPONIBLE'
+              ? <Link className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" to={`/postulaciones/${postulacionId}#resultado-y-cierre`} onClick={onNavigateToThesisResult}>{nextAction.accion_label}</Link>
             : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'REGISTRAR_DICTAMEN' && onOpenDictamen ? onOpenDictamen : (nextAction.codigo === 'GESTIONAR_ACTORES' || canOpenPrivateSecretary) ? (event) => { event.preventDefault(); if (canOpenPrivateSecretary) event.stopPropagation(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' ? 'Consultar revisión del Tribunal' : nextAction.accion_label || 'Ir a gestionar'}</a>}
       {nextAction.codigo === 'APROBAR_ETAPA' && stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
     </section>}
@@ -3691,7 +3698,7 @@ function getThesisConclusionOrientation({ publicStage, concluded, resultado, doc
 
   let action
   if (validActa) {
-    action = { codigo: 'CONCLUIR_ACADEMICAMENTE', titulo: 'Concluir académicamente', descripcion: 'La Defensa Pública, el resultado final y el Acta de Defensa cumplen las precondiciones. El backend realizará la validación definitiva.', estado: 'DISPONIBLE', estado_display: 'Disponible', destino: '#resumen', accion_label: 'Ir a concluir académicamente' }
+    action = { codigo: 'CONCLUIR_ACADEMICAMENTE', titulo: 'Concluir académicamente', descripcion: 'La Defensa Pública, el resultado final y el Acta de Defensa cumplen las precondiciones. El backend realizará la validación definitiva.', estado: 'DISPONIBLE', estado_display: 'Disponible', destino: '#resultado-y-cierre', accion_label: 'Ir a concluir académicamente' }
   } else if (acta) {
     action = { codigo: 'COMPLETAR_ACTA_DEFENSA', titulo: 'Completar Acta de Defensa', descripcion: 'La Defensa Pública está aprobada. El Acta de Defensa registrada todavía debe quedar vigente, aprobada y correctamente vinculada para concluir académicamente.', estado: 'PENDIENTE', estado_display: 'Pendiente', destino: '#documentos', accion_label: 'Ir a documentos' }
   } else {
