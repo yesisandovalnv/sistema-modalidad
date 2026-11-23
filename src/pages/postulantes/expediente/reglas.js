@@ -54,6 +54,13 @@ export function formatDocumentDate(value) {
   return Number.isNaN(date.getTime()) ? 'No registrada' : date.toLocaleString('es-BO')
 }
 
+// Tesis: nombres de documentos tal como figuran en sus tipos de documento.
+export const THESIS_DOCUMENT_NAMES = {
+  PERFIL_TESIS: 'Perfil de Tesis',
+  INFORME_TUTOR_TESIS: 'Informe del Tutor de Tesis',
+  INFORME_TRIB_TESIS: 'Informe del Tribunal de Tesis',
+}
+
 // Estado en texto normal ("PENDIENTE" → "Pendiente").
 export function formatStatus(value) {
   const text = formatCode(value).toLocaleLowerCase('es-BO')

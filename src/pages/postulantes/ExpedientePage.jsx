@@ -28,7 +28,7 @@ import { HistoryCard } from './expediente/HistorialTab'
 import { InscriptionDocumentsSection, OperationalSummary, StudentProcessView } from './expediente/ResumenTab'
 import { TribunalReportDialog, TribunalReviewActions, TribunalReviewReports } from './expediente/RevisionTribunal'
 import { BackLink, Info, PartialState, Score, StageMarker, StatusBadge } from './expediente/compartidos'
-import { DEFENSE_TYPES, EMPTY, formatAcademicClassification, formatCode, formatStatus, initialsOf, supportsCancelledDefenseRescheduling } from './expediente/reglas'
+import { DEFENSE_TYPES, EMPTY, formatAcademicClassification, formatCode, formatStatus, initialsOf, supportsCancelledDefenseRescheduling, THESIS_DOCUMENT_NAMES } from './expediente/reglas'
 import { MODALITY_COLOR } from '../../lib/modalityColor'
 
 // Preferencia operativa de selección; no modifica la elegibilidad académica.
@@ -766,13 +766,18 @@ export default function ExpedientePage() {
   // Cabecera: junto a la etapa actual va el estado de la etapa; el de la postulación, en los datos.
   const showStageStatusInHero = !isHistorical && Boolean(currentStage?.estado)
   // Documentos que pide la etapa actual cuando su siguiente paso es completar documentos.
-  const stageDocumentRequirements = !isHistorical && actionOrientation?.siguiente_accion?.codigo === 'COMPLETAR_DOCUMENTOS'
+  // Perfil de Tesis: también lista sus documentos (sin el tutor, que se gestiona en Actores).
+  const thesisProfileDocuments = isThesisGrade && currentStage?.codigo === 'PERFIL_TESIS'
+    && actionOrientation?.siguiente_accion?.codigo === 'COMPLETAR_PERFIL'
+  const stageDocumentRequirements = !isHistorical && (actionOrientation?.siguiente_accion?.codigo === 'COMPLETAR_DOCUMENTOS' || thesisProfileDocuments)
     ? (actionOrientation.requisitos || [])
       .filter((item) => ['OPERATIVO', 'DOCUMENTO'].includes(item.tipo) && item.bloquea_siguiente_accion !== false)
+      .filter((item) => !thesisProfileDocuments || item.destino === '#documentos')
       .map((item) => {
         const code = String(item.codigo || '').split(':').pop()
         const uploaded = documentRows.some((document) => document.activo !== false && document.tipo_documento_codigo === code)
-        return { key: `${item.tipo}-${item.codigo}`, nombre: item.nombre || humanizeRequirementCode(item.codigo), state: item.cumplido ? 'done' : uploaded ? 'review' : 'missing' }
+        const thesisName = isThesisGrade ? THESIS_DOCUMENT_NAMES[code] : null
+        return { key: `${item.tipo}-${item.codigo}`, nombre: thesisName || item.nombre || humanizeRequirementCode(item.codigo), state: item.cumplido ? 'done' : uploaded ? 'review' : 'missing' }
       })
     : []
   const examConclusionPending = Boolean(

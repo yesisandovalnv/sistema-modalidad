@@ -851,6 +851,31 @@ describe('ExpedientePage · Tesis de Grado', () => {
       expect(await screen.findByRole('heading', { name: 'Correcciones posteriores a Defensa Privada' })).toBeInTheDocument()
     })
 
+    it('presenta el Perfil de Tesis con nombres reales, sin mensaje repetido y con sus documentos', async () => {
+      const orientation = {
+        mensaje: 'Completa el tutor, los documentos y la defensa del perfil según corresponda.',
+        requisitos: [
+          { tipo: 'OPERATIVO', codigo: 'TUTOR', nombre: 'Tutor', cumplido: false, estado_display: 'Pendiente', destino: '#actores' },
+          { tipo: 'OPERATIVO', codigo: 'PERFIL_TESIS', nombre: 'Perfil Tesis', cumplido: false, estado_display: 'Pendiente de carga o aprobación', destino: '#documentos' },
+          { tipo: 'OPERATIVO', codigo: 'INFORME_TUTOR_TESIS', nombre: 'Informe Tutor Tesis', cumplido: false, estado_display: 'Pendiente de carga o aprobación', destino: '#documentos' },
+        ],
+        siguiente_accion: { codigo: 'COMPLETAR_PERFIL', titulo: 'Completar perfil de Tesis', descripcion: 'Completa el tutor y los documentos requeridos del perfil.', estado: 'PENDIENTE', destino: '#documentos', accion_label: 'Ir a documentos' },
+      }
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('PERFIL_TESIS', orientation))
+      renderThesis()
+      const requirements = (await screen.findByRole('heading', { name: 'Requisitos de esta etapa' })).closest('section')
+      expect(within(requirements).getByText('Perfil de Tesis')).toBeInTheDocument()
+      expect(within(requirements).getByText('Informe del Tutor de Tesis')).toBeInTheDocument()
+      expect(screen.queryByText('Perfil Tesis')).not.toBeInTheDocument()
+      expect(screen.queryByText('Completa el tutor, los documentos y la defensa del perfil según corresponda.')).not.toBeInTheDocument()
+      expect(screen.getByText('Completa el tutor y los documentos requeridos del perfil.')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('tab', { name: 'Documentos' }))
+      const stageDocs = (await screen.findByText('Lo que pide Perfil de Tesis')).closest('section')
+      expect(within(stageDocs).getByText('Perfil de Tesis')).toBeInTheDocument()
+      expect(within(stageDocs).getByText('Informe del Tutor de Tesis')).toBeInTheDocument()
+      expect(within(stageDocs).queryByText('Tutor')).not.toBeInTheDocument()
+    })
+
     it('usa resultado directo cualitativo para Defensa de Perfil de Tesis', async () => {
       const orientation = { mensaje: 'Registra el resultado del Perfil.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar defensa', estado: 'DISPONIBLE', destino: '#defensas' } }
       const defense = {

@@ -7,7 +7,7 @@ import { formatPeriodoLabel, formatStudentLabel } from '../postulacionFormatters
 import { STATUS_TONE } from '../../../lib/statusTone'
 import { MemorandumStatusCard } from './DecisionesAcademicas'
 import { Info, RequirementIcon, StageMarker, StatusBadge } from './compartidos'
-import { assignmentTypeLabel, EMPTY, formatAcademicClassification, formatCode, formatDocumentDate, formatStatus } from './reglas'
+import { assignmentTypeLabel, EMPTY, formatAcademicClassification, formatCode, formatDocumentDate, formatStatus, THESIS_DOCUMENT_NAMES } from './reglas'
 
 const CLOSURE_TRACKING_DOCUMENT_CODES = ['ACTA_DEFENSA']
 
@@ -241,6 +241,7 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
     ? clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, currentStage)
     : null
   const requirements = [...(effectiveOrientation?.requisitos || []), ...getClosureTrackingRequirements(cierre, currentStage)]
+    .map((item) => (isThesisGrade && THESIS_DOCUMENT_NAMES[item.codigo] ? { ...item, nombre: THESIS_DOCUMENT_NAMES[item.codigo] } : item))
   const pendingClosureTrackingDocuments = requirements.filter((item) => item.tipo === 'DOCUMENTO' && CLOSURE_TRACKING_DOCUMENT_CODES.includes(item.codigo) && item.cumplido === false)
   const publicAuthoritiesCapability = effectiveOrientation?.siguiente_accion?.capacidades
   const supportsPublicAuthoritiesDialog = isProjectGrade
@@ -455,7 +456,7 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
       </div>
     </section>
     {isExamGrade && resultado?.data?.nota_final != null && <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Calificación final: {String(resultado.data.nota_final).replace('.', ',')}/100</strong>{resultado.data.clasificacion && <StatusBadge value={formatAcademicClassification(resultado.data.clasificacion)} positive />}</div>}
-    {(approvalMissingLabels || ((administrativeActionPending || publicAuthorityAction || visibleOrientationAction) && !staleProgrammingMessage && (isThesisGrade || orientationMessage !== (tribunalAssignment?.description || nextAction?.descripcion)))) && <p className="mt-4 text-sm">{orientationMessage}</p>}
+    {(approvalMissingLabels || ((administrativeActionPending || publicAuthorityAction || visibleOrientationAction) && !staleProgrammingMessage && !isThesisProfileAction && (isThesisGrade || orientationMessage !== (tribunalAssignment?.description || nextAction?.descripcion)))) && <p className="mt-4 text-sm">{orientationMessage}</p>}
     {startStep ? <section className="expediente-next" aria-labelledby="start-step-title">
       <div className="min-w-0"><h3 id="start-step-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{startStep.title}</p>{startStep.description && <p className="mt-1 text-sm">{startStep.description}</p>}</div>
       {startStep.secondary ? <div className="expediente-next-actions">
