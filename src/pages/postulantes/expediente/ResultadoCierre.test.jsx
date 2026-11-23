@@ -221,7 +221,7 @@ describe('ExpedientePage · Resultado y cierre', () => {
 
     expect(await screen.findByText('Expediente concluido')).toBeInTheDocument()
     expect(screen.getByText(/Todas las etapas académicas y el cierre documental/)).toBeInTheDocument()
-    expect(screen.getByText('Nota final: 84.00')).toBeInTheDocument()
+    expect(screen.getByText('Nota final: 84,00')).toBeInTheDocument()
     expect(screen.getAllByText('Aprobación plena').length).toBeGreaterThan(0)
   })
 
@@ -794,7 +794,7 @@ describe('ExpedientePage · Resultado y cierre', () => {
     await act(async () => refreshedExpediente.resolve(concludedExpediente))
 
     expect(await screen.findByText('Expediente concluido')).toBeInTheDocument()
-    expect(screen.getByText('Nota final: 84.00')).toBeInTheDocument()
+    expect(screen.getByText('Nota final: 84,00')).toBeInTheDocument()
     expect(screen.getAllByText('Aprobación plena').length).toBeGreaterThan(0)
     expect(window.location.hash).toBe('#resumen')
     expect(scrolledIds).toEqual(['resumen'])

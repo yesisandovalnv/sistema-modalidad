@@ -377,3 +377,10 @@
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* Concluir / reabrir el cierre técnico: sección con filete dentro de la tarjeta (sin recuadro). */
+.closure-action-form {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}

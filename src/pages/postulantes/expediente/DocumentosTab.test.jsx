@@ -751,7 +751,7 @@ describe('ExpedientePage · Documentos', () => {
     // El Informe Final del Tutor es opcional en esta etapa: el conteo es solo de lo obligatorio.
     expect(screen.getByText('0 de 1 cumplidos')).toBeInTheDocument()
     expect(screen.getAllByText('No presentado')).toHaveLength(1)
-    expect(screen.getAllByText('Súbelo ahora: se exige en el cierre').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Súbelo ahora: el cierre lo pide').length).toBeGreaterThan(0)
     // También aparecen en la pestaña Documentos ("Lo que pide Documento Final").
     expect(screen.getAllByText('Documento Final del Proyecto de Grado').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Informe Final del Tutor').length).toBeGreaterThan(0)

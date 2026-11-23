@@ -200,7 +200,7 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
   if (concluded) return <Card className="expediente-summary expediente-summary--done">
     <h2 className="expediente-summary-title" data-tone="success"><CircleCheck className="h-6 w-6 shrink-0" strokeWidth={2} aria-hidden="true" />Expediente concluido</h2>
     <p className="text-[var(--text-secondary)]">{cierreSoportado ? 'Todas las etapas académicas y el cierre documental se encuentran completados.' : 'Todas las etapas académicas se encuentran completadas.'}</p>
-    <div className="expediente-summary-score"><strong>Nota final: {isExamGrade && resultado?.data?.nota_final != null ? String(resultado.data.nota_final).replace('.', ',') : resultado?.data?.nota_final ?? 'No registrada'}{isExamGrade && resultado?.data?.nota_final != null ? '/100' : ''}</strong>{resultado?.data?.clasificacion && <StatusBadge value={formatAcademicClassification(resultado.data.clasificacion)} positive />}</div>
+    <div className="expediente-summary-score"><strong>Nota final: {resultado?.data?.nota_final != null ? String(resultado.data.nota_final).replace('.', ',') : 'No registrada'}{isExamGrade && resultado?.data?.nota_final != null ? '/100' : ''}</strong>{resultado?.data?.clasificacion && <StatusBadge value={formatStatus(formatAcademicClassification(resultado.data.clasificacion))} positive />}</div>
   </Card>
   if (examConclusionPending) return <Card className="expediente-summary">
     <p className="sr-only">Orientación del expediente</p>
@@ -220,7 +220,6 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
     <section className="expediente-tile" aria-labelledby="technical-closure-guidance-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h3 id="technical-closure-guidance-title" className="text-lg font-bold">Flujo académico completado</h3><p className="mt-1 text-sm text-slate-500">{completedStages} de {totalStages} etapas completadas · {workflowProgress}% de etapas</p></div>
-        <StatusBadge value="Flujo académico completado" positive />
       </div>
     </section>
     <p className="mt-4 text-sm">Todas las etapas del proceso académico fueron aprobadas. La postulación aún está en proceso y requiere completar el cierre técnico.</p>

@@ -598,7 +598,7 @@ export default function ExpedientePage() {
         const currentVersion = document?.versiones?.some((version) => version.es_version_actual && version.activo !== false)
         const approved = Boolean(document && document.estado_codigo === 'APR' && !document.requiere_correccion && currentVersion)
         const status = !document
-          ? (opcional ? 'Súbelo ahora: se exige en el cierre' : 'No presentado')
+          ? (opcional ? 'Súbelo ahora: el cierre lo pide' : 'No presentado')
           : document.requiere_correccion || ['OBS', 'REC'].includes(document.estado_codigo)
             ? 'Requiere corrección'
             : document.estado_codigo !== 'APR'
@@ -2266,7 +2266,7 @@ export default function ExpedientePage() {
           canUpload={canUpload}
           onUpload={() => openUpload()}
           onSelect={openDocumentDetail}
-          stageDocuments={stageDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: stageDocumentRequirements } : projectFinalDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: projectFinalDocumentRequirements.map((item) => ({ key: item.codigo, nombre: item.nombre, state: item.cumplido ? 'done' : item.opcional && item.estado_display === 'Súbelo ahora: se exige en el cierre' ? 'optional' : item.estado_display === 'No presentado' ? 'missing' : 'review' })) } : null}
+          stageDocuments={stageDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: stageDocumentRequirements } : projectFinalDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: projectFinalDocumentRequirements.map((item) => ({ key: item.codigo, nombre: item.nombre, state: item.cumplido ? 'done' : item.opcional && item.estado_display === 'Súbelo ahora: el cierre lo pide' ? 'optional' : item.estado_display === 'No presentado' ? 'missing' : 'review' })) } : null}
         /></div>
         {!isHistorical && (flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo) && stage.estado !== 'PENDIENTE').map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} contextualPostulacion={detalle.id} onRegisterContextualOpen={supportsContextualDictamen && String(stage.id) === String(currentStage.id) ? registerDictamenOpener : undefined} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
       </div>
@@ -2388,7 +2388,8 @@ function formatClosureSummary(cierre) {
   const conditions = cierre.condiciones_faltantes?.length || 0
   const deliveries = cierre.entregas_faltantes?.length || 0
   const documents = cierre.documentos_faltantes?.length || 0
-  return `${conditions} condiciones pendientes · ${deliveries} entregas pendientes · ${documents} documentos pendientes`
+  const count = (n, one, many) => `${n} ${n === 1 ? one : many}`
+  return `${count(conditions, 'condición pendiente', 'condiciones pendientes')} · ${count(deliveries, 'entrega pendiente', 'entregas pendientes')} · ${count(documents, 'documento pendiente', 'documentos pendientes')}`
 }
 
 function getDefenseProgrammingContext({ stages, currentStage, orientation, activeCurrentDefense }) {

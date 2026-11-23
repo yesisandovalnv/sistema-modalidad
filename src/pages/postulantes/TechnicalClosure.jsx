@@ -109,12 +109,12 @@ export default function TechnicalClosure({ postulacion, initialClosure, resultad
         {cierre.cierre_documental_aprobado && <Button variant="secondary" onClick={() => setAction({ kind: 'reabrir', submitting: false, fields: {}, error: '' })}>Reabrir cierre</Button>}
       </div>}
     </>}
-    {action && <form className="mt-5 rounded-lg border p-4" onSubmit={submit}>
+    {action && <form className="closure-action-form" onSubmit={submit}>
       <h3 className="font-semibold">{ACTIONS[action.kind].title}</h3>
-      <label className="mt-3 block text-sm">{action.kind === 'reabrir' ? 'Motivo' : 'Observaciones'}<textarea name={ACTIONS[action.kind].field} className="mt-1 w-full rounded-md border p-2" /></label>
+      <label className="form-label mt-3">{action.kind === 'reabrir' ? 'Motivo' : 'Observaciones'}<textarea name={ACTIONS[action.kind].field} className="form-control form-control--area" /></label>
       {action.error && <p role="alert" className="mt-2 text-sm text-red-600">{action.error}</p>}
       <FieldErrors fields={action.fields} />
-      <div className="mt-3 flex flex-wrap justify-end gap-3"><Button type="submit" disabled={action.submitting}>{action.submitting ? 'Procesando…' : 'Confirmar'}</Button><Button type="button" variant="secondary" disabled={action.submitting} onClick={() => setAction(null)}>Cancelar</Button></div>
+      <div className="mt-3 flex flex-wrap justify-end gap-3"><Button type="button" variant="secondary" disabled={action.submitting} onClick={() => setAction(null)}>Cancelar</Button><Button type="submit" disabled={action.submitting}>{action.submitting ? 'Procesando…' : 'Confirmar'}</Button></div>
     </form>}
   </Card>
 }
