@@ -103,7 +103,9 @@ describe('ExpedientePage · Tesis de Grado', () => {
       renderThesis()
 
       expect(await screen.findByRole('heading', { name: thesisStageNames[stageCode] })).toBeInTheDocument()
-      expect(screen.getByText(`Orientación de ${stageCode}.`)).toBeInTheDocument()
+      // En Perfil de Tesis el mensaje general repite la siguiente acción y no se muestra.
+      if (stageCode === 'PERFIL_TESIS') expect(screen.queryByText(`Orientación de ${stageCode}.`)).not.toBeInTheDocument()
+      else expect(screen.getByText(`Orientación de ${stageCode}.`)).toBeInTheDocument()
       expect(screen.getByText(expectedAction)).toBeInTheDocument()
       expect(screen.getByRole('tab', { name: 'Resumen' })).toHaveAttribute('aria-selected', 'true')
       expect(document.getElementById('panel-resumen')).toBeVisible()

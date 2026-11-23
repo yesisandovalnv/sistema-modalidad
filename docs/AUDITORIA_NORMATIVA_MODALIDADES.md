@@ -69,6 +69,7 @@ Reglamento: `normativa_tesis_de_grado/4TESISDEGRADO.doc`. Política: `apps/modal
 | TG-3 | Arts. 14 y 54-equivalentes: acta, hoja de aprobación, ejemplares y respaldo. | No hay cierre documental (solo conclusión académica). | — |
 | TG-4 | Plazos: 15 días del informe del tutor (Art. 17), 10 días (Arts. 19–21), 2 gestiones (Art. 14). | No se controlan. | — |
 | TG-5 | Quórum de la defensa (mismo criterio que PG-6). | Igual que PG-6: el registro directo (temática, perfil, privada y pública) no registra asistencia ni comprueba quórum. Solo la Defensa Privada evaluada de forma individual pasa por el flujo con quórum. | `registrar_resultado_directo_proyecto`, `TesisGradoPolicy.validar_resultado_directo` (`tesis_grado.py:154`) |
+| TG-6 | El reglamento distingue al Tutor del Tribunal de la tesis (capítulo "Del Tutor y Tribunal"); no se encontró en el texto extraído una incompatibilidad expresa. | Al asignar el Tutor de Tesis, los candidatos incluyen a los tribunales vigentes de la Temática (marcados "Asignación vigente: Tribunal N"). Conviene confirmar si una misma persona puede ser tutor y tribunal; si no, filtrarlos o rechazarlos como conflicto de identidad. Observado en un expediente de prueba. | `asignaciones-candidatas` del puesto TUTOR en Perfil de Tesis |
 
 ### 3.3 Trabajo Dirigido
 Reglamento: `normativa_trabajo_dirigido/5TRABAJODIRIGIDO.doc`. Política: `apps/modalidades/trabajo_dirigido.py`.

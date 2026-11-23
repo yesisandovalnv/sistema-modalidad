@@ -1070,7 +1070,14 @@ describe('ExpedientePage · Actores', () => {
     expect(postulacionesService.reemplazarActor).not.toHaveBeenCalled()
   })
 
-  it.each([{ canAssign: false }, { tutor: true }, { modality: 'PROYECTO_GRADO' }, { modality: 'TRABAJO_DIRIGIDO' }, { stageCode: 'INSCRIPCION' }])('Tutor contextual de Tesis: no intercepta otros permisos o contextos %j', async (options) => {
+  it('Tutor contextual de Tesis: con el tutor ya asignado no ofrece gestionarlo desde los requisitos', async () => {
+    renderProfileThesisAction({ actorManagement: profileTutorManagement(), tutor: true })
+    expect(await screen.findByRole('heading', { name: 'Requisitos de esta etapa' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Ir a gestionar' })).not.toBeInTheDocument()
+    expect(postulacionesService.obtenerCandidatosElegibles).not.toHaveBeenCalled()
+  })
+
+  it.each([{ canAssign: false }, { modality: 'PROYECTO_GRADO' }, { modality: 'TRABAJO_DIRIGIDO' }, { stageCode: 'INSCRIPCION' }])('Tutor contextual de Tesis: no intercepta otros permisos o contextos %j', async (options) => {
     renderProfileThesisAction({ actorManagement: profileTutorManagement(), ...options })
     const link = await screen.findByRole('link', { name: 'Ir a gestionar' })
     const click = new MouseEvent('click', { bubbles: true, cancelable: true })
