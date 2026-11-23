@@ -751,12 +751,12 @@ describe('ExpedientePage · Documentos', () => {
     // El Informe Final del Tutor es opcional en esta etapa: el conteo es solo de lo obligatorio.
     expect(screen.getByText('0 de 1 cumplidos')).toBeInTheDocument()
     expect(screen.getAllByText('No presentado')).toHaveLength(1)
-    expect(screen.getAllByText('Opcional en esta etapa').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Súbelo ahora: se exige en el cierre').length).toBeGreaterThan(0)
     // También aparecen en la pestaña Documentos ("Lo que pide Documento Final").
     expect(screen.getAllByText('Documento Final del Proyecto de Grado').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Informe Final del Tutor').length).toBeGreaterThan(0)
     const stageDocs = screen.getByRole('heading', { name: 'Lo que pide Documento Final', hidden: true }).closest('section')
-    expect([...stageDocs.querySelectorAll('li')].map((row) => row.textContent)).toEqual(['Documento Final del Proyecto de GradoFalta', 'Informe Final del TutorOpcional'])
+    expect([...stageDocs.querySelectorAll('li')].map((row) => row.textContent)).toEqual(['Documento Final del Proyecto de GradoFalta', 'Informe Final del TutorPara el cierre'])
     expect(screen.queryByRole('button', { name: 'Aprobar Documento Final' })).not.toBeInTheDocument()
   })
 

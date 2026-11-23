@@ -598,7 +598,7 @@ export default function ExpedientePage() {
         const currentVersion = document?.versiones?.some((version) => version.es_version_actual && version.activo !== false)
         const approved = Boolean(document && document.estado_codigo === 'APR' && !document.requiere_correccion && currentVersion)
         const status = !document
-          ? (opcional ? 'Opcional en esta etapa' : 'No presentado')
+          ? (opcional ? 'Súbelo ahora: se exige en el cierre' : 'No presentado')
           : document.requiere_correccion || ['OBS', 'REC'].includes(document.estado_codigo)
             ? 'Requiere corrección'
             : document.estado_codigo !== 'APR'
@@ -1996,7 +1996,7 @@ export default function ExpedientePage() {
           {!isExamGrade && <Score label={isProjectGrade ? 'Nota Final' : 'Final'} value={effectiveResult.data?.nota_final} scale="100" fallback="Pendiente" decimalComma={isProjectGrade} />}
         </dl>
       )}
-      {effectiveResult.data?.clasificacion && <p className="mt-5 rounded-lg bg-slate-100 px-4 py-3 text-center font-bold tracking-wide dark:bg-slate-800">{formatAcademicClassification(effectiveResult.data.clasificacion)}</p>}
+      {effectiveResult.data?.clasificacion && <p className="expediente-classification"><span className="expediente-status" data-tone={['POSTERGADO', 'REPROBADO'].includes(effectiveResult.data.clasificacion) ? 'warning' : 'success'}>{formatStatus(formatAcademicClassification(effectiveResult.data.clasificacion))}</span></p>}
       {effectiveResult.data?.limitacion_normativa && <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">{effectiveResult.data.limitacion_normativa}</p>}
     </Card>
     <AcademicConclusion postulacion={detalle.id} modalidadCodigo={detalle.modalidad_detalle?.codigo} resultado={resultado} defensaPublicaAprobada={latestPublicStage?.estado === 'APROBADA'} actaValida={thesisConclusionOrientation?.actaValida} concluida={isConcluded} canManage={canManageClosure} onChanged={() => { setRevision((value) => value + 1); setHistoryRevision((value) => value + 1) }} />
@@ -2024,7 +2024,9 @@ export default function ExpedientePage() {
       </div>
     </div>
   </details>
-  const futureSections = isProjectGrade && (!stageUi.review || !stageUi.academicResult || !stageUi.closure || !stageUi.corrections)
+  // En el Cierre Documental (última etapa) ya no hay etapas posteriores que consultar.
+  const isLastStage = currentStage?.codigo === 'CIERRE_DOCUMENTAL'
+  const futureSections = isProjectGrade && !isLastStage && (!stageUi.review || !stageUi.academicResult || !stageUi.closure || !stageUi.corrections)
     && <details className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
       <summary className="expediente-more-summary cursor-pointer list-none px-6 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500">
         <span className="min-w-0">
@@ -2264,7 +2266,7 @@ export default function ExpedientePage() {
           canUpload={canUpload}
           onUpload={() => openUpload()}
           onSelect={openDocumentDetail}
-          stageDocuments={stageDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: stageDocumentRequirements } : projectFinalDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: projectFinalDocumentRequirements.map((item) => ({ key: item.codigo, nombre: item.nombre, state: item.cumplido ? 'done' : item.opcional && item.estado_display === 'Opcional en esta etapa' ? 'optional' : item.estado_display === 'No presentado' ? 'missing' : 'review' })) } : null}
+          stageDocuments={stageDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: stageDocumentRequirements } : projectFinalDocumentRequirements.length ? { stageName: currentStage?.nombre || 'esta etapa', items: projectFinalDocumentRequirements.map((item) => ({ key: item.codigo, nombre: item.nombre, state: item.cumplido ? 'done' : item.opcional && item.estado_display === 'Súbelo ahora: se exige en el cierre' ? 'optional' : item.estado_display === 'No presentado' ? 'missing' : 'review' })) } : null}
         /></div>
         {!isHistorical && (flujo.etapas || []).filter((stage) => ['REVISION_TUTOR', 'REVISION_TRIBUNAL'].includes(stage.codigo) && stage.estado !== 'PENDIENTE').map((stage) => <DocumentReviewDictamens key={stage.id} stage={stage} documents={documents} assignments={activeActors} canManage={canManageTribunalReports} contextualPostulacion={detalle.id} onRegisterContextualOpen={supportsContextualDictamen && String(stage.id) === String(currentStage.id) ? registerDictamenOpener : undefined} onChanged={async () => { setDocumentsRevision((value) => value + 1); setRevision((value) => value + 1) }} />)}
       </div>

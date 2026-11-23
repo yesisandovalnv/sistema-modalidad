@@ -92,9 +92,10 @@ export default function TechnicalClosure({ postulacion, initialClosure, resultad
         <div><dt className="text-slate-500">Responsable cierre</dt><dd className="font-medium">{closureStage?.cerrada_por_nombre || 'No registrado'}</dd></div>
       </dl>
       <div className="mt-6 border-t border-slate-200 pt-5 dark:border-slate-700">
-        {compactPendingSummary ? <div role="region" className="flex items-center gap-2 text-sm" aria-label="Documentos pendientes">
+        {compactPendingSummary ? <div role="region" className="flex flex-wrap items-center gap-2 text-sm" aria-label="Documentos pendientes">
           <span className="text-slate-600 dark:text-slate-300">Documentos pendientes</span>
           <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium tabular-nums text-slate-700 dark:bg-slate-800 dark:text-slate-200">{cierre.documentos_faltantes?.length || 0}</span>
+          {(cierre.documentos_faltantes || []).length > 0 && <span className="text-[var(--text-primary)]">{cierre.documentos_faltantes.map((item) => humanizeRequirementCode(typeof item === 'string' ? item : item?.codigo)).join(', ')}</span>}
         </div> : <div className="grid gap-5 xl:grid-cols-2">
           <List title="Condiciones pendientes" items={cierre.condiciones_faltantes} requirements empty="Todas las condiciones técnicas están cumplidas." />
           <List title="Entregas pendientes" items={cierre.entregas_faltantes} requirements empty="Todas las entregas técnicas están completas." />

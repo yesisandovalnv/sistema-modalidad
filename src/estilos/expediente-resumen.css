@@ -756,3 +756,27 @@
     grid-template-rows: auto 1fr;
   }
 }
+
+/* Cabecera con "Aprobar etapa": el botón baja debajo del nombre de la etapa, así no aprieta el
+   nombre del estudiante. */
+.expediente-hero-stage:has(> [class*='app-button--']) {
+  flex-wrap: wrap;
+}
+
+.expediente-hero-stage:has(> [class*='app-button--']) > dl {
+  flex-basis: calc(100% - 3rem);
+}
+
+.expediente-hero-stage > [class*='app-button--'] {
+  margin-left: 3rem;
+}
+
+/* Clasificación del resultado: píldora con el color del estado (no una barra en mayúsculas). */
+.expediente-classification {
+  margin-top: 1.25rem;
+}
+
+.expediente-classification .expediente-status {
+  font-size: 0.9375rem;
+  padding: 0.375rem 0.875rem;
+}

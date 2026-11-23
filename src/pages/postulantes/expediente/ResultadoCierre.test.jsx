@@ -222,7 +222,7 @@ describe('ExpedientePage · Resultado y cierre', () => {
     expect(await screen.findByText('Expediente concluido')).toBeInTheDocument()
     expect(screen.getByText(/Todas las etapas académicas y el cierre documental/)).toBeInTheDocument()
     expect(screen.getByText('Nota final: 84.00')).toBeInTheDocument()
-    expect(screen.getAllByText('APROBACIÓN PLENA').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Aprobación plena').length).toBeGreaterThan(0)
   })
 
   it('completa 3/4 a 4/4 al registrar la recepción física del fólder', async () => {
@@ -273,8 +273,8 @@ describe('ExpedientePage · Resultado y cierre', () => {
     expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(expedienteLoads)
     expect(postulacionesService.registrarEntrega).not.toHaveBeenCalled()
     expect(screen.getByText('Estado: Pendiente de recepción')).toBeInTheDocument()
-    expect(screen.getByText('Cantidad recibida: 0')).toBeInTheDocument()
-    expect(screen.getByText('Receptor: Pendiente')).toBeInTheDocument()
+    expect(screen.queryByText('Cantidad recibida: 0')).not.toBeInTheDocument()
+    expect(screen.queryByText('Receptor: Pendiente')).not.toBeInTheDocument()
     expect(within(form).getByRole('button', { name: 'Guardar' })).toBeEnabled()
     await userEvent.click(within(form).getByRole('button', { name: 'Guardar' }))
 
@@ -476,7 +476,7 @@ describe('ExpedientePage · Resultado y cierre', () => {
     const result = screen.getByRole('heading', { name: 'Resultado académico técnico' }).parentElement
     expect(within(result).getByText('94,25')).toBeInTheDocument()
     expect(within(result).getByText('/ 100')).toBeInTheDocument()
-    expect(within(result).getByText('APROBACIÓN PLENA CON FELICITACIÓN')).toBeInTheDocument()
+    expect(within(result).getByText('Aprobación plena con felicitación')).toBeInTheDocument()
   })
 
   const academicExcellenceResponse = ({ conclusionState = 'APROBADA' } = {}) => {
@@ -656,7 +656,7 @@ describe('ExpedientePage · Resultado y cierre', () => {
     expect(within(result).queryByText('/ 30')).not.toBeInTheDocument()
     expect(within(result).queryByText('/ 70')).not.toBeInTheDocument()
     expect(within(result).getByText('92,00')).toBeInTheDocument()
-    expect(within(result).getByText('APROBACIÓN PLENA CON FELICITACIÓN')).toBeInTheDocument()
+    expect(within(result).getByText('Aprobación plena con felicitación')).toBeInTheDocument()
 
     const closureSection = screen.getByRole('heading', { name: 'Cierre técnico' }).closest('details')
     const closure = screen.getByRole('heading', { name: 'Cierre técnico' }).parentElement
@@ -795,7 +795,7 @@ describe('ExpedientePage · Resultado y cierre', () => {
 
     expect(await screen.findByText('Expediente concluido')).toBeInTheDocument()
     expect(screen.getByText('Nota final: 84.00')).toBeInTheDocument()
-    expect(screen.getAllByText('APROBACIÓN PLENA').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Aprobación plena').length).toBeGreaterThan(0)
     expect(window.location.hash).toBe('#resumen')
     expect(scrolledIds).toEqual(['resumen'])
   })

@@ -276,7 +276,7 @@ export default function ClosureRequirements({
               </label>}
               <strong>{item.nombre}</strong>
             </div>
-            <p>Estado: {item.estado_display || item.estado}</p><p>Verificador: {item.verificado_por_nombre || 'Pendiente'}</p><p>Fecha: {date(item.fecha_verificacion)}</p>{item.observaciones && <p>Observaciones: {item.observaciones}</p>}
+            <p>Estado: {item.estado_display || item.estado}</p>{item.verificado_por_nombre && <p>Verificador: {item.verificado_por_nombre}</p>}{item.fecha_verificacion && <p>Fecha: {date(item.fecha_verificacion)}</p>}{item.observaciones && <p>Observaciones: {item.observaciones}</p>}
             {canManage && item.activo !== false && item.estado === 'PENDIENTE' && <div className="mt-2 flex gap-2"><Button type="button" disabled={conditionBatchSubmission.submitting} onClick={() => setAction({ kind: 'condicion', operation: 'verificar', item, submitting: false, error: '' })}>Verificar</Button><Button type="button" variant="secondary" disabled={conditionBatchSubmission.submitting} onClick={() => setAction({ kind: 'condicion', operation: 'rechazar', item, submitting: false, error: '' })}>No cumple</Button></div>}
             {action?.kind === 'condicion' && action.item.id === item.id && actionForm(action)}
           </li>
@@ -328,7 +328,6 @@ export default function ClosureRequirements({
           const selected = selectedEligibleDeliveryIds.some((id) => String(id) === String(item.id))
           return <li key={item.codigo} className="rounded-lg border p-3 text-sm">
             <div className="flex items-center gap-2">
-              <span className="flex-1"><strong>{item.nombre}</strong></span>
               {selectable && <label className="inline-flex items-center">
                 <input
                   type="checkbox"
@@ -343,8 +342,9 @@ export default function ClosureRequirements({
                   }}
                 />
               </label>}
+              <strong>{item.nombre}</strong>
             </div>
-            <p>Estado: {item.estado_display || item.estado}</p><p>Cantidad técnica requerida: {item.cantidad ?? 'No definida'}</p><p>Cantidad recibida: {item.cantidad_recibida || 0}</p><p>Receptor: {item.recibido_por_nombre || 'Pendiente'}</p><p>Fecha: {date(item.fecha_entrega)}</p>{item.codigo === 'EJEMPLARES_IMPRESOS' && <p className="mt-2 text-amber-700">La cantidad registrada no certifica una cantidad normativa oficial.</p>}{canManage && !item.id && <><Button className="mt-2" disabled={deliveryCreation.submitting} onClick={() => createDelivery(item)}>{deliveryCreation.submitting && deliveryCreation.codigo === item.codigo ? 'Preparando…' : createLabel}</Button>{deliveryCreation.codigo === item.codigo && deliveryCreation.error && <p role="alert" className="mt-2 text-sm text-red-600">{deliveryCreation.error}</p>}</>}{canManage && item.id && <Button className="mt-2" onClick={() => setAction({ kind: 'entrega', operation: 'registrar', item, submitting: false, error: '' })}>Registrar/actualizar entrega</Button>}{action?.kind === 'entrega' && action.item.id === item.id && actionForm(action)}</li>
+            <p>Estado: {item.estado_display || item.estado}</p>{item.cantidad != null && <p>Cantidad técnica requerida: {item.cantidad}</p>}{item.cantidad_recibida > 0 && <p>Cantidad recibida: {item.cantidad_recibida}</p>}{item.recibido_por_nombre && <p>Receptor: {item.recibido_por_nombre}</p>}{item.fecha_entrega && <p>Fecha: {date(item.fecha_entrega)}</p>}{item.codigo === 'EJEMPLARES_IMPRESOS' && <p className="mt-2 text-amber-700">La cantidad registrada no certifica una cantidad normativa oficial.</p>}{canManage && !item.id && <><Button className="mt-2" disabled={deliveryCreation.submitting} onClick={() => createDelivery(item)}>{deliveryCreation.submitting && deliveryCreation.codigo === item.codigo ? 'Preparando…' : createLabel}</Button>{deliveryCreation.codigo === item.codigo && deliveryCreation.error && <p role="alert" className="mt-2 text-sm text-red-600">{deliveryCreation.error}</p>}</>}{canManage && item.id && <Button className="mt-2" onClick={() => setAction({ kind: 'entrega', operation: 'registrar', item, submitting: false, error: '' })}>Registrar/actualizar entrega</Button>}{action?.kind === 'entrega' && action.item.id === item.id && actionForm(action)}</li>
         })}</ul>}</details>
     </div>}
   </Card>

@@ -427,8 +427,9 @@ describe('ExpedientePage · Etapas y flujo', () => {
     expect(within(requirements).queryByText(/Fólder/)).not.toBeInTheDocument()
     const summary = document.getElementById('panel-resumen')
     expect(within(summary).getByRole('heading', { name: 'Recepción física', level: 3 })).toBeVisible()
-    expect(await within(summary).findByText('Cantidad técnica requerida: No definida')).toBeVisible()
-    expect(within(summary).getAllByText('Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida')).toHaveLength(1)
+    expect(await within(summary).findAllByText('Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida')).toHaveLength(1)
+    // Sin cantidad definida no se muestra "Cantidad técnica requerida: No definida".
+    expect(within(summary).queryByText(/Cantidad técnica requerida/)).not.toBeInTheDocument()
     expect(within(summary).queryByRole('heading', { name: 'Requisitos de esta etapa' })).not.toBeInTheDocument()
     if (completed === 4) expect(within(summary).getByRole('button', { name: 'Aprobar Inscripción' })).toBeEnabled()
     else expect(within(summary).queryByRole('button', { name: 'Aprobar Inscripción' })).not.toBeInTheDocument()
@@ -471,8 +472,9 @@ describe('ExpedientePage · Etapas y flujo', () => {
     expect(within(requirements).queryByText(/Fólder/)).not.toBeInTheDocument()
     const summary = document.getElementById('panel-resumen')
     expect(within(summary).getByRole('heading', { name: 'Recepción física', level: 3 })).toBeVisible()
-    expect(await within(summary).findByText('Cantidad técnica requerida: No definida')).toBeVisible()
-    expect(within(summary).getAllByText('Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida')).toHaveLength(1)
+    expect(await within(summary).findAllByText('Fólder amarillo rotulado con el nombre del postulante y la modalidad elegida')).toHaveLength(1)
+    // Sin cantidad definida no se muestra "Cantidad técnica requerida: No definida".
+    expect(within(summary).queryByText(/Cantidad técnica requerida/)).not.toBeInTheDocument()
     expect(within(document.getElementById('panel-documentos')).queryByRole('heading', { name: 'Recepción física', hidden: true })).not.toBeInTheDocument()
     if (completed === 4) expect(within(summary).getByRole('button', { name: 'Aprobar Inscripción' })).toBeEnabled()
     else expect(within(summary).queryByRole('button', { name: 'Aprobar Inscripción' })).not.toBeInTheDocument()
