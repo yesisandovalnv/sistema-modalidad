@@ -30,10 +30,10 @@ class WorkflowService:
                 .select_related("modalidad")
                 .get(pk=postulacion.pk)
             )
-            etapas = list(WorkflowService._obtener_etapas_activas(postulacion))
+            policy = ModalidadPolicyRegistry.get(postulacion)
+            etapas = WorkflowService._obtener_etapas_workflow(postulacion, policy)
             if not etapas:
                 raise ValidationError("La modalidad no tiene etapas activas configuradas.")
-            policy = ModalidadPolicyRegistry.get(postulacion)
 
             seguimientos: list[SeguimientoEtapa] = []
             for etapa in etapas:
@@ -340,14 +340,17 @@ class WorkflowService:
 
     @staticmethod
     def _validar_etapas_anteriores_aprobadas(seguimiento: SeguimientoEtapa) -> None:
-        etapas_previas = list(
-            EtapaModalidad.objects.filter(
-                modalidad=seguimiento.postulacion.modalidad,
-                activo=True,
-                obligatoria=True,
-                orden__lt=seguimiento.etapa.orden,
-            ).values_list("id", flat=True)
+        policy = ModalidadPolicyRegistry.get(seguimiento.postulacion)
+        workflow_codes = getattr(policy, "get_codigos_etapas_workflow", lambda _post: None)(seguimiento.postulacion)
+        etapas_queryset = EtapaModalidad.objects.filter(
+            modalidad=seguimiento.postulacion.modalidad,
+            activo=True,
+            obligatoria=True,
+            orden__lt=seguimiento.etapa.orden,
         )
+        if workflow_codes is not None:
+            etapas_queryset = etapas_queryset.filter(codigo__in=workflow_codes)
+        etapas_previas = list(etapas_queryset.values_list("id", flat=True))
         if not etapas_previas:
             return
 
@@ -434,6 +437,16 @@ class WorkflowService:
             modalidad=postulacion.modalidad,
             activo=True,
         ).order_by("orden")
+
+    @staticmethod
+    def _obtener_etapas_workflow(postulacion: Postulacion, policy=None):
+        etapas = WorkflowService._obtener_etapas_activas(postulacion)
+        if policy is None:
+            policy = ModalidadPolicyRegistry.get(postulacion)
+        codigos = getattr(policy, "get_codigos_etapas_workflow", lambda _post: None)(postulacion)
+        if codigos is not None:
+            etapas = etapas.filter(codigo__in=codigos)
+        return list(etapas)
 
     @staticmethod
     def _combinar_observaciones(actuales: str, nuevas: str) -> str:

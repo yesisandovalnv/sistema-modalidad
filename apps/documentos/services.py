@@ -151,6 +151,7 @@ class DocumentoService:
         usuario: Any,
         evento_defensa=None,
         request: Optional[Any] = None,
+        publicacion_memorandum_tesis_v2: bool = False,
     ) -> VersionDocumento:
         """Sube un archivo como nueva versión de un documento de postulación.
 
@@ -159,6 +160,7 @@ class DocumentoService:
             tipo_documento: Tipo de documento que se está cargando.
             archivo: Archivo subido por el usuario.
             usuario: Usuario que realiza la carga.
+            publicacion_memorandum_tesis_v2: Excepción exclusiva del servicio formal de memorándum V2.
             request: Request opcional para auditoría y contexto adicional.
 
         Returns:
@@ -215,12 +217,22 @@ class DocumentoService:
                         raise ValidationError(
                             "No se puede cargar un documento ordinario sin un contexto académico válido."
                         )
+                    if publicacion_memorandum_tesis_v2 and not (
+                        tipo_documento.codigo == "MEMORANDUM_DESIGNACION_PROYECTO"
+                        and postulacion.modalidad.codigo == "TESIS_GRADO"
+                        and postulacion.regimen_workflow == Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2
+                        and etapa_actual_codigo == "PERFIL_TESIS"
+                    ):
+                        raise ValidationError(
+                            "La excepción de aplicabilidad solo admite el memorándum de Tesis V2 en Perfil de Tesis."
+                        )
                     documentos_permitidos = policy.get_documentos_aplicables_para_postulacion(
                         postulacion, etapa_actual_codigo,
                     )
                     if (
                         tipo_documento.codigo not in documentos_permitidos
                         and not capacidad_carga.get("excepcion_aplicabilidad", False)
+                        and not publicacion_memorandum_tesis_v2
                     ):
                         raise ValidationError(
                             f"El tipo '{tipo_documento.nombre}' no puede cargarse en la etapa '{etapa_actual_codigo}'. "

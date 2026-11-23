@@ -59,7 +59,7 @@ export default function DocumentReviewDictamens({ stage, documents, assignments,
     const validActors = type === 'TUTOR'
       ? tutors.length === 1 && owned(tutors[0]) && Boolean(tutors[0].id)
       : tribunals.length === 3 && tribunals.every((item) => owned(item) && item.id && item.usuario
-        && item.etapa_codigo === 'TEMATICA_TESIS' && item.seguimiento_etapa != null)
+        && ['TEMATICA_TESIS', 'PERFIL_TESIS'].includes(item.etapa_codigo) && item.seguimiento_etapa != null)
         && new Set(tribunals.map((item) => String(item.id))).size === 3
         && new Set(tribunals.map((item) => String(item.usuario))).size === 3
         && tribunals.map((item) => Number(item.orden_cargo)).sort().join(',') === '1,2,3'

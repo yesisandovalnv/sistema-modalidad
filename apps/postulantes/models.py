@@ -178,6 +178,8 @@ class Postulacion(BaseModel):
     class RegimenWorkflowChoices(models.TextChoices):
         PG_LEGACY = "PG_LEGACY", "Proyecto de Grado legacy"
         PG_HITOS_V1 = "PG_HITOS_V1", "Proyecto de Grado con hitos v1"
+        TESIS_LEGACY_V1 = "TESIS_LEGACY_V1", "Tesis de Grado legacy"
+        TESIS_PERFIL_V2 = "TESIS_PERFIL_V2", "Tesis de Grado con Perfil directo v2"
 
     codigo = models.CharField(
         max_length=30,
@@ -272,6 +274,11 @@ class Postulacion(BaseModel):
                     if self.tipo_registro == self.TipoRegistroChoices.HISTORICO
                     else self.RegimenWorkflowChoices.PG_HITOS_V1
                 )
+            elif (
+                self.modalidad.codigo == "TESIS_GRADO"
+                and self.tipo_registro != self.TipoRegistroChoices.HISTORICO
+            ):
+                self.regimen_workflow = self.RegimenWorkflowChoices.TESIS_PERFIL_V2
         return super().save(*args, **kwargs)
 
     class Meta:

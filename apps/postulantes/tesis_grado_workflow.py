@@ -12,6 +12,15 @@ class TesisGradoWorkflowOrchestrator:
     MODALIDAD = "TESIS_GRADO"
     ETAPAS = (
         "INSCRIPCION",
+        "PERFIL_TESIS",
+        "DOCUMENTO_FINAL",
+        "REVISION_TUTOR",
+        "REVISION_TRIBUNAL",
+        "DEFENSA_PRIVADA",
+        "DEFENSA_PUBLICA",
+    )
+    ETAPAS_LEGACY = (
+        "INSCRIPCION",
         "TEMATICA_TESIS",
         "PERFIL_TESIS",
         "DOCUMENTO_FINAL",
@@ -20,6 +29,16 @@ class TesisGradoWorkflowOrchestrator:
         "DEFENSA_PRIVADA",
         "DEFENSA_PUBLICA",
     )
+
+    @classmethod
+    def etapas_para(cls, postulacion: Postulacion) -> tuple[str, ...]:
+        if postulacion.regimen_workflow == Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2:
+            return cls.ETAPAS
+        return cls.ETAPAS_LEGACY
+
+    @classmethod
+    def get_codigos_etapas_workflow(cls, postulacion: Postulacion) -> tuple[str, ...]:
+        return cls.etapas_para(postulacion)
 
     @classmethod
     def _es_flujo_oficial(cls, postulacion: Postulacion) -> bool:
@@ -33,7 +52,7 @@ class TesisGradoWorkflowOrchestrator:
             .order_by("orden")
             .values_list("codigo", flat=True)
         )
-        return codigos == cls.ETAPAS
+        return codigos == cls.ETAPAS_LEGACY
 
     @classmethod
     def _inscripcion(cls, postulacion: Postulacion) -> SeguimientoEtapa:
@@ -79,13 +98,14 @@ class TesisGradoWorkflowOrchestrator:
         if not cls._es_flujo_oficial(postulacion):
             return None
         try:
-            indice = cls.ETAPAS.index(seguimiento_aprobado.etapa.codigo)
+            etapas = cls.etapas_para(postulacion)
+            indice = etapas.index(seguimiento_aprobado.etapa.codigo)
         except ValueError:
             return None
-        if indice == len(cls.ETAPAS) - 1:
+        if indice == len(etapas) - 1:
             return None
 
-        siguiente_codigo = cls.ETAPAS[indice + 1]
+        siguiente_codigo = etapas[indice + 1]
         siguiente = (
             postulacion.seguimientos_etapa.select_for_update()
             .select_related("etapa", "postulacion__modalidad")

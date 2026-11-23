@@ -719,6 +719,10 @@ export default function ExpedientePage() {
     || cierre.data?.concluida === true
     || cierre.data?.estado_general === 'CONCLUIDA'
   const isThesisGrade = detalle.modalidad_detalle?.codigo === 'TESIS_GRADO' || flujo.modalidad?.codigo === 'TESIS_GRADO'
+  const isThesisProfileV2 = (detalle.modalidad_detalle?.codigo === 'TESIS_GRADO'
+    || flujo.modalidad?.codigo === 'TESIS_GRADO')
+    && currentStage?.codigo === 'PERFIL_TESIS'
+    && flujo.gestion_actores?.contexto?.regimen_workflow === 'TESIS_PERFIL_V2'
   const isThesisPublicStage = isThesisGrade && currentStage?.codigo === 'DEFENSA_PUBLICA'
   const latestPublicStage = stages
     .filter((stage) => stage.codigo === 'DEFENSA_PUBLICA' && stage.activo !== false)
@@ -1227,7 +1231,7 @@ export default function ExpedientePage() {
     }
   }
 
-  const openUpload = async (document = null, { typesLoaded = false, opener = globalThis.document.activeElement, context = null } = {}) => {
+  const openUpload = async (document = null, { typesLoaded = false, opener = globalThis.document.activeElement, context = null, orderedTypeCodes = null } = {}) => {
     if (document && !isHistorical && document.capacidad_carga?.permitida !== true) return
     uploadOpener.current = opener
     uploadController.current?.abort()
@@ -1236,7 +1240,7 @@ export default function ExpedientePage() {
     const eventoDefensaId = document?.tipo_documento_codigo === 'OBSERVACIONES_DEFENSA_PERFIL'
       ? document.evento_defensa
       : undefined
-    setUpload({ document, context, eventoDefensaId, multiple: !document && !context, title: context ? 'Cargar Acta de Defensa' : document || isHistorical ? undefined : 'Cargar documentos', submitting: false, fields: {}, error: '', success: '' })
+    setUpload({ document, context, eventoDefensaId, orderedTypeCodes, multiple: !document && !context, title: context ? 'Cargar Acta de Defensa' : document || isHistorical ? undefined : 'Cargar documentos', submitting: false, fields: {}, error: '', success: '' })
     if (document || typesLoaded) return
     setDocumentTypes((current) => ({ ...current, loading: true, error: '' }))
     try {
@@ -1335,7 +1339,7 @@ export default function ExpedientePage() {
     }
     if (!pendingCodes) {
       if (navigate) navigateToSection('documentos')
-      return openUpload()
+      return openUpload(null, { orderedTypeCodes: isThesisProfileV2 ? ['INFORME_TUTOR_TESIS', 'PERFIL_TESIS'] : null })
     }
     if (contextualUploadPending.current || upload) return
     if (!canUpload || !isThesisGrade || currentStage?.codigo !== 'PERFIL_TESIS'
@@ -1358,7 +1362,11 @@ export default function ExpedientePage() {
         && type.capacidad_carga?.permitida === true
         && ['SIN_DOCUMENTO', 'RECHAZADO', 'CORRECCION_REQUERIDA', 'CORRECCION_POST_APROBACION'].includes(type.capacidad_carga.codigo)
       ))
-      if (hasPendingUpload) await openUpload(null, { typesLoaded: true, opener })
+      if (hasPendingUpload) await openUpload(null, {
+        typesLoaded: true,
+        opener,
+        orderedTypeCodes: isThesisProfileV2 ? ['INFORME_TUTOR_TESIS', 'PERFIL_TESIS'] : null,
+      })
       else scrollToDocuments()
     } finally {
       contextualUploadPending.current = false
@@ -2157,6 +2165,7 @@ export default function ExpedientePage() {
             isExamGrade={isExamGrade}
             isAcademicExcellence={isAcademicExcellence}
             isThesisGrade={isThesisGrade}
+            isThesisProfileV2={isThesisProfileV2}
             isThesisPublicStage={isThesisPublicStage}
             publicDefenseMissingRoles={publicDefenseMissingRoles}
             canUpload={canUpload}
@@ -2275,7 +2284,8 @@ export default function ExpedientePage() {
           onRetryHistorical={() => setHistoricalActorsRevision((value) => value + 1)}
           canManage={canManageAssignments}
           management={flujo.gestion_actores}
-          memorandumContract={getMemorandumPublicationContract(data)}
+          memorandumContract={(isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO') || isThesisProfileV2
+            ? getMemorandumPublicationContract(data) : null}
           memorandums={memorandums}
           onRetryMemorandums={() => setMemorandumRevision((value) => value + 1)}
           onManage={openActorManagement}
@@ -2358,9 +2368,9 @@ export default function ExpedientePage() {
         onSubmit={submitAcademicDecision}
         onClose={() => setAcademicDecision(null)}
       />}
-      {actorManagement && <ActorManagementDialog state={actorManagement} postulacion={detalle.id} management={flujo.gestion_actores} selectionPresentation={actorSelectionPresentation} stageName={currentStage?.nombre || currentStage?.codigo} memorandumContract={isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO' ? getMemorandumPublicationContract(data) : null} memorandumSeguimientoEtapa={flujo.gestion_decisiones_academicas?.contexto?.seguimiento_etapa} memorandums={memorandums} canPublishMemorandum={canManageAssignments}       onMemorandumPublished={() => { actorManagementSummaryNavigationPending.current = true; preserveExpedienteDuringMemorandumRefresh.current = true; setMemorandumRevision((value) => value + 1); setRevision((value) => value + 1) }} onRetryMemorandums={() => setMemorandumRevision((value) => value + 1)} onSubmit={submitActorManagement} onFinalize={(position, observaciones) => submitActorManagement([{ action: 'FINALIZAR', position, payload: { observaciones } }])} onClose={closeActorManagement} />}
+      {actorManagement && <ActorManagementDialog state={actorManagement} postulacion={detalle.id} management={flujo.gestion_actores} selectionPresentation={actorSelectionPresentation} stageName={currentStage?.nombre || currentStage?.codigo} memorandumContract={(isProjectGrade && currentStage?.codigo === 'PERFIL_PROYECTO') || isThesisProfileV2 ? getMemorandumPublicationContract(data) : null} memorandumSeguimientoEtapa={flujo.gestion_decisiones_academicas?.contexto?.seguimiento_etapa} memorandums={memorandums} canPublishMemorandum={canManageAssignments}       onMemorandumPublished={() => { actorManagementSummaryNavigationPending.current = true; preserveExpedienteDuringMemorandumRefresh.current = true; setMemorandumRevision((value) => value + 1); setRevision((value) => value + 1) }} onRetryMemorandums={() => setMemorandumRevision((value) => value + 1)} onSubmit={submitActorManagement} onFinalize={(position, observaciones) => submitActorManagement([{ action: 'FINALIZAR', position, payload: { observaciones } }])} onClose={closeActorManagement} />}
       {teamAssignment?.mode === 'PUBLIC_AUTHORITIES'
-        ? <PublicAuthoritiesDialog assignment={teamAssignment} postulacion={detalle.id} stage={currentStage} orientation={flujo.orientacion_etapa_actual} blockOccupiedCandidates={isProjectGrade} allowIdentityReuse={isThesisGrade || flujo.orientacion_etapa_actual?.siguiente_accion?.capacidades?.permite_identidad_reutilizada === true} authoritiesAcrossStages={isThesisGrade} onSelectCandidate={(role, candidate) => setTeamAssignment((current) => ({ ...current, selections: { ...current.selections, [role]: candidate } }))} onSubmit={submitTeamAssignment} onClose={closeTeamAssignment} />
+        ? <PublicAuthoritiesDialog assignment={teamAssignment} postulacion={detalle.id} stage={currentStage} orientation={flujo.orientacion_etapa_actual} blockOccupiedCandidates={isProjectGrade} allowIdentityReuse={isThesisGrade ? currentStage?.codigo !== 'DEFENSA_PUBLICA' : flujo.orientacion_etapa_actual?.siguiente_accion?.capacidades?.permite_identidad_reutilizada === true} authoritiesAcrossStages={isThesisGrade} onSelectCandidate={(role, candidate) => setTeamAssignment((current) => ({ ...current, selections: { ...current.selections, [role]: candidate } }))} onSubmit={submitTeamAssignment} onClose={closeTeamAssignment} />
         : null}
       {tribunalReportDialog && <TribunalReportDialog report={tribunalReportDialog} finalVersion={currentFinalVersion} evidenceVersions={currentEvidenceVersions} canUpload={canUpload} canManageAssignments={canManageAssignments} tribunalReviewStage={tribunalReviewStage} activeActors={activeActors.data?.results || []} activeTribunals={activeTribunals} onRetryActiveTribunals={() => setActiveTribunalsRevision((value) => value + 1)} onDraftChange={updateTribunalReportDraft} onAssignMissing={(order) => setTribunalReportDialog((current) => ({ ...current, view: 'ASSIGN_MISSING_TRIBUNAL', assignment: { order, submitting: false, fields: {}, error: '' } }))} onBackToReport={() => setTribunalReportDialog((current) => ({ ...current, view: 'REGISTER_REPORT' }))} onSubmitMissing={submitMissingTribunal} onUploadEvidence={openTribunalEvidenceUpload} onSubmit={submitTribunalReport} onClose={closeTribunalReport} />}
     </section>
@@ -2454,7 +2464,7 @@ function StudentProcessView({ detalle, flujo, cierre, cierreSoportado, progress,
       })}</ol>}
     </Card>
 
-    {detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' && memorandumContract && <MemorandumStatusCard memorandums={memorandums} onRetry={onRetryMemorandums} />}
+    {['PROYECTO_GRADO', 'TESIS_GRADO'].includes(detalle.modalidad_detalle?.codigo) && memorandumContract && <MemorandumStatusCard memorandums={memorandums} onRetry={onRetryMemorandums} />}
     <StudentClosureSummary cierre={cierre} supported={cierreSoportado} />
   </section>
 }
@@ -2537,7 +2547,7 @@ function clarifyProjectFinalDocumentOrientation(orientation, isProjectGrade, cur
   }
 }
 
-function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, postulacionId, onNavigateToThesisResult, onOpenDocumentUpload, documentActionPending = false, onProgramDefense, onOpenDefense, programmingContext, canProgramDefense = false, orientationAcademicDecision, onRegisterAcademicDecision, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, examConclusionPending = false, academicExcellenceResult = null, resultado, concluded, defenses = [], isProjectGrade = false, isExamGrade = false, isAcademicExcellence = false, isThesisGrade = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, additionalContent = null, onCompleteAuthorities, onManageActors, onManageMissingActors, canOpenProfileTutor = false, canOpenPrivateSecretary = false, onOpenDictamen, onRegisterTribunalReport }) {
+function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, cierreSoportado, currentStage, orientation, stageApproval, pendingCurrentRequirements = 0, onApproveStage, canApproveStage = false, onGoToDocuments, postulacionId, onNavigateToThesisResult, onOpenDocumentUpload, documentActionPending = false, onProgramDefense, onOpenDefense, programmingContext, canProgramDefense = false, orientationAcademicDecision, onRegisterAcademicDecision, completedStages = 0, totalStages = 0, workflowProgress = null, pendingTechnicalClosure = false, examConclusionPending = false, academicExcellenceResult = null, resultado, concluded, defenses = [], isProjectGrade = false, isExamGrade = false, isAcademicExcellence = false, isThesisGrade = false, isThesisProfileV2 = false, isThesisPublicStage = false, publicDefenseMissingRoles = [], canUpload = false, canManageApplications = false, canManageAssignments = false, canManageDefenses = false, canManageEvaluations = false, hideRequirements = false, additionalContent = null, onCompleteAuthorities, onManageActors, onManageMissingActors, canOpenProfileTutor = false, canOpenPrivateSecretary = false, onOpenDictamen, onRegisterTribunalReport }) {
   if (directedConclusion && (concluded || orientation?.operacion === 'ORIENTAR_CONCLUSION_ACADEMICA')) {
     const action = orientation?.siguiente_accion
     const canConclude = !concluded && action?.codigo === 'CONCLUIR_ACADEMICAMENTE' && action.estado === 'DISPONIBLE'
@@ -2720,7 +2730,6 @@ function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, ci
   const visibleNextActionTitle = nextActionTitle
   const stageRequirements = requirements.filter((item) => item.bloquea_siguiente_accion !== false)
   const documentaryChecklist = requirements.filter((item) => item.bloquea_siguiente_accion === false)
-  const completedRequirements = stageRequirements.filter((item) => item.cumplido).length
   const approvalMissingLabels = Array.isArray(stageApproval?.fields?.faltantes)
     ? stageApproval.fields.faltantes.map(humanizeRequirementCode).join(', ')
     : ''
@@ -2739,7 +2748,7 @@ function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, ci
   const isThesisProfileAction = isThesisGrade && currentStage?.codigo === 'PERFIL_TESIS'
     && visibleOrientationAction?.codigo === 'COMPLETAR_PERFIL'
   const profileDocumentRequirements = isThesisProfileAction
-    ? stageRequirements.filter((item) => item.destino === '#documentos' && item.codigo)
+    ? requirements.filter((item) => item.destino === '#documentos' && item.codigo)
     : []
   const pendingProfileDocumentCodes = profileDocumentRequirements
     .filter((item) => item.cumplido === false).map((item) => item.codigo)
@@ -2748,15 +2757,32 @@ function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, ci
     && profileDocumentRequirements.every((item) => item.cumplido === true)
     && stageRequirements.some((item) => item.codigo === 'TUTOR' && item.cumplido === false && item.destino === '#actores')
     && stageRequirements.filter((item) => item.cumplido === false).every((item) => item.codigo === 'TUTOR')
+  const thesisV2DocumentsPending = isThesisProfileAction && isThesisProfileV2
+    && profileDocumentRequirements.some((item) => item.cumplido !== true)
+  const visibleStageRequirements = thesisV2DocumentsPending
+    ? stageRequirements.filter((item) => item.destino === '#documentos')
+    : stageRequirements
+  const canResolveProfileActors = isThesisProfileAction && isThesisProfileV2 && !thesisV2DocumentsPending && canManageAssignments
+    && stageRequirements.some((item) => item.destino === '#actores' && item.cumplido === false)
   const isDocumentUploadAction = ['COMPLETAR_DOCUMENTOS', 'CARGAR_HOJA_APROBACION'].includes(visibleOrientationAction?.codigo)
   const isThesisActaUpload = isThesisGrade && visibleOrientationAction?.codigo === 'CARGAR_ACTA_DEFENSA'
   const navigatesToDocumentUpload = visibleOrientationAction?.codigo === 'CARGAR_HOJA_APROBACION'
     || pendingClosureTrackingDocuments.length > 0
   const canNavigateToDocumentUpload = isDocumentUploadAction && canUpload
   const canOpenDocumentUpload = canNavigateToDocumentUpload
+  const scheduledThesisProfileDefense = findUniqueScheduledThesisProfileDefense({
+    defenses,
+    currentStage,
+    orientation: effectiveOrientation,
+    isThesisProfileV2,
+  })
   const canOpenDefenseProgramming = nextAction?.codigo === 'PROGRAMAR_EVENTO'
-    && canProgramDefense
-    && Boolean(programmingContext)
+    && (scheduledThesisProfileDefense
+      ? canManageDefenses
+      : canProgramDefense && Boolean(programmingContext))
+  const openDefenseOrProgramming = () => scheduledThesisProfileDefense
+    ? onOpenDefense(scheduledThesisProfileDefense)
+    : onProgramDefense()
   const canOpenAcademicDecision = nextAction?.codigo === 'REGISTRAR_DECISION'
     && Boolean(orientationAcademicDecision)
     && !isThesisGrade
@@ -2793,8 +2819,11 @@ function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, ci
         <Button type="button" className="mt-3" disabled={stageApproval.submitting} onClick={onApproveStage}>{stageApproval.submitting ? 'Procesando…' : nextAction.accion_label || nextAction.titulo || `Aprobar ${currentStage?.nombre || formatCode(currentStage?.codigo) || 'etapa'}`}</Button>
         {pendingCurrentRequirements > 0 && <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Hay {pendingCurrentRequirements} {pendingCurrentRequirements === 1 ? 'requisito pendiente' : 'requisitos pendientes'}. El backend realizará la validación definitiva al aprobar.</p>}
       </> : null
-        : onlyProfileTutorPending && canManageAssignments ? <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#actores" onClick={canOpenProfileTutor ? (event) => { event.preventDefault(); event.stopPropagation(); onManageActors(event) } : undefined}>Ir a actores</a>
-          : canResolveProfileDocuments ? <button type="button" disabled={documentActionPending} className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={() => onOpenDocumentUpload(false, pendingProfileDocumentCodes)}>{nextAction.accion_label || 'Ir a documentos'}</button>
+        : canResolveProfileDocuments ? <button type="button" disabled={documentActionPending} className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={() => onOpenDocumentUpload(false, pendingProfileDocumentCodes)}>{isThesisProfileV2 ? 'Gestionar documentos' : nextAction.accion_label || 'Ir a documentos'}</button>
+          : canResolveProfileActors ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onManageActors}>Ir a actores</button>
+          : onlyProfileTutorPending && canManageAssignments ? isThesisProfileV2
+            ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={() => onOpenDocumentUpload(false)}>Gestionar documentos</button>
+            : <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#actores" onClick={canOpenProfileTutor ? (event) => { event.preventDefault(); event.stopPropagation(); onManageActors(event) } : undefined}>{isThesisProfileAction ? 'Ir a actores' : 'Ir a gestionar'}</a>
           : isThesisActaUpload ? canUpload && <Button type="button" disabled={documentActionPending} className="mt-3" onClick={() => onOpenDocumentUpload(false, 'ACTA_DEFENSA')}>Cargar Acta de Defensa</Button>
           : canOpenDocumentUpload ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={() => onOpenDocumentUpload(navigatesToDocumentUpload)}>Gestionar documentos</button>
           : canNavigateToDocumentUpload ? <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href="#documentos" onClick={(event) => { event.preventDefault(); onGoToDocuments() }}>Gestionar documentos</a>
@@ -2802,7 +2831,7 @@ function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, ci
             : nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' && nextAction.estado === 'DISPONIBLE' && onRegisterTribunalReport
               ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onRegisterTribunalReport}>{nextAction.accion_label}</button>
             : thesisAuthoritiesAction && onManageMissingActors ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onManageMissingActors}>Completar autoridades</button>
-            : canOpenDefenseProgramming ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={onProgramDefense}>{nextAction.accion_label || 'Ir a gestionar'}</button>
+            : canOpenDefenseProgramming ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={openDefenseOrProgramming}>{nextAction.accion_label || 'Ir a gestionar'}</button>
           : profileDefenseAction && profileDefense && onOpenDefense
             ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={(event) => { event.preventDefault(); onOpenDefense(profileDefense) }}>{nextAction.accion_label}</button>
             : isProjectGrade && currentStage?.codigo === 'DEFENSA_PRIVADA'
@@ -2814,20 +2843,22 @@ function OperationalSummary({ directedConclusion, onConcludeDirected, cierre, ci
               && publicDefense && onOpenDefense
               ? <button type="button" className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" onClick={(event) => { event.preventDefault(); onOpenDefense(publicDefense) }}>{nextAction.accion_label || 'Ir a gestionar'}</button>
             : isThesisGrade && nextAction.codigo === 'CONCLUIR_ACADEMICAMENTE' && nextAction.estado === 'DISPONIBLE'
-              ? <Link className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" to={`/postulaciones/${postulacionId}#resultado-y-cierre`} onClick={onNavigateToThesisResult}>{nextAction.accion_label}</Link>
-            : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'REGISTRAR_DICTAMEN' && onOpenDictamen ? onOpenDictamen : (nextAction.codigo === 'GESTIONAR_ACTORES' || canOpenPrivateSecretary) ? (event) => { event.preventDefault(); if (canOpenPrivateSecretary) event.stopPropagation(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' ? 'Consultar revisión del Tribunal' : nextAction.accion_label || 'Ir a gestionar'}</a>}
+              ? <Link className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" to={`/postulaciones/${postulacionId}#resultado-y-cierre`} onClick={onNavigateToThesisResult}>{nextAction.accion_label || 'Ir a concluir académicamente'}</Link>
+              : nextAction.destino && !assignmentActionUnavailable && (!isDocumentUploadAction || canNavigateToDocumentUpload) && <a className="mt-3 inline-block text-sm font-semibold text-sky-700 hover:underline dark:text-sky-300" href={nextAction.destino} onClick={nextAction.codigo === 'REGISTRAR_DICTAMEN' && onOpenDictamen ? onOpenDictamen : (nextAction.codigo === 'GESTIONAR_ACTORES' || canOpenPrivateSecretary) ? (event) => { event.preventDefault(); if (canOpenPrivateSecretary) event.stopPropagation(); onManageActors(event) } : managesMissingPublicActors ? onManageMissingActors : undefined}>{isThesisProfileV2 ? 'Gestionar documentos' : nextAction.codigo === 'REGISTRAR_INFORME_TRIBUNAL' ? 'Consultar revisión del Tribunal' : nextAction.accion_label || 'Ir a gestionar'}</a>}
       {nextAction.codigo === 'APROBAR_ETAPA' && stageApproval.error && <p role="alert" className="mt-2 text-sm text-red-600">{stageApproval.error}</p>}
     </section>}
-    {!hideRequirements && stageRequirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">
+    {!hideRequirements && visibleStageRequirements.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="stage-requirements-title">
       <h3 id="stage-requirements-title" className="text-lg font-bold">Requisitos de esta etapa</h3>
-      <ul className="mt-3 space-y-2">{stageRequirements.map((item) => (
+      <ul className="mt-3 space-y-2">{visibleStageRequirements.map((item) => (
         <li key={`${item.tipo}-${item.codigo}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-sky-200 bg-white/70 px-4 py-3 dark:border-sky-800 dark:bg-slate-900/60">
             <span className="font-medium">{item.cumplido === true ? '✓' : item.cumplido === false ? '⚠' : 'ℹ'} {item.nombre}</span>
             {item.actual !== undefined && item.minimo !== undefined ? <span className="text-right text-sm"><span className="block font-semibold">{item.actual} vigentes</span><span className="block text-slate-600 dark:text-slate-300">Mínimo requerido: {item.minimo}</span><span className={item.cumplido === true ? 'font-semibold text-emerald-700 dark:text-emerald-300' : item.cumplido === false ? 'font-semibold text-amber-700 dark:text-amber-300' : 'font-semibold text-sky-700 dark:text-sky-300'}>{item.cumplido === true ? 'Requisito cumplido' : item.cumplido === false ? 'Pendiente' : item.estado_display}</span></span> : <span className={item.cumplido === true ? 'font-semibold text-emerald-700 dark:text-emerald-300' : item.cumplido === false ? 'font-semibold text-amber-700 dark:text-amber-300' : 'font-semibold text-sky-700 dark:text-sky-300'}>{item.estado_display}</span>}
-            {item.destino && item.destino !== nextAction?.destino && !(publicAuthorityAction && ['PRESIDENTE', 'SECRETARIO'].includes(item.codigo)) && <a className="w-full text-sm font-medium text-sky-700 hover:underline dark:text-sky-300" href={item.destino} onClick={canOpenProfileTutor && item.codigo === 'TUTOR' && item.cumplido === false && item.destino === '#actores' ? (event) => { event.preventDefault(); event.stopPropagation(); onManageActors(event) } : undefined}>Ir a gestionar</a>}
+            {item.destino && item.destino !== nextAction?.destino && !(publicAuthorityAction && ['PRESIDENTE', 'SECRETARIO'].includes(item.codigo)) && (isThesisProfileV2 && item.destino === '#documentos' && item.cumplido !== true
+              ? canUpload && <button type="button" disabled={documentActionPending} className="w-full text-left text-sm font-medium text-sky-700 hover:underline dark:text-sky-300" onClick={() => onOpenDocumentUpload(false)}>Ir a gestionar</button>
+              : <a className="w-full text-sm font-medium text-sky-700 hover:underline dark:text-sky-300" href={item.destino} onClick={canOpenProfileTutor && item.codigo === 'TUTOR' && item.cumplido === false && item.destino === '#actores' ? (event) => { event.preventDefault(); event.stopPropagation(); onManageActors(event) } : undefined}>Ir a gestionar</a>)}
         </li>
       ))}</ul>
-      <p className="mt-3 text-sm font-semibold">{completedRequirements} de {stageRequirements.length} cumplidos</p>
+      <p className="mt-3 text-sm font-semibold">{visibleStageRequirements.filter((item) => item.cumplido === true).length} de {visibleStageRequirements.length} cumplidos</p>
     </section>}
     {!hideRequirements && documentaryChecklist.length > 0 && <section className="mt-5 border-t border-sky-200 pt-5 dark:border-sky-800" aria-labelledby="documentary-checklist-title">
       <h3 id="documentary-checklist-title" className="text-lg font-bold">Checklist documental</h3>
@@ -2951,6 +2982,23 @@ function hasActiveCurrentDefense({ defenses, orientation, currentStage }) {
       && supportsCancelledDefenseRescheduling(defense)
     return defense.activo !== false && (defense.estado !== 'CANCELADA' || cancelledReplacementEligible) && sameType && sameStage && sameAttempt
   })
+}
+
+function findUniqueScheduledThesisProfileDefense({ defenses, currentStage, orientation, isThesisProfileV2 }) {
+  if (!isThesisProfileV2 || currentStage?.codigo !== 'PERFIL_TESIS'
+    || currentStage.activo === false || !currentStage.id || currentStage.numero_intento == null
+    || orientation?.siguiente_accion?.codigo !== 'PROGRAMAR_EVENTO'
+    || orientation.siguiente_accion.estado !== 'DISPONIBLE'
+    || orientation.siguiente_accion.destino !== '#defensas' || !orientation.tipo_evento) return null
+
+  const matches = defenses.filter((defense) => defense.activo === true
+    && defense.estado === 'PROGRAMADA'
+    && defense.tipo_evento === orientation.tipo_evento
+    && defense.seguimiento_etapa != null
+    && String(defense.seguimiento_etapa) === String(currentStage.id)
+    && defense.numero_intento != null
+    && Number(defense.numero_intento) === Number(currentStage.numero_intento))
+  return matches.length === 1 ? matches[0] : null
 }
 
 function getTribunalReviewState(stage, reports, currentFinalVersion, orientation, canManage) {

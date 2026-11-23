@@ -39,6 +39,20 @@ ETAPAS = tuple(
 )
 
 
+def usa_flujo_perfil(postulacion):
+    from apps.postulantes.models import Postulacion
+
+    return bool(
+        postulacion
+        and postulacion.modalidad.codigo == "TESIS_GRADO"
+        and postulacion.regimen_workflow == Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2
+    )
+
+
+def etapa_tribunal_tesis(postulacion):
+    return "PERFIL_TESIS" if usa_flujo_perfil(postulacion) else "TEMATICA_TESIS"
+
+
 class TesisGradoEventoPolicy(BaseEventoPolicy):
     """Solo habilita la defensa cualitativa del perfil en este bloque."""
 
@@ -72,6 +86,7 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
 
     DIRECT_RESULT_TYPES = {"DEFENSA_TEMATICA", "DEFENSA_PERFIL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"}
 
+
     def get_asignaciones_formales_defensa(self, *, postulacion, tipo_evento, seguimiento):
         """Return the current formal Tesis assignments applicable to this act."""
         from django.db.models import Q
@@ -81,12 +96,13 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
             postulacion=postulacion, activo=True,
             usuario__is_active=True, usuario__activo=True,
         )
-        thematic = postulacion.seguimientos_etapa.filter(
-            activo=True, etapa__codigo="TEMATICA_TESIS",
+        tribunal_stage = etapa_tribunal_tesis(postulacion)
+        tribunal_followup = postulacion.seguimientos_etapa.filter(
+            activo=True, etapa__codigo=tribunal_stage,
         ).order_by("-numero_intento", "-pk").first()
         tribunal_q = (
-            Q(tipo_participacion="TRIBUNAL", seguimiento_etapa=thematic)
-            if thematic else Q(pk__in=[])
+            Q(tipo_participacion="TRIBUNAL", seguimiento_etapa=tribunal_followup)
+            if tribunal_followup else Q(pk__in=[])
         )
         if tipo_evento == "DEFENSA_TEMATICA":
             return base.filter(tribunal_q)
@@ -192,9 +208,10 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
                 raise ValidationError({"asignaciones": f"Completa las asignaciones de Defensa Pública de Tesis: {detail}."})
             return
         from apps.postulantes.models import AsignacionPostulacion
+        tribunal_stage = etapa_tribunal_tesis(seguimiento.postulacion)
         tribunales = AsignacionPostulacion.objects.filter(
             postulacion=seguimiento.postulacion, tipo_participacion="TRIBUNAL", activo=True,
-            seguimiento_etapa__etapa__codigo="TEMATICA_TESIS",
+            seguimiento_etapa__etapa__codigo=tribunal_stage,
         )
         if tribunales.count() != 3:
             raise ValidationError("La defensa de Tesis requiere los tres tribunales designados para la temática.")
@@ -221,7 +238,8 @@ class TesisGradoEventoPolicy(BaseEventoPolicy):
         if evento.tipo_evento != "DEFENSA_PRIVADA":
             return
         if rol_evento == "TRIBUNAL":
-            if asignacion.tipo_participacion != "TRIBUNAL" or asignacion.seguimiento_etapa_id != evento.postulacion.seguimientos_etapa.filter(etapa__codigo="TEMATICA_TESIS").values_list("id", flat=True).first():
+            tribunal_stage = etapa_tribunal_tesis(evento.postulacion)
+            if asignacion.tipo_participacion != "TRIBUNAL" or asignacion.seguimiento_etapa_id != evento.postulacion.seguimientos_etapa.filter(etapa__codigo=tribunal_stage).values_list("id", flat=True).first():
                 raise ValidationError("Solo cuentan tribunales activos designados para la temática de esta Tesis.")
         elif rol_evento == "DOCENTE_MODALIDAD":
             if asignacion.tipo_participacion != "DOCENTE_MODALIDAD":
@@ -448,6 +466,23 @@ class TesisGradoPolicy(BaseModalidadPolicy):
     evaluacion_policy = TesisGradoEvaluacionPolicy()
     requisitos_policy = TesisGradoRequisitosPolicy()
 
+    def get_publicacion_memorandum_designacion(self, codigo_etapa):
+        from apps.postulantes.models import Postulacion
+
+        if codigo_etapa != "PERFIL_TESIS":
+            return None
+        return {
+            "tipo_documento": "MEMORANDUM_DESIGNACION_PROYECTO",
+            "titulo": "Memorándum oficial de designación",
+            "publicacion_independiente": True,
+            "regimen_workflow_requerido": Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2,
+        }
+
+    def get_codigos_etapas_workflow(self, postulacion):
+        from apps.postulantes.tesis_grado_workflow import TesisGradoWorkflowOrchestrator
+
+        return TesisGradoWorkflowOrchestrator.etapas_para(postulacion)
+
     def resolver_contexto_documental(self, postulacion):
         contexto = super().resolver_contexto_documental(postulacion)
         if contexto or (postulacion.estado_actual and postulacion.estado_actual.codigo == "CONCLUIDA"):
@@ -658,14 +693,22 @@ class TesisGradoPolicy(BaseModalidadPolicy):
             )
         elif stage == "PERFIL_TESIS":
             tutor = postulacion.asignaciones.filter(activo=True, tipo_participacion="TUTOR").exists()
-            requirements = [self._orientation_requirement("TUTOR", "Tutor", tutor, "#actores")]
+            requirements = []
+            if usa_flujo_perfil(postulacion):
+                tribunal_count = postulacion.asignaciones.filter(
+                    activo=True, tipo_participacion="TRIBUNAL", seguimiento_etapa=seguimiento,
+                ).count()
+                requirements.append(self._orientation_requirement(
+                    "TRIBUNALES", "Tribunales", tribunal_count == 3, "#actores", f"{tribunal_count}/3",
+                ))
+            requirements.append(self._orientation_requirement("TUTOR", "Tutor", tutor, "#actores"))
             requirements.extend(self._document_orientation(postulacion, self.requisitos_policy.DOCUMENTS_BY_STAGE[stage]))
-            if tutor and all(item["cumplido"] for item in requirements):
+            if all(item["cumplido"] for item in requirements):
                 action, event_requirements = self._event_orientation(postulacion, seguimiento, "DEFENSA_PERFIL")
                 requirements.extend(event_requirements)
             else:
-                action = self._orientation_action("COMPLETAR_PERFIL", "Completar perfil de Tesis", "Completa el tutor y los documentos requeridos del perfil.", "PENDIENTE", "#documentos", "Ir a documentos")
-            message = "Completa el tutor, los documentos y la defensa del perfil según corresponda."
+                action = self._orientation_action("COMPLETAR_PERFIL", "Completar perfil de Tesis", "Completa los actores y documentos requeridos del perfil.", "PENDIENTE", "#actores", "Ir a actores")
+            message = "Completa el tribunal, el tutor, los documentos y la defensa del perfil segun corresponda."
         elif stage in {"REVISION_TUTOR", "REVISION_TRIBUNAL"}:
             from apps.documentos.models import DocumentoPostulacion, VersionDocumento
             from apps.postulantes.models import DictamenRevisionDocumento
@@ -761,6 +804,10 @@ class TesisGradoPolicy(BaseModalidadPolicy):
 
     def get_configuracion_actores(self, postulacion=None, seguimiento=None):
         """Declara las posiciones gestionables de actores de Tesis."""
+        profile_flow = usa_flujo_perfil(postulacion)
+        tribunal_stage = etapa_tribunal_tesis(postulacion) if postulacion else "TEMATICA_TESIS"
+        tribunal_key = "TRIBUNAL_PERFIL_TESIS" if profile_flow else "TRIBUNAL_TEMATICA_TESIS"
+        tribunal_name = "Tribunal de Perfil de Tesis" if profile_flow else "Tribunal de Tematica de Tesis"
         tematica_aprobada = bool(
             postulacion
             and postulacion.seguimientos_etapa.filter(
@@ -768,51 +815,50 @@ class TesisGradoPolicy(BaseModalidadPolicy):
                 estado="APROBADA",
             ).exists()
         )
-        grupos = [
-            {
-                "clave": "TRIBUNAL_TEMATICA_TESIS",
-                "tipo_participacion": "TRIBUNAL",
-                "nombre": "Tribunal de Tematica de Tesis",
-                "ambito": "ETAPA",
-                "codigo_etapa": "TEMATICA_TESIS",
-                "minimo": 3,
-                "maximo": 3,
-                "ordenado": True,
-                "ordenes_permitidos": [1, 2, 3],
-                "obligatoriedad": True,
-                "habilitada": True,
-                "precondicion": None,
-                "posiciones": [
-                    {"clave": "TRIBUNAL_TEMATICA_TESIS_1", "orden_cargo": 1, "nombre": "Tribunal 1"},
-                    {"clave": "TRIBUNAL_TEMATICA_TESIS_2", "orden_cargo": 2, "nombre": "Tribunal 2"},
-                    {"clave": "TRIBUNAL_TEMATICA_TESIS_3", "orden_cargo": 3, "nombre": "Tribunal 3"},
-                ],
+        tribunal_group = {
+            "clave": tribunal_key,
+            "tipo_participacion": "TRIBUNAL",
+            "nombre": tribunal_name,
+            "ambito": "ETAPA",
+            "codigo_etapa": tribunal_stage,
+            "minimo": 3,
+            "maximo": 3,
+            "ordenado": True,
+            "ordenes_permitidos": [1, 2, 3],
+            "obligatoriedad": True,
+            "habilitada": True,
+            "precondicion": None,
+            "posiciones": [
+                {"clave": f"{tribunal_key}_{order}", "orden_cargo": order, "nombre": f"Tribunal {order}"}
+                for order in (1, 2, 3)
+            ],
+        }
+        tutor_group = {
+            "clave": "TUTOR_TESIS",
+            "tipo_participacion": "TUTOR",
+            "nombre": "Tutor de Tesis",
+            "ambito": "POSTULACION",
+            "minimo": 1,
+            "maximo": 1,
+            "ordenado": False,
+            "ordenes_permitidos": [],
+            "obligatoriedad": True,
+            "habilitada": True,
+            "precondicion": None if profile_flow else {
+                "codigo": "TEMATICA_TESIS_APROBADA",
+                "estado": "CUMPLIDA" if tematica_aprobada else "PENDIENTE",
+                "enforcement": "ACTIVO",
             },
-            {
-                "clave": "TUTOR_TESIS",
-                "tipo_participacion": "TUTOR",
-                "nombre": "Tutor de Tesis",
-                "ambito": "POSTULACION",
-                "minimo": 1,
-                "maximo": 1,
-                "ordenado": False,
-                "ordenes_permitidos": [],
-                "obligatoriedad": True,
-                "habilitada": True,
-                "precondicion": {
-                    "codigo": "TEMATICA_TESIS_APROBADA",
-                    "estado": "CUMPLIDA" if tematica_aprobada else "PENDIENTE",
-                    "enforcement": "ACTIVO",
-                },
-                "bloqueo_precondicion_pendiente": {
-                    "codigo": "TEMATICA_TESIS_NO_APROBADA",
-                    "mensaje": "El Tutor solo puede designarse después de aprobar la temática de Tesis.",
-                },
-                "posiciones": [
-                    {"clave": "TUTOR_TESIS_1", "orden_cargo": None, "nombre": "Tutor de Tesis"},
-                ],
-            },
-        ]
+            "posiciones": [
+                {"clave": "TUTOR_TESIS_1", "orden_cargo": None, "nombre": "Tutor de Tesis"},
+            ],
+        }
+        if not profile_flow:
+            tutor_group["bloqueo_precondicion_pendiente"] = {
+                "codigo": "TEMATICA_TESIS_NO_APROBADA",
+                "mensaje": "El Tutor solo puede designarse después de aprobar la temática de Tesis.",
+            }
+        grupos = [tribunal_group, tutor_group]
         if seguimiento and seguimiento.etapa.codigo == "DEFENSA_PRIVADA":
             grupos.append({
                 "clave": "DOCENTE_MODALIDAD_DEFENSA_PRIVADA_TESIS",
@@ -834,16 +880,20 @@ class TesisGradoPolicy(BaseModalidadPolicy):
             })
         return {
             "grupos": grupos,
+            "regimen_workflow": postulacion.regimen_workflow if postulacion else None,
         }
 
     def validar_asignacion(self, *, queryset_contexto, postulacion, tipo_participacion,
                            seguimiento_etapa, orden_cargo, **kwargs):
-        if tipo_participacion == "TRIBUNAL" and seguimiento_etapa and seguimiento_etapa.etapa.codigo == "TEMATICA_TESIS":
+        if (
+            tipo_participacion == "TRIBUNAL" and seguimiento_etapa
+            and seguimiento_etapa.etapa.codigo == etapa_tribunal_tesis(postulacion)
+        ):
             if queryset_contexto.count() >= 3:
-                raise ValidationError("La temática de Tesis requiere exactamente tres docentes afines; no se admite un cuarto tribunal.")
+                raise ValidationError("Tesis requiere exactamente tres docentes afines en el tribunal; no se admite un cuarto tribunal.")
             if orden_cargo is not None and queryset_contexto.filter(orden_cargo=orden_cargo).exists():
                 raise ValidationError("Ya existe un miembro del tribunal con ese orden de cargo.")
-        if tipo_participacion == "TUTOR":
+        if tipo_participacion == "TUTOR" and not usa_flujo_perfil(postulacion):
             from apps.postulantes.models import SeguimientoEtapa
             if not SeguimientoEtapa.objects.filter(
                 postulacion=postulacion, etapa__codigo="TEMATICA_TESIS", estado="APROBADA",
@@ -901,7 +951,11 @@ class TesisGradoPolicy(BaseModalidadPolicy):
         assignment = confirmacion.asignacion_confirmante
         if not assignment or not assignment.activo:
             raise ValidationError("La confirmación requiere registrar la asignación académica que respalda la decisión.")
-        valid_tribunal = assignment.tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL and assignment.seguimiento_etapa and assignment.seguimiento_etapa.etapa.codigo == "TEMATICA_TESIS"
+        valid_tribunal = (
+            assignment.tipo_participacion == AsignacionPostulacion.TipoParticipacionChoices.TRIBUNAL
+            and assignment.seguimiento_etapa
+            and assignment.seguimiento_etapa.etapa.codigo == etapa_tribunal_tesis(confirmacion.postulacion)
+        )
         if not valid_tribunal:
             raise ValidationError("La habilitación de Pública requiere decisión del Tribunal designado de Tesis; el Tutor no puede confirmarla individualmente.")
 
@@ -978,6 +1032,13 @@ class TesisGradoPolicy(BaseModalidadPolicy):
         if seguimiento.etapa.codigo == "PERFIL_TESIS":
             from apps.documentos.models import DocumentoPostulacion, VersionDocumento
             from apps.postulantes.models import AsignacionPostulacion
+            if usa_flujo_perfil(seguimiento.postulacion):
+                tribunales = AsignacionPostulacion.objects.filter(
+                    postulacion=seguimiento.postulacion, seguimiento_etapa=seguimiento,
+                    tipo_participacion="TRIBUNAL", activo=True,
+                )
+                if tribunales.count() != 3:
+                    raise ValidationError("El perfil requiere los tres docentes designados para su tribunal.")
             if not AsignacionPostulacion.objects.filter(postulacion=seguimiento.postulacion, tipo_participacion="TUTOR", activo=True).exists():
                 raise ValidationError("El perfil requiere Tutor designado.")
             for codigo in ("PERFIL_TESIS", "INFORME_TUTOR_TESIS"):
@@ -1065,7 +1126,7 @@ class TesisGradoPolicy(BaseModalidadPolicy):
         if tipo_revision == "TRIBUNAL":
             tribunales = AsignacionPostulacion.objects.filter(
                 postulacion=seguimiento.postulacion, tipo_participacion="TRIBUNAL", activo=True,
-                seguimiento_etapa__etapa__codigo="TEMATICA_TESIS",
+                seguimiento_etapa__etapa__codigo=etapa_tribunal_tesis(seguimiento.postulacion),
             )
             if tribunales.count() != 3:
                 raise ValidationError("El dictamen de Tribunal requiere los tres tribunales válidos de Tesis.")

@@ -744,6 +744,12 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
         policy = ModalidadPolicyRegistry.get(obj.modalidad)
         definitions = policy.get_decisiones_academicas_permitidas(actual.etapa.codigo)
         memorandum_config = policy.get_publicacion_memorandum_designacion(actual.etapa.codigo)
+        if (
+            memorandum_config
+            and memorandum_config.get("regimen_workflow_requerido")
+            and obj.regimen_workflow != memorandum_config["regimen_workflow_requerido"]
+        ):
+            memorandum_config = None
         request = self.context.get("request")
         is_admin = bool(request and is_staff_user(request.user))
         decisiones = []
@@ -885,12 +891,23 @@ class FlujoPostulacionSerializer(serializers.ModelSerializer):
     def _obtener_seguimientos(self, obj: Postulacion) -> list[SeguimientoEtapa]:
         seguimientos = getattr(obj, "_prefetched_flujo", None)
         if seguimientos is not None:
-            return list(seguimientos)
-        queryset = obj.seguimientos_etapa.select_related("etapa", "abierta_por", "cerrada_por").order_by(
-            "etapa__orden",
-            "numero_intento",
-        )
-        return list(queryset)
+            rows = list(seguimientos)
+        else:
+            queryset = obj.seguimientos_etapa.select_related("etapa", "abierta_por", "cerrada_por").order_by(
+                "etapa__orden",
+                "numero_intento",
+            )
+            rows = list(queryset)
+
+        # Tesis con Perfil directo conserva cualquier seguimiento histórico de
+        # Temática en la base, pero no lo expone como parte del flujo operativo.
+        # Proyecto y las demás modalidades mantienen la lista completa.
+        if obj.modalidad.codigo == "TESIS_GRADO":
+            from apps.postulantes.tesis_grado_workflow import TesisGradoWorkflowOrchestrator
+
+            workflow_codes = set(TesisGradoWorkflowOrchestrator.etapas_para(obj))
+            return [row for row in rows if row.etapa.codigo in workflow_codes]
+        return rows
 
 
 class ObservaSeguimientoEtapaSerializer(serializers.Serializer):

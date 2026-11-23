@@ -17,6 +17,17 @@ class MemorandumDesignacionService:
     TIPO_DOCUMENTO = "MEMORANDUM_DESIGNACION_PROYECTO"
 
     @staticmethod
+    def etapa_perfil_aplicable(postulacion):
+        if postulacion.modalidad.codigo == "PROYECTO_GRADO":
+            return "PERFIL_PROYECTO"
+        if (
+            postulacion.modalidad.codigo == "TESIS_GRADO"
+            and postulacion.regimen_workflow == Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2
+        ):
+            return "PERFIL_TESIS"
+        return None
+
+    @staticmethod
     def composicion_actual(postulacion, seguimiento):
         tribunales = list(AsignacionPostulacion.objects.filter(
             postulacion=postulacion, seguimiento_etapa=seguimiento,
@@ -33,15 +44,17 @@ class MemorandumDesignacionService:
         from apps.documentos.models import DocumentoPostulacion
 
         seguimiento = publicacion.seguimiento_etapa
+        etapa_perfil = cls.etapa_perfil_aplicable(publicacion.postulacion)
         if (
-            not seguimiento.activo
+            not etapa_perfil
+            or not seguimiento.activo
             or seguimiento.postulacion_id != publicacion.postulacion_id
-            or seguimiento.etapa.codigo != "PERFIL_PROYECTO"
+            or seguimiento.etapa.codigo != etapa_perfil
             or not publicacion.postulacion.seguimientos_etapa.filter(pk=seguimiento.pk, activo=True).exists()
         ):
             return False
         seguimiento_actual = publicacion.postulacion.seguimientos_etapa.filter(
-            activo=True, etapa__codigo="PERFIL_PROYECTO",
+            activo=True, etapa__codigo=etapa_perfil,
         ).order_by("-numero_intento", "-pk").first()
         if not seguimiento_actual or seguimiento_actual.pk != seguimiento.pk:
             return False
@@ -79,16 +92,22 @@ class MemorandumDesignacionService:
         if not usuario or not usuario.is_active or not is_staff_user(usuario):
             raise ValidationError("Solo un usuario administrativo activo puede publicar el memorándum.")
         postulacion = Postulacion.objects.select_for_update().select_related("modalidad").get(pk=postulacion.pk)
-        if postulacion.modalidad.codigo != "PROYECTO_GRADO":
+        etapa_perfil = cls.etapa_perfil_aplicable(postulacion)
+        if not etapa_perfil:
             raise ValidationError("El memorándum de designación solo aplica a Proyecto de Grado.")
         seguimiento = SeguimientoEtapa.objects.select_for_update().select_related("etapa").get(pk=seguimiento.pk)
         if (
             seguimiento.postulacion_id != postulacion.pk
-            or seguimiento.etapa.codigo != "PERFIL_PROYECTO"
+            or seguimiento.etapa.codigo != etapa_perfil
             or not seguimiento.activo
             or not postulacion.seguimientos_etapa.filter(pk=seguimiento.pk, activo=True).exists()
         ):
-            raise ValidationError({"seguimiento_etapa": ["Debe corresponder al Perfil de Proyecto de la postulación."]})
+            mensaje = (
+                "Debe corresponder al Perfil de Tesis de la postulación."
+                if etapa_perfil == "PERFIL_TESIS"
+                else "Debe corresponder al Perfil de Proyecto de la postulación."
+            )
+            raise ValidationError({"seguimiento_etapa": [mensaje]})
         asignaciones = cls.composicion_actual(postulacion, seguimiento)
         tutores = list(AsignacionPostulacion.objects.filter(
             postulacion=postulacion, seguimiento_etapa__isnull=True,
@@ -99,7 +118,18 @@ class MemorandumDesignacionService:
         tipo = TipoDocumento.objects.filter(codigo=cls.TIPO_DOCUMENTO, activo=True).first()
         if not tipo:
             raise ValidationError({"archivo": ["El tipo documental del memorándum no está configurado."]})
-        version = DocumentoService().subir_documento(postulacion, tipo, archivo, usuario, request=request)
+        version = DocumentoService().subir_documento(
+            postulacion,
+            tipo,
+            archivo,
+            usuario,
+            request=request,
+            publicacion_memorandum_tesis_v2=(
+                postulacion.modalidad.codigo == "TESIS_GRADO"
+                and postulacion.regimen_workflow == Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2
+                and etapa_perfil == "PERFIL_TESIS"
+            ),
+        )
         documento = version.documento
         documento.refresh_from_db()
         if documento.estado.codigo != "APR":

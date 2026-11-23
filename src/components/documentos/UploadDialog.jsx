@@ -37,6 +37,15 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
   const fixedType = upload.document
   const context = upload.context
   const multiple = isHistorical || upload.multiple === true
+  const orderedTypes = useMemo(() => {
+    if (!Array.isArray(upload.orderedTypeCodes) || upload.orderedTypeCodes.length === 0) return types.data
+    const order = new Map(upload.orderedTypeCodes.map((code, index) => [code, index]))
+    return [...types.data].sort((left, right) => {
+      const leftCode = left.codigo || left.tipo_documento_codigo
+      const rightCode = right.codigo || right.tipo_documento_codigo
+      return (order.get(leftCode) ?? Number.MAX_SAFE_INTEGER) - (order.get(rightCode) ?? Number.MAX_SAFE_INTEGER)
+    })
+  }, [types.data, upload.orderedTypeCodes])
   const [selectedTypeId, setSelectedTypeId] = useState(context ? String(context.typeId) : '')
   const [selectedEventId, setSelectedEventId] = useState('')
   const [publicDefenses, setPublicDefenses] = useState({ data: [], loading: false, error: '' })
@@ -44,12 +53,12 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
   const [historicalStatus, setHistoricalStatus] = useState({ submitting: false, summary: '', items: [] })
   const uploading = Boolean(upload.submitting || historicalStatus.submitting)
   const uploadTypes = useMemo(
-    () => (multiple && !fixedType ? types.data.filter(needsUpload) : []),
-    [fixedType, multiple, types.data],
+    () => (multiple && !fixedType ? orderedTypes.filter(needsUpload) : []),
+    [fixedType, multiple, orderedTypes],
   )
   const informationalTypes = useMemo(
-    () => (multiple && !fixedType ? types.data.filter((type) => !needsUpload(type)) : []),
-    [fixedType, multiple, types.data],
+    () => (multiple && !fixedType ? orderedTypes.filter((type) => !needsUpload(type)) : []),
+    [fixedType, multiple, orderedTypes],
   )
   const documentsInReview = informationalTypes.filter((type) => REVIEW_CODES.has(type.capacidad_carga?.codigo))
   const approvedDocuments = informationalTypes.filter((type) => type.capacidad_carga?.codigo === 'DOCUMENTO_APROBADO')
@@ -88,7 +97,7 @@ export default function UploadDialog({ upload, types, postulacion, isHistorical,
         })
       })
     }
-  }, [fixedType, multiple, types.data, uploadTypes])
+  }, [fixedType, multiple, orderedTypes, uploadTypes])
 
   useEffect(() => {
     setSelectedEventId('')
