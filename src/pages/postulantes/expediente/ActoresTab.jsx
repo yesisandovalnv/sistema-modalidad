@@ -12,7 +12,7 @@ import { MemorandumPublicationSection, MemorandumStatus } from './DecisionesAcad
 import { Info, SectionError, StatusBadge } from './compartidos'
 import { ASSIGNMENT_TYPES, assignmentTypeLabel, formatStatus, initialsOf } from './reglas'
 
-export function ActorsCard({ active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical, canManage, management, memorandumContract, memorandums, onRetryMemorandums, onManage }) {
+export function ActorsCard({ noStageLabel = 'Sin etapa asociada', active, historical, activePage, historicalPage, onActivePage, onHistoricalPage, onRetryActive, onRetryHistorical, canManage, management, memorandumContract, memorandums, onRetryMemorandums, onManage }) {
   const positions = management?.posiciones || []
   const occupiedCount = positions.filter((position) => position.estado_ocupacion === 'ASIGNADA').length
   const activeCount = active.data?.count || 0
@@ -33,8 +33,8 @@ export function ActorsCard({ active, historical, activePage, historicalPage, onA
         <MemorandumStatus memorandums={memorandums} onRetry={onRetryMemorandums} />
       </section>}
       <div className="mt-6 grid gap-6">
-        <ActorGroup view={view} title="Participación actual" stateLabel="Vigente" actors={active} page={activePage} onPage={onActivePage} onRetry={onRetryActive} empty="No hay participaciones vigentes registradas." />
-        <ActorGroup view={view} title="Participaciones anteriores" stateLabel="Anterior" actors={historical} page={historicalPage} onPage={onHistoricalPage} onRetry={onRetryHistorical} empty="No hay participaciones anteriores registradas." />
+        <ActorGroup view={view} noStageLabel={noStageLabel} title="Participación actual" stateLabel="Vigente" actors={active} page={activePage} onPage={onActivePage} onRetry={onRetryActive} empty="No hay participaciones vigentes registradas." />
+        <ActorGroup view={view} noStageLabel={noStageLabel} title="Participaciones anteriores" stateLabel="Anterior" actors={historical} page={historicalPage} onPage={onHistoricalPage} onRetry={onRetryHistorical} empty="No hay participaciones anteriores registradas." />
       </div>
     </Card>
   )
@@ -443,7 +443,7 @@ function EligibleActorCandidates({ postulacion, position, positions, drafts, ass
   </div>
 }
 
-function ActorGroup({ title, stateLabel, actors, page, onPage, onRetry, empty, view = 'tarjetas' }) {
+function ActorGroup({ title, stateLabel, actors, page, onPage, onRetry, empty, view = 'tarjetas', noStageLabel }) {
   const rows = actors.data?.results || []
   const slug = stateLabel === 'Vigente' ? 'vigentes' : 'historicas'
   return <section aria-labelledby={`actores-${slug}`} className="expediente-group min-w-0">
@@ -452,13 +452,13 @@ function ActorGroup({ title, stateLabel, actors, page, onPage, onRetry, empty, v
     {actors.error && <div className="px-4 pb-4"><SectionError message={actors.error} label={`Reintentar ${title.toLowerCase()}`} onRetry={onRetry} /></div>}
     {!actors.loading && !actors.error && rows.length === 0 && <p className="px-4 pb-4 text-sm text-slate-500">{empty}</p>}
     {!actors.loading && !actors.error && rows.length > 0 && <>
-      <ul key={view} className={view === 'lista' ? 'expediente-actor-list' : 'expediente-actor-grid'}>{rows.map((actor) => <ActorItem key={actor.id} actor={actor} stateLabel={stateLabel} />)}</ul>
+      <ul key={view} className={view === 'lista' ? 'expediente-actor-list' : 'expediente-actor-grid'}>{rows.map((actor) => <ActorItem key={actor.id} actor={actor} stateLabel={stateLabel} noStageLabel={noStageLabel} />)}</ul>
       <Pagination count={actors.data.count} page={page} hasNext={Boolean(actors.data.next)} hasPrevious={Boolean(actors.data.previous)} onPage={onPage} />
     </>}
   </section>
 }
 
-function ActorItem({ actor, stateLabel }) {
+function ActorItem({ actor, stateLabel, noStageLabel = 'Sin etapa asociada' }) {
   const order = actor.orden_cargo === null || actor.orden_cargo === undefined ? null : actor.orden_cargo
   const name = actor.usuario_nombre || 'Usuario no disponible'
   return <li className="expediente-actor animate-row-in">
@@ -470,7 +470,7 @@ function ActorItem({ actor, stateLabel }) {
       </div>
     </div>
     <dl className="expediente-actor-facts">
-      <div><dt>Designado desde</dt><dd>{actor.etapa_nombre || 'Sin etapa asociada'}</dd></div>
+      <div><dt>Designado desde</dt><dd>{actor.etapa_nombre || noStageLabel}</dd></div>
       <div><dt>Estado</dt><dd><span className="expediente-status expediente-status--compact" data-tone={stateLabel === 'Vigente' ? 'success' : 'neutral'}>{stateLabel}</span></dd></div>
       <Info label="Fecha de inicio" value={formatActorDate(actor.fecha_inicio || actor.fecha_designacion)} />
       {stateLabel === 'Anterior' && <Info label="Fecha de finalización" value={formatActorDate(actor.fecha_fin || actor.fecha_finalizacion, 'No registrada')} />}

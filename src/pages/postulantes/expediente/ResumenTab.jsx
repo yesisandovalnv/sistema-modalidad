@@ -456,7 +456,7 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
       </div>
     </section>
     {isExamGrade && resultado?.data?.nota_final != null && <div className="mt-4 flex flex-wrap items-center gap-3"><strong className="text-2xl">Calificación final: {String(resultado.data.nota_final).replace('.', ',')}/100</strong>{resultado.data.clasificacion && <StatusBadge value={formatAcademicClassification(resultado.data.clasificacion)} positive />}</div>}
-    {(approvalMissingLabels || ((administrativeActionPending || publicAuthorityAction || visibleOrientationAction) && !staleProgrammingMessage && !(isThesisGrade && currentStage?.codigo === 'PERFIL_TESIS') && (isThesisGrade || orientationMessage !== (tribunalAssignment?.description || nextAction?.descripcion)))) && <p className="mt-4 text-sm">{orientationMessage}</p>}
+    {(approvalMissingLabels || ((administrativeActionPending || publicAuthorityAction || visibleOrientationAction) && !staleProgrammingMessage && !(isThesisGrade && (currentStage?.codigo === 'PERFIL_TESIS' || nextAction?.codigo === 'APROBAR_ETAPA')) && (isThesisGrade || orientationMessage !== (tribunalAssignment?.description || nextAction?.descripcion)))) && <p className="mt-4 text-sm">{orientationMessage}</p>}
     {startStep ? <section className="expediente-next" aria-labelledby="start-step-title">
       <div className="min-w-0"><h3 id="start-step-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{startStep.title}</p>{startStep.description && <p className="mt-1 text-sm">{startStep.description}</p>}</div>
       {startStep.secondary ? <div className="expediente-next-actions">

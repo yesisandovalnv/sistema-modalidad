@@ -2297,6 +2297,7 @@ export default function ExpedientePage() {
 
       <div id="panel-actores" role="tabpanel" aria-labelledby="expediente-tab-actores" data-expediente-panel="actores" hidden={!isHistorical && activeTab !== 'actores'}>
         {!isHistorical && <div id="actores" className="scroll-mt-24"><ActorsCard
+          noStageLabel={isThesisGrade ? 'Toda la postulación' : undefined}
           active={activeActors}
           historical={historicalActors}
           activePage={activeActorsPage}

@@ -878,6 +878,30 @@ describe('ExpedientePage · Tesis de Grado', () => {
       expect(within(stageDocs).queryByText('Tutor')).not.toBeInTheDocument()
     })
 
+    it('no repite el mensaje de documentos pendientes cuando solo falta aprobar la etapa', async () => {
+      const orientation = {
+        mensaje: 'Completa los documentos requeridos para la etapa.',
+        requisitos: [{ tipo: 'OPERATIVO', codigo: 'DOCUMENTO_FINAL', nombre: 'Documento Final', cumplido: true, estado_display: 'Aprobado y vigente', destino: '#documentos' }],
+        siguiente_accion: { codigo: 'APROBAR_ETAPA', titulo: 'Aprobar Documento Final', descripcion: 'El Documento Final y el informe del Tutor están completos y aprobados.', estado: 'DISPONIBLE', destino: '#documentos', accion_label: 'Ir a documentos' },
+      }
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('DOCUMENTO_FINAL', orientation))
+      renderThesis('resumen', ['puede_gestionar_postulaciones', 'puede_cargar_documentos'])
+      expect(await screen.findByRole('button', { name: 'Aprobar Documento Final' })).toBeInTheDocument()
+      expect(screen.getByText('El Documento Final y el informe del Tutor están completos y aprobados.')).toBeInTheDocument()
+      expect(screen.queryByText('Completa los documentos requeridos para la etapa.')).not.toBeInTheDocument()
+    })
+
+    it('muestra al tutor sin etapa como designado para toda la postulación', async () => {
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('DOCUMENTO_FINAL', { mensaje: '', requisitos: [], siguiente_accion: null }))
+      postulacionesService.obtenerActores.mockImplementation((_id, activo) => Promise.resolve(activo
+        ? { count: 1, next: null, previous: null, results: [{ id: 40, usuario: 43, usuario_nombre: 'Tutor Uno', tipo_participacion: 'TUTOR', tipo_participacion_display: 'Tutor', etapa_nombre: null, activo: true, fecha_inicio: '2026-11-22T10:00:00Z' }] }
+        : { count: 0, next: null, previous: null, results: [] }))
+      renderThesis('actores')
+      expect(await screen.findByText('Tutor Uno')).toBeInTheDocument()
+      expect(screen.getByText('Toda la postulación')).toBeInTheDocument()
+      expect(screen.queryByText('Sin etapa asociada')).not.toBeInTheDocument()
+    })
+
     it('usa resultado directo cualitativo para Defensa de Perfil de Tesis', async () => {
       const orientation = { mensaje: 'Registra el resultado del Perfil.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar defensa', estado: 'DISPONIBLE', destino: '#defensas' } }
       const defense = {
