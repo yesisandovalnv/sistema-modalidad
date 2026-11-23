@@ -306,9 +306,28 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
       return { title: `Continuar ${kind} programada`, description: `Programada para el ${formatDocumentDate(stageDefense.fecha_programada).replace(/\.$/, '')}. Ábrela para registrar el resultado o reprogramarla.` }
     })()
     : null
+  // Tesis: con la defensa de la etapa ya programada el servidor dice "Gestionar defensa / Ir a
+  // defensas"; aquí se dice qué defensa es, cuándo, y se abre directamente.
+  const thesisStageDefenseCandidates = isThesisGrade && currentStage?.id != null && currentStage?.numero_intento != null
+    && effectiveOrientation?.siguiente_accion?.codigo === 'GESTIONAR_DEFENSA'
+    ? defenses.filter((defense) => String(defense.seguimiento_etapa) === String(currentStage.id)
+      && Number(defense.numero_intento) === Number(currentStage.numero_intento)
+      && ['PROGRAMADA', 'EN_CURSO', 'SUSPENDIDA'].includes(defense.estado)
+      && defense.activo !== false)
+    : []
+  const thesisStageDefense = thesisStageDefenseCandidates.length === 1 ? thesisStageDefenseCandidates[0] : null
+  const thesisProgrammedView = thesisStageDefense
+    ? (() => {
+      const kind = thesisStageDefense.tipo_display || 'Defensa'
+      if (thesisStageDefense.estado === 'EN_CURSO') return { title: `Gestionar y finalizar ${kind}`, description: 'La defensa está en curso. Ábrela para registrar el resultado.' }
+      if (thesisStageDefense.estado === 'SUSPENDIDA') return { title: `${kind} suspendida`, description: 'Ábrela para reprogramarla o cancelarla.' }
+      return { title: `Continuar ${kind} programada`, description: `Programada para el ${formatDocumentDate(thesisStageDefense.fecha_programada).replace(/\.$/, '')}. Ábrela para registrar el resultado o reprogramarla.` }
+    })()
+    : null
   // El servidor sigue diciendo "verifica las precondiciones para programar" aunque la defensa de
   // perfil de esta etapa ya existe: ese mensaje ya no corresponde y no se muestra.
-  const staleProgrammingMessage = Boolean(profileDefense || programmedDefenseView) && orientation?.operacion === 'PROGRAMAR_EVENTO'
+  const staleProgrammingMessage = (Boolean(profileDefense || programmedDefenseView) && orientation?.operacion === 'PROGRAMAR_EVENTO')
+    || Boolean(thesisProgrammedView)
   const profileDefenseAction = profileDefense ? {
     codigo: 'CONSULTAR_DEFENSA_PERFIL',
     titulo: profileDefense.estado === 'PROGRAMADA'
@@ -458,14 +477,15 @@ export function OperationalSummary({ directedConclusion, onConcludeDirected, cie
       <Button className="mt-3" type="button" onClick={onCompleteAuthorities}>{effectiveOrientation?.siguiente_accion?.accion_label || 'Completar autoridades'}</Button>
     </section> : visibleOrientationAction ? <section className="expediente-next" aria-labelledby="next-action-title" data-personal-action={personalDocumentAction || undefined}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{programmedDefenseView?.title || tribunalAssignment?.title || visibleNextActionTitle}</p><p className="mt-1 text-sm">{programmedDefenseView?.description || tribunalAssignment?.description || nextAction.descripcion}</p></div>
-        {nextAction.estado && !programmedDefenseView && (nextAction.estado !== 'PENDIENTE' || isThesisGrade) && <StatusBadge value={nextAction.estado_display || nextAction.estado} positive={nextAction.estado === 'COMPLETADA'} compact />}
+        <div className="min-w-0"><h3 id="next-action-title" className="text-lg font-bold">Siguiente acción</h3><p className="mt-1 font-semibold">{programmedDefenseView?.title || thesisProgrammedView?.title || tribunalAssignment?.title || visibleNextActionTitle}</p><p className="mt-1 text-sm">{programmedDefenseView?.description || thesisProgrammedView?.description || tribunalAssignment?.description || nextAction.descripcion}</p></div>
+        {nextAction.estado && !programmedDefenseView && !thesisProgrammedView && (nextAction.estado !== 'PENDIENTE' || isThesisGrade) && <StatusBadge value={nextAction.estado_display || nextAction.estado} positive={nextAction.estado === 'COMPLETADA'} compact />}
       </div>
       {managesMissingPublicActors && <div className="expediente-next-detail"><p className="font-semibold">Para programar la Defensa Pública faltan:</p><ul className="mt-2 list-disc pl-5">{publicDefenseMissingRoles.map((role) => <li key={role}>{assignmentTypeLabel(role)}</li>)}</ul></div>}
       {nextAction.codigo === 'APROBAR_ETAPA' ? canApproveStage ? <>
         <Button type="button" className="mt-3" disabled={stageApproval.submitting} onClick={onApproveStage}>{stageApproval.submitting ? 'Procesando…' : (/^Ir a /.test(nextAction.accion_label || '') ? null : nextAction.accion_label) || (nextAction.titulo && nextAction.titulo.length <= 32 ? nextAction.titulo : null) || (currentStage?.nombre ? `Aprobar ${currentStage.nombre}` : null) || nextAction.titulo || `Aprobar ${formatCode(currentStage?.codigo) || 'etapa'}`}</Button>
         {pendingCurrentRequirements > 0 && <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">Hay {pendingCurrentRequirements} {pendingCurrentRequirements === 1 ? 'requisito pendiente' : 'requisitos pendientes'}. El backend realizará la validación definitiva al aprobar.</p>}
       </> : null
+        : thesisProgrammedView && onOpenDefense ? <button type="button" className="expediente-link" onClick={(event) => { event.preventDefault(); onOpenDefense(thesisStageDefense) }}>Ir a la defensa</button>
         : onlyProfileTutorPending && canManageAssignments ? <a className="expediente-link" href="#actores" onClick={canOpenProfileTutor ? (event) => { event.preventDefault(); event.stopPropagation(); onManageActors(event) } : undefined}>Ir a actores</a>
           : canResolveProfileDocuments ? <button type="button" disabled={documentActionPending} className="expediente-link" onClick={() => onOpenDocumentUpload(false, pendingProfileDocumentCodes)}>{nextAction.accion_label || 'Ir a documentos'}</button>
           : isThesisActaUpload ? canUpload && <Button type="button" disabled={documentActionPending} className="mt-3" onClick={() => onOpenDocumentUpload(false, 'ACTA_DEFENSA')}>Cargar Acta de Defensa</Button>

@@ -805,6 +805,52 @@ describe('ExpedientePage · Tesis de Grado', () => {
       expect(postulacionesService.registrarAsistenciaDefensa).not.toHaveBeenCalled()
     })
 
+    const programmedThematic = (overrides = {}) => {
+      const stage = { id: 211, codigo: 'TEMATICA_TESIS', nombre: 'Temática de Tesis', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+      const orientation = { mensaje: 'Completa la composición del tribunal y la evaluación de la temática.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar defensa', descripcion: 'La defensa está programada y debe gestionarse desde la sección de defensas.', estado: 'PENDIENTE', destino: '#defensas', accion_label: 'Ir a defensas' } }
+      const defense = {
+        id: 213, postulacion: 7, postulacion_modalidad_codigo: 'TESIS_GRADO', tipo_evento: 'DEFENSA_TEMATICA',
+        tipo_display: 'Defensa de temática', seguimiento_etapa: 211, numero_intento: 1, estado: 'PROGRAMADA', estado_display: 'Programada',
+        fecha_programada: '2026-10-25T14:00:00Z', lugar: 'Sala', modalidad_display: 'Presencial',
+        etapa_codigo: 'TEMATICA_TESIS', etapa_nombre: 'Temática de Tesis', participantes: [], composicion_formal: [],
+        composicion_formal_validacion: { cumple: true, conflictos_identidad: [], requisitos: [] },
+        evaluaciones: [], resultado_consolidado: null, ...overrides,
+      }
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('TEMATICA_TESIS', orientation, { flujo: { ...thesisResponseFor('TEMATICA_TESIS', orientation).flujo, etapas: [stage], etapa_actual: stage } }))
+      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defense] })
+      postulacionesService.obtenerDefensa.mockResolvedValue(defense)
+      return defense
+    }
+
+    it('presenta la defensa de temática programada en el Resumen y la abre directamente', async () => {
+      programmedThematic()
+      renderThesis()
+      const summary = (await screen.findByText('Continuar Defensa de temática programada')).closest('section')
+      expect(within(summary).getByText(/^Programada para el /)).toBeInTheDocument()
+      expect(within(summary).queryByText('Pendiente')).not.toBeInTheDocument()
+      expect(screen.queryByText('Completa la composición del tribunal y la evaluación de la temática.')).not.toBeInTheDocument()
+      await userEvent.click(within(summary).getByRole('button', { name: 'Ir a la defensa' }))
+      expect(await screen.findByRole('dialog', { name: 'Detalle de defensa' })).toBeInTheDocument()
+    })
+
+    it('no permite registrar el resultado antes de la fecha programada', async () => {
+      programmedThematic({ fecha_programada: '2099-11-30T19:00:00Z' })
+      renderThesis('defensas')
+      await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+      expect(screen.queryByRole('heading', { name: 'Correcciones posteriores a Defensa Privada' })).not.toBeInTheDocument()
+      const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+      expect(within(detail).getByRole('button', { name: 'Registrar resultado y finalizar' })).toBeDisabled()
+      expect(within(detail).getByText(/^Podrás registrar el resultado desde el /)).toBeInTheDocument()
+    })
+
+    it('muestra las correcciones posteriores a Defensa Privada recién desde esa etapa', async () => {
+      const orientation = { mensaje: 'Gestiona la Defensa Privada.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar defensa', estado: 'DISPONIBLE', destino: '#defensas' } }
+      postulacionesService.obtenerExpediente.mockResolvedValue(thesisResponseFor('DEFENSA_PRIVADA', orientation))
+      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 0, next: null, previous: null, results: [] })
+      renderThesis('defensas')
+      expect(await screen.findByRole('heading', { name: 'Correcciones posteriores a Defensa Privada' })).toBeInTheDocument()
+    })
+
     it('usa resultado directo cualitativo para Defensa de Perfil de Tesis', async () => {
       const orientation = { mensaje: 'Registra el resultado del Perfil.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar defensa', estado: 'DISPONIBLE', destino: '#defensas' } }
       const defense = {

@@ -36,6 +36,12 @@ export default function ProjectGradeDirectResult({ defense, canManage, onChanged
   const needsNote = noteTypes.has(eventType)
   const needsResult = qualitativeTypes.has(eventType)
   const compositionValid = !thesisGrade || compositionValidation?.cumple === true
+  // El servidor rechaza el resultado antes de la fecha y hora programadas: se avisa desde cuándo.
+  const scheduledAt = defense.fecha_programada ? new Date(defense.fecha_programada) : null
+  const notYetDue = Boolean(scheduledAt) && !Number.isNaN(scheduledAt.getTime()) && scheduledAt.getTime() > Date.now()
+  const scheduledLabel = notYetDue
+    ? scheduledAt.toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(/\.$/, '')
+    : ''
   const weight = eventType === 'DEFENSA_PRIVADA' ? 30 : 70
   const numericConfig = defense.configuracion_numerica || {}
   const selectedSemantics = thesisGrade ? (numericConfig.semantica_nota || 'BRUTA_100') : 'BRUTA_100'
@@ -48,7 +54,7 @@ export default function ProjectGradeDirectResult({ defense, canManage, onChanged
 
   const submit = async (event) => {
     event.preventDefault()
-    if (submitting || !compositionValid) return
+    if (submitting || !compositionValid || notYetDue) return
     const elements = event.currentTarget.elements
     const payload = {
       resultado: needsResult ? elements.resultado?.value || existingEvaluation?.resultado_cualitativo || '' : '',
@@ -96,7 +102,8 @@ export default function ProjectGradeDirectResult({ defense, canManage, onChanged
       {compositionValidation?.requisitos?.filter((item) => !item.cumplido).map((item) => <p key={item.cargo} className="mt-1">{item.cargo}: {item.actual} de {item.minimo} asignaciones distintas.</p>)}
     </div>}
     {existingEvaluation && <p className="mt-3 rounded-md border p-3 text-sm">Ya existe una evaluación consensuada. Esta operación la finalizará y consolidará sin registrar otra.</p>}
-    {!formOpen && canManage && <Button className="mt-3" disabled={!compositionValid} onClick={() => setFormOpen(true)}>{existingEvaluation ? 'Finalizar y consolidar resultado existente' : 'Registrar resultado y finalizar'}</Button>}
+    {!formOpen && canManage && <Button className="mt-3" disabled={!compositionValid || notYetDue} onClick={() => setFormOpen(true)}>{existingEvaluation ? 'Finalizar y consolidar resultado existente' : 'Registrar resultado y finalizar'}</Button>}
+    {!formOpen && canManage && notYetDue && <p className="mt-2 text-sm">Podrás registrar el resultado desde el {scheduledLabel}.</p>}
     {!canManage && <p className="mt-3 text-sm">Se requiere permiso administrativo para registrar el resultado.</p>}
     {formOpen && compositionValid && <form className="mt-4 space-y-4" onSubmit={submit}>
       {!existingEvaluation && needsResult && <label className="form-label">Resultado

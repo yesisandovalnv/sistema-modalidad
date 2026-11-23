@@ -1971,7 +1971,11 @@ export default function ExpedientePage() {
     onUpdate={openTribunalReportUpdate}
     onUploadEvidence={openTribunalEvidenceUpload}
   />
-  const correctionSection = <CorrectionConfirmations postulacion={id} modalidadCodigo={detalle.modalidad_detalle?.codigo} defenses={defenses} assignments={activeActors} canManage={canManageTribunalReports} onChanged={() => { setDocumentsRevision((value) => value + 1); setDefensesRevision((value) => value + 1); setRevision((value) => value + 1) }} />
+  // Tesis: las correcciones posteriores a la Defensa Privada se muestran recién desde esa defensa.
+  const correctionsReached = !isThesisGrade || isConcluded
+    || ['DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(currentStage?.codigo)
+    || (defenses.data?.results || []).some((item) => item.tipo_evento === 'DEFENSA_PRIVADA' && item.estado !== 'CANCELADA' && item.activo !== false)
+  const correctionSection = correctionsReached && <CorrectionConfirmations postulacion={id} modalidadCodigo={detalle.modalidad_detalle?.codigo} defenses={defenses} assignments={activeActors} canManage={canManageTribunalReports} onChanged={() => { setDocumentsRevision((value) => value + 1); setDefensesRevision((value) => value + 1); setRevision((value) => value + 1) }} />
   const academicResultSection = isAcademicExcellence ? (
     excelencia ? <ExcelenciaAcademica postulacion={detalle.id} excelencia={excelencia} etapaCodigo={currentStage?.codigo} canManage={canManageApplications} concluida={isConcluded} conclusionAprobada={Boolean(academicExcellenceResult)} resultView onChanged={() => { setExcelenciaRevision((value) => value + 1); setRevision((value) => value + 1); setHistoryRevision((value) => value + 1) }} />
       : <Card><p role="status">El resultado de Excelencia Académica todavía no está disponible. Consulta la sección de modalidad.</p></Card>
