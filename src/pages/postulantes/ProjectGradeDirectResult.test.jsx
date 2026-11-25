@@ -35,6 +35,64 @@ describe('ProjectGradeDirectResult', () => {
     expect(onCompleted).toHaveBeenCalledWith(updated)
   })
 
+  it('muestra el error del POST de Trabajo Dirigido y no confirma el guardado', async () => {
+    const defense = { id: 71, tipo_evento: 'DEFENSA_PRIVADA', estado: 'PROGRAMADA', evaluaciones: [], postulacion_modalidad_codigo: 'TRABAJO_DIRIGIDO' }
+    const onChanged = vi.fn()
+    const onCompleted = vi.fn()
+    postulacionesService.registrarResultadoDirectoDefensa.mockRejectedValue({ message: 'La composición formal no es válida.' })
+    render(<ProjectGradeDirectResult defense={defense} canManage trabajoDirigidoGrade compositionValidation={{ cumple: true }} onChanged={onChanged} onCompleted={onCompleted} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar resultado y finalizar' }))
+    fireEvent.change(screen.getByLabelText(/Nota bruta/), { target: { value: '80' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar resultado' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('La composición formal no es válida.')
+    expect(postulacionesService.registrarResultadoDirectoDefensa).toHaveBeenCalledWith(
+      71, { resultado: 'SUFICIENTE', observaciones: '', nota: '80' }, expect.any(AbortSignal), { includeFieldErrors: true, includeBackendMessage: true },
+    )
+    expect(onChanged).not.toHaveBeenCalled()
+    expect(onCompleted).not.toHaveBeenCalled()
+  })
+
+  it('confirma Trabajo Dirigido cuando el POST y la lectura posterior terminan bien', async () => {
+    const defense = { id: 73, tipo_evento: 'DEFENSA_PRIVADA', estado: 'PROGRAMADA', evaluaciones: [], postulacion_modalidad_codigo: 'TRABAJO_DIRIGIDO' }
+    const updated = { ...defense, estado: 'FINALIZADA', resultado_consolidado: { nota_numerica: '80.00', ponderacion: '30.00' } }
+    const onChanged = vi.fn().mockResolvedValue(undefined)
+    const onCompleted = vi.fn()
+    const onRefreshError = vi.fn()
+    postulacionesService.registrarResultadoDirectoDefensa.mockResolvedValue(updated)
+    render(<ProjectGradeDirectResult defense={defense} canManage trabajoDirigidoGrade compositionValidation={{ cumple: true }} onChanged={onChanged} onCompleted={onCompleted} onRefreshError={onRefreshError} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar resultado y finalizar' }))
+    fireEvent.change(screen.getByLabelText(/Nota bruta/), { target: { value: '80' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar resultado' }))
+
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledWith(updated))
+    expect(onChanged).toHaveBeenCalledWith(updated)
+    expect(onRefreshError).not.toHaveBeenCalled()
+    expect(postulacionesService.registrarResultadoDirectoDefensa).toHaveBeenCalledTimes(1)
+  })
+
+  it('conserva la confirmación de Trabajo Dirigido cuando falla la lectura posterior', async () => {
+    const defense = { id: 72, tipo_evento: 'DEFENSA_PRIVADA', estado: 'PROGRAMADA', evaluaciones: [], postulacion_modalidad_codigo: 'TRABAJO_DIRIGIDO' }
+    const updated = { ...defense, estado: 'FINALIZADA', resultado_consolidado: { nota_numerica: '80.00', ponderacion: '30.00' } }
+    const onChanged = vi.fn().mockRejectedValue(new Error('No se pudo cargar el expediente.'))
+    const onCompleted = vi.fn()
+    const onRefreshError = vi.fn()
+    postulacionesService.registrarResultadoDirectoDefensa.mockResolvedValue(updated)
+    render(<ProjectGradeDirectResult defense={defense} canManage trabajoDirigidoGrade compositionValidation={{ cumple: true }} onChanged={onChanged} onCompleted={onCompleted} onRefreshError={onRefreshError} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar resultado y finalizar' }))
+    fireEvent.change(screen.getByLabelText(/Nota bruta/), { target: { value: '80' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar resultado' }))
+
+    await waitFor(() => expect(onRefreshError).toHaveBeenCalledWith(expect.objectContaining({ message: 'No se pudo cargar el expediente.' })))
+    expect(onCompleted).toHaveBeenCalledWith(updated)
+    expect(onChanged).toHaveBeenCalledWith(updated)
+    expect(postulacionesService.registrarResultadoDirectoDefensa).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('envía la escala específica elegida para Tesis Privada', async () => {
     const defense = {
       id: 51, tipo_evento: 'DEFENSA_PRIVADA', estado: 'PROGRAMADA', evaluaciones: [],

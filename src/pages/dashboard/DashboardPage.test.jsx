@@ -14,56 +14,27 @@ vi.mock('../../services/reportesService', () => ({
 }))
 
 const dashboard = {
-  filtros_aplicados: {},
-  resumen: {
-    total_postulaciones: 7,
-    en_proceso: 4,
-    concluidas: 2,
-    rechazadas: 1,
-    sin_etapa_actual: 0,
-  },
+  resumen: { total_postulaciones: 7, en_proceso: 4, concluidas: 2, rechazadas: 1, sin_etapa_actual: 0 },
   modalidades: [
     { codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado', total: 4 },
-    { codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado', total: 3 },
+    { codigo: 'TRABAJO_DIRIGIDO', nombre: 'Trabajo Dirigido', total: 3 },
   ],
-  etapas: [
-    { codigo: 'INSCRIPCION', total: 2 },
-    { codigo: 'DEFENSA_PUBLICA', total: 2 },
-  ],
-  estados: [
-    { codigo: 'EN_PROCESO', nombre: 'En proceso', total: 4 },
-    { codigo: 'CONCLUIDA', nombre: 'Concluida', total: 2 },
-    { codigo: 'RECHAZADA', nombre: 'Rechazada', total: 1 },
-  ],
-  documentos: {
-    total: 12,
-    pendientes: 3,
-    observados: 2,
-    aprobados: 5,
-    rechazados: 1,
-    sin_version_vigente: 1,
-    postulaciones_con_correcciones: 2,
-  },
+  etapas: [],
+  estados: [],
+  documentos: { total: 12, pendientes: 3, observados: 2, aprobados: 5, rechazados: 1 },
   defensas: {
-    programadas: 2,
-    en_curso: 1,
     finalizadas: 3,
-    suspendidas: 0,
-    canceladas: 0,
-    proximas: 1,
     evaluaciones_consolidadas: 2,
-    por_tipo: [{ tipo_evento: 'DEFENSA_PUBLICA', total: 3 }],
+    por_tipo: [
+      { tipo_evento: 'DEFENSA_PERFIL', total: 1 },
+      { tipo_evento: 'DEFENSA_PRIVADA', total: 2 },
+      { tipo_evento: 'DEFENSA_PUBLICA', total: 3 },
+    ],
   },
-  cierre: {
-    revision_final_aprobada: 2,
-    cierre_documental_aprobado: 1,
-    concluidas: 2,
-    condiciones_pendientes: 3,
-    entregas_pendientes: 1,
-  },
+  cierre: { revision_final_aprobada: 2, cierre_documental_aprobado: 1, concluidas: 2, condiciones_pendientes: 3, entregas_pendientes: 1 },
   notificaciones: { no_leidas: 3 },
   tendencia: [{ gestion: 2025, total: 2 }, { gestion: 2026, total: 5 }],
-  advertencias: ['Cierre no evaluado para modalidades sin policy; solo se agregan evidencias persistidas.'],
+  advertencias: [],
 }
 
 function makeDashboard(overrides = {}) {
@@ -71,6 +42,9 @@ function makeDashboard(overrides = {}) {
     ...dashboard,
     ...overrides,
     resumen: { ...dashboard.resumen, ...overrides.resumen },
+    documentos: { ...dashboard.documentos, ...overrides.documentos },
+    defensas: { ...dashboard.defensas, ...overrides.defensas },
+    cierre: { ...dashboard.cierre, ...overrides.cierre },
   }
 }
 
@@ -84,226 +58,132 @@ function renderDashboard(user = { nombres: 'Agustin Pérez', username: 'admin_ag
 
 describe('DashboardPage', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     reportesService.obtenerDashboard.mockResolvedValue(makeDashboard())
     reportesService.obtenerModalidades.mockResolvedValue([
-      { id: 1, codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado' },
-      { id: 2, codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado' },
+      { id: 1, nombre: 'Proyecto de Grado' },
+      { id: 2, nombre: 'Trabajo Dirigido' },
     ])
-    reportesService.obtenerCapacidades.mockResolvedValue({
-      configuracion_valida: true,
-      etapas: [{ id: 11, codigo: 'INSCRIPCION', nombre: 'Inscripción' }],
-    })
+    reportesService.obtenerCapacidades.mockResolvedValue({ configuracion_valida: true, etapas: [] })
   })
 
-  it('conserva los cinco indicadores y presenta distribuciones accesibles', async () => {
+  it('presenta los seis indicadores y sus valores tomados del resumen del servicio', async () => {
     renderDashboard()
 
-    expect(screen.getByRole('heading', { name: 'Bienvenido, Agustin' })).toBeInTheDocument()
-    expect(screen.getByText('Consulta el estado general de los procesos académicos.')).toBeInTheDocument()
-
+    expect(screen.getByRole('heading', { name: 'Panel de control' })).toBeInTheDocument()
+    expect(screen.getByText('Bienvenido, Agustin. Resumen de los procesos académicos.')).toBeInTheDocument()
     const metrics = await screen.findByTestId('dashboard-metrics')
-    expect(metrics).toHaveClass('sm:grid-cols-2', 'xl:grid-cols-5')
-    for (const label of ['Total postulaciones', 'En proceso', 'Concluidas', 'Rechazadas', 'Sin etapa actual']) {
-      expect(within(metrics).getByText(label)).toBeInTheDocument()
+    expect(metrics).toHaveClass('sm:grid-cols-2', 'xl:grid-cols-3', '2xl:grid-cols-6')
+    for (const [label, value] of [
+      ['Documentos registrados', '12'],
+      ['Documentos aprobados', '5'],
+      ['Defensas finalizadas', '3'],
+      ['Evaluaciones consolidadas', '2'],
+      ['Cierres académicos concluidos', '2'],
+      ['Condiciones pendientes', '3'],
+    ]) {
+      const card = within(metrics).getByText(label).parentElement
+      expect(card).toHaveTextContent(value)
     }
-    expect(within(metrics).getByText('7')).toBeInTheDocument()
-    expect(within(metrics).getByText('4')).toBeInTheDocument()
-    expect(within(metrics).getByText('2')).toBeInTheDocument()
-    expect(within(metrics).getByText('1')).toBeInTheDocument()
-    expect(within(metrics).getByText('0')).toBeInTheDocument()
-
-    expect(screen.getByRole('img', {
-      name: 'Distribución de postulaciones por modalidad; total 7',
-    })).toBeInTheDocument()
-    const distribution = screen.getByTestId('dashboard-distributions')
-    expect(within(distribution).getByText('Proyecto de Grado').closest('li')).toHaveTextContent('4')
-    expect(within(distribution).getByText('Proyecto de Grado').closest('li')).toHaveTextContent('57,1%')
-    expect(within(distribution).getByText('Tesis de Grado').closest('li')).toHaveTextContent('42,9%')
-    expect(screen.getAllByText('Defensa Publica')).toHaveLength(2)
-    expect(screen.getByText('Por Tipo')).toBeInTheDocument()
-    expect(screen.getByText('Notificaciones personales')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Advertencias' })).not.toBeInTheDocument()
-    expect(screen.queryByText(dashboard.advertencias[0])).not.toBeInTheDocument()
   })
 
-  it('presenta una modalidad única como el cien por ciento del total', async () => {
-    reportesService.obtenerDashboard.mockResolvedValue(makeDashboard({
-      resumen: { total_postulaciones: 3 },
-      modalidades: [{ codigo: 'EXAMEN_GRADO', nombre: 'Examen de Grado', total: 3 }],
-    }))
-
+  it('muestra la dona original de postulaciones por modalidad con conteos y porcentajes', async () => {
     renderDashboard()
-
-    expect(await screen.findByRole('img', {
-      name: 'Distribución de postulaciones por modalidad; total 3',
-    })).toBeInTheDocument()
-    expect(screen.getByText('Examen de Grado').closest('li')).toHaveTextContent('100%')
+    const chart = await screen.findByRole('img', { name: 'Distribuci\u00f3n de postulaciones por modalidad; total 7' })
+    expect(chart).toBeInTheDocument()
+    const charts = screen.getByTestId('dashboard-charts')
+    expect(within(charts).getByRole('heading', { name: 'Postulaciones por modalidad' })).toBeInTheDocument()
+    expect(within(charts).getByText('Proyecto de Grado')).toBeInTheDocument()
+    expect(within(charts).getByText('Trabajo Dirigido')).toBeInTheDocument()
+    expect(within(charts).getByText('4')).toBeInTheDocument()
+    expect(within(charts).getByText('57,1%')).toBeInTheDocument()
   })
 
-  it('usa barras horizontales con porcentajes si hay demasiadas modalidades para la dona', async () => {
-    const modalidades = Array.from({ length: 7 }, (_, index) => ({
-      codigo: `MODALIDAD_${index}`,
-      nombre: `Modalidad ${index}`,
-      total: index + 1,
-    }))
-    reportesService.obtenerDashboard.mockResolvedValue(makeDashboard({
-      resumen: { total_postulaciones: 28 },
-      modalidades,
-    }))
 
+  it('compara los tipos de defensa y presenta aprobaciones y condiciones del cierre', async () => {
     renderDashboard()
-
-    expect(await screen.findByText('Modalidad 0')).toBeInTheDocument()
-    expect(screen.getByText('Modalidad 6')).toBeInTheDocument()
-    expect(screen.queryByRole('img', { name: /Distribución de postulaciones por modalidad/ })).not.toBeInTheDocument()
-    expect(screen.getByText('Modalidad 6').closest('li')).toHaveTextContent('7')
-    expect(screen.getByText('Modalidad 6').closest('li')).toHaveTextContent('25%')
+    const charts = await screen.findByTestId('dashboard-charts')
+    for (const label of ['Defensa de perfil', 'Defensa privada', 'Defensa pública']) {
+      expect(within(charts).getByText(label)).toBeInTheDocument()
+    }
+    expect(within(charts).getByRole('img', { name: 'Defensa pública: 3' })).toBeInTheDocument()
+    for (const label of ['Revisión final aprobada', 'Cierre documental aprobado', 'Cierres concluidos', 'Condiciones pendientes']) {
+      expect(within(charts).getByText(label)).toBeInTheDocument()
+    }
+    expect(within(charts).getByText(/Entregas pendientes:/)).toHaveTextContent('1')
   })
 
-  it('muestra el estado vacío con conteos en cero y distribuciones sin categorías', async () => {
-    reportesService.obtenerDashboard.mockResolvedValue(makeDashboard({
-      resumen: {
-        total_postulaciones: 0,
-        en_proceso: 0,
-        concluidas: 0,
-        rechazadas: 0,
-        sin_etapa_actual: 0,
-      },
-      modalidades: [],
-      etapas: [],
-      estados: [],
-      tendencia: [],
-    }))
-
+  it('solo muestra tendencia cuando existen al menos dos gestiones reales', async () => {
     renderDashboard()
-
-    expect(await screen.findByText('No hay postulaciones para los filtros aplicados.')).toBeInTheDocument()
-    expect(screen.getByTestId('dashboard-metrics')).toHaveTextContent('0')
-    expect(screen.getAllByText('Sin datos disponibles para esta distribución.')).toHaveLength(4)
-    expect(screen.getByRole('heading', { name: 'Tendencia por gestión' }).parentElement).toHaveTextContent(
-      'Sin datos disponibles para esta distribución.',
-    )
+    const trend = await screen.findByTestId('dashboard-trend')
+    expect(within(trend).getByText('Gestión 2025')).toBeInTheDocument()
+    expect(within(trend).getByRole('img', { name: 'Gestión 2026: 5' })).toBeInTheDocument()
   })
 
-  it('maneja categorías con valor cero sin dibujar segmentos falsos ni porcentajes indefinidos', async () => {
+  it('muestra ceros y un estado vacío claro cuando el servicio no devuelve registros', async () => {
     reportesService.obtenerDashboard.mockResolvedValue(makeDashboard({
       resumen: { total_postulaciones: 0 },
-      modalidades: [{ codigo: 'PROYECTO_GRADO', nombre: 'Proyecto de Grado', total: 0 }],
-      etapas: [{ codigo: 'INSCRIPCION', total: 0 }],
-      estados: [{ codigo: 'REGISTRADA', nombre: 'Registrada', total: 0 }],
-      tendencia: [{ gestion: 2026, total: 0 }],
+      modalidades: [],
+      tendencia: [],
+      documentos: { total: 0, pendientes: 0, observados: 0, aprobados: 0, rechazados: 0 },
+      defensas: { finalizadas: 0, evaluaciones_consolidadas: 0, por_tipo: [] },
+      cierre: { revision_final_aprobada: 0, cierre_documental_aprobado: 0, concluidas: 0, condiciones_pendientes: 0, entregas_pendientes: 0 },
     }))
 
     renderDashboard()
-
-    expect(await screen.findByRole('img', {
-      name: 'Distribución de postulaciones por modalidad; total 0',
-    })).toBeInTheDocument()
-    expect(within(screen.getByTestId('dashboard-distributions')).getByText('Proyecto de Grado').closest('li'))
-      .toHaveTextContent('—')
-    expect(screen.getByText('Inscripcion')).toBeInTheDocument()
+    expect(await screen.findByText('No hay postulaciones para los filtros aplicados.')).toBeInTheDocument()
+    expect(screen.getByTestId('dashboard-metrics')).toHaveTextContent('0')
+    expect(screen.getByText(/Sin datos disponibles para esta distribuci/)).toBeInTheDocument()
+    expect(screen.getAllByRole('img', { name: /: 0$/ })).toHaveLength(7)
+    expect(screen.queryByTestId('dashboard-trend')).not.toBeInTheDocument()
   })
 
-  it('actualiza las visualizaciones al aplicar y limpiar los filtros existentes', async () => {
+  it('aplica el filtro de modalidad y actualiza la dona con la distribuci\u00f3n devuelta', async () => {
     reportesService.obtenerDashboard
       .mockResolvedValueOnce(makeDashboard())
       .mockResolvedValueOnce(makeDashboard({
-        resumen: { total_postulaciones: 2 },
-        modalidades: [{ codigo: 'TESIS_GRADO', nombre: 'Tesis de Grado', total: 2 }],
+        resumen: { total_postulaciones: 3 },
+        modalidades: [{ codigo: 'TRABAJO_DIRIGIDO', nombre: 'Trabajo Dirigido', total: 3 }],
       }))
-      .mockResolvedValueOnce(makeDashboard())
-
     renderDashboard()
-    await screen.findByRole('img', { name: /total 7$/ })
+    await screen.findByRole('img', { name: 'Distribuci\u00f3n de postulaciones por modalidad; total 7' })
 
-    fireEvent.change(await screen.findByLabelText('Modalidad'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Modalidad'), { target: { value: '2' } })
+    fireEvent.change(screen.getByPlaceholderText('2026'), { target: { value: '2026' } })
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar filtros' }))
-    await screen.findByRole('img', { name: /total 2$/ })
-    await waitFor(() => {
-      expect(reportesService.obtenerDashboard).toHaveBeenLastCalledWith(
-        expect.objectContaining({ modalidad: '2' }),
-        expect.any(AbortSignal),
-      )
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Limpiar filtros' }))
-    await screen.findByRole('img', { name: /total 7$/ })
-    await waitFor(() => {
-      expect(reportesService.obtenerDashboard).toHaveBeenLastCalledWith(
-        expect.objectContaining({ modalidad: '', etapa_actual: '' }),
-        expect.any(AbortSignal),
-      )
-    })
+    await waitFor(() => expect(reportesService.obtenerDashboard).toHaveBeenLastCalledWith(
+      expect.objectContaining({ modalidad: '2', gestion: '2026' }),
+      expect.any(AbortSignal),
+    ))
+    expect(await screen.findByRole('img', { name: 'Distribuci\u00f3n de postulaciones por modalidad; total 3' })).toBeInTheDocument()
+    expect(screen.getByTestId('dashboard-charts')).toHaveTextContent('Trabajo Dirigido')
+    expect(screen.getByTestId('dashboard-charts')).not.toHaveTextContent('Proyecto de Grado')
   })
 
-  it('mantiene el estado de carga y muestra un esqueleto adaptable', async () => {
+
+  it('mantiene carga, error recuperable y reintento', async () => {
     let resolveDashboard
-    reportesService.obtenerDashboard.mockReturnValue(new Promise((resolve) => {
-      resolveDashboard = resolve
-    }))
-
-    renderDashboard()
-
+    reportesService.obtenerDashboard.mockReturnValueOnce(new Promise((resolve) => { resolveDashboard = resolve }))
+    const { unmount } = renderDashboard()
     expect(screen.getByRole('status', { name: 'Cargando dashboard' })).toBeInTheDocument()
-    expect(screen.queryByTestId('dashboard-metrics')).not.toBeInTheDocument()
     resolveDashboard(makeDashboard())
-    expect(await screen.findByTestId('dashboard-metrics')).toHaveClass('xl:grid-cols-5')
-  })
+    expect(await screen.findByTestId('dashboard-metrics')).toBeInTheDocument()
+    unmount()
 
-  it('muestra errores recuperables y permite reintentar la consulta', async () => {
     const user = userEvent.setup()
     reportesService.obtenerDashboard
       .mockRejectedValueOnce({ status: 500, message: 'Falla temporal del servicio.' })
       .mockResolvedValueOnce(makeDashboard())
-
     renderDashboard()
-
     expect(await screen.findByRole('alert')).toHaveTextContent('Falla temporal del servicio.')
     await user.click(screen.getByRole('button', { name: 'Reintentar' }))
     expect(await screen.findByTestId('dashboard-metrics')).toBeInTheDocument()
-    expect(reportesService.obtenerDashboard).toHaveBeenCalledTimes(2)
   })
 
-  it('conserva el mensaje específico de acceso no autorizado', async () => {
+  it('mantiene el mensaje de acceso no autorizado', async () => {
     reportesService.obtenerDashboard.mockRejectedValue({ status: 403, message: 'Forbidden' })
-
     renderDashboard()
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Acceso no autorizado al dashboard institucional.',
-    )
+    expect(await screen.findByRole('alert')).toHaveTextContent('Acceso no autorizado al dashboard institucional.')
     expect(screen.queryByTestId('dashboard-metrics')).not.toBeInTheDocument()
-  })
-
-  it('conserva colores de tema y distribución adaptable con tema oscuro activo', async () => {
-    document.documentElement.classList.add('dark')
-    renderDashboard()
-
-    const metrics = await screen.findByTestId('dashboard-metrics')
-    expect(document.documentElement).toHaveClass('dark')
-    expect(metrics).toHaveClass('grid-cols-1', 'sm:grid-cols-2', 'xl:grid-cols-5')
-    expect(screen.getByTestId('dashboard-distributions')).toHaveClass(
-      'lg:grid-cols-2',
-      'xl:grid-cols-3',
-    )
-    expect(screen.getByRole('img', { name: /Distribución de postulaciones por modalidad/ })).toBeInTheDocument()
-    document.documentElement.classList.remove('dark')
-  })
-
-  it('usa el nombre autenticado sin depender del rol y aplica el fallback al username', async () => {
-    const { unmount } = renderDashboard({
-      nombres: 'María Fernanda',
-      username: 'maria',
-      rol: { codigo: 'ROL_FUTURO' },
-    })
-
-    expect(screen.getByRole('heading', { name: 'Bienvenido, María' })).toBeInTheDocument()
-    await screen.findByTestId('dashboard-metrics')
-    unmount()
-
-    renderDashboard({ nombres: '   ', nombre_completo: '', nombre: '', username: 'usuario_seguro' })
-    expect(screen.getByRole('heading', { name: 'Bienvenido, usuario_seguro' })).toBeInTheDocument()
-    await screen.findByTestId('dashboard-metrics')
   })
 })

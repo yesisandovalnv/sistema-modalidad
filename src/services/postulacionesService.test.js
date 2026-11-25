@@ -719,6 +719,13 @@ describe('postulacionesService', () => {
     })
   })
 
+  it('expone un mensaje seguro del backend en un fallo del resultado directo de Trabajo Dirigido', async () => {
+    apiClient.post.mockRejectedValue({ response: { status: 500, data: { detail: 'No se pudo consolidar el resultado institucional.' } } })
+    await expect(postulacionesService.registrarResultadoDirectoDefensa(
+      82, { nota: '80' }, undefined, { includeFieldErrors: true, includeBackendMessage: true },
+    )).rejects.toEqual({ status: 500, message: 'No se pudo consolidar el resultado institucional.' })
+  })
+
   it('consulta cierre y normaliza conflictos con campos funcionales', async () => {
     const signal = new AbortController().signal
     apiClient.get.mockResolvedValueOnce({ data: { concluida: false } })

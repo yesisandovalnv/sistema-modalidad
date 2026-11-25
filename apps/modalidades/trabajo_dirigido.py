@@ -103,7 +103,7 @@ class TrabajoDirigidoEventoPolicy(ProyectoGradoEventoPolicy):
 
         roles = ("TRIBUNAL", "PRESIDENTE", "SECRETARIO")
         identities = {
-            role: set(assignaciones.filter(tipo_participacion=role).values_list("usuario_id", flat=True))
+            role: set(asignaciones.filter(tipo_participacion=role).values_list("usuario_id", flat=True))
             for role in roles
         }
         roles_by_user = {}

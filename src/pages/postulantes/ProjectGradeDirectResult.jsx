@@ -6,7 +6,7 @@ const noteTypes = new Set(['DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'])
 const qualitativeTypes = new Set(['DEFENSA_TEMATICA', 'DEFENSA_PERFIL', 'DEFENSA_PRIVADA'])
 const evaluationTypes = { DEFENSA_TEMATICA: 'TEMATICA', DEFENSA_PERFIL: 'PERFIL', DEFENSA_PRIVADA: 'PRIVADA', DEFENSA_PUBLICA: 'PUBLICA' }
 
-export default function ProjectGradeDirectResult({ defense, canManage, onChanged, onCompleted, onClose, thesisGrade = false, diplomadoGrade = false, trabajoDirigidoGrade = false, compositionValidation }) {
+export default function ProjectGradeDirectResult({ defense, canManage, onChanged, onCompleted, onClose, onRefreshError, thesisGrade = false, diplomadoGrade = false, trabajoDirigidoGrade = false, compositionValidation }) {
   const [formOpen, setFormOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -65,9 +65,27 @@ export default function ProjectGradeDirectResult({ defense, canManage, onChanged
     setSubmitting(true)
     setError('')
     try {
-      const updated = thesisGrade
-        ? await postulacionesService.registrarResultadoDirectoDefensa(defense.id, payload, request.signal, { includeFieldErrors: true })
-        : await postulacionesService.registrarResultadoDirectoDefensa(defense.id, payload, request.signal)
+      const updated = trabajoDirigidoGrade
+        ? await postulacionesService.registrarResultadoDirectoDefensa(defense.id, payload, request.signal, {
+          includeFieldErrors: true,
+          includeBackendMessage: true,
+        })
+        : thesisGrade
+          ? await postulacionesService.registrarResultadoDirectoDefensa(defense.id, payload, request.signal, { includeFieldErrors: true })
+          : await postulacionesService.registrarResultadoDirectoDefensa(defense.id, payload, request.signal)
+      if (trabajoDirigidoGrade) {
+        // A successful response confirms that the backend's atomic operation
+        // registered, finalized, and consolidated the result. Keep that
+        // confirmation separate from the follow-up expediente read.
+        onCompleted?.(updated)
+        setFormOpen(false)
+        try {
+          await onChanged(updated)
+        } catch (refreshError) {
+          onRefreshError?.(refreshError)
+        }
+        return
+      }
       await onChanged(updated)
       onCompleted?.(updated)
       setFormOpen(false)

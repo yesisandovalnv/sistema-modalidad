@@ -43,7 +43,10 @@ function backendFieldErrors(requestError) {
 
 export default function TrabajoDirigido({ postulacion, trabajo, etapaCodigo, canManage, onChanged, reportSuccess: controlledReportSuccess, onReportSuccess, conclusion, onConclude }) {
   const [institution, setInstitution] = useState(() => asInstitution(trabajo?.institucion))
+  const [savedInstitution, setSavedInstitution] = useState(() => trabajo?.institucion || null)
+  const [institutionFormOpen, setInstitutionFormOpen] = useState(() => !trabajo?.institucion)
   const [report, setReport] = useState(EMPTY_REPORT)
+  const [reportFormOpen, setReportFormOpen] = useState(false)
   const [institutionSubmitting, setInstitutionSubmitting] = useState(false)
   const [reportSubmitting, setReportSubmitting] = useState(false)
   const [institutionFeedback, setInstitutionFeedback] = useState({ error: '', success: '', fields: {} })
@@ -54,10 +57,15 @@ export default function TrabajoDirigido({ postulacion, trabajo, etapaCodigo, can
   const setReportSuccess = onReportSuccess ?? setLocalReportSuccess
 
   useEffect(() => {
-    if (trabajo?.institucion) setInstitution(asInstitution(trabajo.institucion))
+    if (trabajo?.institucion) {
+      setSavedInstitution(trabajo.institucion)
+      setInstitution(asInstitution(trabajo.institucion))
+      setInstitutionFormOpen(false)
+    }
   }, [trabajo?.institucion])
 
   if (!trabajo) return null
+  const institutionRecord = trabajo.institucion || savedInstitution
 
   const updateInstitution = (event) => {
     const { name, type, checked, value } = event.target
@@ -82,7 +90,10 @@ export default function TrabajoDirigido({ postulacion, trabajo, etapaCodigo, can
     setInstitutionSubmitting(true)
     setInstitutionFeedback({ error: '', success: '', fields: {} })
     try {
-      await postulacionesService.configurarInstitucionTrabajoDirigido(postulacion, institution)
+      const saved = await postulacionesService.configurarInstitucionTrabajoDirigido(postulacion, institution)
+      setSavedInstitution({ ...institution, ...saved })
+      setInstitution((current) => ({ ...current, institucion_nombre: saved?.institucion_nombre || current.institucion_nombre }))
+      setInstitutionFormOpen(false)
       await onChanged()
       setInstitutionFeedback({ error: '', success: 'Institución y supervisor guardados correctamente.', fields: {} })
     } catch (requestError) {
@@ -106,6 +117,7 @@ export default function TrabajoDirigido({ postulacion, trabajo, etapaCodigo, can
     try {
       await postulacionesService.registrarInformeTrabajoDirigido(postulacion, report)
       setReport(EMPTY_REPORT)
+      setReportFormOpen(false)
       setReportSuccess('Informe periódico registrado correctamente.')
       await onChanged()
     } catch (requestError) {
@@ -120,15 +132,15 @@ export default function TrabajoDirigido({ postulacion, trabajo, etapaCodigo, can
     <h2 className="text-xl font-bold">Trabajo Dirigido</h2>
     <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Práctica académico-laboral con institución, supervisión, perfil, documento final y defensas privada y pública.</p>
 
-    {trabajo.institucion && <dl className="mt-4 grid gap-3 rounded-lg border bg-white p-4 sm:grid-cols-2 dark:bg-slate-900">
-      <Info label="Institución" value={trabajo.institucion.institucion_nombre} />
-      <Info label="Tipo" value={`${trabajo.institucion.institucion_tipo} · ${trabajo.institucion.tipo_ejecucion}`} />
-      <Info label="Supervisor institucional" value={trabajo.institucion.supervisor_nombre} />
-      <Info label="Convenio declarado" value={trabajo.institucion.convenio_requerido ? (trabajo.institucion.convenio_vigente ? 'Vigente' : 'Pendiente') : 'No requerido'} />
-      {trabajo.institucion.convenio_requerido && <p className="text-xs text-slate-500 sm:col-span-2">La vigencia declarada no sustituye la presentación y aprobación del documento de convenio.</p>}
-    </dl>}
+    {institutionRecord && <><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span role="status" className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">Registrada</span>{canManage && ['INSCRIPCION', 'PERFIL_TRABAJO_DIRIGIDO', 'DESARROLLO_TRABAJO_DIRIGIDO'].includes(etapaCodigo) && !institutionFormOpen && <Button type="button" variant="secondary" onClick={() => setInstitutionFormOpen(true)}>Editar datos institucionales</Button>}</div><dl className="mt-2 grid gap-3 rounded-lg border bg-white p-4 sm:grid-cols-2 dark:bg-slate-900">
+      <Info label="Institución" value={institutionRecord.institucion_nombre} />
+      <Info label="Tipo" value={`${institutionRecord.institucion_tipo} · ${institutionRecord.tipo_ejecucion}`} />
+      <Info label="Supervisor institucional" value={institutionRecord.supervisor_nombre} />
+      <Info label="Convenio declarado" value={institutionRecord.convenio_requerido ? (institutionRecord.convenio_vigente ? 'Vigente' : 'Pendiente') : 'No requerido'} />
+      {institutionRecord.convenio_requerido && <p className="text-xs text-slate-500 sm:col-span-2">La vigencia declarada no sustituye la presentación y aprobación del documento de convenio.</p>}
+    </dl></>}
 
-    {canManage && ['INSCRIPCION', 'PERFIL_TRABAJO_DIRIGIDO', 'DESARROLLO_TRABAJO_DIRIGIDO'].includes(etapaCodigo) && <form className="mt-4 grid gap-3 rounded-lg border bg-white p-4 md:grid-cols-2 dark:bg-slate-900" onSubmit={saveInstitution} noValidate>
+    {canManage && ['INSCRIPCION', 'PERFIL_TRABAJO_DIRIGIDO', 'DESARROLLO_TRABAJO_DIRIGIDO'].includes(etapaCodigo) && (!institutionRecord || institutionFormOpen) && <form className="mt-4 grid gap-3 rounded-lg border bg-white p-4 md:grid-cols-2 dark:bg-slate-900" onSubmit={saveInstitution} noValidate>
       <div className="md:col-span-2"><h3 className="font-semibold">Institución y supervisor</h3><p className="mt-1 text-sm text-slate-500">Los campos marcados con * son obligatorios. El registro solo se confirma después de recibir la respuesta del servidor.</p></div>
       <Field label="Institución" required error={institutionFeedback.fields.institucion_nombre}><input name="institucion_nombre" value={institution.institucion_nombre} onChange={updateInstitution} className="mt-1 w-full rounded-lg border p-2" /></Field>
       <Field label="Supervisor institucional" required error={institutionFeedback.fields.supervisor_nombre}><input name="supervisor_nombre" value={institution.supervisor_nombre} onChange={updateInstitution} className="mt-1 w-full rounded-lg border p-2" /></Field>
@@ -150,12 +162,15 @@ export default function TrabajoDirigido({ postulacion, trabajo, etapaCodigo, can
       <Field label="Observaciones"><textarea name="observaciones" value={institution.observaciones} onChange={updateInstitution} className="mt-1 w-full rounded-lg border p-2" /></Field>
       <div className="md:col-span-2"><Button type="submit" disabled={institutionSubmitting}>{institutionSubmitting ? 'Guardando institución…' : 'Guardar institución'}</Button>{institutionFeedback.error && <p role="alert" className="mt-3 text-sm text-red-600">{institutionFeedback.error}</p>}{institutionFeedback.success && <p role="status" className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">{institutionFeedback.success}</p>}</div>
     </form>}
+    {institutionFeedback.success && !institutionFormOpen && <p role="status" className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">{institutionFeedback.success}</p>}
 
     <section className="mt-4 rounded-lg border bg-white p-4 dark:bg-slate-900"><h3 className="font-semibold">Informes periódicos de seguimiento</h3>
       <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Registrar aquí el seguimiento estructurado y cargar el documento “Informe periódico de supervisión” son requisitos independientes. El documento se gestiona en la pestaña Documentos.</p>
-      {trabajo.informes?.length ? <ul className="mt-3 space-y-2">{trabajo.informes.map((item) => <li key={item.id} className="rounded border p-3"><strong>{item.periodo}</strong><p className="text-sm text-slate-600">{item.descripcion_desempeno}</p></li>)}</ul> : <p className="mt-2 text-sm text-slate-500">No existen informes registrados.</p>}
-      {canManage && etapaCodigo === 'DESARROLLO_TRABAJO_DIRIGIDO' && !trabajo.institucion && <p className="mt-3 text-sm text-slate-500">El registro de informes se habilitará cuando el expediente confirme los datos institucionales guardados.</p>}
-      {canManage && etapaCodigo === 'DESARROLLO_TRABAJO_DIRIGIDO' && trabajo.institucion && <form className="mt-4 grid gap-3" onSubmit={saveReport}>
+      {trabajo.informes?.length ? <ul className="mt-3 space-y-2">{trabajo.informes.map((item) => <li key={item.id} className="rounded border p-3"><strong>{item.periodo}</strong><p className="text-sm text-slate-600">{item.descripcion_desempeno}</p>{item.evaluacion_cualitativa && <p className="mt-1 text-sm"><span className="font-medium">Evaluación cualitativa:</span> {item.evaluacion_cualitativa}</p>}{item.aporte_laboral && <p className="mt-1 text-sm"><span className="font-medium">Aporte laboral:</span> {item.aporte_laboral}</p>}{item.sugerencias_recomendaciones && <p className="mt-1 text-sm"><span className="font-medium">Sugerencias:</span> {item.sugerencias_recomendaciones}</p>}</li>)}</ul> : <div className="mt-2 rounded-lg border border-dashed p-4"><p className="font-medium">Todavía no hay informes periódicos registrados</p><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Estos informes documentan el seguimiento institucional durante el desarrollo del Trabajo Dirigido.</p></div>}
+      {canManage && etapaCodigo === 'DESARROLLO_TRABAJO_DIRIGIDO' && !institutionRecord && <p className="mt-3 text-sm text-slate-500">El registro de informes se habilitará cuando el expediente confirme los datos institucionales guardados.</p>}
+      {canManage && etapaCodigo === 'DESARROLLO_TRABAJO_DIRIGIDO' && institutionRecord && !reportFormOpen && <Button className="mt-3" type="button" onClick={() => setReportFormOpen(true)}>{trabajo.informes?.length ? 'Registrar nuevo informe' : 'Registrar primer informe'}</Button>}
+      {reportSuccess && !reportFormOpen && <p role="status" className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">{reportSuccess}</p>}
+      {canManage && etapaCodigo === 'DESARROLLO_TRABAJO_DIRIGIDO' && institutionRecord && reportFormOpen && <form className="mt-4 grid gap-3" onSubmit={saveReport}>
         <Field label="Periodo" required><input required name="periodo" value={report.periodo} onChange={updateReport} className="mt-1 w-full rounded-lg border p-2" /></Field>
         {Object.entries(REPORT_LABELS).map(([name, label]) => <Field key={name} label={label} required={name !== 'sugerencias_recomendaciones'}><textarea required={name !== 'sugerencias_recomendaciones'} name={name} value={report[name]} onChange={updateReport} className="mt-1 w-full rounded-lg border p-2" /></Field>)}
         <div><Button type="submit" disabled={reportSubmitting}>{reportSubmitting ? 'Registrando informe…' : 'Registrar informe'}</Button></div>

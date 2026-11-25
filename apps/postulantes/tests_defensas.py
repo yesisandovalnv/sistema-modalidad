@@ -1275,8 +1275,38 @@ class ApiDefensaTests(DefensaMixin,APITestCase):
         self.assertEqual(response.data["participantes"], [])
         self.assertEqual(response.data["resultado_consolidado"]["resultado_cualitativo"], "SUFICIENTE")
 
+    def test_api_trabajo_dirigido_flujo_no_falla_con_defensa_publica_actual(self):
+        event = self._trabajo_dirigido_defense("DEFENSA_PUBLICA")
+        SeguimientoEtapa.objects.filter(postulacion=self.post).update(
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA,
+        )
+        SeguimientoEtapa.objects.filter(
+            postulacion=self.post,
+            etapa__codigo__in=("PERFIL_TRABAJO_DIRIGIDO", "DEFENSA_PRIVADA"),
+        ).update(estado=SeguimientoEtapa.EstadoChoices.APROBADA)
+        SeguimientoEtapa.objects.filter(
+            postulacion=self.post,
+            etapa__codigo="DEFENSA_PUBLICA",
+        ).update(estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO)
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.get(f"/api/v1/postulaciones/{self.post.pk}/flujo/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["etapa_actual"]["codigo"], "DEFENSA_PUBLICA")
+        self.assertEqual(event.seguimiento_etapa.etapa.codigo, "DEFENSA_PUBLICA")
+
     def test_api_trabajo_dirigido_privada_registra_nota_30_70_sin_quorum(self):
         event = self._trabajo_dirigido_defense("DEFENSA_PRIVADA")
+        SeguimientoEtapa.objects.filter(postulacion=self.post).update(
+            estado=SeguimientoEtapa.EstadoChoices.APROBADA,
+        )
+        event.seguimiento_etapa.estado = SeguimientoEtapa.EstadoChoices.EN_PROCESO
+        event.seguimiento_etapa.save(update_fields=["estado"])
+        SeguimientoEtapa.objects.filter(
+            postulacion=self.post,
+            etapa__codigo="DEFENSA_PUBLICA",
+        ).update(estado=SeguimientoEtapa.EstadoChoices.PENDIENTE)
         self.client.force_authenticate(self.admin)
 
         response = self.client.post(
@@ -1285,8 +1315,16 @@ class ApiDefensaTests(DefensaMixin,APITestCase):
         )
 
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["resultado_consolidado"]["nota_numerica"], Decimal("80.00"))
-        self.assertEqual(response.data["resultado_consolidado"]["ponderacion"], Decimal("30.00"))
+        self.assertEqual(response.data["estado"], "FINALIZADA")
+        self.assertEqual(response.data["resultado_consolidado"]["nota_numerica"], "80.00")
+        self.assertEqual(response.data["resultado_consolidado"]["ponderacion"], "30.00")
+        self.assertEqual(event.evaluaciones.count(), 2)
+
+        detalle_response = self.client.get(f"/api/v1/postulaciones/{self.post.pk}/")
+        flujo_response = self.client.get(f"/api/v1/postulaciones/{self.post.pk}/flujo/")
+        self.assertEqual(detalle_response.status_code, 200, detalle_response.data)
+        self.assertEqual(flujo_response.status_code, 200, flujo_response.data)
+        self.assertEqual(flujo_response.data["etapa_actual"]["codigo"], "DEFENSA_PUBLICA")
 
     def test_api_trabajo_dirigido_rechaza_composicion_publica_incompleta_sin_cambiar_evento(self):
         event = self._trabajo_dirigido_defense()

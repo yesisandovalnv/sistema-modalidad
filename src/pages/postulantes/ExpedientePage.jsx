@@ -189,6 +189,8 @@ export default function ExpedientePage() {
   const registerDictamenOpener = useCallback((open) => { dictamenOpener.current = open }, [])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [directDefenseRefreshError, setDirectDefenseRefreshError] = useState('')
+  const [directDefenseRefreshing, setDirectDefenseRefreshing] = useState(false)
   const [revision, setRevision] = useState(0)
   const preserveExpedienteDuringMemorandumRefresh = useRef(false)
   const [closureRevision, setClosureRevision] = useState(0)
@@ -358,6 +360,7 @@ export default function ExpedientePage() {
 
   const load = useCallback(async (signal) => {
     const preserveCurrentView = preserveExpedienteDuringMemorandumRefresh.current
+    setDirectDefenseRefreshError('')
     if (!preserveCurrentView) setData(null)
     setLoading(true)
     setError('')
@@ -1687,6 +1690,18 @@ export default function ExpedientePage() {
     return expediente
   }
 
+  const retryDirectDefenseRefresh = async () => {
+    setDirectDefenseRefreshing(true)
+    try {
+      await refreshExpedienteFlow()
+      setDirectDefenseRefreshError('')
+    } catch (requestError) {
+      if (!requestError.canceled) setDirectDefenseRefreshError(requestError.message || 'No se pudo actualizar el expediente.')
+    } finally {
+      setDirectDefenseRefreshing(false)
+    }
+  }
+
   const refreshSelectedDefense = async (signalOrDefense = null, knownDefense = null) => {
     const returnedDefense = signalOrDefense?.id ? signalOrDefense : knownDefense
     const signal = returnedDefense ? undefined : signalOrDefense
@@ -1700,8 +1715,14 @@ export default function ExpedientePage() {
     }
     try {
       await refreshExpedienteFlow(signal)
-    } catch {
-      setRevision((value) => value + 1)
+      setDirectDefenseRefreshError('')
+    } catch (requestError) {
+      if (returnedDefense?.postulacion_modalidad_codigo === 'TRABAJO_DIRIGIDO'
+        && returnedDefense.tipo_evento === 'DEFENSA_PRIVADA') {
+        setDirectDefenseRefreshError(requestError.message || 'No se pudo actualizar el expediente.')
+      } else {
+        setRevision((value) => value + 1)
+      }
     }
     return updated
   }
@@ -2147,6 +2168,13 @@ export default function ExpedientePage() {
       </Card>
 
       {!isHistorical && <ExpedienteNav activeTab={activeTab} hasModalityTab={hasModalityTab} hasOutcomeTab={hasOutcomeTab} onActivate={(sectionId) => navigateToSection(sectionId)} />}
+      {directDefenseRefreshError && <div role="alert" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+        <p className="font-semibold">El resultado se guardó, pero no se pudo actualizar el expediente.</p>
+        <p className="mt-1">{directDefenseRefreshError}</p>
+        <Button type="button" variant="secondary" className="mt-3" disabled={directDefenseRefreshing} onClick={retryDirectDefenseRefresh}>
+          {directDefenseRefreshing ? 'Actualizando…' : 'Reintentar actualización'}
+        </Button>
+      </div>}
       <div id="panel-resumen" role="tabpanel" aria-labelledby="expediente-tab-resumen" data-expediente-panel="resumen" hidden={!isHistorical && activeTab !== 'resumen'}>
         {!isHistorical && <div id="resumen" className="scroll-mt-24">
           <OperationalSummary
@@ -2368,7 +2396,7 @@ export default function ExpedientePage() {
       {uploadDialog}
 
       {documentDetailDialog}
-      {selectedDefense && <ProtectedDefenseDetail defense={selectedDefense} quorum={quorum} nextAction={flujo.orientacion_etapa_actual?.siguiente_accion} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} onDefenseCompleted={() => { defenseCompletionPendingNavigation.current = true }} canManage={canManageDefenses} canEvaluate={canManageEvaluations} canManageDocuments={canReview} isProjectGrade={isProjectGrade} isThesisGrade={isThesisGrade} isDiplomadoGrade={isDiplomadoGrade} isTrabajoDirigido={isTrabajoDirigido} onParticipantsChanged={refreshSelectedDefense} onUploadProfileObservations={openProfileObservationUpload} onManageActors={openActorManagement} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
+      {selectedDefense && <ProtectedDefenseDetail defense={selectedDefense} quorum={quorum} nextAction={flujo.orientacion_etapa_actual?.siguiente_accion} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} onDefenseCompleted={() => { defenseCompletionPendingNavigation.current = true }} onDirectResultRefreshError={(refreshError) => setDirectDefenseRefreshError(refreshError.message || 'No se pudo actualizar el expediente.')} canManage={canManageDefenses} canEvaluate={canManageEvaluations} canManageDocuments={canReview} isProjectGrade={isProjectGrade} isThesisGrade={isThesisGrade} isDiplomadoGrade={isDiplomadoGrade} isTrabajoDirigido={isTrabajoDirigido} onParticipantsChanged={refreshSelectedDefense} onUploadProfileObservations={openProfileObservationUpload} onManageActors={openActorManagement} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
       {assignment && (assignment.context !== 'TESIS_DEFENSA_PUBLICA' || publicDefenseMissingRoles.length > 0) && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} activeTribunals={activeTribunals} onRetryActiveTribunals={() => setActiveTribunalsRevision((value) => value + 1)} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} allowedTypes={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? publicDefenseMissingRoles : detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO'] : detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO', 'DIRECTOR_INSTITUTO_INVESTIGACION'] : detalle.modalidad_detalle?.codigo === 'GRADUACION_VIA_DIPLOMADO' ? ['VICERRECTOR_POSGRADO', 'DECANO_FACULTAD', 'DIRECTOR_CARRERA', 'TRIBUNAL'] : detalle.modalidad_detalle?.codigo === 'TRABAJO_DIRIGIDO' ? ['TUTOR', 'TRIBUNAL', 'DOCENTE_MODALIDAD', 'PRESIDENTE', 'SECRETARIO', 'SUPERVISOR_INSTITUCIONAL'] : undefined} initialStageId={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? currentStage?.id : undefined} fixedAssignment={assignment.fixedAssignment} replacementPosition={assignment.replacementPosition} onSubmit={submitAssignment} onClose={closeAssignment} />}
@@ -4087,7 +4115,7 @@ function DefensesCard({ defenses, page, onPage, onRetry, onSelect, canManage, ca
   </Card>
 }
 
-function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, onDefenseCompleted, canManage, canEvaluate, canManageDocuments, isProjectGrade, isThesisGrade, isDiplomadoGrade, isTrabajoDirigido, onParticipantsChanged, onUploadProfileObservations, onManageActors, onAction }) {
+function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, onDefenseCompleted, onDirectResultRefreshError, canManage, canEvaluate, canManageDocuments, isProjectGrade, isThesisGrade, isDiplomadoGrade, isTrabajoDirigido, onParticipantsChanged, onUploadProfileObservations, onManageActors, onAction }) {
   const [attendanceReviewRequest, setAttendanceReviewRequest] = useState(0)
   useEffect(() => {
     if (defense?.id != null) setAttendanceReviewRequest(0)
@@ -4249,7 +4277,7 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
         </div>}
       </section>
 
-      {directFormalFlow && <ProjectGradeDirectResult defense={defense} canManage={evaluationManager} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} onClose={onClose} thesisGrade={isThesisGrade} diplomadoGrade={directDiplomadoFlow} trabajoDirigidoGrade={directTrabajoDirigidoFlow} compositionValidation={isThesisGrade || directTrabajoDirigidoFlow ? defense.composicion_formal_validacion : null} />}
+      {directFormalFlow && <ProjectGradeDirectResult defense={defense} canManage={evaluationManager} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} onClose={onClose} onRefreshError={directTrabajoDirigidoFlow ? onDirectResultRefreshError : undefined} thesisGrade={isThesisGrade} diplomadoGrade={directDiplomadoFlow} trabajoDirigidoGrade={directTrabajoDirigidoFlow} compositionValidation={isThesisGrade || directTrabajoDirigidoFlow ? defense.composicion_formal_validacion : null} />}
 
       {canManage && directFormalFlow && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}
       {canManage && !directFormalFlow && defense.estado === 'CANCELADA' && canRescheduleCancelledDefense && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}

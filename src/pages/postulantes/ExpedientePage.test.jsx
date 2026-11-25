@@ -11441,6 +11441,54 @@ describe('ExpedientePage US-008', () => {
       ))
     })
 
+    it('mantiene confirmada la Defensa Privada si falla la recarga y reintenta solo la lectura', async () => {
+      const stage = { id: 411, codigo: 'DEFENSA_PRIVADA', nombre: 'Defensa Privada', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+      const orientation = { mensaje: 'Gestiona la defensa.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar defensa', estado: 'DISPONIBLE', destino: '#defensas' } }
+      const td = {
+        ...response,
+        detalle: { ...response.detalle, modalidad_detalle: { id: 4, codigo: 'TRABAJO_DIRIGIDO', nombre: 'Trabajo Dirigido' } },
+        flujo: { ...response.flujo, modalidad: { id: 4, codigo: 'TRABAJO_DIRIGIDO' }, etapa_actual: stage, etapas: [stage], orientacion_etapa_actual: orientation },
+        cierre: { data: null, error: '' },
+      }
+      const defense = {
+        id: 412, postulacion: 7, postulacion_modalidad_codigo: 'TRABAJO_DIRIGIDO', tipo_evento: 'DEFENSA_PRIVADA',
+        tipo_display: 'Defensa Privada', estado: 'PROGRAMADA', estado_display: 'Programada', numero_intento: 1,
+        fecha_programada: '2026-11-25T14:00:00Z', lugar: 'Auditorio', modalidad_display: 'Presencial',
+        etapa_codigo: 'DEFENSA_PRIVADA', etapa_nombre: 'Defensa Privada', participantes: [],
+        composicion_formal: [{ id: 52, usuario_nombre: 'Docente Uno', rol_display: 'Docente de modalidad' }],
+        composicion_formal_validacion: { cumple: true, conflictos_identidad: [], requisitos: [] },
+        configuracion_numerica: { minimo: 0, maximo: 100, ponderacion: 30, semantica_nota: 'BRUTA_100' },
+        evaluaciones: [], resultado_consolidado: null,
+      }
+      const confirmed = {
+        ...defense, estado: 'FINALIZADA', estado_display: 'Finalizada',
+        evaluaciones: [{ id: 413, tipo_evaluacion: 'PRIVADA', modalidad_registro: 'CONSENSO', nota_numerica: '80.00' }],
+        resultado_consolidado: { id: 414, tipo_evaluacion: 'RESULTADO_FINAL', nota_numerica: '80.00', ponderacion: '30.00' },
+      }
+      postulacionesService.obtenerExpediente.mockResolvedValue(td)
+      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defense] })
+      postulacionesService.registrarResultadoDirectoDefensa.mockResolvedValue(confirmed)
+      renderDefenseManagerPage()
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+      const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar resultado y finalizar' }))
+      await userEvent.type(within(detail).getByLabelText(/Nota bruta/), '80')
+      postulacionesService.obtenerExpediente.mockRejectedValueOnce(new Error('GET de flujo no disponible'))
+      await userEvent.click(within(detail).getByRole('button', { name: 'Guardar resultado' }))
+
+      expect(await screen.findByText('El resultado se guardó, pero no se pudo actualizar el expediente.')).toBeInTheDocument()
+      expect(screen.queryByText('No se pudo cargar el expediente. Intenta nuevamente.')).not.toBeInTheDocument()
+      expect(postulacionesService.registrarResultadoDirectoDefensa).toHaveBeenCalledTimes(1)
+      expect(confirmed.estado).toBe('FINALIZADA')
+      expect(confirmed.resultado_consolidado.nota_numerica).toBe('80.00')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Reintentar actualización' }))
+      await waitFor(() => expect(screen.queryByText('El resultado se guardó, pero no se pudo actualizar el expediente.')).not.toBeInTheDocument())
+      expect(postulacionesService.obtenerExpediente).toHaveBeenCalledTimes(3)
+      expect(postulacionesService.registrarResultadoDirectoDefensa).toHaveBeenCalledTimes(1)
+    })
+
     it('usa el detalle formal y resultado directo para Vía Diplomado sin cargar quórum', async () => {
       const stage = { id: 301, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
       const orientation = { mensaje: 'Gestiona la defensa pública.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar defensa', estado: 'DISPONIBLE', destino: '#defensas' } }

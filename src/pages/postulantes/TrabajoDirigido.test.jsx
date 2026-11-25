@@ -85,10 +85,13 @@ describe('TrabajoDirigido', () => {
     expect(postulacionesService.configurarInstitucionTrabajoDirigido).toHaveBeenCalledWith('9', expect.objectContaining({
       tipo_ejecucion: 'INTERNO', institucion_nombre: 'Unidad universitaria', supervisor_nombre: 'Ing. Responsable', convenio_vigente: false,
     }))
-    expect(screen.getByRole('button', { name: 'Guardando institución…' })).toBeDisabled()
+    expect(screen.getByText('Registrada')).toBeInTheDocument()
     expect(screen.queryByText('Institución y supervisor guardados correctamente.')).not.toBeInTheDocument()
 
     resolveRefresh()
+    expect(screen.getByText('Registrada')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Guardar/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Editar datos institucionales' })).toBeInTheDocument()
     expect(await screen.findByText('Institución y supervisor guardados correctamente.')).toBeInTheDocument()
     expect(onChanged).toHaveBeenCalledTimes(1)
   })
@@ -130,7 +133,7 @@ describe('TrabajoDirigido', () => {
     await completeInternalInstitution()
 
     await userEvent.click(screen.getByRole('button', { name: 'Guardar institución' }))
-    const pendingButton = screen.getByRole('button', { name: 'Guardando institución…' })
+    const pendingButton = screen.getByRole('button', { name: /Guardando/ })
     await userEvent.click(pendingButton)
 
     expect(pendingButton).toBeDisabled()
@@ -145,6 +148,8 @@ describe('TrabajoDirigido', () => {
 
     rerender(<TrabajoDirigido postulacion="9" trabajo={{ ...trabajo, institucion: internalInstitution }} etapaCodigo="DESARROLLO_TRABAJO_DIRIGIDO" canManage onChanged={vi.fn()} />)
 
+    expect(screen.getByText('Unidad universitaria')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Editar datos institucionales' }))
     expect(screen.getByLabelText('Institución')).toHaveValue('Unidad universitaria')
     expect(screen.getByLabelText('Supervisor institucional')).toHaveValue('Ing. Responsable')
     expect(screen.getByLabelText('Ejecución')).toHaveValue('INTERNO')
@@ -152,7 +157,7 @@ describe('TrabajoDirigido', () => {
 
   it('no expone formularios operativos al estudiante', () => {
     render(<TrabajoDirigido postulacion="9" trabajo={trabajo} etapaCodigo="DESARROLLO_TRABAJO_DIRIGIDO" canManage={false} onChanged={vi.fn()} />)
-    expect(screen.queryByRole('button', { name: 'Guardar institución' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Guardar/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Registrar informe' })).not.toBeInTheDocument()
   })
 
@@ -165,6 +170,7 @@ describe('TrabajoDirigido', () => {
     postulacionesService.registrarInformeTrabajoDirigido.mockResolvedValue({ id: 8 })
     const onChanged = vi.fn()
     rerender(<TrabajoDirigido postulacion="9" trabajo={{ ...trabajo, institucion: internalInstitution }} etapaCodigo="DESARROLLO_TRABAJO_DIRIGIDO" canManage onChanged={onChanged} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar primer informe' }))
     await userEvent.type(screen.getByLabelText('Periodo'), 'Agosto')
     await userEvent.type(screen.getByLabelText('Descripción del desempeño'), 'Buen desempeño')
     await userEvent.type(screen.getByLabelText('Evaluación cualitativa'), 'Suficiente')
@@ -180,6 +186,7 @@ describe('TrabajoDirigido', () => {
     postulacionesService.registrarInformeTrabajoDirigido.mockRejectedValue({ message: 'El informe no pudo registrarse.' })
     render(<TrabajoDirigido postulacion="9" trabajo={{ ...trabajo, institucion: internalInstitution }} etapaCodigo="DESARROLLO_TRABAJO_DIRIGIDO" canManage onChanged={vi.fn()} />)
 
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar primer informe' }))
     await userEvent.type(screen.getByLabelText('Periodo'), 'Agosto')
     await userEvent.type(screen.getByLabelText('Descripción del desempeño'), 'Buen desempeño')
     await userEvent.type(screen.getByLabelText('Evaluación cualitativa'), 'Suficiente')
@@ -198,6 +205,7 @@ describe('TrabajoDirigido', () => {
     postulacionesService.registrarInformeTrabajoDirigido.mockImplementation(() => new Promise((resolve) => { resolveRequest = resolve }))
     render(<TrabajoDirigido postulacion="9" trabajo={{ ...trabajo, institucion: internalInstitution }} etapaCodigo="DESARROLLO_TRABAJO_DIRIGIDO" canManage onChanged={vi.fn()} />)
 
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar primer informe' }))
     await userEvent.type(screen.getByLabelText('Periodo'), 'Agosto')
     await userEvent.type(screen.getByLabelText('Descripción del desempeño'), 'Buen desempeño')
     await userEvent.type(screen.getByLabelText('Evaluación cualitativa'), 'Suficiente')
@@ -210,5 +218,26 @@ describe('TrabajoDirigido', () => {
     expect(postulacionesService.registrarInformeTrabajoDirigido).toHaveBeenCalledTimes(1)
     resolveRequest({ id: 8 })
     expect(await screen.findByText('Informe periódico registrado correctamente.')).toBeInTheDocument()
+  })
+  it('muestra el historial y conserva informes anteriores al registrar otro', async () => {
+    const previous = { id: 2, periodo: 'Julio', descripcion_desempeno: 'Seguimiento previo', evaluacion_cualitativa: 'Bueno', aporte_laboral: 'Organización', sugerencias_recomendaciones: '' }
+    const next = { id: 3, periodo: 'Agosto', descripcion_desempeno: 'Buen desempeño', evaluacion_cualitativa: 'Suficiente', aporte_laboral: 'Automatización', sugerencias_recomendaciones: '' }
+    const { rerender } = render(<TrabajoDirigido postulacion="9" trabajo={{ ...trabajo, institucion: internalInstitution, informes: [previous] }} etapaCodigo="DESARROLLO_TRABAJO_DIRIGIDO" canManage onChanged={vi.fn()} />)
+
+    expect(screen.getByText('Seguimiento previo')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Registrar nuevo informe' })).toBeInTheDocument()
+    postulacionesService.registrarInformeTrabajoDirigido.mockResolvedValue({ id: next.id, periodo: next.periodo })
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar nuevo informe' }))
+    await userEvent.type(screen.getByLabelText('Periodo'), next.periodo)
+    await userEvent.type(screen.getByLabelText('Descripción del desempeño'), next.descripcion_desempeno)
+    await userEvent.type(screen.getByLabelText('Evaluación cualitativa'), next.evaluacion_cualitativa)
+    await userEvent.type(screen.getByLabelText('Aporte laboral'), next.aporte_laboral)
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar informe' }))
+
+    expect(await screen.findByText('Informe periódico registrado correctamente.')).toBeInTheDocument()
+    rerender(<TrabajoDirigido postulacion="9" trabajo={{ ...trabajo, institucion: internalInstitution, informes: [previous, next] }} etapaCodigo="DESARROLLO_TRABAJO_DIRIGIDO" canManage onChanged={vi.fn()} />)
+    expect(screen.getByText('Seguimiento previo')).toBeInTheDocument()
+    expect(screen.getByText('Buen desempeño')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Registrar nuevo informe' })).toBeInTheDocument()
   })
 })

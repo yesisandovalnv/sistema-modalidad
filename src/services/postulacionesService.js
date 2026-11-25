@@ -80,13 +80,21 @@ function defenseFieldErrorMessage(value) {
   return typeof value === 'string' ? value : ''
 }
 
-function normalizeDefenseAction(error, { includeFieldErrors = false } = {}) {
+function normalizeDefenseAction(error, { includeFieldErrors = false, includeBackendMessage = false } = {}) {
   if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return { canceled: true }
   const status = error?.response?.status
   const data = error?.response?.data
   const fields = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
   const detail = Array.isArray(data) ? data : fields.detail || fields.non_field_errors
   const backendMessage = Array.isArray(detail) ? detail.join(' ') : detail
+  if (includeBackendMessage && status >= 500 && typeof backendMessage === 'string') {
+    const safeMessage = backendMessage.trim()
+    if (safeMessage.length > 0 && safeMessage.length <= 240
+      && !/[\r\n<>]/.test(safeMessage)
+      && !/\b(traceback|exception|stack trace|internal server error)\b/i.test(safeMessage)) {
+      return { status, message: safeMessage }
+    }
+  }
   if (status === 400 && includeFieldErrors && !backendMessage) {
     const fieldMessage = Object.entries(fields).map(([field, value]) => {
       const detail = defenseFieldErrorMessage(value)
