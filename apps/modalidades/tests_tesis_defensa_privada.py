@@ -20,7 +20,7 @@ class TesisDefensaPrivadaTest(TestCase):
         teacher_role = Role.objects.create(codigo='DOCENTE', nombre='Docente')
         self.admin = CustomUser.objects.create_user('tdp-admin', role=admin_role, is_staff=True, ci='99001', ru='R99001')
         self.people = [CustomUser.objects.create_user(f'tdp-{n}', role=teacher_role, ci=f'9901{n}', ru=f'R9901{n}') for n in range(5)]
-        self.post = Postulacion.objects.create(codigo='TDP-1', estudiante=self.people[0], modalidad=Modalidad.objects.get(codigo='TESIS_GRADO'), periodo=Periodo.objects.create(nombre='TDP', gestion=2026, semestre='II', fecha_inicio='2026-01-01', fecha_fin='2026-12-31'), estado_actual=EstadoPostulacion.objects.get(codigo='REGISTRADA'))
+        self.post = Postulacion.objects.create(codigo='TDP-1', estudiante=self.people[0], modalidad=Modalidad.objects.get(codigo='TESIS_GRADO'), periodo=Periodo.objects.create(nombre='TDP', gestion=2026, semestre='II', fecha_inicio='2026-01-01', fecha_fin='2026-12-31'), estado_actual=EstadoPostulacion.objects.get(codigo='REGISTRADA'), regimen_workflow=Postulacion.RegimenWorkflowChoices.TESIS_LEGACY_V1)
         self.s = {x.etapa.codigo: x for x in WorkflowService.inicializar_flujo(self.post, self.admin)}
         SeguimientoEtapa.objects.filter(postulacion=self.post, etapa__orden__lte=self.s['REVISION_TRIBUNAL'].etapa.orden).update(estado='APROBADA')
         self.private = self.s['DEFENSA_PRIVADA']; WorkflowService.iniciar_etapa(self.private, self.admin)

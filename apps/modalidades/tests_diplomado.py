@@ -50,7 +50,7 @@ class DiplomadoTest(TestCase):
     def test_policy_declara_quinto_taller_y_reglas_normativas(self):
         policy = DiplomadoPolicy()
         self.assertEqual(policy.etapas[5].codigo, "TALLER_INVESTIGACION")
-        self.assertEqual(policy.get_reglas_asignacion()["TRIBUNAL"], 2)
+        self.assertEqual(policy.get_reglas_asignacion(), {"DECANO_FACULTAD": 1, "TRIBUNAL": 2})
         self.assertEqual(policy.get_documentos_requeridos("DEFENSA_PUBLICA")[0], "CARTA_DEFENSA_DIPL")
 
     def _crear_actor(self, suffix):
@@ -191,6 +191,49 @@ class DiplomadoTest(TestCase):
             seguimiento=stage,
             asignaciones=self.post.asignaciones.filter(activo=True),
         )
+
+    def test_consulta_composicion_formal_devuelve_cargos_requeridos_y_opcionales(self):
+        self._asignar_comision("VICERRECTOR_POSGRADO")
+        AsignacionService.asignar_actor(
+            self.post, self._crear_actor("director-opcional"), "DIRECTOR_CARRERA", self.admin,
+        )
+
+        assignments = DiplomadoPolicy().evento_policy.get_asignaciones_formales_defensa(
+            postulacion=self.post,
+            tipo_evento="DEFENSA_PUBLICA",
+            seguimiento=self.follow["DEFENSA_PUBLICA"],
+        )
+        evaluation = DiplomadoPolicy().evento_policy.evaluar_requisitos_programacion(
+            tipo_evento="DEFENSA_PUBLICA",
+            seguimiento=self.follow["DEFENSA_PUBLICA"],
+            asignaciones=assignments,
+        )
+
+        self.assertEqual(assignments.count(), 5)
+        self.assertTrue(evaluation["cumple"])
+        self.assertTrue(evaluation["requisitos"]["DECANO_FACULTAD"]["cumplido"])
+        self.assertTrue(evaluation["requisitos"]["AUTORIDAD_ALTERNATIVA"]["cumplido"])
+        self.assertTrue(evaluation["requisitos"]["TRIBUNAL"]["cumplido"])
+
+    def test_composicion_formal_rechaza_identidad_repetida_entre_cargos(self):
+        assignments = self._asignar_comision("VICERRECTOR_POSGRADO")
+        self.post.asignaciones.filter(
+            activo=True, tipo_participacion="TRIBUNAL", orden_cargo=1,
+        ).update(usuario=assignments[0].usuario)
+
+        evaluation = DiplomadoPolicy().evento_policy.evaluar_requisitos_programacion(
+            tipo_evento="DEFENSA_PUBLICA",
+            seguimiento=self.follow["DEFENSA_PUBLICA"],
+            asignaciones=DiplomadoPolicy().evento_policy.get_asignaciones_formales_defensa(
+                postulacion=self.post,
+                tipo_evento="DEFENSA_PUBLICA",
+                seguimiento=self.follow["DEFENSA_PUBLICA"],
+            ),
+        )
+
+        self.assertFalse(evaluation["cumple"])
+        self.assertEqual(len(evaluation["conflictos"]), 1)
+        self.assertEqual(set(evaluation["conflictos"][0]["roles"]), {"DECANO_FACULTAD", "TRIBUNAL"})
 
     def test_programacion_rechaza_composiciones_incompletas(self):
         stage = self.follow["DEFENSA_PUBLICA"]

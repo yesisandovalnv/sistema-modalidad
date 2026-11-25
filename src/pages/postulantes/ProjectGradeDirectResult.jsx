@@ -6,7 +6,7 @@ const noteTypes = new Set(['DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'])
 const qualitativeTypes = new Set(['DEFENSA_TEMATICA', 'DEFENSA_PERFIL', 'DEFENSA_PRIVADA'])
 const evaluationTypes = { DEFENSA_TEMATICA: 'TEMATICA', DEFENSA_PERFIL: 'PERFIL', DEFENSA_PRIVADA: 'PRIVADA', DEFENSA_PUBLICA: 'PUBLICA' }
 
-export default function ProjectGradeDirectResult({ defense, canManage, onChanged, onCompleted, onClose, thesisGrade = false, compositionValidation }) {
+export default function ProjectGradeDirectResult({ defense, canManage, onChanged, onCompleted, onClose, thesisGrade = false, diplomadoGrade = false, trabajoDirigidoGrade = false, compositionValidation }) {
   const [formOpen, setFormOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -35,16 +35,19 @@ export default function ProjectGradeDirectResult({ defense, canManage, onChanged
   )
   const needsNote = noteTypes.has(eventType)
   const needsResult = qualitativeTypes.has(eventType)
-  const compositionValid = !thesisGrade || compositionValidation?.cumple === true
-  const weight = eventType === 'DEFENSA_PRIVADA' ? 30 : 70
+  const compositionValid = !(thesisGrade || trabajoDirigidoGrade) || compositionValidation?.cumple === true
   const numericConfig = defense.configuracion_numerica || {}
+  const weight = diplomadoGrade ? 100 : trabajoDirigidoGrade
+    ? (numericConfig.ponderacion ?? (eventType === 'DEFENSA_PRIVADA' ? 30 : 70))
+    : eventType === 'DEFENSA_PRIVADA' ? 30 : 70
   const selectedSemantics = thesisGrade ? (numericConfig.semantica_nota || 'BRUTA_100') : 'BRUTA_100'
   const noteMinimum = thesisGrade
     ? (selectedSemantics === 'MODALIDAD_ESPECIFICA' ? (eventType === 'DEFENSA_PUBLICA' ? 1 : 0) : numericConfig.minimo ?? (eventType === 'DEFENSA_PUBLICA' ? 1 : 0))
-    : 0
+    : trabajoDirigidoGrade ? numericConfig.minimo ?? (eventType === 'DEFENSA_PUBLICA' ? 1 : 0)
+    : diplomadoGrade ? 1 : 0
   const noteMaximum = thesisGrade && selectedSemantics === 'MODALIDAD_ESPECIFICA' && eventType === 'DEFENSA_PRIVADA'
     ? 30
-    : thesisGrade ? (numericConfig.maximo ?? 100) : 100
+    : (thesisGrade || trabajoDirigidoGrade) ? (numericConfig.maximo ?? 100) : 100
 
   const submit = async (event) => {
     event.preventDefault()
@@ -89,7 +92,7 @@ export default function ProjectGradeDirectResult({ defense, canManage, onChanged
   return <section aria-labelledby="resultado-directo-proyecto-title" className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950">
     <h3 id="resultado-directo-proyecto-title" className="text-lg font-bold">Resultado de evaluación</h3>
     <p className="mt-1 text-sm">Registra el resultado del tribunal. Al guardar, el sistema finaliza y consolida la defensa en una sola operación.</p>
-    {thesisGrade && !compositionValid && <div role="alert" className="mt-3 rounded-md border border-amber-400 bg-amber-100 p-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+    {(thesisGrade || trabajoDirigidoGrade) && !compositionValid && <div role="alert" className="mt-3 rounded-md border border-amber-400 bg-amber-100 p-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">
       <p className="font-semibold">No se puede registrar el resultado porque la composición formal no es válida.</p>
       {!compositionValidation && <p className="mt-1">No fue posible verificar los cargos. Actualiza el detalle de la defensa.</p>}
       {compositionValidation?.conflictos_identidad?.map((conflict, index) => <p key={`${conflict.usuario_nombre}-${index}`} className="mt-1">{conflict.usuario_nombre}: {conflict.cargos.join(', ')}.</p>)}
@@ -105,7 +108,7 @@ export default function ProjectGradeDirectResult({ defense, canManage, onChanged
         </select>
       </label>}
       {!existingEvaluation && needsNote && <div>
-        <label className="mt-3 block text-sm font-medium">{thesisGrade && selectedSemantics === 'MODALIDAD_ESPECIFICA' ? `Nota (${noteMinimum}–${noteMaximum})` : thesisGrade ? `Nota bruta (${noteMinimum}–${noteMaximum})` : 'Nota bruta (0–100)'}
+        <label className="mt-3 block text-sm font-medium">{thesisGrade && selectedSemantics === 'MODALIDAD_ESPECIFICA' ? `Nota (${noteMinimum}–${noteMaximum})` : thesisGrade || trabajoDirigidoGrade || diplomadoGrade ? `Nota bruta (${noteMinimum}–${noteMaximum})` : 'Nota bruta (0–100)'}
           <input name="nota" type="number" min={noteMinimum} max={noteMaximum} step="0.01" required disabled={submitting} className="mt-1 w-full rounded-md border p-2 dark:bg-slate-950" />
         </label>
         <p className="mt-1 text-sm text-slate-600">Ponderación: {weight}%. El aporte se calcula automáticamente.</p>

@@ -26,6 +26,15 @@ import { getActiveTribunalComposition } from './tribunalComposition'
 
 const EMPTY = 'No registrado'
 const PROJECT_GRADE_DEFENSE_TYPES = ['DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA']
+const TRABAJO_DIRIGIDO_DEFENSE_STAGES = {
+  DEFENSA_PERFIL: 'PERFIL_TRABAJO_DIRIGIDO',
+  DEFENSA_PRIVADA: 'DEFENSA_PRIVADA',
+  DEFENSA_PUBLICA: 'DEFENSA_PUBLICA',
+}
+const isTrabajoDirigidoDirectDefense = (defense) => (
+  Boolean(defense)
+  && TRABAJO_DIRIGIDO_DEFENSE_STAGES[defense.tipo_evento] === defense.etapa_codigo
+)
 const CANCELLED_DEFENSE_RESCHEDULING_TYPES = {
   PROYECTO_GRADO: PROJECT_GRADE_DEFENSE_TYPES,
   TESIS_GRADO: ['DEFENSA_TEMATICA', 'DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'],
@@ -622,6 +631,7 @@ export default function ExpedientePage() {
   const canManageAssignments = auth?.hasPermission?.('puede_gestionar_asignaciones') === true
   const canManageTribunalReports = auth?.hasPermission?.('puede_gestionar_seguimiento') === true
   const isProjectGrade = detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO'
+  const isDiplomadoGrade = detalle.modalidad_detalle?.codigo === 'GRADUACION_VIA_DIPLOMADO'
   const isExamGrade = detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO'
   const isAcademicExcellence = detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA'
   const examResult = isExamGrade ? examen?.resultado_final : null
@@ -1637,7 +1647,9 @@ export default function ExpedientePage() {
   const loadQuorum = (defense) => {
     quorumController.current?.abort()
     if ((isProjectGrade && ['DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(defense.tipo_evento))
-      || (isThesisGrade && ['DEFENSA_TEMATICA', 'DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(defense.tipo_evento))) {
+      || (isTrabajoDirigido && isTrabajoDirigidoDirectDefense(defense))
+      || (isThesisGrade && ['DEFENSA_TEMATICA', 'DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(defense.tipo_evento))
+      || (isDiplomadoGrade && defense.tipo_evento === 'DEFENSA_PUBLICA' && defense.etapa_codigo === 'DEFENSA_PUBLICA')) {
       quorumController.current = null
       setQuorum({ data: null, loading: false, error: '' })
       return
@@ -2356,7 +2368,7 @@ export default function ExpedientePage() {
       {uploadDialog}
 
       {documentDetailDialog}
-      {selectedDefense && <ProtectedDefenseDetail defense={selectedDefense} quorum={quorum} nextAction={flujo.orientacion_etapa_actual?.siguiente_accion} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} onDefenseCompleted={() => { defenseCompletionPendingNavigation.current = true }} canManage={canManageDefenses} canEvaluate={canManageEvaluations} canManageDocuments={canReview} isProjectGrade={isProjectGrade} isThesisGrade={isThesisGrade} onParticipantsChanged={refreshSelectedDefense} onUploadProfileObservations={openProfileObservationUpload} onManageActors={openActorManagement} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
+      {selectedDefense && <ProtectedDefenseDetail defense={selectedDefense} quorum={quorum} nextAction={flujo.orientacion_etapa_actual?.siguiente_accion} onRetryQuorum={() => loadQuorum(selectedDefense)} onClose={closeDefense} onDefenseCompleted={() => { defenseCompletionPendingNavigation.current = true }} canManage={canManageDefenses} canEvaluate={canManageEvaluations} canManageDocuments={canReview} isProjectGrade={isProjectGrade} isThesisGrade={isThesisGrade} isDiplomadoGrade={isDiplomadoGrade} isTrabajoDirigido={isTrabajoDirigido} onParticipantsChanged={refreshSelectedDefense} onUploadProfileObservations={openProfileObservationUpload} onManageActors={openActorManagement} onAction={(action) => openDefenseOperation(action, selectedDefense)} />}
       {defenseOperation && <DefenseOperationDialog operation={defenseOperation} stages={flujo.etapas || []} quorum={quorum} onSubmit={submitDefenseOperation} onClose={closeDefenseOperation} />}
       {review && <ReviewDialog review={review} onSubmit={submitReview} onClose={closeReview} />}
       {assignment && (assignment.context !== 'TESIS_DEFENSA_PUBLICA' || publicDefenseMissingRoles.length > 0) && <AssignmentDialog assignment={assignment} stages={flujo.etapas || []} activeActors={activeActors.data?.results || []} activeTribunals={activeTribunals} onRetryActiveTribunals={() => setActiveTribunalsRevision((value) => value + 1)} isProjectGrade={detalle.modalidad_detalle?.codigo === 'PROYECTO_GRADO' || flujo.modalidad?.codigo === 'PROYECTO_GRADO'} allowedTypes={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? publicDefenseMissingRoles : detalle.modalidad_detalle?.codigo === 'EXAMEN_GRADO' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO'] : detalle.modalidad_detalle?.codigo === 'EXCELENCIA_ACADEMICA' ? ['TRIBUNAL', 'PRESIDENTE', 'SECRETARIO', 'DIRECTOR_INSTITUTO_INVESTIGACION'] : detalle.modalidad_detalle?.codigo === 'GRADUACION_VIA_DIPLOMADO' ? ['VICERRECTOR_POSGRADO', 'DECANO_FACULTAD', 'DIRECTOR_CARRERA', 'TRIBUNAL'] : detalle.modalidad_detalle?.codigo === 'TRABAJO_DIRIGIDO' ? ['TUTOR', 'TRIBUNAL', 'DOCENTE_MODALIDAD', 'PRESIDENTE', 'SECRETARIO', 'SUPERVISOR_INSTITUCIONAL'] : undefined} initialStageId={assignment.context === 'TESIS_DEFENSA_PUBLICA' ? currentStage?.id : undefined} fixedAssignment={assignment.fixedAssignment} replacementPosition={assignment.replacementPosition} onSubmit={submitAssignment} onClose={closeAssignment} />}
@@ -2378,9 +2390,11 @@ export default function ExpedientePage() {
 }
 
 function ProtectedDefenseDetail(props) {
-  const { defense, isProjectGrade, isThesisGrade, onClose } = props
+  const { defense, isProjectGrade, isThesisGrade, isDiplomadoGrade, isTrabajoDirigido, onClose } = props
   const detail = <DefenseDetail {...props} />
-  if ((isProjectGrade || isThesisGrade) && ['DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(defense?.tipo_evento)) {
+  if (((isProjectGrade || isThesisGrade) && ['DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(defense?.tipo_evento))
+    || (isDiplomadoGrade && defense?.tipo_evento === 'DEFENSA_PUBLICA' && defense?.etapa_codigo === 'DEFENSA_PUBLICA')
+    || (isTrabajoDirigido && isTrabajoDirigidoDirectDefense(defense))) {
     return <DefenseDetailErrorBoundary resetKey={defense.id} onClose={onClose}>{detail}</DefenseDetailErrorBoundary>
   }
   return detail
@@ -4073,7 +4087,7 @@ function DefensesCard({ defenses, page, onPage, onRetry, onSelect, canManage, ca
   </Card>
 }
 
-function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, onDefenseCompleted, canManage, canEvaluate, canManageDocuments, isProjectGrade, isThesisGrade, onParticipantsChanged, onUploadProfileObservations, onManageActors, onAction }) {
+function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, onDefenseCompleted, canManage, canEvaluate, canManageDocuments, isProjectGrade, isThesisGrade, isDiplomadoGrade, isTrabajoDirigido, onParticipantsChanged, onUploadProfileObservations, onManageActors, onAction }) {
   const [attendanceReviewRequest, setAttendanceReviewRequest] = useState(0)
   useEffect(() => {
     if (defense?.id != null) setAttendanceReviewRequest(0)
@@ -4140,6 +4154,9 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
   const profileContext = defense.tipo_evento === 'DEFENSA_PERFIL'
   const directProjectFlow = (isProjectGrade && ['DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(defense.tipo_evento))
     || (isThesisGrade && !hasThesisIndividualEvaluation && ['DEFENSA_TEMATICA', 'DEFENSA_PERFIL', 'DEFENSA_PRIVADA', 'DEFENSA_PUBLICA'].includes(defense.tipo_evento))
+  const directDiplomadoFlow = isDiplomadoGrade && defense.tipo_evento === 'DEFENSA_PUBLICA' && defense.etapa_codigo === 'DEFENSA_PUBLICA'
+  const directTrabajoDirigidoFlow = isTrabajoDirigido && isTrabajoDirigidoDirectDefense(defense)
+  const directFormalFlow = directProjectFlow || directDiplomadoFlow || directTrabajoDirigidoFlow
   const canRegisterEvaluation = evaluationManager && !hasEvaluation && ['EN_CURSO', 'FINALIZADA'].includes(defense.estado) && quorum.data?.valido === true
   const canConsolidateEvaluation = evaluationManager && hasEvaluation && !hasResult && defense.estado === 'FINALIZADA'
   const orientationCompatible = actions.includes(orientedAction)
@@ -4169,14 +4186,14 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
         ? quorum.data.valido ? 'Válido' : 'No válido'
         : 'No consultado'
   const resultSummary = hasResult ? 'Consolidado' : 'Pendiente'
-  const displayedPrimaryAction = directProjectFlow
+  const displayedPrimaryAction = directFormalFlow
     ? null
     : primaryAction || (canManage && actions.includes('iniciar') ? 'iniciar' : null)
   const displayedPrimaryTitle = displayedPrimaryAction === primaryAction
     ? (compatibleNextAction?.titulo || actionLabels[displayedPrimaryAction] || 'Registrar resultado de la defensa')
     : actionLabels[displayedPrimaryAction] || 'Registrar resultado de la defensa'
   const displayedPrimaryDescription = displayedPrimaryAction === primaryAction ? compatibleNextAction?.descripcion : null
-  const secondaryOperationalActions = secondaryActions.filter((action) => action !== 'cancelar' && action !== displayedPrimaryAction && !(defense.estado === 'CANCELADA' && canRescheduleCancelledDefense && !directProjectFlow && action === 'reprogramar'))
+  const secondaryOperationalActions = secondaryActions.filter((action) => action !== 'cancelar' && action !== displayedPrimaryAction && !(defense.estado === 'CANCELADA' && canRescheduleCancelledDefense && !directFormalFlow && action === 'reprogramar'))
   const destructiveActions = secondaryActions.filter((action) => action === 'cancelar')
   const showEvaluationSection = hasSecondaryEvaluationAction || (canManage && secondaryActions.length > 0 && (defense.estado !== 'PROGRAMADA' || hasEvaluation))
   return <Modal title="Detalle de defensa" onClose={onClose}>
@@ -4205,10 +4222,10 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
 
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900" aria-labelledby="estado-operativo-defensa-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h3 id="estado-operativo-defensa-title" className="text-lg font-bold">Estado operativo</h3>{!profileContext && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{directProjectFlow ? `Resultado: ${resultSummary}` : `Participantes: ${participantSummary === 'Ninguno incorporado' ? '0' : participantSummary} · Quórum: ${quorumSummary} · Resultado: ${resultSummary}`}</p>}</div>
+          <div><h3 id="estado-operativo-defensa-title" className="text-lg font-bold">Estado operativo</h3>{!profileContext && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{directFormalFlow ? `Resultado: ${resultSummary}` : `Participantes: ${participantSummary === 'Ninguno incorporado' ? '0' : participantSummary} · Quórum: ${quorumSummary} · Resultado: ${resultSummary}`}</p>}</div>
           {!displayedPrimaryAction && compatibleNextAction?.titulo && <p className="max-w-md text-sm"><span className="font-semibold">Siguiente acción:</span> {compatibleNextAction.titulo}{compatibleNextAction.descripcion ? ` — ${compatibleNextAction.descripcion}` : ''}</p>}
         </div>
-        {directProjectFlow ? <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700"><h4 className="font-semibold">Tribunal y cargos formales</h4>
+        {directFormalFlow ? <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700"><h4 className="font-semibold">Tribunal y cargos formales</h4>
           {defense.composicion_formal?.length ? <ul className="mt-2 space-y-2">{defense.composicion_formal.map((actor) => <li key={actor.id} className="rounded-md border bg-white p-3 text-sm dark:bg-slate-950"><span className="font-semibold">{actor.usuario_nombre}</span><span> — {actor.rol_display || actor.tipo_participacion}{actor.orden_cargo ? ` ${actor.orden_cargo}` : ''}</span></li>)}</ul> : <p className="mt-2 text-sm text-amber-700">No hay asignaciones formales vigentes para mostrar.</p>}
           {isThesisGrade && thesisCompositionValidation?.cumple !== true && <section role="alert" className="mt-3 rounded-md border border-amber-400 bg-amber-100 p-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">
             <p className="font-semibold">Composición formal inválida; corrige las asignaciones antes de registrar el resultado.</p>
@@ -4216,7 +4233,7 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
             {thesisCompositionValidation?.conflictos_identidad?.map((conflict, index) => <p key={`${conflict.usuario_nombre}-${index}`} className="mt-1">{conflict.usuario_nombre} ocupa cargos repetidos: {conflict.cargos.join(', ')}.</p>)}
             {thesisCompositionValidation?.requisitos?.filter((item) => !item.cumplido).map((item) => <p key={item.cargo} className="mt-1">{item.cargo}: {item.actual} de {item.minimo} asignaciones distintas.</p>)}
           </section>}
-          {canManage && isProjectGrade && <Button className="mt-2" variant="secondary" onClick={onManageActors}>Gestionar tribunal y cargos</Button>}
+          {canManage && (isProjectGrade || directDiplomadoFlow || directTrabajoDirigidoFlow) && <Button className="mt-2" variant="secondary" onClick={onManageActors}>Gestionar tribunal y cargos</Button>}
         </div> : <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700"><DefenseParticipants
           defense={defense}
           canManage={canManage}
@@ -4225,23 +4242,23 @@ function DefenseDetail({ defense, quorum, nextAction, onRetryQuorum, onClose, on
           quorum={quorum.data}
           reviewAttendanceRequest={attendanceReviewRequest}
         /></div>}
-        {!directProjectFlow && <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+        {!directFormalFlow && <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
         {quorum.loading && <p role="status" className="mt-3 text-sm">Consultando quórum…</p>}
         {quorum.error && <SectionError message={quorum.error} label="Reintentar quórum" onRetry={onRetryQuorum} />}
         {!quorum.loading && !quorum.error && quorum.data && <details className="overflow-hidden rounded-lg border text-sm"><summary className="cursor-pointer p-3 font-semibold">Información técnica del quórum</summary><div className="space-y-3 border-t p-3"><TechnicalCounts title="Conteos" values={quorum.data.conteos} empty="Sin conteos registrados." /><TechnicalCounts title="Faltantes" values={quorum.data.faltantes} empty="Sin participantes faltantes." />{!duplicateQuorumDetail && <TechnicalCounts title="Detalles" values={quorum.data.detalle} empty="Sin detalle adicional." />}<p className="text-slate-500">El quórum mostrado es una verificación técnica del sistema y no acredita por sí mismo la conformación formal del tribunal ni la validez institucional del acto. Esta verificación técnica no certifica validez institucional.</p></div></details>}
         </div>}
       </section>
 
-      {directProjectFlow && <ProjectGradeDirectResult defense={defense} canManage={evaluationManager} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} onClose={onClose} thesisGrade={isThesisGrade} compositionValidation={thesisCompositionValidation} />}
+      {directFormalFlow && <ProjectGradeDirectResult defense={defense} canManage={evaluationManager} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} onClose={onClose} thesisGrade={isThesisGrade} diplomadoGrade={directDiplomadoFlow} trabajoDirigidoGrade={directTrabajoDirigidoFlow} compositionValidation={isThesisGrade || directTrabajoDirigidoFlow ? defense.composicion_formal_validacion : null} />}
 
-      {canManage && directProjectFlow && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}
-      {canManage && !directProjectFlow && defense.estado === 'CANCELADA' && canRescheduleCancelledDefense && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}
+      {canManage && directFormalFlow && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}
+      {canManage && !directFormalFlow && defense.estado === 'CANCELADA' && canRescheduleCancelledDefense && actions.includes('reprogramar') && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950"><h3 className="font-bold">Nueva programación</h3><p className="mt-1 text-sm">La fecha cancelada y su historial se conservarán. Se creará un evento nuevo para el mismo intento.</p><Button className="mt-3" onClick={() => onAction('reprogramar')}>Reprogramar defensa</Button></section>}
 
-      {!directProjectFlow && displayedPrimaryAction && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950" aria-labelledby="siguiente-accion-defensa-title"><h3 className="text-sm font-bold uppercase tracking-wide text-sky-800 dark:text-sky-200">Acción principal</h3>{![ 'iniciar', 'registrar_evaluacion'].includes(displayedPrimaryAction) && <p className="mt-2 font-semibold">{displayedPrimaryTitle}</p>}{displayedPrimaryDescription && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{displayedPrimaryDescription}</p>}{['registrar_evaluacion', 'consolidar_resultado'].includes(displayedPrimaryAction) ? <DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} action={displayedPrimaryAction} actionLabel={displayedPrimaryTitle} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} projectProfileFlow={profileQuickFlow} onReviewAttendance={() => { setAttendanceReviewRequest((value) => value + 1); const participantsHeading = document.getElementById('participantes-defensa-title'); if (typeof participantsHeading?.scrollIntoView === 'function') participantsHeading.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} /> : <Button className="mt-4" disabled={displayedPrimaryAction === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)} onClick={() => onAction(displayedPrimaryAction)}>{displayedPrimaryTitle}</Button>}</section>}
+      {!directFormalFlow && displayedPrimaryAction && <section className="rounded-xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950" aria-labelledby="siguiente-accion-defensa-title"><h3 className="text-sm font-bold uppercase tracking-wide text-sky-800 dark:text-sky-200">Acción principal</h3>{![ 'iniciar', 'registrar_evaluacion'].includes(displayedPrimaryAction) && <p className="mt-2 font-semibold">{displayedPrimaryTitle}</p>}{displayedPrimaryDescription && <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{displayedPrimaryDescription}</p>}{['registrar_evaluacion', 'consolidar_resultado'].includes(displayedPrimaryAction) ? <DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} action={displayedPrimaryAction} actionLabel={displayedPrimaryTitle} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} projectProfileFlow={profileQuickFlow} onReviewAttendance={() => { setAttendanceReviewRequest((value) => value + 1); const participantsHeading = document.getElementById('participantes-defensa-title'); if (typeof participantsHeading?.scrollIntoView === 'function') participantsHeading.scrollIntoView({ behavior: 'smooth', block: 'start' }) }} /> : <Button className="mt-4" disabled={displayedPrimaryAction === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)} onClick={() => onAction(displayedPrimaryAction)}>{displayedPrimaryTitle}</Button>}</section>}
 
-      {!directProjectFlow && showEvaluationSection && !['registrar_evaluacion', 'consolidar_resultado'].includes(primaryAction) && <section aria-labelledby="evaluacion-defensa-title"><h3 id="evaluacion-defensa-title" className="text-lg font-bold">Evaluación</h3><DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} buttonVariant="secondary" hiddenAction={primaryAction} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} /></section>}
+      {!directFormalFlow && showEvaluationSection && !['registrar_evaluacion', 'consolidar_resultado'].includes(primaryAction) && <section aria-labelledby="evaluacion-defensa-title"><h3 id="evaluacion-defensa-title" className="text-lg font-bold">Evaluación</h3><DefenseEvaluation defense={defense} quorum={quorum} canManage={evaluationManager} buttonVariant="secondary" hiddenAction={primaryAction} onChanged={onParticipantsChanged} onCompleted={onDefenseCompleted} /></section>}
 
-      {canManage && !directProjectFlow && secondaryOperationalActions.length > 0 && <section aria-labelledby="otras-acciones-defensa-title"><h3 id="otras-acciones-defensa-title" className="text-lg font-bold">Más acciones</h3><div className="mt-3 flex flex-wrap gap-2">{secondaryOperationalActions.map((action) => {
+      {canManage && !directFormalFlow && secondaryOperationalActions.length > 0 && <section aria-labelledby="otras-acciones-defensa-title"><h3 id="otras-acciones-defensa-title" className="text-lg font-bold">Más acciones</h3><div className="mt-3 flex flex-wrap gap-2">{secondaryOperationalActions.map((action) => {
         const finalBlocked = action === 'finalizar' && (quorum.loading || quorum.error || quorum.data?.valido !== true)
         const variant = action === 'finalizar' && hasProjectProfileConsensus && !finalBlocked ? 'default' : 'secondary'
         return <Button key={action} variant={variant} disabled={finalBlocked} title={finalBlocked ? 'La finalización requiere quórum técnico válido confirmado por el backend.' : undefined} onClick={() => onAction(action)}>{actionLabels[action]}</Button>

@@ -1178,6 +1178,287 @@ class ServiciosDefensaTests(DefensaMixin,TestCase):
 
 
 class ApiDefensaTests(DefensaMixin,APITestCase):
+    def _trabajo_dirigido_defense(self, kind="DEFENSA_PUBLICA"):
+        modality = Modalidad.objects.create(codigo="TRABAJO_DIRIGIDO", nombre="Trabajo Dirigido")
+        self.post.modalidad = modality
+        self.post.save(update_fields=["modalidad"])
+        AsignacionPostulacion.objects.filter(postulacion=self.post).update(activo=False)
+        profile_stage = EtapaModalidad.objects.create(
+            modalidad=modality, codigo="PERFIL_TRABAJO_DIRIGIDO", nombre="Perfil", orden=1,
+            origen_normativo="Reglamento de Trabajo Dirigido",
+        )
+        private_stage = EtapaModalidad.objects.create(
+            modalidad=modality, codigo="DEFENSA_PRIVADA", nombre="Privada", orden=2,
+            origen_normativo="Reglamento de Trabajo Dirigido",
+        )
+        public_stage = EtapaModalidad.objects.create(
+            modalidad=modality, codigo="DEFENSA_PUBLICA", nombre="Pública", orden=3,
+            origen_normativo="Reglamento de Trabajo Dirigido",
+        )
+        profile_follow = SeguimientoEtapa.objects.create(
+            postulacion=self.post, etapa=profile_stage, estado="EN_PROCESO",
+        )
+        private_follow = SeguimientoEtapa.objects.create(
+            postulacion=self.post, etapa=private_stage, estado="EN_PROCESO",
+        )
+        public_follow = SeguimientoEtapa.objects.create(
+            postulacion=self.post, etapa=public_stage, estado="EN_PROCESO",
+        )
+        for order, user in enumerate(self.docs[:3], start=1):
+            AsignacionPostulacion.objects.create(
+                postulacion=self.post, usuario=user, tipo_participacion="TRIBUNAL",
+                seguimiento_etapa=profile_follow, orden_cargo=order, designado_por=self.admin,
+            )
+        AsignacionPostulacion.objects.create(
+            postulacion=self.post, usuario=self.docs[3], tipo_participacion="DOCENTE_MODALIDAD",
+            seguimiento_etapa=private_follow, designado_por=self.admin,
+        )
+        for role, user in (("PRESIDENTE", self.docs[3]), ("SECRETARIO", self.docs[4])):
+            AsignacionPostulacion.objects.create(
+                postulacion=self.post, usuario=user, tipo_participacion=role,
+                seguimiento_etapa=public_follow, designado_por=self.admin,
+            )
+        follow = {
+            "DEFENSA_PERFIL": profile_follow,
+            "DEFENSA_PRIVADA": private_follow,
+            "DEFENSA_PUBLICA": public_follow,
+        }[kind]
+        return EventoDefensa.objects.create(
+            postulacion=self.post, seguimiento_etapa=follow, tipo_evento=kind,
+            estado="PROGRAMADA", fecha_programada=timezone.now()-timedelta(minutes=1),
+            lugar="Auditorio", programado_por=self.admin,
+        )
+
+    def test_api_trabajo_dirigido_serializa_designaciones_formales_de_su_policy(self):
+        from apps.postulantes.defensas_api import EventoDefensaSerializer
+
+        event = self._trabajo_dirigido_defense()
+        serialized = EventoDefensaSerializer(event).data
+
+        self.assertEqual(len(serialized["composicion_formal"]), 5)
+        self.assertEqual(
+            {item["tipo_participacion"] for item in serialized["composicion_formal"]},
+            {"TRIBUNAL", "PRESIDENTE", "SECRETARIO"},
+        )
+        self.assertTrue(serialized["composicion_formal_validacion"]["cumple"])
+        self.assertEqual(serialized["configuracion_numerica"]["minimo"], 1)
+        self.assertEqual(serialized["configuracion_numerica"]["maximo"], 100)
+        self.assertEqual(serialized["configuracion_numerica"]["ponderacion"], 70)
+
+    def test_api_trabajo_dirigido_publica_registra_resultado_directo_sin_quorum(self):
+        event = self._trabajo_dirigido_defense()
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"nota": "80.50"}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["estado"], "FINALIZADA")
+        self.assertEqual(response.data["participantes"], [])
+        self.assertEqual(response.data["resultado_consolidado"]["nota_numerica"], Decimal("80.50"))
+        self.assertEqual(response.data["resultado_consolidado"]["ponderacion"], Decimal("70.00"))
+        self.assertEqual(event.evaluaciones.count(), 2)
+
+    def test_api_trabajo_dirigido_perfil_registra_resultado_directo_sin_quorum(self):
+        event = self._trabajo_dirigido_defense("DEFENSA_PERFIL")
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"resultado": "SUFICIENTE"}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["estado"], "FINALIZADA")
+        self.assertEqual(response.data["participantes"], [])
+        self.assertEqual(response.data["resultado_consolidado"]["resultado_cualitativo"], "SUFICIENTE")
+
+    def test_api_trabajo_dirigido_privada_registra_nota_30_70_sin_quorum(self):
+        event = self._trabajo_dirigido_defense("DEFENSA_PRIVADA")
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"resultado": "SUFICIENTE", "nota": "80"}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["resultado_consolidado"]["nota_numerica"], Decimal("80.00"))
+        self.assertEqual(response.data["resultado_consolidado"]["ponderacion"], Decimal("30.00"))
+
+    def test_api_trabajo_dirigido_rechaza_composicion_publica_incompleta_sin_cambiar_evento(self):
+        event = self._trabajo_dirigido_defense()
+        AsignacionPostulacion.objects.filter(
+            postulacion=self.post, tipo_participacion="SECRETARIO",
+        ).update(activo=False)
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"nota": "80"}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        event.refresh_from_db()
+        self.assertEqual(event.estado, "PROGRAMADA")
+        self.assertFalse(event.evaluaciones.exists())
+
+    def test_api_trabajo_dirigido_rechaza_identidad_repetida_en_cargos_publicos(self):
+        from apps.postulantes.defensas_api import EventoDefensaSerializer
+
+        event = self._trabajo_dirigido_defense()
+        AsignacionPostulacion.objects.filter(
+            postulacion=self.post, tipo_participacion="PRESIDENTE",
+        ).update(activo=False)
+        AsignacionPostulacion.objects.create(
+            postulacion=self.post, usuario=self.docs[0], tipo_participacion="PRESIDENTE",
+            seguimiento_etapa=event.seguimiento_etapa, designado_por=self.admin,
+        )
+        validation = EventoDefensaSerializer(event).data["composicion_formal_validacion"]
+        self.assertFalse(validation["cumple"])
+        self.assertEqual(validation["conflictos_identidad"][0]["cargos"], ["PRESIDENTE", "TRIBUNAL"])
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"nota": "80"}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        event.refresh_from_db()
+        self.assertEqual(event.estado, "PROGRAMADA")
+        self.assertFalse(event.evaluaciones.exists())
+
+    def test_api_trabajo_dirigido_revierte_evaluacion_y_finalizacion_si_falla_consolidacion(self):
+        event = self._trabajo_dirigido_defense()
+
+        with patch.object(
+            EvaluacionDefensaService,
+            "consolidar_evaluacion_evento",
+            side_effect=RuntimeError("fallo simulado de consolidación"),
+        ), self.assertRaises(RuntimeError):
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                event, self.admin, nota=Decimal("80.50"),
+            )
+
+        event.refresh_from_db()
+        self.assertEqual(event.estado, "PROGRAMADA")
+        self.assertFalse(event.evaluaciones.exists())
+
+    def _via_diplomado_public_defense(self, stage_code="DEFENSA_PUBLICA"):
+        modality = Modalidad.objects.create(codigo="GRADUACION_VIA_DIPLOMADO", nombre="Vía Diplomado")
+        self.post.modalidad = modality
+        self.post.save(update_fields=["modalidad"])
+        AsignacionPostulacion.objects.filter(postulacion=self.post).update(activo=False)
+        stage = EtapaModalidad.objects.create(modalidad=modality, codigo=stage_code, nombre=stage_code, orden=1, origen_normativo="Plan de Diplomado")
+        follow = SeguimientoEtapa.objects.create(postulacion=self.post, etapa=stage, estado="EN_PROCESO")
+        for user, role, order in zip(self.docs[:4], ("DECANO_FACULTAD", "DIRECTOR_CARRERA", "TRIBUNAL", "TRIBUNAL"), (None, None, 1, 2)):
+            AsignacionPostulacion.objects.create(
+                postulacion=self.post, usuario=user, tipo_participacion=role,
+                seguimiento_etapa=None, orden_cargo=order, designado_por=self.admin,
+            )
+        event = EventoDefensa.objects.create(
+            postulacion=self.post, seguimiento_etapa=follow, tipo_evento="DEFENSA_PUBLICA",
+            estado="PROGRAMADA", fecha_programada=timezone.now()-timedelta(minutes=1),
+            lugar="Auditorio", programado_por=self.admin,
+        )
+        return event
+
+    def test_api_via_diplomado_publica_registra_nota_y_consolida_atomicamente(self):
+        event = self._via_diplomado_public_defense()
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"nota": "85.50"}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["estado"], "FINALIZADA")
+        self.assertEqual(response.data["participantes"], [])
+        self.assertEqual(response.data["resultado_consolidado"]["nota_numerica"], Decimal("85.50"))
+        self.assertEqual(
+            {item["tipo_participacion"] for item in response.data["composicion_formal"]},
+            {"DECANO_FACULTAD", "DIRECTOR_CARRERA", "TRIBUNAL"},
+        )
+        self.assertEqual(event.evaluaciones.count(), 2)
+
+    def test_api_via_diplomado_rechaza_composicion_formal_incompleta(self):
+        event = self._via_diplomado_public_defense()
+        AsignacionPostulacion.objects.filter(
+            postulacion=self.post, tipo_participacion="TRIBUNAL", orden_cargo=2,
+        ).update(activo=False)
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"nota": "85"}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        event.refresh_from_db()
+        self.assertEqual(event.estado, "PROGRAMADA")
+        self.assertFalse(event.evaluaciones.exists())
+
+    def test_api_via_diplomado_serializa_composicion_formal_de_su_policy(self):
+        event = self._via_diplomado_public_defense()
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.get(f"/api/v1/eventos-defensa/{event.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["composicion_formal"]), 4)
+        self.assertEqual(
+            {item["tipo_participacion"] for item in response.data["composicion_formal"]},
+            {"DECANO_FACULTAD", "DIRECTOR_CARRERA", "TRIBUNAL"},
+        )
+
+    def test_api_via_diplomado_rechaza_nota_fuera_de_escala(self):
+        event = self._via_diplomado_public_defense()
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"nota": "0"}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        event.refresh_from_db()
+        self.assertEqual(event.estado, "PROGRAMADA")
+        self.assertFalse(event.evaluaciones.exists())
+
+    def test_resultado_directo_via_diplomado_revierte_todo_si_falla_consolidacion(self):
+        event = self._via_diplomado_public_defense()
+
+        with patch.object(
+            EvaluacionDefensaService,
+            "consolidar_evaluacion_evento",
+            side_effect=RuntimeError("fallo simulado de consolidación"),
+        ), self.assertRaises(RuntimeError):
+            EvaluacionDefensaService.registrar_resultado_directo_proyecto(
+                event, self.admin, nota=Decimal("85.50"),
+            )
+
+        event.refresh_from_db()
+        self.assertEqual(event.estado, "PROGRAMADA")
+        self.assertFalse(event.evaluaciones.exists())
+
+    def test_api_via_diplomado_rechaza_defensa_publica_fuera_de_etapa(self):
+        event = self._via_diplomado_public_defense(stage_code="DEFENSA_PRIVADA")
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.post(
+            f"/api/v1/eventos-defensa/{event.pk}/resultado-directo/",
+            {"nota": "85"}, format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        event.refresh_from_db()
+        self.assertEqual(event.estado, "PROGRAMADA")
+        self.assertFalse(event.evaluaciones.exists())
+
     def test_api_perfil_tesis_marca_tribunal_y_tutor_repetidos_y_rechaza_resultado(self):
         from apps.postulantes.defensas_api import EventoDefensaSerializer
 

@@ -54,6 +54,80 @@ class TrabajoDirigidoEventoPolicy(ProyectoGradoEventoPolicy):
         "DEFENSA_PUBLICA": {"TRIBUNAL": 2, "PRESIDENTE": 1, "SECRETARIO": 1},
     }
 
+    def get_asignaciones_formales_defensa(self, *, postulacion, tipo_evento, seguimiento):
+        """Return Trabajo Dirigido's own stage-scoped formal defense appointments."""
+        from apps.postulantes.models import AsignacionPostulacion
+
+        base = AsignacionPostulacion.objects.filter(
+            postulacion=postulacion,
+            activo=True,
+            usuario__is_active=True,
+            usuario__activo=True,
+        )
+        if tipo_evento == "DEFENSA_PERFIL":
+            return base.filter(
+                tipo_participacion="TRIBUNAL",
+                seguimiento_etapa=seguimiento,
+            )
+
+        perfil = postulacion.seguimientos_etapa.filter(
+            activo=True,
+            etapa__codigo="PERFIL_TRABAJO_DIRIGIDO",
+        ).order_by("-numero_intento", "-pk").first()
+        tribunal = base.filter(
+            tipo_participacion="TRIBUNAL",
+            seguimiento_etapa=perfil,
+        ) if perfil else base.none()
+        if tipo_evento == "DEFENSA_PRIVADA":
+            docente = base.filter(
+                tipo_participacion="DOCENTE_MODALIDAD",
+                seguimiento_etapa=seguimiento,
+            )
+            return tribunal | docente
+        if tipo_evento == "DEFENSA_PUBLICA":
+            autoridades = base.filter(
+                tipo_participacion__in=("PRESIDENTE", "SECRETARIO"),
+                seguimiento_etapa=seguimiento,
+            )
+            return tribunal | autoridades
+        return base.none()
+
+    def evaluar_requisitos_programacion(self, *, tipo_evento, seguimiento, asignaciones):
+        result = super().evaluar_requisitos_programacion(
+            tipo_evento=tipo_evento,
+            seguimiento=seguimiento,
+            asignaciones=asignaciones,
+        )
+        if tipo_evento != "DEFENSA_PUBLICA":
+            return result
+
+        roles = ("TRIBUNAL", "PRESIDENTE", "SECRETARIO")
+        identities = {
+            role: set(assignaciones.filter(tipo_participacion=role).values_list("usuario_id", flat=True))
+            for role in roles
+        }
+        roles_by_user = {}
+        for role, user_ids in identities.items():
+            for user_id in user_ids:
+                roles_by_user.setdefault(user_id, set()).add(role)
+        conflicts = [
+            {"usuario_id": user_id, "roles": sorted(user_roles)}
+            for user_id, user_roles in roles_by_user.items()
+            if len(user_roles) > 1
+        ]
+        conflicting_roles = {role for conflict in conflicts for role in conflict["roles"]}
+        for role in roles:
+            result["requisitos"][role]["conflicto_identidad"] = role in conflicting_roles
+            count_is_valid = (
+                len(identities[role]) == 3
+                if role == "TRIBUNAL"
+                else result["requisitos"][role]["actual"] >= result["requisitos"][role]["minimo"]
+            )
+            result["requisitos"][role]["cumplido"] = count_is_valid and role not in conflicting_roles
+        result["conflictos"] = conflicts
+        result["cumple"] = all(item["cumplido"] for item in result["requisitos"].values())
+        return result
+
     @staticmethod
     def obtener_seguimiento_publico_vigente(postulacion):
         return postulacion.seguimientos_etapa.filter(
@@ -180,6 +254,16 @@ class TrabajoDirigidoRequisitosPolicy(BaseRequisitosPolicy):
 
 
 class TrabajoDirigidoEvaluacionPolicy(ProyectoGradoLegacyEvaluacionPolicy):
+    def get_configuracion_numerica(self, tipo):
+        if tipo not in {"PRIVADA", "PUBLICA"}:
+            return None
+        return {
+            "minimo": 0 if tipo == "PRIVADA" else 1,
+            "maximo": 100,
+            "ponderacion": 30 if tipo == "PRIVADA" else 70,
+            "semantica_nota": "BRUTA_100",
+        }
+
     def validar_solicitud_registro(self, *, modalidad_registro, evaluador, **kwargs):
         if modalidad_registro != "CONSENSO" or evaluador is not None:
             raise ValidationError("La evaluación individual de Trabajo Dirigido está pendiente de definición normativa.")

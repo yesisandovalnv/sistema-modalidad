@@ -126,7 +126,7 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
         } for nueva in obj.reprogramaciones.order_by("fecha_programada", "pk")]
 
     def get_composicion_formal(self, obj):
-        if obj.postulacion.modalidad.codigo not in {"PROYECTO_GRADO", "TESIS_GRADO"}:
+        if obj.postulacion.modalidad.codigo not in {"PROYECTO_GRADO", "TESIS_GRADO", "GRADUACION_VIA_DIPLOMADO", "TRABAJO_DIRIGIDO"}:
             return []
         assignments = self._get_composicion_formal_asignaciones(obj)
         return [{
@@ -147,22 +147,34 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
         ).select_related("usuario", "seguimiento_etapa__etapa")
 
     def get_composicion_formal_validacion(self, obj):
-        if obj.postulacion.modalidad.codigo != "TESIS_GRADO":
+        modalidad = obj.postulacion.modalidad.codigo
+        if modalidad not in {"TESIS_GRADO", "TRABAJO_DIRIGIDO"}:
             return None
         from apps.modalidades.policies import ModalidadPolicyRegistry
 
         policy = ModalidadPolicyRegistry.get(obj.postulacion).evento_policy
-        assignments = list(self._get_composicion_formal_asignaciones(obj))
-        composition = policy.evaluar_composicion_formal(
-            tipo_evento=obj.tipo_evento, asignaciones=assignments,
-        )
+        assignments_qs = self._get_composicion_formal_asignaciones(obj)
+        if modalidad == "TESIS_GRADO":
+            composition = policy.evaluar_composicion_formal(
+                tipo_evento=obj.tipo_evento, asignaciones=list(assignments_qs),
+            )
+            conflicts = composition["conflictos_detalle"]
+            conflict_roles = [(item["usuario_id"], item["cargos"]) for item in conflicts]
+        else:
+            composition = policy.evaluar_requisitos_programacion(
+                tipo_evento=obj.tipo_evento,
+                seguimiento=obj.seguimiento_etapa,
+                asignaciones=assignments_qs,
+            )
+            conflict_roles = [(item["usuario_id"], item["roles"]) for item in composition.get("conflictos", [])]
+        assignments = list(assignments_qs)
         users = {item.usuario_id: item.usuario for item in assignments}
         return {
             "cumple": composition["cumple"],
             "conflictos_identidad": [{
-                "usuario_nombre": _nombre_usuario(users[item["usuario_id"]]),
-                "cargos": item["cargos"],
-            } for item in composition["conflictos_detalle"]],
+                "usuario_nombre": _nombre_usuario(users[user_id]),
+                "cargos": cargos,
+            } for user_id, cargos in conflict_roles if user_id in users],
             "requisitos": [{
                 "cargo": AsignacionPostulacion.TipoParticipacionChoices(role).label,
                 **requirement,
@@ -172,7 +184,7 @@ class EventoDefensaSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         # Keep the existing API shape for Proyecto de Grado and other modalities.
-        if instance.postulacion.modalidad.codigo != "TESIS_GRADO":
+        if instance.postulacion.modalidad.codigo not in {"TESIS_GRADO", "TRABAJO_DIRIGIDO"}:
             data.pop("composicion_formal_validacion", None)
         return data
 

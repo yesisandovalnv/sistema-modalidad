@@ -82,6 +82,14 @@ describe('DocumentReviewDictamens', () => {
     await waitFor(() => expect(trigger).toHaveFocus())
   })
 
+  it('acepta el Tribunal de Perfil de Tesis para el dictamen de Tribunal', async () => {
+    await renderBridge({ type: 'TRIBUNAL', change: (r) => {
+      r.actors.data.results.forEach((item) => { item.etapa_codigo = 'PERFIL_TESIS' })
+    } })
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir desde Resumen' }))
+    expect(screen.getByRole('dialog', { name: 'Dictamen del Tribunal' })).toBeVisible()
+  })
+
   it('Tribunal contextual: permite abrir sin informe confirmado, pero mantiene evidencia vacía y envío deshabilitado', async () => {
     await renderBridge({ type: 'TRIBUNAL', change: (r) => {
       r.docs.data.results = r.docs.data.results.filter((item) => item.tipo_documento_codigo !== 'INFORME_TRIB_TESIS')

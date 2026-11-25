@@ -10,7 +10,9 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento
+from apps.documentos.services import DocumentoService
 from apps.postulantes.memorandums import MemorandumDesignacionService
+from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.models import (
     AsignacionPostulacion,
     DecisionAcademicaEtapa,
@@ -88,13 +90,118 @@ class MemorandumDesignacionTests(TestCase):
     def _archivo(nombre="memorandum.pdf"):
         return SimpleUploadedFile(nombre, b"%PDF-1.4\n%test\n", content_type="application/pdf")
 
-    def _publicar(self):
+    def _publicar(self, seguimiento=None, archivo=None):
         return MemorandumDesignacionService.publicar(
             postulacion=self.postulacion,
-            seguimiento=self.seguimiento,
-            archivo=self._archivo(),
+            seguimiento=seguimiento or self.seguimiento,
+            archivo=archivo or self._archivo(),
             usuario=self.admin,
         )
+
+    def _usar_tesis(self, regimen):
+        modalidad = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis de Grado memo")
+        self.postulacion.modalidad = modalidad
+        self.postulacion.regimen_workflow = regimen
+        self.postulacion.save(update_fields=["modalidad", "regimen_workflow"])
+        etapa = EtapaModalidad.objects.create(
+            modalidad=modalidad, codigo="PERFIL_TESIS", nombre="Perfil de Tesis",
+            orden=1, origen_normativo="Flujo documental autorizado",
+        )
+        self.seguimiento.etapa = etapa
+        self.seguimiento.save(update_fields=["etapa"])
+
+    def test_endpoint_publica_memorandum_de_perfil_tesis_v2(self):
+        self._usar_tesis(Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2)
+        memo_contract = FlujoPostulacionSerializer().get_gestion_decisiones_academicas(self.postulacion)
+        self.assertEqual(
+            memo_contract["memorandum_designacion_contextual"]["regimen_workflow_requerido"],
+            Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2,
+        )
+        client = APIClient()
+        client.force_authenticate(self.admin)
+
+        response = client.post(
+            f"/api/v1/postulaciones/{self.postulacion.pk}/memorandums-designacion/",
+            {"seguimiento_etapa": self.seguimiento.pk, "archivo": self._archivo()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, getattr(response, "data", None))
+        publicacion = PublicacionMemorandumDesignacion.objects.get(postulacion=self.postulacion)
+        self.assertEqual(publicacion.seguimiento_etapa.etapa.codigo, "PERFIL_TESIS")
+        self.assertEqual(publicacion.version_documento.documento.tipo_documento.codigo, "MEMORANDUM_DESIGNACION_PROYECTO")
+        self.assertEqual(publicacion.version_documento.documento.estado.codigo, "APR")
+        self.assertTrue(publicacion.version_documento.es_version_actual)
+        self.assertTrue(MemorandumDesignacionService.es_vigente(publicacion))
+
+    def test_memorandum_tesis_v2_rechaza_etapa_distinta_de_perfil_tesis(self):
+        self._usar_tesis(Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2)
+        etapa_incorrecta = EtapaModalidad.objects.create(
+            modalidad=self.postulacion.modalidad, codigo="DEFENSA_PRIVADA",
+            nombre="Defensa Privada", orden=2, origen_normativo="Prueba de etapa incorrecta",
+        )
+        seguimiento_incorrecto = SeguimientoEtapa.objects.create(
+            postulacion=self.postulacion, etapa=etapa_incorrecta,
+            estado=SeguimientoEtapa.EstadoChoices.EN_PROCESO,
+        )
+
+        with self.assertRaisesMessage(ValidationError, "Debe corresponder al Perfil de Tesis"):
+            self._publicar(seguimiento=seguimiento_incorrecto)
+
+        self.assertFalse(PublicacionMemorandumDesignacion.all_objects.exists())
+        self.assertFalse(DocumentoPostulacion.all_objects.exists())
+
+    def test_memorandum_tesis_v2_rechaza_pdf_invalido_y_no_registra_version(self):
+        self._usar_tesis(Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2)
+
+        with self.assertRaisesMessage(DRFValidationError, "El contenido del archivo no corresponde a un PDF válido"):
+            self._publicar(archivo=SimpleUploadedFile(
+                "memorandum.pdf", b"no es PDF", content_type="application/pdf",
+            ))
+
+        self.assertFalse(PublicacionMemorandumDesignacion.all_objects.exists())
+        self.assertFalse(DocumentoPostulacion.all_objects.exists())
+
+    def test_carga_documental_ordinaria_no_hereda_excepcion_del_memorandum_tesis_v2(self):
+        self._usar_tesis(Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2)
+        tipo = TipoDocumento.objects.get(codigo=MemorandumDesignacionService.TIPO_DOCUMENTO)
+
+        with self.assertRaisesMessage(
+            DRFValidationError,
+            "no puede cargarse en la etapa 'PERFIL_TESIS'",
+        ):
+            DocumentoService().subir_documento(
+                self.postulacion, tipo, self._archivo(), self.admin,
+            )
+
+        self.assertFalse(DocumentoPostulacion.all_objects.exists())
+
+    def test_memorandum_no_se_habilita_para_tesis_legacy(self):
+        self._usar_tesis(Postulacion.RegimenWorkflowChoices.TESIS_LEGACY_V1)
+        memo_contract = FlujoPostulacionSerializer().get_gestion_decisiones_academicas(self.postulacion)
+        self.assertIsNone(memo_contract["memorandum_designacion_contextual"])
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "El memorándum de designación solo aplica a Proyecto de Grado.",
+        ):
+            self._publicar()
+
+        self.assertFalse(PublicacionMemorandumDesignacion.all_objects.exists())
+
+    def test_memorandum_sigue_rechazado_para_otras_modalidades(self):
+        modalidad = Modalidad.objects.create(codigo="EXAMEN_GRADO", nombre="Examen de Grado memo")
+        self.postulacion.modalidad = modalidad
+        self.postulacion.regimen_workflow = None
+        self.postulacion.save(update_fields=["modalidad", "regimen_workflow"])
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "El memorándum de designación solo aplica a Proyecto de Grado.",
+        ):
+            self._publicar()
+
+        self.assertFalse(PublicacionMemorandumDesignacion.all_objects.exists())
 
     def test_publicacion_congela_composicion_y_deja_de_ser_vigente_si_cambia(self):
         publicacion = self._publicar()

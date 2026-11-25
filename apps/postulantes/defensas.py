@@ -270,9 +270,13 @@ class EvaluacionDefensaService:
         direct_types = {
             "PROYECTO_GRADO": {"DEFENSA_PERFIL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"},
             "TESIS_GRADO": {"DEFENSA_TEMATICA", "DEFENSA_PERFIL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"},
+            "GRADUACION_VIA_DIPLOMADO": {"DEFENSA_PUBLICA"},
+            "TRABAJO_DIRIGIDO": {"DEFENSA_PERFIL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA"},
         }
         if evento.tipo_evento not in direct_types.get(modalidad_codigo, set()):
             raise ValidationError("El registro directo no está habilitado para esta modalidad y defensa.")
+        if modalidad_codigo == "GRADUACION_VIA_DIPLOMADO" and evento.seguimiento_etapa.etapa.codigo != "DEFENSA_PUBLICA":
+            raise ValidationError("El registro directo de Vía Diplomado solo está habilitado en la etapa DEFENSA_PUBLICA.")
         EventoDefensaService._validar_postulacion_editable(evento.postulacion)
         policy = ModalidadPolicyRegistry.get(evento.postulacion)
         if not policy.evento_policy or evento.tipo_evento not in policy.evento_policy.get_tipos_evento():

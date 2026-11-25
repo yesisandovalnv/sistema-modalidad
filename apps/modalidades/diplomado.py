@@ -69,6 +69,9 @@ class DiplomadoRequisitosPolicy(BaseRequisitosPolicy):
 
 class DiplomadoEventoPolicy(BaseEventoPolicy):
     EVENT_STAGE = {"DEFENSA_PUBLICA": "DEFENSA_PUBLICA"}
+    FORMAL_ROLES = (
+        "DECANO_FACULTAD", "VICERRECTOR_POSGRADO", "DIRECTOR_CARRERA", "TRIBUNAL",
+    )
 
     def get_tipos_evento(self):
         return tuple(self.EVENT_STAGE)
@@ -80,19 +83,99 @@ class DiplomadoEventoPolicy(BaseEventoPolicy):
         if self.get_etapa_asociada(evento.tipo_evento) != evento.seguimiento_etapa.etapa.codigo:
             raise ValidationError("La defensa no corresponde a la etapa de Diplomado.")
 
-    def _tribunal_roles(self, postulacion):
-        return postulacion.asignaciones.filter(activo=True)
+    def get_asignaciones_formales_defensa(self, *, postulacion, tipo_evento, seguimiento):
+        """Devuelve la comisión formal vigente definida por la policy de Diplomado."""
+        from apps.postulantes.models import AsignacionPostulacion
+
+        if (
+            tipo_evento != "DEFENSA_PUBLICA"
+            or seguimiento is None
+            or seguimiento.postulacion_id != postulacion.pk
+            or seguimiento.etapa.codigo != "DEFENSA_PUBLICA"
+        ):
+            return AsignacionPostulacion.objects.none()
+        return AsignacionPostulacion.objects.filter(
+            postulacion=postulacion,
+            seguimiento_etapa__isnull=True,
+            activo=True,
+            usuario__is_active=True,
+            usuario__activo=True,
+            tipo_participacion__in=self.FORMAL_ROLES,
+        )
+
+    def evaluar_requisitos_programacion(self, *, tipo_evento, seguimiento, asignaciones):
+        if (
+            tipo_evento != "DEFENSA_PUBLICA"
+            or seguimiento is None
+            or seguimiento.etapa.codigo != "DEFENSA_PUBLICA"
+        ):
+            return {"cumple": False, "requisitos": {}, "conflictos": [], "conflictos_detalle": []}
+
+        formal = asignaciones.filter(
+            activo=True,
+            seguimiento_etapa__isnull=True,
+            usuario__is_active=True,
+            usuario__activo=True,
+            tipo_participacion__in=self.FORMAL_ROLES,
+        )
+        by_role = {
+            role: list(formal.filter(tipo_participacion=role).values_list("usuario_id", "orden_cargo"))
+            for role in self.FORMAL_ROLES
+        }
+        decanos = {user_id for user_id, _order in by_role["DECANO_FACULTAD"]}
+        vicerrectores = {user_id for user_id, _order in by_role["VICERRECTOR_POSGRADO"]}
+        directores = {user_id for user_id, _order in by_role["DIRECTOR_CARRERA"]}
+        tribunals = by_role["TRIBUNAL"]
+        tribunal_orders = {order for _user_id, order in tribunals}
+        requisitos = {
+            "DECANO_FACULTAD": {
+                "actual": len(decanos), "minimo": 1, "cumplido": len(decanos) == 1,
+            },
+            "AUTORIDAD_ALTERNATIVA": {
+                "actual": int(bool(vicerrectores)) + int(bool(directores)), "minimo": 1,
+                "cumplido": bool(vicerrectores or directores)
+                and len(vicerrectores) <= 1 and len(directores) <= 1,
+            },
+            "TRIBUNAL": {
+                "actual": len({user_id for user_id, _order in tribunals}), "minimo": 2,
+                "cumplido": len(tribunals) == 2 and tribunal_orders == {1, 2}
+                and len({user_id for user_id, _order in tribunals}) == 2,
+            },
+        }
+
+        roles_by_user = {}
+        for role, rows in by_role.items():
+            for user_id, _order in rows:
+                roles_by_user.setdefault(user_id, set()).add(role)
+        conflicts = [
+            {"usuario_id": user_id, "roles": sorted(roles)}
+            for user_id, roles in roles_by_user.items() if len(roles) > 1
+        ]
+        conflicts_detail = [
+            {"usuario_id": item["usuario_id"], "cargos": item["roles"]}
+            for item in conflicts
+        ]
+        for requisito in requisitos.values():
+            requisito["cumplido"] = requisito["cumplido"] and not conflicts
+        return {
+            "cumple": all(item["cumplido"] for item in requisitos.values()),
+            "requisitos": requisitos,
+            "conflictos": conflicts,
+            "conflictos_detalle": conflicts_detail,
+        }
 
     def validar_programacion(self, *, seguimiento, asignaciones, **kwargs):
         if seguimiento.etapa.codigo != "DEFENSA_PUBLICA":
             raise ValidationError("Diplomado solo admite defensa pública.")
-        roles = set(asignaciones.values_list("tipo_participacion", flat=True))
-        if "DECANO_FACULTAD" not in roles or roles.intersection({"VICERRECTOR_POSGRADO"}) and "DECANO_FACULTAD" not in roles:
-            raise ValidationError("La defensa requiere Vicerrector o Decano y la representación institucional correspondiente.")
-        if "VICERRECTOR_POSGRADO" not in roles and "DIRECTOR_CARRERA" not in roles:
-            raise ValidationError("Si preside el Decano, debe integrar el Director de Carrera.")
-        if asignaciones.filter(tipo_participacion="TRIBUNAL").count() < 2:
-            raise ValidationError("La defensa requiere dos docentes del tribunal.")
+        evaluacion = self.evaluar_requisitos_programacion(
+            tipo_evento="DEFENSA_PUBLICA", seguimiento=seguimiento, asignaciones=asignaciones,
+        )
+        if evaluacion["conflictos"]:
+            raise ValidationError("Una persona no puede ocupar cargos distintos en la comisión de Defensa Pública de Diplomado.")
+        if not evaluacion["cumple"]:
+            raise ValidationError({
+                "composicion_formal": "Se requiere Decano, al menos un Vicerrector o Director de Carrera y dos tribunales distintos en los puestos 1 y 2."
+            })
 
     def validar_participante(self, *, evento, asignacion, rol_evento, **kwargs):
         if rol_evento not in {"VICERRECTOR_POSGRADO", "DECANO_FACULTAD", "DIRECTOR_CARRERA", "TRIBUNAL"}:
@@ -195,7 +278,7 @@ class DiplomadoPolicy(BaseModalidadPolicy):
     requisitos_policy = DiplomadoRequisitosPolicy()
 
     def get_reglas_asignacion(self):
-        return {"VICERRECTOR_POSGRADO": 1, "DECANO_FACULTAD": 1, "TRIBUNAL": 2}
+        return {"DECANO_FACULTAD": 1, "TRIBUNAL": 2}
 
     def get_configuracion_actores(self, postulacion=None, seguimiento=None):
         """Declara la composicion efectiva de la defensa publica de Diplomado."""

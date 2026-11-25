@@ -29,7 +29,8 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         self.student = CustomUser.objects.create_user(username="e2e-student", password="x", ci="8800002", ru="RU8800002", role=student_role)
         self.teachers = [CustomUser.objects.create_user(username=f"e2e-doc-{n}", password="x", ci=f"880001{n}", ru=f"RU880001{n}", role=teacher_role) for n in range(1, 6)]
         self.post = Postulacion.objects.create(codigo="TESIS-E2E-001", estudiante=self.student, modalidad=Modalidad.objects.get(codigo="TESIS_GRADO"), periodo=Periodo.objects.create(nombre="E2E-TESIS", gestion=2026, semestre="II", fecha_inicio="2026-07-01", fecha_fin="2026-12-31"), estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"))
-        self.stages = {x.etapa.codigo: x for x in WorkflowService.inicializar_flujo(self.post, self.admin)}
+        from apps.postulantes.tesis_grado_workflow import TesisGradoWorkflowOrchestrator
+        self.stages = {x.etapa.codigo: x for x in TesisGradoWorkflowOrchestrator.inicializar_proceso(self.post, self.admin)}
         self.docs = DocumentoService()
 
     def upload_and_approve(self, code):
@@ -51,26 +52,48 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
             EvaluacionDefensaService.registrar_evaluacion_perfil(event, self.admin, "SUFICIENTE")
         EvaluacionDefensaService.consolidar_evaluacion_evento(event, self.admin)
 
-    def reach_private(self):
+    def complete_inscription(self):
         for code in ("CARTA_SOLICITUD", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ"):
             self.upload_and_approve(code)
-        WorkflowService.iniciar_etapa(self.stages["INSCRIPCION"], self.admin)
-        WorkflowService.aprobar_etapa(self.stages["INSCRIPCION"], self.admin)
-        thematic = self.stages["TEMATICA_TESIS"]
-        WorkflowService.iniciar_etapa(thematic, self.admin)
-        self.tribunal_assignments = [AsignacionService.asignar_actor(self.post, teacher, "TRIBUNAL", self.admin, orden_cargo=index, seguimiento_etapa=thematic) for index, teacher in enumerate(self.teachers[:3], 1)]
-        self.complete_event(thematic, "DEFENSA_TEMATICA", "TEMATICA")
+        self.stages["INSCRIPCION"].refresh_from_db()
+        self.stages["PERFIL_TESIS"].refresh_from_db()
+        self.assertEqual(self.stages["INSCRIPCION"].estado, "APROBADA")
+        self.assertEqual(self.stages["PERFIL_TESIS"].estado, "EN_PROCESO")
+        return self.stages["PERFIL_TESIS"]
+
+    def reach_private(self):
+        profile = self.complete_inscription()
+        self.tribunal_assignments = [
+            AsignacionService.asignar_actor(
+                self.post, teacher, "TRIBUNAL", self.admin,
+                orden_cargo=index, seguimiento_etapa=profile,
+            )
+            for index, teacher in enumerate(self.teachers[:3], 1)
+        ]
         tutor = AsignacionService.asignar_actor(self.post, self.teachers[3], "TUTOR", self.admin)
-        self.upload_and_approve("PERFIL_TESIS"); tutor_evidence = self.upload_and_approve("INFORME_TUTOR_TESIS")
-        profile = self.stages["PERFIL_TESIS"]; WorkflowService.iniciar_etapa(profile, self.admin); self.complete_event(profile, "DEFENSA_PERFIL", "PERFIL")
+        self.upload_and_approve("PERFIL_TESIS")
+        tutor_evidence = self.upload_and_approve("INFORME_TUTOR_TESIS")
+        self.complete_event(profile, "DEFENSA_PERFIL", "PERFIL")
         final_version = self.upload_and_approve("DOCUMENTO_FINAL")
-        document_stage = self.stages["DOCUMENTO_FINAL"]; WorkflowService.iniciar_etapa(document_stage, self.admin); WorkflowService.aprobar_etapa(document_stage, self.admin)
-        tutor_stage = self.stages["REVISION_TUTOR"]; WorkflowService.iniciar_etapa(tutor_stage, self.admin)
-        DictamenRevisionDocumentoService.registrar(seguimiento=tutor_stage, version_documento_revisada=final_version, tipo_revision="TUTOR", resultado="SUFICIENTE", evidencia_version=tutor_evidence, asignacion_emisora=tutor, usuario=self.admin)
+        document_stage = self.stages["DOCUMENTO_FINAL"]
+        WorkflowService.iniciar_etapa(document_stage, self.admin)
+        WorkflowService.aprobar_etapa(document_stage, self.admin)
+        tutor_stage = self.stages["REVISION_TUTOR"]
+        WorkflowService.iniciar_etapa(tutor_stage, self.admin)
+        DictamenRevisionDocumentoService.registrar(
+            seguimiento=tutor_stage, version_documento_revisada=final_version,
+            tipo_revision="TUTOR", resultado="SUFICIENTE", evidencia_version=tutor_evidence,
+            asignacion_emisora=tutor, usuario=self.admin,
+        )
         WorkflowService.aprobar_etapa(tutor_stage, self.admin)
-        tribunal_stage = self.stages["REVISION_TRIBUNAL"]; WorkflowService.iniciar_etapa(tribunal_stage, self.admin)
+        tribunal_stage = self.stages["REVISION_TRIBUNAL"]
+        WorkflowService.iniciar_etapa(tribunal_stage, self.admin)
         tribunal_evidence = self.upload_and_approve("INFORME_TRIB_TESIS")
-        DictamenRevisionDocumentoService.registrar(seguimiento=tribunal_stage, version_documento_revisada=final_version, tipo_revision="TRIBUNAL", resultado="SUFICIENTE", evidencia_version=tribunal_evidence, usuario=self.admin)
+        DictamenRevisionDocumentoService.registrar(
+            seguimiento=tribunal_stage, version_documento_revisada=final_version,
+            tipo_revision="TRIBUNAL", resultado="SUFICIENTE", evidencia_version=tribunal_evidence,
+            usuario=self.admin,
+        )
         WorkflowService.aprobar_etapa(tribunal_stage, self.admin)
         private = WorkflowService.iniciar_etapa(self.stages["DEFENSA_PRIVADA"], self.admin)
         secretary = AsignacionService.asignar_actor(self.post, self.teachers[3], "DOCENTE_MODALIDAD", self.admin)
@@ -88,26 +111,17 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         return event
 
     def test_defensa_perfil_admite_resultado_directo_sin_participantes_ni_quorum(self):
-        for code in ("CARTA_SOLICITUD", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ"):
-            self.upload_and_approve(code)
-        WorkflowService.iniciar_etapa(self.stages["INSCRIPCION"], self.admin)
-        WorkflowService.aprobar_etapa(self.stages["INSCRIPCION"], self.admin)
-
-        thematic = self.stages["TEMATICA_TESIS"]
-        WorkflowService.iniciar_etapa(thematic, self.admin)
+        profile = self.complete_inscription()
         self.tribunal_assignments = [
             AsignacionService.asignar_actor(
                 self.post, teacher, "TRIBUNAL", self.admin,
-                orden_cargo=index, seguimiento_etapa=thematic,
+                orden_cargo=index, seguimiento_etapa=profile,
             )
             for index, teacher in enumerate(self.teachers[:3], 1)
         ]
-        self.complete_event(thematic, "DEFENSA_TEMATICA", "TEMATICA")
         AsignacionService.asignar_actor(self.post, self.teachers[3], "TUTOR", self.admin)
         self.upload_and_approve("PERFIL_TESIS")
         self.upload_and_approve("INFORME_TUTOR_TESIS")
-
-        profile = WorkflowService.iniciar_etapa(self.stages["PERFIL_TESIS"], self.admin)
         event = EventoDefensaService.programar_evento(
             self.post, profile, "DEFENSA_PERFIL", timezone.now() - timedelta(minutes=1),
             self.admin, lugar="Aula de defensa",
@@ -156,19 +170,15 @@ class TesisHastaRevisionTribunalE2ETest(TestCase):
         self.assertEqual(public.estado, "APROBADA")
 
     def test_recorrido_real_habilita_defensa_privada_solo_despues_de_revision_tribunal(self):
-        for code in ("CARTA_SOLICITUD", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ"):
-            self.upload_and_approve(code)
-        WorkflowService.iniciar_etapa(self.stages["INSCRIPCION"], self.admin)
-        WorkflowService.aprobar_etapa(self.stages["INSCRIPCION"], self.admin)
-
-        thematic = self.stages["TEMATICA_TESIS"]
-        WorkflowService.iniciar_etapa(thematic, self.admin)
-        self.tribunal_assignments = [AsignacionService.asignar_actor(self.post, teacher, "TRIBUNAL", self.admin, orden_cargo=index, seguimiento_etapa=thematic) for index, teacher in enumerate(self.teachers[:3], 1)]
-        self.complete_event(thematic, "DEFENSA_TEMATICA", "TEMATICA")
+        profile = self.complete_inscription()
+        self.tribunal_assignments = [
+            AsignacionService.asignar_actor(self.post, teacher, "TRIBUNAL", self.admin,
+                orden_cargo=index, seguimiento_etapa=profile)
+            for index, teacher in enumerate(self.teachers[:3], 1)
+        ]
         tutor = AsignacionService.asignar_actor(self.post, self.teachers[3], "TUTOR", self.admin)
-
         self.upload_and_approve("PERFIL_TESIS"); tutor_evidence = self.upload_and_approve("INFORME_TUTOR_TESIS")
-        profile = self.stages["PERFIL_TESIS"]; WorkflowService.iniciar_etapa(profile, self.admin); self.complete_event(profile, "DEFENSA_PERFIL", "PERFIL")
+        self.complete_event(profile, "DEFENSA_PERFIL", "PERFIL")
         final_version = self.upload_and_approve("DOCUMENTO_FINAL")
         document_stage = self.stages["DOCUMENTO_FINAL"]; WorkflowService.iniciar_etapa(document_stage, self.admin); WorkflowService.aprobar_etapa(document_stage, self.admin)
 

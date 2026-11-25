@@ -5759,7 +5759,7 @@ describe('ExpedientePage US-008', () => {
     const scrollIntoView = vi.fn()
     definePropertyForTest(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scrollIntoView })
 
-    await userEvent.click(within(summary).getByRole('link', { name: /Ir a concluir acad/ }))
+    await userEvent.click(within(summary).getByRole('link', { name: 'Ir a concluir académicamente' }))
 
     const outcomeTab = screen.getByRole('tab', { name: 'Resultado y cierre' })
     expect(outcomeTab).toHaveAttribute('aria-selected', 'true')
@@ -5767,7 +5767,7 @@ describe('ExpedientePage US-008', () => {
     expect(outcome).not.toHaveAttribute('hidden')
     expect(within(outcome).getByRole('heading', { name: 'Resultado académico técnico' })).toBeInTheDocument()
     expect(within(outcome).getByText('77.00')).toBeInTheDocument()
-    expect(within(outcome).getByText(/APROBACI/)).toBeInTheDocument()
+    expect(within(outcome).getByText('APROBACIÓN PLENA')).toBeInTheDocument()
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' })
   })
 
@@ -7042,7 +7042,7 @@ describe('ExpedientePage US-008', () => {
     expect(postulacionesService.asignarActor).toHaveBeenCalledTimes(1)
   })
 
-  it('autoridades Tesis: mantiene compatibilidades de asignación y etiquetas sin copiar exclusiones de Proyecto', async () => {
+  it('autoridades Tesis: deshabilita personas ocupadas en otros cargos de la Defensa Publica', async () => {
     postulacionesService.obtenerExpediente.mockResolvedValue(thesisPublicAuthoritiesResponse())
     const actors = ['TRIBUNAL', 'TUTOR', 'DOCENTE_MODALIDAD'].map((role, index) => ({ id: index + 10, usuario: 41, tipo_participacion: role, orden_cargo: role === 'TRIBUNAL' ? 1 : null, seguimiento_etapa: 19, activo: true }))
     postulacionesService.obtenerActores.mockResolvedValue({ count: actors.length, results: actors })
@@ -7051,18 +7051,38 @@ describe('ExpedientePage US-008', () => {
     const dialog = screen.getByRole('dialog')
     const president = await within(dialog).findByLabelText('Seleccionar persona para Presidente')
     const secretary = within(dialog).getByLabelText('Seleccionar persona para Secretario')
-    expect(within(president).getByRole('option', { name: /Johnny Rosas.*Asignación vigente: Tribunal 1, Tutor, Docente de modalidad/ })).toBeEnabled()
-    await userEvent.selectOptions(president, '41')
-    expect(within(secretary).getByRole('option', { name: /Johnny Rosas/ })).toBeEnabled()
-    await userEvent.selectOptions(secretary, '41')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Guardar autoridades' }))
-    await waitFor(() => expect(postulacionesService.asignarActor).toHaveBeenCalledTimes(2))
-    expect(postulacionesService.asignarActor.mock.calls.map((call) => call[1])).toEqual([
-      { usuario: 41, tipo_participacion: 'PRESIDENTE', seguimiento_etapa: 82 },
-      { usuario: 41, tipo_participacion: 'SECRETARIO', seguimiento_etapa: 82 },
-    ])
+    expect(within(president).getByRole('option', { name: /Johnny Rosas/ })).toBeDisabled()
+    expect(within(secretary).getByRole('option', { name: /Johnny Rosas/ })).toBeDisabled()
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
   })
 
+  it('autoridades Tesis: deshabilita entre Presidente y Secretario y libera al retirar la seleccion', async () => {
+    postulacionesService.obtenerExpediente.mockResolvedValue(thesisPublicAuthoritiesResponse())
+    postulacionesService.obtenerActores.mockResolvedValue({ count: 0, results: [] })
+    postulacionesService.obtenerCandidatosAsignacion.mockResolvedValue({ count: 2, next: null, previous: null, results: [
+      { id: 41, nombre_completo: 'Persona candidata', rol_nombre: 'Docente' },
+      { id: 42, nombre_completo: 'Otra persona', rol_nombre: 'Docente' },
+    ] })
+    renderAssignmentManagerPage('resumen')
+    await userEvent.click(await screen.findByRole('button', { name: 'Completar autoridades' }))
+    const dialog = screen.getByRole('dialog', { name: 'Completar autoridades' })
+    const president = await within(dialog).findByLabelText('Seleccionar persona para Presidente')
+    const secretary = within(dialog).getByLabelText('Seleccionar persona para Secretario')
+    const candidate = 'Persona candidata — Docente'
+
+    await userEvent.selectOptions(president, '41')
+    expect(within(president).getByRole('option', { name: candidate })).toBeEnabled()
+    expect(within(secretary).getByRole('option', { name: candidate })).toBeDisabled()
+    await userEvent.selectOptions(president, '')
+    expect(within(secretary).getByRole('option', { name: candidate })).toBeEnabled()
+
+    await userEvent.selectOptions(secretary, '41')
+    expect(within(secretary).getByRole('option', { name: candidate })).toBeEnabled()
+    expect(within(president).getByRole('option', { name: candidate })).toBeDisabled()
+    await userEvent.selectOptions(secretary, '')
+    expect(within(president).getByRole('option', { name: candidate })).toBeEnabled()
+    expect(postulacionesService.asignarActor).not.toHaveBeenCalled()
+  })
   it.each(['TESIS_GRADO', 'PROYECTO_GRADO'])('autoridades conserva selecciones en páginas distintas y bloquea todos los cierres durante envío en %s', async (code) => {
     const initial = thesisPublicAuthoritiesResponse()
     initial.detalle.modalidad_detalle.codigo = code
@@ -11364,6 +11384,124 @@ describe('ExpedientePage US-008', () => {
       expect(await within(detail).findByText('Resultado: Consolidado')).toBeInTheDocument()
       expect(window.location.hash).toBe('#defensas')
       expect(document.getElementById('panel-defensas')).toBeVisible()
+    })
+
+    it.each([
+      ['DEFENSA_PERFIL', 'PERFIL_TRABAJO_DIRIGIDO', [{ id: 51, usuario_nombre: 'Tribunal Uno', rol_display: 'Tribunal', orden_cargo: 1 }], null],
+      ['DEFENSA_PRIVADA', 'DEFENSA_PRIVADA', [{ id: 52, usuario_nombre: 'Docente Uno', rol_display: 'Docente de modalidad' }], { minimo: 0, maximo: 100, ponderacion: 30, semantica_nota: 'BRUTA_100' }],
+      ['DEFENSA_PUBLICA', 'DEFENSA_PUBLICA', [{ id: 53, usuario_nombre: 'Presidente Uno', rol_display: 'Presidente' }], { minimo: 1, maximo: 100, ponderacion: 70, semantica_nota: 'BRUTA_100' }],
+    ])('usa composición y resultado directo en Trabajo Dirigido para %s sin participantes ni quórum', async (eventType, stageCode, composition, numericConfig) => {
+      const stage = { id: 401, codigo: stageCode, nombre: stageCode, estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+      const orientation = { mensaje: 'Gestiona la defensa.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar defensa', estado: 'DISPONIBLE', destino: '#defensas' } }
+      const td = {
+        ...response,
+        detalle: { ...response.detalle, modalidad_detalle: { id: 4, codigo: 'TRABAJO_DIRIGIDO', nombre: 'Trabajo Dirigido' } },
+        flujo: { ...response.flujo, modalidad: { id: 4, codigo: 'TRABAJO_DIRIGIDO' }, etapa_actual: stage, etapas: [stage], orientacion_etapa_actual: orientation },
+        cierre: { data: null, error: '' },
+      }
+      const defense = {
+        id: 402, postulacion: 7, postulacion_modalidad_codigo: 'TRABAJO_DIRIGIDO', tipo_evento: eventType,
+        tipo_display: eventType, numero_intento: 1, estado: 'PROGRAMADA', estado_display: 'Programada',
+        fecha_programada: '2026-11-25T14:00:00Z', lugar: 'Auditorio', modalidad_display: 'Presencial',
+        etapa_codigo: stageCode, etapa_nombre: stageCode, participantes: [], composicion_formal: composition,
+        composicion_formal_validacion: { cumple: true, conflictos_identidad: [], requisitos: [] },
+        configuracion_numerica: numericConfig, evaluaciones: [], resultado_consolidado: null,
+      }
+      postulacionesService.obtenerExpediente.mockResolvedValue(td)
+      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defense] })
+      postulacionesService.registrarResultadoDirectoDefensa.mockResolvedValue({ ...defense, estado: 'FINALIZADA' })
+      renderDefenseManagerPage()
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+      const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+      expect(within(detail).getByText(composition[0].usuario_nombre)).toBeInTheDocument()
+      expect(within(detail).queryByText(/Participantes:/)).not.toBeInTheDocument()
+      expect(within(detail).queryByRole('button', { name: 'Agregar participante' })).not.toBeInTheDocument()
+      expect(within(detail).queryByRole('button', { name: 'Registrar asistencia' })).not.toBeInTheDocument()
+      expect(within(detail).queryByText(/Quórum:/)).not.toBeInTheDocument()
+      expect(within(detail).queryByRole('button', { name: 'Iniciar defensa' })).not.toBeInTheDocument()
+      expect(postulacionesService.obtenerQuorumDefensa).not.toHaveBeenCalled()
+      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar resultado y finalizar' }))
+      if (numericConfig) {
+        const note = within(detail).getByLabelText(/Nota bruta/)
+        expect(note).toHaveAttribute('min', String(numericConfig.minimo))
+        expect(note).toHaveAttribute('max', '100')
+        expect(within(detail).getByText(`Ponderación: ${numericConfig.ponderacion}%. El aporte se calcula automáticamente.`)).toBeInTheDocument()
+        await userEvent.type(note, '80')
+      } else {
+        expect(within(detail).getByLabelText('Resultado')).toBeInTheDocument()
+      }
+      await userEvent.click(within(detail).getByRole('button', { name: 'Guardar resultado' }))
+      await waitFor(() => expect(postulacionesService.registrarResultadoDirectoDefensa).toHaveBeenCalledWith(
+        402,
+        numericConfig
+          ? { resultado: eventType === 'DEFENSA_PRIVADA' ? 'SUFICIENTE' : '', observaciones: '', nota: '80' }
+          : { resultado: 'SUFICIENTE', observaciones: '' },
+        expect.any(AbortSignal),
+      ))
+    })
+
+    it('usa el detalle formal y resultado directo para Vía Diplomado sin cargar quórum', async () => {
+      const stage = { id: 301, codigo: 'DEFENSA_PUBLICA', nombre: 'Defensa Pública', estado: 'EN_PROCESO', numero_intento: 1, activo: true }
+      const orientation = { mensaje: 'Gestiona la defensa pública.', requisitos: [], siguiente_accion: { codigo: 'GESTIONAR_DEFENSA', titulo: 'Gestionar defensa', estado: 'DISPONIBLE', destino: '#defensas' } }
+      const via = {
+        ...response,
+        detalle: { ...response.detalle, modalidad_detalle: { id: 3, codigo: 'GRADUACION_VIA_DIPLOMADO', nombre: 'Graduación Vía Diplomado' } },
+        flujo: { ...response.flujo, modalidad: { id: 3, codigo: 'GRADUACION_VIA_DIPLOMADO' }, etapa_actual: stage, etapas: [stage], orientacion_etapa_actual: orientation },
+        cierre: { data: null, error: '' },
+      }
+      const defense = {
+        id: 302, postulacion: 7, postulacion_modalidad_codigo: 'GRADUACION_VIA_DIPLOMADO', tipo_evento: 'DEFENSA_PUBLICA',
+        tipo_display: 'Defensa pública', numero_intento: 1, estado: 'PROGRAMADA', estado_display: 'Programada',
+        fecha_programada: '2026-11-25T14:00:00Z', lugar: 'Auditorio', modalidad_display: 'Presencial',
+        etapa_codigo: 'DEFENSA_PUBLICA', etapa_nombre: 'Defensa Pública', participantes: [],
+        composicion_formal: [
+          { id: 41, usuario_nombre: 'Decana Uno', tipo_participacion: 'DECANO_FACULTAD', rol_display: 'Decana de Facultad' },
+          { id: 42, usuario_nombre: 'Director Uno', tipo_participacion: 'DIRECTOR_CARRERA', rol_display: 'Director de Carrera' },
+          { id: 43, usuario_nombre: 'Tribunal Uno', tipo_participacion: 'TRIBUNAL', rol_display: 'Tribunal docente', orden_cargo: 1 },
+          { id: 44, usuario_nombre: 'Tribunal Dos', tipo_participacion: 'TRIBUNAL', rol_display: 'Tribunal docente', orden_cargo: 2 },
+        ],
+        evaluaciones: [{ id: 45, tipo_evaluacion: 'PUBLICA', modalidad_registro: 'INDIVIDUAL', nota_numerica: '80.00' }],
+        resultado_consolidado: null,
+      }
+      const completed = { ...defense, estado: 'FINALIZADA', resultado_consolidado: { tipo_evaluacion: 'RESULTADO_FINAL', nota_numerica: '85.00' } }
+      postulacionesService.obtenerExpediente.mockResolvedValue(via)
+      postulacionesService.obtenerDefensas.mockResolvedValue({ count: 1, next: null, previous: null, results: [defense] })
+      postulacionesService.obtenerDiplomado.mockResolvedValue({ modulos: [] })
+      postulacionesService.registrarResultadoDirectoDefensa.mockResolvedValue(completed)
+      postulacionesService.obtenerDefensa.mockResolvedValue(completed)
+      renderDefenseManagerPage()
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Ver defensa' }))
+      const detail = screen.getByRole('dialog', { name: 'Detalle de defensa' })
+      expect(within(detail).getByText('Decana Uno')).toBeInTheDocument()
+      expect(within(detail).getByText('Director Uno')).toBeInTheDocument()
+      expect(within(detail).getByText('Tribunal Uno')).toBeInTheDocument()
+      expect(within(detail).getByText('Tribunal Dos')).toBeInTheDocument()
+      expect(within(detail).getByText('Evaluaciones registradas')).toBeInTheDocument()
+      expect(within(detail).getByText('80.00')).toBeInTheDocument()
+      expect(within(detail).getByRole('button', { name: 'Gestionar tribunal y cargos' })).toBeInTheDocument()
+      expect(within(detail).getByRole('button', { name: 'Reprogramar defensa' })).toBeInTheDocument()
+      expect(within(detail).getByRole('button', { name: 'Cancelar defensa' })).toBeInTheDocument()
+      expect(within(detail).queryByRole('button', { name: 'Agregar participante' })).not.toBeInTheDocument()
+      expect(within(detail).queryByText(/Quórum:/)).not.toBeInTheDocument()
+      expect(within(detail).queryByRole('button', { name: 'Iniciar defensa' })).not.toBeInTheDocument()
+      expect(postulacionesService.obtenerQuorumDefensa).not.toHaveBeenCalled()
+
+      await userEvent.click(within(detail).getByRole('button', { name: 'Gestionar tribunal y cargos' }))
+      expect(screen.getByRole('dialog', { name: 'Gestionar actores — Defensa Pública' })).toBeInTheDocument()
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'Gestionar actores — Defensa Pública' })).getAllByRole('button', { name: 'Cerrar' }).at(-1))
+
+      await userEvent.click(within(detail).getByRole('button', { name: 'Registrar resultado y finalizar' }))
+      const note = within(detail).getByLabelText(/Nota bruta/)
+      expect(note).toHaveAttribute('min', '1')
+      expect(note).toHaveAttribute('max', '100')
+      expect(within(detail).getByText('Ponderación: 100%. El aporte se calcula automáticamente.')).toBeInTheDocument()
+      await userEvent.type(note, '85')
+      await userEvent.click(within(detail).getByRole('button', { name: 'Guardar resultado' }))
+      await waitFor(() => expect(postulacionesService.registrarResultadoDirectoDefensa).toHaveBeenCalledWith(
+        302, { resultado: '', observaciones: '', nota: '85' }, expect.any(AbortSignal),
+      ))
     })
 
     it('restaura el foco al botón que abrió el cargador de Tesis', async () => {

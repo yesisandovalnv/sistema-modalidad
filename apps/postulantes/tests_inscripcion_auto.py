@@ -1,16 +1,18 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import close_old_connections, connection
-from django.test import TransactionTestCase, skipUnless
+from django.test import TransactionTestCase
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.documentos.models import DocumentoPostulacion, EstadoDocumento, TipoDocumento, VersionDocumento
 from apps.documentos.services import DocumentoService
 from apps.postulantes.models import EstadoPostulacion, Postulacion, SeguimientoEtapa
 from apps.postulantes.tesis_grado_workflow import TesisGradoWorkflowOrchestrator
+from apps.usuarios.models import Role
 
 
 User = get_user_model()
@@ -20,7 +22,8 @@ class TesisInscripcionAutoFinalizacionTests(TransactionTestCase):
     reset_sequences = True
 
     def setUp(self):
-        self.admin = User.objects.create_user(username="admin_tesis_auto", is_staff=True)
+        admin_role, _ = Role.objects.get_or_create(codigo="ADMINISTRADOR", defaults={"nombre": "Administrador"})
+        self.admin = User.objects.create_user(username="admin_tesis_auto", is_staff=True, role=admin_role)
         self.student = User.objects.create_user(username="student_tesis_auto")
         self.modalidad = Modalidad.objects.create(codigo="TESIS_GRADO", nombre="Tesis auto")
         self.periodo = Periodo.objects.create(
@@ -33,11 +36,14 @@ class TesisInscripcionAutoFinalizacionTests(TransactionTestCase):
         EstadoPostulacion.objects.get_or_create(
             codigo="EN_PROCESO", defaults={"nombre": "En proceso"},
         )
+        EstadoDocumento.objects.get_or_create(
+            codigo="APR", defaults={"nombre": "Aprobado"},
+        )
         self.postulacion = Postulacion.objects.create(
             codigo="TESIS-AUTO-001", estudiante=self.student, modalidad=self.modalidad,
             periodo=self.periodo, estado_actual=registrada,
         )
-        for orden, codigo in enumerate(TesisGradoWorkflowOrchestrator.ETAPAS, 1):
+        for orden, codigo in enumerate(TesisGradoWorkflowOrchestrator.ETAPAS_LEGACY, 1):
             EtapaModalidad.objects.create(
                 modalidad=self.modalidad, codigo=codigo, nombre=codigo,
                 orden=orden, obligatoria=True,
@@ -49,7 +55,7 @@ class TesisInscripcionAutoFinalizacionTests(TransactionTestCase):
             for row in TesisGradoWorkflowOrchestrator.inicializar_proceso(self.postulacion, self.admin)
         }
 
-    def _document(self, code, state="APR"):
+    def _document(self, code, state="ENV"):
         tipo, _ = TipoDocumento.objects.get_or_create(
             codigo=code, defaults={"nombre": code.replace("_", " ").title()},
         )
@@ -105,7 +111,7 @@ class TesisInscripcionAutoFinalizacionTests(TransactionTestCase):
         from apps.postulantes.inscripcion_auto import InscripcionAutoFinalizacionService
 
         for code in ("CARTA_SOLICITUD", "MATRICULA_VIGENTE", "HISTORIAL_PRERREQ"):
-            self._document(code)
+            self._document(code, state="APR")
         InscripcionAutoFinalizacionService.intentar_finalizar(self.postulacion, self.admin)
         InscripcionAutoFinalizacionService.intentar_finalizar(self.postulacion, self.admin)
 

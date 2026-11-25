@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
 from apps.postulantes.models import EstadoPostulacion, Postulacion, SeguimientoEtapa
+from apps.postulantes.serializers import FlujoPostulacionSerializer
 from apps.postulantes.tesis_grado_workflow import TesisGradoWorkflowOrchestrator
 from apps.usuarios.models import Role
 
@@ -27,7 +28,7 @@ class TesisGradoAutoinicializacionTests(TestCase):
         )
         EstadoPostulacion.objects.create(codigo="REGISTRADA", nombre="Registrada")
         EstadoPostulacion.objects.create(codigo="EN_PROCESO", nombre="En proceso")
-        for orden, codigo in enumerate(TesisGradoWorkflowOrchestrator.ETAPAS, 1):
+        for orden, codigo in enumerate(TesisGradoWorkflowOrchestrator.ETAPAS_LEGACY, 1):
             EtapaModalidad.objects.create(
                 modalidad=self.modalidad, codigo=codigo, nombre=codigo.replace("_", " ").title(),
                 orden=orden, obligatoria=True,
@@ -45,11 +46,12 @@ class TesisGradoAutoinicializacionTests(TestCase):
             "periodo": self.periodo.pk,
         }
 
-    def test_crear_tesis_inicializa_ocho_etapas_e_inicia_solo_inscripcion(self):
+    def test_crear_tesis_inicializa_siete_etapas_sin_tematica_e_inicia_inscripcion(self):
         response = self.client.post("/api/v1/postulaciones/", self.payload(), format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        postulacion = Postulacion.objects.get(codigo="TESIS-AUTO-001")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        postulacion = Postulacion.all_objects.filter(pk=response.data["id"]).first()
+        self.assertIsNotNone(postulacion, {"response": response.data})
         postulacion.refresh_from_db()
         self.assertEqual(postulacion.estado_actual.codigo, "EN_PROCESO")
 
@@ -58,12 +60,12 @@ class TesisGradoAutoinicializacionTests(TestCase):
         self.assertEqual(flujo.data["porcentaje_avance"], 0.0)
         self.assertEqual(flujo.data["etapa_actual"]["codigo"], "INSCRIPCION")
         self.assertEqual(flujo.data["etapa_actual"]["estado"], "EN_PROCESO")
-        self.assertEqual(len(flujo.data["etapas"]), 8)
+        self.assertEqual(len(flujo.data["etapas"]), 7)
 
         estados = {etapa["codigo"]: etapa["estado"] for etapa in flujo.data["etapas"]}
         self.assertEqual(estados["INSCRIPCION"], "EN_PROCESO")
         self.assertNotEqual(estados["INSCRIPCION"], "APROBADA")
-        self.assertEqual(estados["TEMATICA_TESIS"], "PENDIENTE")
+        self.assertNotIn("TEMATICA_TESIS", estados)
         self.assertTrue(all(estados[codigo] == "PENDIENTE" for codigo in TesisGradoWorkflowOrchestrator.ETAPAS[1:]))
 
         orientacion = flujo.data["orientacion_etapa_actual"]
@@ -83,11 +85,83 @@ class TesisGradoAutoinicializacionTests(TestCase):
         segunda = TesisGradoWorkflowOrchestrator.inicializar_proceso(postulacion, self.admin)
 
         inscripcion = SeguimientoEtapa.objects.get(postulacion=postulacion, etapa__codigo="INSCRIPCION")
-        self.assertEqual(len(primera), 8)
-        self.assertEqual(len(segunda), 8)
-        self.assertEqual(SeguimientoEtapa.objects.filter(postulacion=postulacion).count(), 8)
+        self.assertEqual(len(primera), 7)
+        self.assertEqual(len(segunda), 7)
+        self.assertEqual(SeguimientoEtapa.objects.filter(postulacion=postulacion).count(), 7)
         self.assertEqual(inscripcion.estado, "EN_PROCESO")
         self.assertEqual(inscripcion.fecha_inicio, fecha_inicio)
+
+    def test_tesis_legacy_conserva_tematicas_y_seguimientos_existentes(self):
+        postulacion = Postulacion.objects.create(
+            codigo="TESIS-AUTO-LEGACY", estudiante=self.student, modalidad=self.modalidad,
+            periodo=self.periodo, estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"),
+            regimen_workflow=Postulacion.RegimenWorkflowChoices.TESIS_LEGACY_V1,
+        )
+        from apps.postulantes.workflow import WorkflowService
+        antiguos = WorkflowService.inicializar_flujo(postulacion, self.admin)
+        thematic = next(item for item in antiguos if item.etapa.codigo == "TEMATICA_TESIS")
+        SeguimientoEtapa.objects.filter(pk=thematic.pk).update(estado="APROBADA")
+        thematic.refresh_from_db()
+
+        actualizados = TesisGradoWorkflowOrchestrator.inicializar_proceso(postulacion, self.admin)
+
+        self.assertEqual(len(actualizados), 8)
+        self.assertEqual(SeguimientoEtapa.objects.filter(postulacion=postulacion).count(), 8)
+        thematic.refresh_from_db()
+        self.assertEqual(thematic.estado, "APROBADA")
+        self.assertEqual(
+            [item.etapa.codigo for item in actualizados],
+            list(TesisGradoWorkflowOrchestrator.ETAPAS_LEGACY),
+        )
+        flujo = FlujoPostulacionSerializer(postulacion)
+        self.assertIn("TEMATICA_TESIS", {item["codigo"] for item in flujo.get_etapas(postulacion)})
+
+    def test_tesis_perfil_directo_oculta_tematica_operativa_y_conserva_el_seguimiento(self):
+        postulacion = Postulacion.objects.create(
+            codigo="TESIS-AUTO-V2-HIST", estudiante=self.student, modalidad=self.modalidad,
+            periodo=self.periodo, estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"),
+        )
+        seguimientos = TesisGradoWorkflowOrchestrator.inicializar_proceso(postulacion, self.admin)
+        by_code = {item.etapa.codigo: item for item in seguimientos}
+        SeguimientoEtapa.objects.filter(pk=by_code["INSCRIPCION"].pk).update(estado="APROBADA")
+        SeguimientoEtapa.objects.filter(pk=by_code["PERFIL_TESIS"].pk).update(estado="EN_PROCESO")
+        thematic = SeguimientoEtapa.objects.create(
+            postulacion=postulacion,
+            etapa=self.modalidad.etapas.get(codigo="TEMATICA_TESIS"),
+            estado="EN_PROCESO",
+        )
+
+        flujo = FlujoPostulacionSerializer(postulacion)
+
+        self.assertNotIn("TEMATICA_TESIS", {item["codigo"] for item in flujo.get_etapas(postulacion)})
+        self.assertEqual(flujo.get_etapa_actual(postulacion)["codigo"], "PERFIL_TESIS")
+        self.assertEqual(flujo.get_etapas_totales(postulacion), 7)
+        self.assertTrue(SeguimientoEtapa.objects.filter(pk=thematic.pk, activo=True).exists())
+
+    def test_el_serializador_conserva_etapas_de_proyecto_y_otras_modalidades(self):
+        for modality_code in ("PROYECTO_GRADO", "TRABAJO_DIRIGIDO"):
+            with self.subTest(modalidad=modality_code):
+                modality = Modalidad.objects.create(codigo=modality_code, nombre=modality_code)
+                stages = [
+                    EtapaModalidad.objects.create(
+                        modalidad=modality, codigo=code, nombre=code, orden=order,
+                        origen_normativo="Prueba",
+                    )
+                    for order, code in enumerate(("PERFIL_PROYECTO", "TEMATICA_TESIS"), start=1)
+                ]
+                student = User.objects.create_user(username=f"student_{modality_code.lower()}")
+                postulacion = Postulacion.objects.create(
+                    codigo=f"POST-{modality_code}", estudiante=student, modalidad=modality,
+                    periodo=self.periodo, estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"),
+                )
+                for stage in stages:
+                    SeguimientoEtapa.objects.create(postulacion=postulacion, etapa=stage)
+
+                serialized_codes = {
+                    item["codigo"]
+                    for item in FlujoPostulacionSerializer(postulacion).get_etapas(postulacion)
+                }
+                self.assertEqual(serialized_codes, {"PERFIL_PROYECTO", "TEMATICA_TESIS"})
 
     @patch.object(
         TesisGradoWorkflowOrchestrator,

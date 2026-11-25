@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from rest_framework.test import APIClient, APIRequestFactory
 
 from apps.academico.models import EtapaModalidad, Modalidad, Periodo
@@ -95,7 +96,7 @@ class TesisGradoPolicyTest(TestCase):
         self.docentes = [CustomUser.objects.create_user(username=f"tesis-docente-{n}", password="x", ci=f"710001{n}", ru=f"RU710001{n}", role=self.doc_role) for n in range(1, 5)]
         self.modalidad = Modalidad.objects.get(codigo="TESIS_GRADO")
         self.periodo = Periodo.objects.create(nombre="2026-TESIS", gestion=2026, semestre="II", fecha_inicio="2026-07-01", fecha_fin="2026-12-31")
-        self.postulacion = Postulacion.objects.create(codigo="TESIS-TEST-001", estudiante=self.student, modalidad=self.modalidad, periodo=self.periodo, estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"))
+        self.postulacion = Postulacion.objects.create(codigo="TESIS-TEST-001", estudiante=self.student, modalidad=self.modalidad, periodo=self.periodo, estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"), regimen_workflow=Postulacion.RegimenWorkflowChoices.TESIS_LEGACY_V1)
         self.seguimientos = {item.etapa.codigo: item for item in WorkflowService.inicializar_flujo(self.postulacion, self.admin)}
 
     def _activar_tematica(self):
@@ -357,6 +358,46 @@ class TesisGradoPolicyTest(TestCase):
             "INSCRIPCION", "TEMATICA_TESIS", "PERFIL_TESIS", "DOCUMENTO_FINAL",
             "REVISION_TUTOR", "REVISION_TRIBUNAL", "DEFENSA_PRIVADA", "DEFENSA_PUBLICA",
         ])
+
+    def test_nueva_tesis_usa_perfil_y_permite_asignar_tutor_y_tribunal_sin_tematica(self):
+        student = CustomUser.objects.create_user(
+            username="tesis-nuevo-flujo", password="x", ci="7100099", ru="RU7100099",
+            role=self.student_role,
+        )
+        postulacion = Postulacion.objects.create(
+            codigo="TESIS-TEST-V2", estudiante=student, modalidad=self.modalidad,
+            periodo=self.periodo, estado_actual=EstadoPostulacion.objects.get(codigo="REGISTRADA"),
+        )
+        seguimientos = WorkflowService.inicializar_flujo(postulacion, self.admin)
+        self.assertEqual(postulacion.regimen_workflow, Postulacion.RegimenWorkflowChoices.TESIS_PERFIL_V2)
+        self.assertNotIn("TEMATICA_TESIS", {item.etapa.codigo for item in seguimientos})
+
+        profile = next(item for item in seguimientos if item.etapa.codigo == "PERFIL_TESIS")
+        groups = TesisGradoPolicy().get_configuracion_actores(postulacion, profile)["grupos"]
+        tribunal_group = next(item for item in groups if item["tipo_participacion"] == "TRIBUNAL")
+        tutor_group = next(item for item in groups if item["tipo_participacion"] == "TUTOR")
+        self.assertEqual(tribunal_group["codigo_etapa"], "PERFIL_TESIS")
+        self.assertIsNone(tutor_group["precondicion"])
+
+        tutor = AsignacionService.asignar_actor(postulacion, self.docentes[3], "TUTOR", self.admin)
+        tribunals = [
+            AsignacionService.asignar_actor(
+                postulacion, teacher, "TRIBUNAL", self.admin,
+                orden_cargo=order, seguimiento_etapa=profile,
+            )
+            for order, teacher in enumerate(self.docentes[:3], start=1)
+        ]
+        self.assertTrue(tutor.activo)
+        self.assertEqual(len(tribunals), 3)
+        self.assertTrue(all(item.seguimiento_etapa_id == profile.pk for item in tribunals))
+        formal_assignments = TesisGradoPolicy().evento_policy.get_asignaciones_formales_defensa(
+            postulacion=postulacion, tipo_evento="DEFENSA_PERFIL", seguimiento=profile,
+        )
+        self.assertEqual(formal_assignments.count(), 4)
+        TesisGradoPolicy().evento_policy.validar_programacion(
+            tipo_evento="DEFENSA_PERFIL", seguimiento=profile,
+            fecha_programada=timezone.now(), asignaciones=formal_assignments,
+        )
 
     def test_configuracion_actores_declara_tribunales_y_tutor_sin_restricciones_nuevas(self):
         config = TesisGradoPolicy().get_configuracion_actores()
