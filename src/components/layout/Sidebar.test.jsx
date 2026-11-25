@@ -16,7 +16,7 @@ function renderStudentSidebarAt(path) {
 describe('Sidebar', () => {
   it('muestra inicio y las dos consultas de reportes según capacidades', () => { renderSidebar(['puede_ver_dashboard', 'puede_ver_reportes']); expect(screen.getByRole('link', { name: 'Inicio' })).toHaveAttribute('href', '/dashboard'); expect(screen.getByText('Reportes')).toBeInTheDocument(); expect(screen.getByRole('link', { name: 'Postulaciones' })).toHaveAttribute('href', '/reportes/postulaciones'); expect(screen.getByRole('link', { name: 'Resultados académicos' })).toHaveAttribute('href', '/reportes/resultados') })
   it('oculta inicio y reportes sin depender del rol visible', () => { renderSidebar([]); expect(screen.queryByText('Inicio')).not.toBeInTheDocument(); expect(screen.queryByText('Reportes')).not.toBeInTheDocument() })
-  it('muestra notificaciones, badge acotado y etiqueta accesible con permiso', () => { renderSidebar(['puede_ver_notificaciones']); expect(screen.getByRole('link', { name: /Notificaciones/ })).toBeInTheDocument(); expect(screen.getByText('99+')).toHaveAttribute('aria-label', '104 notificaciones no leídas') })
+  it('oculta notificaciones del sidebar aunque el usuario tenga permiso', () => { renderSidebar(['puede_ver_notificaciones']); expect(screen.queryByRole('link', { name: /Notificaciones/ })).not.toBeInTheDocument(); expect(screen.queryByText('99+')).not.toBeInTheDocument() })
   it('muestra Modalidades con la capability de consulta', () => { renderSidebar(['puede_ver_modalidades']); expect(screen.getByRole('link', { name: 'Modalidades' })).toHaveAttribute('href', '/modalidades') })
   it('oculta Modalidades sin la capability de consulta', () => { renderSidebar([]); expect(screen.queryByRole('link', { name: 'Modalidades' })).not.toBeInTheDocument() })
   it('muestra únicamente el menú de estudiante y conserva destinos funcionales', () => {
@@ -24,8 +24,7 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: 'Mi proceso' })).toHaveAttribute('href', '/')
     expect(screen.getByRole('link', { name: 'Mis documentos' })).toHaveAttribute('href', '/documentos')
     expect(screen.getByRole('link', { name: 'Modalidades' })).toHaveAttribute('href', '/modalidades')
-    expect(screen.getByRole('link', { name: /Notificaciones/ })).toBeInTheDocument()
-    expect(screen.getByText('99+')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Notificaciones/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Postulantes' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Seguimiento' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Documentos' })).not.toBeInTheDocument()
@@ -41,9 +40,6 @@ describe('Sidebar', () => {
     cleanup()
     renderStudentSidebarAt('/modalidades')
     expect(screen.getByRole('link', { name: 'Modalidades' })).toHaveClass('sidebar-link--active')
-    cleanup()
-    renderStudentSidebarAt('/notificaciones')
-    expect(screen.getByRole('link', { name: /Notificaciones/ })).toHaveClass('sidebar-link--active')
   })
   it('no infiere menú estudiante por puede_cargar_documentos', () => {
     renderSidebar(['puede_cargar_documentos', 'puede_ver_documentos'], {}, 'DOCENTE')
@@ -52,7 +48,8 @@ describe('Sidebar', () => {
   })
   it('conserva la navegación administrativa actual', () => {
     renderSidebar(['puede_ver_dashboard', 'puede_ver_postulaciones', 'puede_ver_documentos', 'puede_ver_modalidades', 'puede_ver_notificaciones', 'puede_ver_seguimiento', 'puede_gestionar_usuarios', 'puede_ver_reportes', 'puede_ver_configuracion'])
-    for (const label of ['Inicio', 'Postulantes', 'Documentos', 'Modalidades', 'Seguimiento', 'Usuarios', 'Reportes', 'Resultados académicos', 'Configuración', 'Notificaciones']) expect(screen.getByText(label)).toBeInTheDocument()
+    for (const label of ['Inicio', 'Postulantes', 'Documentos', 'Modalidades', 'Seguimiento', 'Usuarios', 'Reportes', 'Resultados académicos', 'Configuración']) expect(screen.getByText(label)).toBeInTheDocument()
+    expect(screen.queryByText('Notificaciones')).not.toBeInTheDocument()
     expect(screen.queryByText('Mi proceso')).not.toBeInTheDocument()
     expect(screen.queryByText('Mis documentos')).not.toBeInTheDocument()
   })
@@ -62,12 +59,11 @@ describe('Sidebar', () => {
     expect(screen.getByText('Inicio')).toBeVisible()
     expect(screen.getByRole('link', { name: 'Inicio' })).toHaveClass('sidebar-link--active')
   })
-  it('colapsa textos solo en escritorio, mantiene iconos, badge y tooltip accesible', () => {
+  it('colapsa textos solo en escritorio, mantiene iconos y tooltip accesible', () => {
     renderSidebar(['puede_ver_dashboard', 'puede_ver_notificaciones'], { collapsed: true })
     expect(document.querySelector('#main-sidebar')).toHaveClass('sidebar--collapsed')
     expect(screen.getByText('Inicio')).toHaveClass('sidebar-label')
     expect(screen.getByRole('link', { name: 'Inicio' }).querySelector('svg')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Inicio' })).toHaveAttribute('title', 'Inicio')
-    expect(screen.getByText('99+')).toBeInTheDocument()
   })
 })

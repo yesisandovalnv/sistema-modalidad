@@ -1,13 +1,11 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, FileText, Users, FolderKanban, MonitorPlay, Settings, LogOut, Menu, Bell, GraduationCap } from 'lucide-react'
+import { LayoutDashboard, FileText, Users, FolderKanban, MonitorPlay, Settings, LogOut, Menu, GraduationCap } from 'lucide-react'
 import { Button } from '../ui/button'
 import { useAuth } from '../../hooks/useAuth'
-import { useNotifications } from '../../hooks/useNotifications'
 import careerLogo from '../../../uab/logo/Logo-ac.png'
 
 const links = [
   { to: '/dashboard', label: 'Inicio', icon: LayoutDashboard, permission: 'puede_ver_dashboard' },
-  { to: '/notificaciones', label: 'Notificaciones', icon: Bell, permission: 'puede_ver_notificaciones' },
   { to: '/postulantes', label: 'Postulantes', icon: Users, permission: 'puede_ver_postulaciones' },
   { to: '/documentos', label: 'Documentos', icon: FileText, permission: 'puede_ver_documentos' },
   { to: '/modalidades', label: 'Modalidades', icon: FolderKanban, permission: 'puede_ver_modalidades' },
@@ -17,11 +15,10 @@ const links = [
   { to: '/reportes/resultados', label: 'Resultados académicos', icon: GraduationCap, permission: 'puede_ver_reportes', section: 'Reportes' },
   { to: '/configuracion', label: 'Configuración', icon: Settings, permission: 'puede_ver_configuracion' },
 ]
-const studentMenuPaths = new Set(['/notificaciones', '/postulantes', '/documentos', '/modalidades'])
+const studentMenuPaths = new Set(['/postulantes', '/documentos', '/modalidades'])
 
 export function Sidebar({ open, collapsed = false, onMobileToggle }) {
   const { hasPermission, roleCode, logout } = useAuth()
-  const { unreadCount } = useNotifications()
   const { pathname } = useLocation()
   const studentMode = roleCode === 'ESTUDIANTE'
   const processActive = studentMode && (pathname === '/' || pathname === '/postulantes' || pathname.startsWith('/postulaciones/'))
@@ -57,7 +54,6 @@ export function Sidebar({ open, collapsed = false, onMobileToggle }) {
           >
             <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
             <span className="sidebar-label">{label}</span>
-            {to === '/notificaciones' && unreadCount > 0 && <span role="status" aria-label={`${unreadCount} notificaciones no leídas`} className="sidebar-badge ml-auto min-w-8 rounded-full bg-rose-600 px-2 py-0.5 text-center text-xs font-bold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
           </NavLink>
         </div>))}
       </nav>

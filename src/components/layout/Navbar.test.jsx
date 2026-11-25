@@ -1,17 +1,24 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { ThemeContext } from '../../context/ThemeContext'
 import { AuthContext } from '../../context/AuthContext'
+import { NotificationContext } from '../../context/NotificationContext'
 import { Navbar } from './Navbar'
 
-function renderNavbar(props = {}, user = { nombres: 'Agustin Fernando', username: 'agustin', rol: { nombre: 'Administración' } }) {
+function RouteLocation() {
+  const location = useLocation()
+  return <output aria-label="Ruta actual">{location.pathname}</output>
+}
+
+function renderNavbar(props = {}, user = { nombres: 'Agustin Fernando', username: 'agustin', rol: { nombre: 'Administración' } }, options = {}) {
   const navbarProps = { onMobileToggle: () => {}, sidebarCollapsed: false, onSidebarToggle: () => {}, ...props }
   const logout = vi.fn()
+  const { unreadCount = 12, canViewNotifications = true } = options
   render(
-    <AuthContext.Provider value={{ user, logout }}>
+    <AuthContext.Provider value={{ user, logout, hasPermission: (name) => name !== 'puede_ver_notificaciones' || canViewNotifications }}>
       <ThemeContext.Provider value={{ theme: 'light', toggleTheme: () => {} }}>
-        <MemoryRouter><Navbar {...navbarProps} /><button type="button">Fuera del menú</button></MemoryRouter>
+        <NotificationContext.Provider value={{ unreadCount }}><MemoryRouter initialEntries={['/dashboard']}><Navbar {...navbarProps} /><RouteLocation /><button type="button">Fuera del menú</button></MemoryRouter></NotificationContext.Provider>
       </ThemeContext.Provider>
     </AuthContext.Provider>,
   )
@@ -34,12 +41,12 @@ describe('Navbar', () => {
     const user = userEvent.setup()
     const onMobileToggle = vi.fn()
     const onSidebarToggle = vi.fn()
-    const { rerender } = render(<AuthContext.Provider value={{ user: {}, logout: vi.fn() }}><ThemeContext.Provider value={{ theme: 'light', toggleTheme: () => {} }}><MemoryRouter><Navbar onMobileToggle={onMobileToggle} sidebarCollapsed={false} onSidebarToggle={onSidebarToggle} /></MemoryRouter></ThemeContext.Provider></AuthContext.Provider>)
+    const { rerender } = render(<AuthContext.Provider value={{ user: {}, logout: vi.fn(), hasPermission: () => true }}><ThemeContext.Provider value={{ theme: 'light', toggleTheme: () => {} }}><NotificationContext.Provider value={{ unreadCount: 0 }}><MemoryRouter><Navbar onMobileToggle={onMobileToggle} sidebarCollapsed={false} onSidebarToggle={onSidebarToggle} /></MemoryRouter></NotificationContext.Provider></ThemeContext.Provider></AuthContext.Provider>)
     await user.click(screen.getByRole('button', { name: 'Colapsar barra lateral' }))
     expect(onSidebarToggle).toHaveBeenCalledOnce()
     expect(onMobileToggle).not.toHaveBeenCalled()
 
-    rerender(<AuthContext.Provider value={{ user: {}, logout: vi.fn() }}><ThemeContext.Provider value={{ theme: 'light', toggleTheme: () => {} }}><MemoryRouter><Navbar onMobileToggle={onMobileToggle} sidebarCollapsed onSidebarToggle={onSidebarToggle} /></MemoryRouter></ThemeContext.Provider></AuthContext.Provider>)
+    rerender(<AuthContext.Provider value={{ user: {}, logout: vi.fn(), hasPermission: () => true }}><ThemeContext.Provider value={{ theme: 'light', toggleTheme: () => {} }}><NotificationContext.Provider value={{ unreadCount: 0 }}><MemoryRouter><Navbar onMobileToggle={onMobileToggle} sidebarCollapsed onSidebarToggle={onSidebarToggle} /></MemoryRouter></NotificationContext.Provider></ThemeContext.Provider></AuthContext.Provider>)
     expect(screen.getByRole('banner')).toHaveClass('layout-navbar--collapsed')
     expect(screen.getByRole('button', { name: 'Expandir barra lateral' })).toHaveAttribute('aria-expanded', 'false')
     await user.click(screen.getByRole('button', { name: 'Abrir menú de navegación' }))
@@ -57,7 +64,22 @@ describe('Navbar', () => {
     expect(trigger).toHaveTextContent('Administración')
     expect(trigger.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument()
     expect(trigger.querySelector('span[aria-hidden="true"]')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Notificaciones' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Notificaciones, 12 sin leer' })).toHaveAttribute('href', '/notificaciones')
+    expect(screen.getByText('12')).toBeInTheDocument()
+  })
+
+  it('oculta la campana sin permiso y limita visualmente el contador', () => {
+    renderNavbar({}, undefined, { unreadCount: 104, canViewNotifications: false })
+    expect(screen.queryByRole('link', { name: /Notificaciones/ })).not.toBeInTheDocument()
+  })
+
+  it('navega a Notificaciones al hacer clic en la campana', async () => {
+    const user = userEvent.setup()
+    renderNavbar()
+
+    await user.click(screen.getByRole('link', { name: 'Notificaciones, 12 sin leer' }))
+
+    expect(screen.getByLabelText('Ruta actual')).toHaveTextContent('/notificaciones')
   })
 
   it('usa el primer nombre disponible y username como fallback', () => {

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '../ui/button'
 import { useTheme } from '../../hooks/useTheme'
 import { useAuth } from '../../hooks/useAuth'
+import { useNotifications } from '../../hooks/useNotifications'
 
 function getDisplayName(user) {
   const value = [user?.nombres, user?.nombre_completo, user?.nombre, user?.username]
@@ -13,7 +14,8 @@ function getDisplayName(user) {
 
 export function Navbar({ onMobileToggle, sidebarCollapsed, onSidebarToggle }) {
   const { theme, toggleTheme } = useTheme()
-  const { user, logout } = useAuth()
+  const { user, logout, hasPermission } = useAuth()
+  const { unreadCount } = useNotifications()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef(null)
   const userMenuButtonRef = useRef(null)
@@ -87,9 +89,12 @@ export function Navbar({ onMobileToggle, sidebarCollapsed, onSidebarToggle }) {
         <Button variant="ghost" size="icon" onClick={toggleTheme}>
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
-        <Button variant="ghost" size="icon" aria-label="Notificaciones">
-          <Bell className="h-4 w-4" />
-        </Button>
+        {hasPermission('puede_ver_notificaciones') && (
+          <Link to="/notificaciones" aria-label={unreadCount > 0 ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'} className="relative inline-flex h-9 w-9 items-center justify-center rounded-md text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-light)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]">
+            <Bell className="h-4 w-4" aria-hidden="true" />
+            {unreadCount > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 min-w-5 rounded-full bg-rose-600 px-1 text-center text-[10px] font-bold leading-5 text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+          </Link>
+        )}
         <div
           className="relative"
           ref={userMenuRef}
