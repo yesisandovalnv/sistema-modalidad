@@ -193,13 +193,12 @@ export default function SeguimientoPage() {
         {data.results?.map((item) => <article key={item.id} className="rounded-xl border bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
-                <span>{item.codigo}</span>
-                {item.numero_intento > 1 && <span className="rounded-full border px-2 py-0.5">Intento {item.numero_intento}</span>}
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-bold">{item.nombre}</h2>
+                {item.numero_intento > 1 && <span className="rounded-full border px-2 py-0.5 text-xs font-semibold">Intento {item.numero_intento}</span>}
               </div>
-              <h2 className="mt-1 text-lg font-bold">{item.nombre}</h2>
-              <p className="mt-1 text-sm font-medium">{item.codigo_postulacion} · {formatCodeLabel(item.estado)}</p>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{item.estudiante_nombre} · {item.modalidad_nombre}</p>
+              <p className="mt-2"><span className="inline-flex rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{formatCodeLabel(item.estado)}</span></p>
             </div>
             <Button variant="secondary" onClick={() => openDetail(item)}>{hasActions(item) ? 'Gestionar' : 'Ver detalle'}</Button>
           </div>
@@ -210,7 +209,6 @@ export default function SeguimientoPage() {
 
     {selected && !pendingAction && <Modal title={selected.nombre} onClose={closeDetail}>
       <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Info label="Código de postulación" value={selected.codigo_postulacion} />
         <Info label="Estudiante" value={selected.estudiante_nombre} />
         <Info label="Modalidad" value={selected.modalidad_nombre} />
         <Info label="Etapa" value={selected.nombre} />
@@ -252,7 +250,6 @@ export default function SeguimientoPage() {
       <div className="mt-4 space-y-4">
         <p>¿Confirmas que deseas {actionLabels[pendingAction].toLowerCase()} esta etapa?</p>
         <ActionContext item={selected} />
-        <p className="text-sm text-slate-500">Postulación {selected.codigo_postulacion}</p>
         {actionError && <p role="alert" className="text-sm text-red-600">{actionError}</p>}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" disabled={busy} onClick={cancelAction}>Cancelar</Button>

@@ -67,13 +67,45 @@ describe('SeguimientoPage', () => {
 
   it('carga el listado y muestra los datos humanos sin destacar el intento inicial', async () => {
     renderPage()
-    expect(await screen.findByText('PG-2026-003', { exact: false })).toBeInTheDocument()
+    const card = await screen.findByRole('article')
     expect(screen.getByText(/Ana Maria Quispe Mamani/)).toBeInTheDocument()
     expect(screen.getByText(/Proyecto de Grado/, { selector: 'p' })).toBeInTheDocument()
-    expect(screen.getByText(/En proceso/, { selector: 'p' })).toBeInTheDocument()
-    expect(screen.getByText('INSCRIPCION')).toBeInTheDocument()
+    expect(within(card).getByText('En proceso')).toHaveClass('rounded-full')
+    expect(within(card).queryByText('INSCRIPCION')).not.toBeInTheDocument()
+    expect(within(card).queryByText('PG-2026-003')).not.toBeInTheDocument()
     expect(screen.queryByText('Intento 1')).not.toBeInTheDocument()
     expect(screen.queryByText('Postulación 3')).not.toBeInTheDocument()
+  })
+
+  it('ordena nombre, estudiante y modalidad, y estado etiquetado en Trabajo Dirigido', async () => {
+    const row = {
+      ...seguimiento,
+      codigo_postulacion: 'TD-2026-011',
+      estudiante_nombre: 'Elizabeth Melgar Escalante',
+      modalidad_nombre: 'Trabajo Dirigido',
+      codigo: 'CIERRE_DOCUMENTAL',
+      nombre: 'Cierre Documental',
+      estado: 'APROBADA',
+      acciones_permitidas: [],
+    }
+    const user = userEvent.setup()
+    renderPage({ rows: [row] })
+    const card = await screen.findByRole('article')
+    const heading = within(card).getByRole('heading', { name: 'Cierre Documental' })
+    const studentAndModality = within(card).getByText('Elizabeth Melgar Escalante · Trabajo Dirigido')
+    const status = within(card).getByText('Aprobada')
+
+    expect(heading.compareDocumentPosition(studentAndModality) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(studentAndModality.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(status).toHaveClass('rounded-full')
+    expect(within(card).queryByText('CIERRE_DOCUMENTAL')).not.toBeInTheDocument()
+    expect(within(card).queryByText('TD-2026-011')).not.toBeInTheDocument()
+
+    await user.click(within(card).getByRole('button', { name: 'Ver detalle' }))
+    const dialog = screen.getByRole('dialog', { name: 'Cierre Documental' })
+    expect(within(dialog).queryByText('Código de postulación')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText('TD-2026-011')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('link', { name: 'Abrir expediente' })).toHaveAttribute('href', '/postulaciones/3')
   })
 
   it('destaca los intentos posteriores al primero', async () => {
@@ -92,7 +124,7 @@ describe('SeguimientoPage', () => {
 
   it('mantiene la búsqueda existente y reinicia la página', async () => {
     renderPage()
-    await screen.findByText('PG-2026-003', { exact: false })
+    await screen.findByRole('article')
     fireEvent.change(screen.getByRole('textbox', { name: 'Buscar' }), { target: { value: 'INSCRIPCION' } })
     fireEvent.click(screen.getByRole('button', { name: 'Buscar' }))
     await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, {
@@ -137,7 +169,7 @@ describe('SeguimientoPage', () => {
     crudService.list.mockResolvedValue({ count: 21, next: '/page/2', previous: null, results: [seguimiento] })
     const user = userEvent.setup()
     render(<MemoryRouter><AuthContext.Provider value={{ hasPermission: () => true }}><SeguimientoPage /></AuthContext.Provider></MemoryRouter>)
-    await screen.findByText('PG-2026-003', { exact: false })
+    await screen.findByRole('article')
     await user.selectOptions(screen.getByLabelText('Estado'), 'PENDIENTE')
     await user.click(screen.getByRole('button', { name: 'Siguiente' }))
     await waitFor(() => expect(crudService.list).toHaveBeenLastCalledWith(endpoints.seguimiento, expect.objectContaining({ page: 2, estado: 'PENDIENTE' }), expect.any(AbortSignal)))
