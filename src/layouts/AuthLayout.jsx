@@ -9,7 +9,7 @@ export function AuthLayout() {
         <div className="mx-auto w-full min-w-0 max-w-md md:ml-auto md:mr-0">
           <Outlet />
         </div>
-        <section aria-label="Mensaje institucional" className="absolute bottom-8 left-12 hidden max-w-sm text-white [text-shadow:0_2px_4px_rgb(0_0_0_/_70%)] lg:block xl:left-16">
+        <section aria-label="Mensaje institucional" className="absolute bottom-8 left-12 hidden max-w-sm text-white [text-shadow:0_2px_4px_rgb(0_0_0_/_70%)] xl:left-16">
           <p className="text-sm font-semibold uppercase tracking-widest">Universidad Autónoma del Beni<br />«José Ballivián»</p>
           <h2 className="mt-5 text-4xl font-bold leading-tight tracking-tight">Tu esfuerzo,<br /><span className="text-amber-400">nuestro orgullo</span></h2>
           <div className="mt-5 h-0.5 w-16 bg-amber-400" />
